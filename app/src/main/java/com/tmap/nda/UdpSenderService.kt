@@ -1,0 +1,463 @@
+package com.tmap.nda
+
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.os.Bundle
+import android.os.IBinder
+import androidx.core.app.NotificationCompat
+import androidx.lifecycle.Observer
+import com.google.gson.Gson
+import com.tmapmobility.tmap.tmapsdk.ui.util.TmapUISDK
+import kotlinx.coroutines.*
+import org.json.JSONObject
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
+import java.util.concurrent.atomic.AtomicBoolean
+import android.os.PowerManager
+
+class UdpSenderService : Service() {
+
+    private val CHANNEL_ID = "TmapNdaChannel"
+    private val UDP_PORT = 7706
+    private var targetIp = "255.255.255.255"
+
+    private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
+    private var udpSocket: DatagramSocket? = null
+
+    private val isRunning = AtomicBoolean(false)
+    private val gson = Gson()
+    
+    private var packetIndex = 0
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    // Latest Safe Drive Info
+    private var roadLimitSpeed = 0
+    private var sdiType = 0
+    private var sdiSpeedLimit = 0
+    private var sdiDistance = 0
+    private var sdiBlockType = 0
+    private var sdiBlockSpeed = 0
+    private var sdiBlockDist = 0
+
+    @Volatile
+    private var currentGpsStatusText = "탐색 중"
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(1, createNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+        } else {
+            startForeground(1, createNotification())
+        }
+        
+        try {
+            udpSocket = DatagramSocket()
+            udpSocket?.broadcast = true
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TmapNda::UdpSenderWakelock")
+            wakeLock?.acquire()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        isRunning.set(true)
+
+        // GPS 상태 모니터링 등록
+        try {
+            val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+            locationManager.registerGnssStatusCallback(object : android.location.GnssStatus.Callback() {
+                override fun onStarted() {
+                    currentGpsStatusText = "탐색 중"
+                }
+                override fun onStopped() {
+                    currentGpsStatusText = "NO_SIGNAL"
+                }
+                override fun onFirstFix(ttffMillis: Int) {
+                    currentGpsStatusText = "수신 양호"
+                }
+                override fun onSatelliteStatusChanged(status: android.location.GnssStatus) {
+                    var usedInFix = 0
+                    for (i in 0 until status.satelliteCount) {
+                        if (status.usedInFix(i)) usedInFix++
+                    }
+                    if (usedInFix >= 4) {
+                        currentGpsStatusText = "GOOD($usedInFix)"
+                    } else {
+                        currentGpsStatusText = "BAD($usedInFix)"
+                    }
+                }
+            }, android.os.Handler(android.os.Looper.getMainLooper()))
+        } catch (e: SecurityException) {
+            currentGpsStatusText = "권한 없음"
+        }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        targetIp = sharedPref.getString("TARGET_IP", "255.255.255.255") ?: "255.255.255.255"
+
+        startObservingEDC()
+        startSendingLoop()
+        startReceivingLoop()
+
+        return START_STICKY
+    }
+
+    private var lastSdiJsonStr: String? = null
+    private var lastSdiUpdateTime = 0L
+    private var lastSdiPlusJsonStr: String? = null
+    private var lastSdiPlusUpdateTime = 0L
+
+    private val edcObserver = Observer<Bundle> { bundle ->
+        if (bundle != null && isRunning.get()) {
+            serviceScope.launch {
+                try {
+                    val json = JSONObject()
+                    json.put("carrotIndex", packetIndex++)
+                    json.put("navitype", "tmap")
+                    var isBoosting = false
+                    
+                    // 1. limitSpeed 처리
+                    val limitSpeedStr = bundle.getString("limitSpeed", bundle.getInt("limitSpeed", 0).toString())
+                    val currentLimitSpeed = limitSpeedStr.toIntOrNull() ?: 0
+                    if (currentLimitSpeed >= 30) {
+                        roadLimitSpeed = currentLimitSpeed
+                    }
+                    
+                    // 2. firstSDIInfo (GRT47과 동일하게 모든 key를 최상위로 복사)
+                    val sdiObj = bundle.get("firstSDIInfo")
+                    if (sdiObj != null) {
+                        lastSdiJsonStr = if (sdiObj is String) sdiObj else gson.toJson(sdiObj)
+                        lastSdiUpdateTime = System.currentTimeMillis()
+                    } else if (System.currentTimeMillis() - lastSdiUpdateTime > 2000) {
+                        lastSdiJsonStr = null
+                    }
+                    
+                    if (lastSdiJsonStr != null) {
+                        val sdiJson = JSONObject(lastSdiJsonStr)
+                        
+                        val keys = sdiJson.keys()
+                        while (keys.hasNext()) {
+                            val k = keys.next()
+                            json.put(k, sdiJson.get(k))
+                        }
+                        
+                        // Fallback logic for point camera (사용자 피드백 반영)
+                        val sdiType = json.optInt("nSdiType", 0)
+                        val sdiSpeedLimit = json.optInt("nSdiSpeedLimit", 0)
+                        var sdiDist = json.optInt("nSdiDist", 0)
+                        val bSdiBlockSection = json.optBoolean("bSdiBlockSection", false)
+                        
+                        var nSdiBlockType = 0
+                        if (bSdiBlockSection) {
+                            nSdiBlockType = if (sdiType == 3) 3 else 2
+                        } else if (sdiType == 2) {
+                            nSdiBlockType = 1
+                        }
+                        if (nSdiBlockType > 0) {
+                            json.put("nSdiBlockType", nSdiBlockType)
+                            json.put("nSdiSection", 1) // 사용자 요청에 따라 강제로 1 고정
+                        }
+
+                        // 구간단속 평균속도 보상 가속 로직 (부드러운 조절 알고리즘 적용)
+                        val sp = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                        val offset = sp.getInt("BLOCK_SPEED_OFFSET", 0)
+                        
+                        if (nSdiBlockType == 2 && offset > 0 && sdiSpeedLimit > 0) {
+                            val avgSpeed = json.optInt("nSdiBlockAverageSpeed", 0)
+                            // 1, 3, 4, 6, 7: 과속, 구간종점, 구간내과속, 신호위반, 이동식 등 포인트 카메라
+                            val hasPointCameraAhead = (sdiType == 1 || sdiType == 3 || sdiType == 4 || sdiType == 6 || sdiType == 7) && sdiDist > 0
+                            
+                            if (avgSpeed > 0 && !hasPointCameraAhead) {
+                                val diff = sdiSpeedLimit - avgSpeed
+                                if (diff >= 1) { // 1km/h 이상 차이 날 때만 적용
+                                    // 10km/h 이상 차이 날 때 최대 여유 속도(100%) 부여
+                                    val maxDiffForFullOffset = 10.0
+                                    var ratio = diff / maxDiffForFullOffset
+                                    if (ratio > 1.0) ratio = 1.0
+                                    
+                                    var boost = (offset * ratio).toInt()
+                                    if (boost < 1) boost = 1 // 계산 결과가 0이어도 최소 1km/h는 부여
+                                    
+                                    val boostedLimit = sdiSpeedLimit + boost
+                                    json.put("nSdiSpeedLimit", boostedLimit)
+                                    if (json.has("nSdiBlockSpeed")) {
+                                        json.put("nSdiBlockSpeed", boostedLimit)
+                                    }
+                                    isBoosting = true
+                                }
+                            }
+                        }
+                        
+                        if (sdiType == 22) {
+                            if (sdiDist <= 0) {
+                                sdiDist = 150
+                                json.put("nSdiDist", 150)
+                            }
+                            json.put("roadcate", 8)
+                        }
+                        
+                        if (sdiSpeedLimit >= 30) {
+                            roadLimitSpeed = sdiSpeedLimit
+                        }
+                        
+                        if (sdiType == 0 && sdiSpeedLimit > 0 && sdiDist > 0) {
+                            json.put("nSdiType", 1) // 강제로 1로 세팅
+                        }
+                    }
+                    
+                    // 1.5. Reflection을 통한 도로 기본 제한속도 추출 (TMAP 코어 엔진)
+                    val realRoadLimit = getRoadLimitSpeedFromEngine()
+                    if (realRoadLimit >= 30) {
+                        roadLimitSpeed = realRoadLimit
+                    }
+                    
+                    json.put("nRoadLimitSpeed", roadLimitSpeed)
+                    
+                    // 3. secondSDIInfo (GRT47과 동일하게 nSdiPlus... 접두어로 추가)
+                    val sdiPlusObj = bundle.get("secondSDIInfo")
+                    if (sdiPlusObj != null) {
+                        lastSdiPlusJsonStr = if (sdiPlusObj is String) sdiPlusObj else gson.toJson(sdiPlusObj)
+                        lastSdiPlusUpdateTime = System.currentTimeMillis()
+                    } else if (System.currentTimeMillis() - lastSdiPlusUpdateTime > 2000) {
+                        lastSdiPlusJsonStr = null
+                    }
+                    
+                    if (lastSdiPlusJsonStr != null) {
+                        val plusJson = JSONObject(lastSdiPlusJsonStr)
+                        
+                        val plusType = plusJson.optInt("nSdiType", 0)
+                        var plusDist = plusJson.optInt("nSdiDist", 0)
+                        if (plusType == 22 && plusDist <= 0) plusDist = 150
+                        
+                        if (plusJson.has("nSdiType")) json.put("nSdiPlusType", plusJson.get("nSdiType"))
+                        if (plusJson.has("nSdiSpeedLimit")) json.put("nSdiPlusSpeedLimit", plusJson.get("nSdiSpeedLimit"))
+                        if (plusJson.has("nSdiDist") || plusDist > 0) json.put("nSdiPlusDist", plusDist)
+                        if (plusJson.has("nSdiSection")) json.put("nSdiPlusBlockType", plusJson.get("nSdiSection"))
+                        if (plusJson.has("nSdiBlockSpeed")) json.put("nSdiPlusBlockSpeed", plusJson.get("nSdiBlockSpeed"))
+                        if (plusJson.has("nSdiBlockDist")) json.put("nSdiPlusBlockDist", plusJson.get("nSdiBlockDist"))
+                    }
+                    
+                    // 목적지 남은 거리 및 소요 시간 처리 (안심주행 모드 대응을 위해 값이 없거나 0이면 더미 값 주입)
+                    val nGoPosDist = bundle.getInt("nGoPosDist", bundle.getInt("remainDistanceToGoPositionInMeter", 0))
+                    val nGoPosTime = bundle.getInt("nGoPosTime", bundle.getInt("remainTimeToGoPositionInSec", 0))
+                    if (nGoPosDist > 0 && nGoPosTime > 0) {
+                        json.put("nGoPosDist", nGoPosDist)
+                        json.put("nGoPosTime", nGoPosTime)
+                    } else {
+                        // 오픈파일럿 HUD TBT 패널을 항상 띄우기 위해 최소 dummy 값 주입
+                        json.put("nGoPosDist", 1)
+                        json.put("nGoPosTime", 1)
+                    }
+
+                    // 상시 안내 텍스트 표시를 위한 필수 TBT 더미 값 주입
+                    var tbtDist = json.optInt("nSdiDist", 0)
+                    var activeType = json.optInt("nSdiType", 0)
+                    
+                    if (tbtDist <= 0) {
+                        tbtDist = json.optInt("nSdiPlusDist", 0)
+                        activeType = json.optInt("nSdiPlusType", 0)
+                    }
+                    if (tbtDist <= 0) {
+                        tbtDist = json.optInt("nSdiBlockDist", 0)
+                        activeType = 4 // 구간단속 중
+                    }
+                    if (tbtDist <= 0) {
+                        tbtDist = 9999
+                        activeType = 0
+                    }
+
+                    var prefix = when (activeType) {
+                        1, 2, 3, 4, 7 -> "단속구간"
+                        22 -> "방지턱"
+                        33 -> "스쿨존"
+                        else -> if (tbtDist < 9999) "주의구간" else "안심주행"
+                    }
+                    if (isBoosting) {
+                        prefix = "추가가속중"
+                    }
+
+                    json.put("nTBTDist", tbtDist)      // 이벤트가 있으면 해당 거리 표출, 없으면 9999
+                    json.put("nTBTTurnType", 51)    // Notification 타입 (직진/알림)
+                    json.put("szTBTMainText", "$prefix | GPS: $currentGpsStatusText")
+
+                    latestPayload = json.toString()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
+    @Volatile
+    private var latestPayload = "{}"
+
+    private fun startObservingEDC() {
+        CoroutineScope(Dispatchers.Main).launch {
+            TmapUISDK.observableEDCData.observeForever(edcObserver)
+        }
+    }
+
+    private fun startSendingLoop() {
+        serviceScope.launch {
+            while (isActive) {
+                sendSdiData()
+                delay(300) // 약 3.3Hz heartbeat
+            }
+        }
+    }
+
+    private var receiveSocket: DatagramSocket? = null
+
+    private fun startReceivingLoop() {
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                receiveSocket = DatagramSocket(null)
+                receiveSocket?.reuseAddress = true
+                receiveSocket?.bind(java.net.InetSocketAddress("0.0.0.0", 7705))
+                
+                val buffer = ByteArray(4096)
+                while (isActive && isRunning.get()) {
+                    val packet = DatagramPacket(buffer, buffer.size)
+                    receiveSocket?.receive(packet)
+                    val data = String(packet.data, 0, packet.length, Charsets.UTF_8)
+                    try {
+                        val json = JSONObject(data)
+                        val carrot2 = json.optString("Carrot2", "-")
+                        val ip = json.optString("ip", "-")
+                        val trafficState = json.optInt("trafficState", 0)
+                        val xState = json.optInt("xState", 0)
+                        val active = json.optBoolean("active", false)
+                        
+                        OpenpilotStateRepository.updateState(carrot2, ip, trafficState, xState, active)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun sendSdiData() {
+        if (latestPayload == "{}") return
+        try {
+            val buffer = latestPayload.toByteArray(Charsets.UTF_8)
+            
+            // GRT47의 UDP 전송 로직 유지 (127.0.0.1, 255.255.255.255 및 모든 인터페이스 브로드캐스트)
+            val targetAddresses = mutableSetOf<InetAddress>()
+            targetAddresses.add(InetAddress.getByName("127.0.0.1"))
+            
+            if (targetIp == "255.255.255.255") {
+                targetAddresses.add(InetAddress.getByName("255.255.255.255"))
+                val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+                while (interfaces.hasMoreElements()) {
+                    val networkInterface = interfaces.nextElement()
+                    if (networkInterface.isLoopback || !networkInterface.isUp) continue
+                    for (interfaceAddress in networkInterface.interfaceAddresses) {
+                        interfaceAddress.broadcast?.let { targetAddresses.add(it) }
+                    }
+                }
+            } else {
+                targetAddresses.add(InetAddress.getByName(targetIp))
+            }
+
+            for (address in targetAddresses) {
+                val packet = DatagramPacket(buffer, buffer.size, address, UDP_PORT)
+                udpSocket?.send(packet)
+            }
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+
+    override fun onBind(intent: Intent?): IBinder? {
+        return null
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        isRunning.set(false)
+        CoroutineScope(Dispatchers.Main).launch {
+            TmapUISDK.observableEDCData.removeObserver(edcObserver)
+        }
+        serviceScope.cancel()
+        udpSocket?.close()
+        receiveSocket?.close()
+        
+        try {
+            if (wakeLock?.isHeld == true) {
+                wakeLock?.release()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "TmapNda UDP Sender",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            val manager = getSystemService(NotificationManager::class.java)
+            manager?.createNotificationChannel(channel)
+        }
+    }
+
+    private fun createNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
+        .setContentTitle("TmapNda 실행 중")
+        .setContentText("MD 가이드 기반 안전운행 정보 UDP 송신 중...")
+        .setSmallIcon(R.mipmap.ic_launcher)
+        .build()
+
+    // Reflection Caching
+    private var sdkManagerCompanion: Any? = null
+    private var getInstanceMethod: java.lang.reflect.Method? = null
+    private var getRecentRGDataMethod: java.lang.reflect.Method? = null
+    private var nRoadLimitSpeedField: java.lang.reflect.Field? = null
+
+    private fun getRoadLimitSpeedFromEngine(): Int {
+        try {
+            if (sdkManagerCompanion == null) {
+                val sdkManagerClass = Class.forName("com.skt.tmap.engine.navigation.SDKManager")
+                val companionField = sdkManagerClass.getField("Companion")
+                sdkManagerCompanion = companionField.get(null)
+                getInstanceMethod = sdkManagerCompanion?.javaClass?.getMethod("getInstance")
+            }
+            
+            val sdkManager = getInstanceMethod?.invoke(sdkManagerCompanion)
+            if (sdkManager != null) {
+                if (getRecentRGDataMethod == null) {
+                    getRecentRGDataMethod = sdkManager.javaClass.getMethod("getRecentRGData")
+                }
+                val rgData = getRecentRGDataMethod?.invoke(sdkManager)
+                if (rgData != null) {
+                    if (nRoadLimitSpeedField == null) {
+                        nRoadLimitSpeedField = rgData.javaClass.getField("nRoadLimitSpeed")
+                    }
+                    val rawLimitSpeed = nRoadLimitSpeedField?.getInt(rgData) ?: 0
+                    if (rawLimitSpeed > 0) {
+                        return (rawLimitSpeed - 20) / 10
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("UdpSenderService", "Reflection error: ${e.message}")
+        }
+        return -1
+    }
+}

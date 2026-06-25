@@ -1,0 +1,37 @@
+name: Build and Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Grant execute permission
+        run: chmod +x gradlew
+
+      - name: Build APK
+        run: ./gradlew assembleDebug
+
+      - name: Rename APK
+        run: |
+          VERSION=$(grep 'versionName' app/build.gradle.kts | grep -oP '"\K[^"]*')
+          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/TmapNda-v${VERSION}.apk
+
+      - name: Upload Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/build/outputs/apk/debug/TmapNda-*.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
