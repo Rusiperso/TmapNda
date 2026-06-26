@@ -53,6 +53,11 @@ class MapActivity : AppCompatActivity() {
             return
         }
 
+        binding.btnCheckUpdate.setOnClickListener {
+            Toast.makeText(this, "업데이트 확인 중...", Toast.LENGTH_SHORT).show()
+            AutoUpdater.checkForUpdates(this)
+        }
+
         binding.btnEditKey.setOnClickListener {
             val intent = Intent(this, MainActivity::class.java)
             intent.putExtra("auto_start", false)
@@ -62,34 +67,6 @@ class MapActivity : AppCompatActivity() {
 
         binding.btnExitApp.setOnClickListener {
             finishAffinity()
-        }
-
-        // 여유가속(마진) 조절 로직
-        var currentOffset = sharedPref.getInt("BLOCK_SPEED_OFFSET", 0)
-        binding.tvOffsetValue?.text = currentOffset.toString()
-
-        binding.btnOffsetInfo?.setOnClickListener {
-            androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle("구간단속 여유가속(Boost) 안내")
-                .setMessage("구간단속 중 현재 평균 속도가 낮을 경우, 설정된 값(km/h) 내에서 크루즈 설정 속도를 부드럽게 상향(Boost)하여 통과 시간을 단축시켜 줍니다.\n\n예시: 제한속도 100km/h 구간에서 현재 평균이 90km/h이고, 여유가속을 '+10'으로 설정했다면, 목표 속도를 최대 110km/h까지 올려 평균 속도를 맞춥니다.\n\n(단속 종료 지점이 다가오거나 내부에 일반 카메라가 나타나면 즉시 안전 속도로 자동 복귀합니다.)")
-                .setPositiveButton("확인", null)
-                .show()
-        }
-
-        setAutoRepeatButton(binding.btnDecreaseOffset) {
-            if (currentOffset > 0) { // 음수 방지
-                currentOffset--
-                binding.tvOffsetValue?.text = currentOffset.toString()
-                sharedPref.edit().putInt("BLOCK_SPEED_OFFSET", currentOffset).apply()
-            }
-        }
-
-        setAutoRepeatButton(binding.btnIncreaseOffset) {
-            if (currentOffset < 50) { // 최대 50km/h 제한
-                currentOffset++
-                binding.tvOffsetValue?.text = currentOffset.toString()
-                sharedPref.edit().putInt("BLOCK_SPEED_OFFSET", currentOffset).apply()
-            }
         }
 
         val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -149,19 +126,6 @@ class MapActivity : AppCompatActivity() {
                 2 -> binding.vTrafficLight.setBackgroundResource(R.drawable.shape_circle_green)
                 else -> binding.vTrafficLight.setBackgroundResource(R.drawable.shape_circle_gray)
             }
-
-            // xState
-            val (xText, xColor) = when (state.xState) {
-                0 -> "LEAD" to "#2196F3"
-                1 -> "CRUISE" to "#4CAF50"
-                2 -> "E2E CRZ" to "#00BCD4"
-                3 -> "E2E STP" to "#F44336"
-                4 -> "PREPARE" to "#FFC107"
-                5 -> "STOPPED" to "#B71C1C"
-                else -> "-" to "#AAAAAA"
-            }
-            binding.tvXStateBadge.text = xText
-            binding.tvXStateBadge.setTextColor(android.graphics.Color.parseColor(xColor))
         }
 
         initTmapSdk(appKey)
@@ -266,16 +230,16 @@ class MapActivity : AppCompatActivity() {
                 val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
                 locationManager.registerGnssStatusCallback(object : android.location.GnssStatus.Callback() {
                     override fun onStarted() {
-                        binding.tvGpsStatus.text = "탐색 중"
-                        binding.tvGpsStatus.setTextColor(android.graphics.Color.YELLOW)
+                        binding.btnGpsStatus.text = "탐색 중"
+                        binding.btnGpsStatus.setTextColor(android.graphics.Color.YELLOW)
                     }
                     override fun onStopped() {
-                        binding.tvGpsStatus.text = "끊김 (NO_SIGNAL)"
-                        binding.tvGpsStatus.setTextColor(android.graphics.Color.RED)
+                        binding.btnGpsStatus.text = "끊김 (NO_SIGNAL)"
+                        binding.btnGpsStatus.setTextColor(android.graphics.Color.RED)
                     }
                     override fun onFirstFix(ttffMillis: Int) {
-                        binding.tvGpsStatus.text = "수신 양호"
-                        binding.tvGpsStatus.setTextColor(android.graphics.Color.GREEN)
+                        binding.btnGpsStatus.text = "수신 양호"
+                        binding.btnGpsStatus.setTextColor(android.graphics.Color.GREEN)
                     }
                     override fun onSatelliteStatusChanged(status: android.location.GnssStatus) {
                         var usedInFix = 0
@@ -283,11 +247,11 @@ class MapActivity : AppCompatActivity() {
                             if (status.usedInFix(i)) usedInFix++
                         }
                         if (usedInFix >= 4) {
-                            binding.tvGpsStatus.text = "GOOD (위성 $usedInFix)"
-                            binding.tvGpsStatus.setTextColor(android.graphics.Color.GREEN)
+                            binding.btnGpsStatus.text = "GOOD (위성 $usedInFix)"
+                            binding.btnGpsStatus.setTextColor(android.graphics.Color.GREEN)
                         } else {
-                            binding.tvGpsStatus.text = "BAD (위성 $usedInFix)"
-                            binding.tvGpsStatus.setTextColor(android.graphics.Color.RED)
+                            binding.btnGpsStatus.text = "BAD (위성 $usedInFix)"
+                            binding.btnGpsStatus.setTextColor(android.graphics.Color.RED)
                         }
                     }
                 }, android.os.Handler(android.os.Looper.getMainLooper()))
@@ -329,14 +293,7 @@ class MapActivity : AppCompatActivity() {
                 val blockAvgSpeed = json.optInt("nSdiBlockAverageSpeed", 0)
                 val isBlockSection = sdiType == 2 || sdiType == 3 || sdiType == 4 || json.optBoolean("bSdiBlockSection", false)
                 
-                var isBoosting = false
                 val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-                val offset = sharedPref.getInt("BLOCK_SPEED_OFFSET", 0)
-                if (isBlockSection && offset > 0 && sdiSpeedLimit > 0) {
-                    if (blockAvgSpeed > 0 && sdiSpeedLimit - blockAvgSpeed >= 1) {
-                        isBoosting = true
-                    }
-                }
                 
                 if (sdiType == 22 && sdiSpeedLimit <= 0) {
                     sdiSpeedLimit = 30
@@ -352,7 +309,7 @@ class MapActivity : AppCompatActivity() {
                 }
                 
                 runOnUiThread {
-                    binding.tvOffsetTitle?.text = if (isBoosting) "추가가속중" else "구간단속"
+                    binding.tvOffsetTitle?.text = "구간단속"
                     
                     if (isBlockSection && blockDist > 0) {
                         binding.llBlockInfo?.visibility = android.view.View.VISIBLE

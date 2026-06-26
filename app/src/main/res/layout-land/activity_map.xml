@@ -137,38 +137,6 @@
                 android:background="#33FFFFFF"
                 android:layout_marginVertical="8dp"/>
 
-            <!-- 3. GPS 상태 패널 -->
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:paddingHorizontal="16dp"
-                android:gravity="center">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="GPS"
-                    android:textColor="#AAAAAA"
-                    android:textSize="12sp"
-                    android:layout_marginBottom="4dp"/>
-
-                <TextView
-                    android:id="@+id/tvGpsStatus"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="확인 중"
-                    android:textColor="#FFEB3B"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <View
-                android:layout_width="1dp"
-                android:layout_height="match_parent"
-                android:background="#33FFFFFF"
-                android:layout_marginVertical="8dp"/>
-
             <!-- 4. Openpilot 상태 패널 -->
             <LinearLayout
                 android:layout_width="wrap_content"
@@ -217,7 +185,8 @@
                     android:text="CRUISE"
                     android:textColor="#2196F3"
                     android:textSize="12sp"
-                    android:textStyle="bold" />
+                    android:textStyle="bold"
+                    android:visibility="gone" />
             </LinearLayout>
         </LinearLayout>
 
@@ -228,7 +197,7 @@
             android:layout_height="match_parent"
             android:clickable="true"
             android:focusable="true" />
-        <!-- 여유 가속 조절 플로팅 패널 -->
+        <!-- 구간단속 평균속도 정보 패널 -->
         <LinearLayout
             android:id="@+id/llOffset"
             android:layout_width="wrap_content"
@@ -243,81 +212,14 @@
             android:gravity="center"
             android:elevation="6dp">
 
-            <LinearLayout
+            <TextView
+                android:id="@+id/tvOffsetTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginBottom="8dp">
-
-                <LinearLayout
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:gravity="center_horizontal">
-                    <TextView
-                        android:id="@+id/tvOffsetTitle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="구간단속"
-                        android:textColor="#FFFFFF"
-                        android:textSize="14sp"
-                        android:textStyle="bold"/>
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="여유가속"
-                        android:textColor="#AAAAAA"
-                        android:textSize="12sp"/>
-                </LinearLayout>
-
-                <Button
-                    android:id="@+id/btnOffsetInfo"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:layout_marginStart="8dp"
-                    android:text="?"
-                    android:textColor="#FFFFFF"
-                    android:textSize="12sp"
-                    android:textStyle="bold"
-                    android:padding="0dp"
-                    android:background="@drawable/shape_circle_gray" />
-            </LinearLayout>
-                
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-                
-                <Button
-                    android:id="@+id/btnDecreaseOffset"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:text="-"
-                    android:textSize="24sp"
-                    android:padding="0dp"
-                    android:backgroundTint="#555555"/>
-                    
-                <TextView
-                    android:id="@+id/tvOffsetValue"
-                    android:layout_width="40dp"
-                    android:layout_height="wrap_content"
-                    android:text="0"
-                    android:textColor="#FFFFFF"
-                    android:textSize="20sp"
-                    android:gravity="center"
-                    android:textStyle="bold"/>
-                    
-                    <Button
-                        android:id="@+id/btnIncreaseOffset"
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
-                        android:text="+"
-                        android:textSize="24sp"
-                        android:padding="0dp"
-                        android:backgroundTint="#555555"/>
-                </LinearLayout>
+                android:text="구간단속"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"/>
 
                 <!-- 구간단속 정보 -->
                 <LinearLayout
@@ -356,7 +258,7 @@
                         android:textSize="13sp"
                         android:layout_marginTop="2dp" />
                 </LinearLayout>
-            </LinearLayout>
+        </LinearLayout>
 
         <!-- 오버레이 편집 모드 버튼 (그래픽) -->
         <ImageButton
@@ -416,6 +318,16 @@
                     android:textStyle="bold" />
             </LinearLayout>
 
+            <Button
+                android:id="@+id/btnGpsStatus"
+                android:layout_width="match_parent"
+                android:layout_height="36dp"
+                android:text="GPS 확인 중"
+                android:textSize="11sp"
+                android:padding="0dp"
+                android:backgroundTint="#555555"
+                android:layout_marginBottom="12dp" />
+
             <TextView
                 android:id="@+id/tvCarrotVersion"
                 android:layout_width="wrap_content"
@@ -437,6 +349,15 @@
                 android:layout_height="1dp"
                 android:background="#33FFFFFF"
                 android:layout_marginBottom="16dp" />
+
+            <Button
+                android:id="@+id/btnCheckUpdate"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:text="업데이트 확인"
+                android:textSize="12sp"
+                android:padding="0dp"
+                android:layout_marginBottom="8dp" />
 
             <Button
                 android:id="@+id/btnEditKey"
