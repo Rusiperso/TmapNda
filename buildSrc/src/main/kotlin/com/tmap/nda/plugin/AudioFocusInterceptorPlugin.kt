@@ -70,7 +70,7 @@ class AudioFocusMethodVisitor(nextVisitor: MethodVisitor) : MethodVisitor(Opcode
                 
                 super.visitMethodInsn(
                     Opcodes.INVOKESTATIC,
-                    "com/example/tmapnda/AudioFocusHacker",
+                    "com/tmap/nda/AudioFocusHacker",
                     name,
                     newDescriptor,
                     false
