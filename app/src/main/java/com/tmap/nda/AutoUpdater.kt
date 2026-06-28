@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.core.content.FileProvider
@@ -136,6 +137,31 @@ object AutoUpdater {
 
     private fun installApk(context: Context, apkFile: File) {
         if (!apkFile.exists()) return
+
+        // Android 8(API 26) 이상은 "출처를 알 수 없는 앱" 설치 허용이 이 앱에 대해
+        // 켜져 있어야 함. 꺼져 있으면 시스템이 차단 화면을 띄우는데, 그 전에
+        // 미리 확인해서 우리가 직접 안내 + 설정 화면 바로가기를 제공함.
+        // (한번 허용해두면 이후 업데이트부터는 이 단계 없이 바로 설치됨)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+            AlertDialog.Builder(context)
+                .setTitle("설치 권한 필요")
+                .setMessage("업데이트를 설치하려면 '알 수 없는 앱 설치' 허용이 필요합니다.\n다음 화면에서 허용으로 바꿔주세요. (한번만 설정하면 다음 업데이트부터는 다시 묻지 않습니다.)")
+                .setPositiveButton("설정으로 이동") { _, _ ->
+                    val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    try {
+                        context.startActivity(settingsIntent)
+                        Toast.makeText(context, "허용 후 다시 '업데이트 확인'을 눌러주세요.", Toast.LENGTH_LONG).show()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Settings intent failed", e)
+                    }
+                }
+                .setNegativeButton("취소", null)
+                .show()
+            return
+        }
 
         try {
             val intent = Intent(Intent.ACTION_VIEW).apply {

@@ -12,8 +12,20 @@ android {
         applicationId = "com.tmap.nda"
         minSdk = 24
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
+    }
+
+    signingConfigs {
+        // 빌드(GitHub Actions)마다 새 VM이라 기본 debug.keystore가 매번 무작위로
+        // 새로 생성되어, 버전 간 서명이 달라져 업데이트 설치시 "패키지 충돌" 오류가
+        // 발생했음. 고정된 keystore를 레포에 포함시켜 항상 동일한 키로 서명되도록 함.
+        getByName("debug") {
+            storeFile = file("../debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
