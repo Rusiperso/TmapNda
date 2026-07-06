@@ -39,8 +39,6 @@ class MapActivity : AppCompatActivity() {
             insets
         }
 
-        binding.tvAppVersion?.text = "v${BuildConfig.VERSION_NAME}"
-        
         val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         val appKey = sharedPref.getString("APP_KEY", "") ?: ""
         
@@ -70,16 +68,11 @@ class MapActivity : AppCompatActivity() {
         }
 
         val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        
-        binding.llRoadInfo.post {
-            restorePosition(binding.llRoadInfo, "llRoadInfo", isLandscape, listOfNotNull(binding.llOffset))
+
+        // 스타일 D(HUD): 좌측 패널은 고정, llOffset 플로팅만 드래그 유지
+        binding.llOffset?.let {
+            makeDraggable(it, "llOffset", isLandscape, emptyList())
         }
-        binding.llOffset?.post {
-            restorePosition(binding.llOffset!!, "llOffset", isLandscape, listOf(binding.llRoadInfo))
-        }
-        
-        makeDraggable(binding.llRoadInfo, "llRoadInfo", isLandscape, listOfNotNull(binding.llOffset))
-        binding.llOffset?.let { makeDraggable(it, "llOffset", isLandscape, listOf(binding.llRoadInfo)) }
 
         binding.btnEditMode?.setOnClickListener {
             isEditMode = !isEditMode
@@ -97,30 +90,29 @@ class MapActivity : AppCompatActivity() {
         binding.vTouchLockOverlay?.setOnTouchListener { _, _ -> true }
 
         OpenpilotStateRepository.state.observe(this) { state ->
-            binding.tvCarrotVersion.text = "Ver: ${state.carrot2}"
-            binding.tvCarrotIp.text = "IP: ${state.ip}"
-            
-            // Connection
+            binding.tvCarrotVersion.text = state.carrot2
+            binding.tvCarrotIp.text = if (state.ip.isNotEmpty() && state.ip != "-") "IP: ${state.ip}" else "IP: -"
+
             if (state.ip != "-" && state.ip.isNotEmpty()) {
                 binding.vConnectionDot.setBackgroundResource(R.drawable.shape_circle_green)
-                binding.tvConnectionStatus.text = "OP 연결됨"
+                binding.tvConnectionStatus.text = "연결됨"
                 binding.tvConnectionStatus.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
             } else {
                 binding.vConnectionDot.setBackgroundResource(R.drawable.shape_circle_gray)
-                binding.tvConnectionStatus.text = "OP 연결 대기"
-                binding.tvConnectionStatus.setTextColor(android.graphics.Color.parseColor("#AAAAAA"))
-            }
-            
-            // Active
-            if (state.active) {
-                binding.tvActiveStatus.text = "OP ON"
-                binding.tvActiveStatus.setBackgroundResource(R.drawable.bg_status_on)
-            } else {
-                binding.tvActiveStatus.text = "OP OFF"
-                binding.tvActiveStatus.setBackgroundResource(R.drawable.bg_status_off)
+                binding.tvConnectionStatus.text = "연결 대기"
+                binding.tvConnectionStatus.setTextColor(android.graphics.Color.parseColor("#555555"))
             }
 
-            // Traffic
+            if (state.active) {
+                binding.tvActiveStatus.text = "OP ON"
+                binding.tvActiveStatus.setTextColor(android.graphics.Color.parseColor("#4FC3F7"))
+                binding.tvActiveStatus.background = null
+            } else {
+                binding.tvActiveStatus.text = "OP OFF"
+                binding.tvActiveStatus.setTextColor(android.graphics.Color.parseColor("#555555"))
+                binding.tvActiveStatus.background = null
+            }
+
             when (state.trafficState) {
                 1 -> binding.vTrafficLight.setBackgroundResource(R.drawable.shape_circle_red)
                 2 -> binding.vTrafficLight.setBackgroundResource(R.drawable.shape_circle_green)
@@ -214,7 +206,6 @@ class MapActivity : AppCompatActivity() {
                     val realRoadLimit = getRoadLimitSpeedFromEngine()
                     runOnUiThread {
                         if (realRoadLimit >= 30) {
-                            binding.llRoadSpeedLimit?.visibility = android.view.View.VISIBLE
                             binding.tvRoadSpeedLimit?.text = realRoadLimit.toString()
                         }
                     }
@@ -228,13 +219,34 @@ class MapActivity : AppCompatActivity() {
             // 안드로이드 기본 GPS 상태 리스너 등록
             try {
                 val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+
+                // GPS 속도 → tvCurrentSpeed 실시간 업데이트 (HUD 속도계용)
+                val locationListener = android.location.LocationListener { location ->
+                    val speedKph = (location.speed * 3.6).toInt()
+                    runOnUiThread {
+                        binding.tvCurrentSpeed?.text = speedKph.toString()
+                    }
+                }
+                try {
+                    locationManager.requestLocationUpdates(
+                        android.location.LocationManager.GPS_PROVIDER, 500L, 0f,
+                        locationListener, android.os.Looper.getMainLooper()
+                    )
+                    if (locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
+                        locationManager.requestLocationUpdates(
+                            android.location.LocationManager.NETWORK_PROVIDER, 1000L, 0f,
+                            locationListener, android.os.Looper.getMainLooper()
+                        )
+                    }
+                } catch (_: SecurityException) {}
+
                 locationManager.registerGnssStatusCallback(object : android.location.GnssStatus.Callback() {
                     override fun onStarted() {
                         binding.btnGpsStatus.text = "탐색 중"
                         binding.btnGpsStatus.setTextColor(android.graphics.Color.YELLOW)
                     }
                     override fun onStopped() {
-                        binding.btnGpsStatus.text = "끊김 (NO_SIGNAL)"
+                        binding.btnGpsStatus.text = "NO_SIGNAL"
                         binding.btnGpsStatus.setTextColor(android.graphics.Color.RED)
                     }
                     override fun onFirstFix(ttffMillis: Int) {
@@ -247,10 +259,10 @@ class MapActivity : AppCompatActivity() {
                             if (status.usedInFix(i)) usedInFix++
                         }
                         if (usedInFix >= 4) {
-                            binding.btnGpsStatus.text = "GOOD (위성 $usedInFix)"
-                            binding.btnGpsStatus.setTextColor(android.graphics.Color.GREEN)
+                            binding.btnGpsStatus.text = "GOOD ($usedInFix)"
+                            binding.btnGpsStatus.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
                         } else {
-                            binding.btnGpsStatus.text = "BAD (위성 $usedInFix)"
+                            binding.btnGpsStatus.text = "BAD ($usedInFix)"
                             binding.btnGpsStatus.setTextColor(android.graphics.Color.RED)
                         }
                     }
@@ -258,6 +270,12 @@ class MapActivity : AppCompatActivity() {
             } catch (e: SecurityException) {
                 Log.e("MapActivity", "GPS Permission Error")
             }
+
+            // 앱 버전 표시 (tvAppVersion은 레이아웃에 있는 경우만)
+            try {
+                val vn = packageManager.getPackageInfo(packageName, 0).versionName
+                binding.tvAppVersion?.text = "v$vn"
+            } catch (_: Exception) {}
         }
     }
 
@@ -310,7 +328,7 @@ class MapActivity : AppCompatActivity() {
                 
                 runOnUiThread {
                     binding.tvOffsetTitle?.text = "구간단속"
-                    
+
                     if (isBlockSection && blockDist > 0) {
                         binding.llBlockInfo?.visibility = android.view.View.VISIBLE
                         binding.tvBlockAvgSpeed?.text = "평균: ${blockAvgSpeed}km/h"
@@ -319,12 +337,10 @@ class MapActivity : AppCompatActivity() {
                     } else {
                         binding.llBlockInfo?.visibility = android.view.View.GONE
                     }
-                    
-                    binding.llSdiEvent.visibility = android.view.View.VISIBLE
+
                     if (sdiType > 0 || (sdiSpeedLimit > 0 && sdiDist > 0)) {
-                        binding.tvEventSpeedLimit.text = if (sdiSpeedLimit > 0) sdiSpeedLimit.toString() else "-"
-                        binding.tvEventDist.text = formatDistance(sdiDist)
-                        
+                        binding.tvSdiSpeedLimit?.text = if (sdiSpeedLimit > 0) "${sdiSpeedLimit}km" else "-"
+                        binding.tvSdiDist?.text = formatDistance(sdiDist)
                         val typeName = when (sdiType) {
                             1 -> "과속 단속"
                             2 -> "구간단속 시작"
@@ -335,21 +351,20 @@ class MapActivity : AppCompatActivity() {
                             33 -> "어린이보호구역"
                             else -> if (sdiSpeedLimit > 0) "단속 카메라" else "주의 구간"
                         }
-                        binding.tvEventType.text = typeName
+                        binding.tvSdiDescr?.text = typeName
                     } else {
-                        binding.tvEventSpeedLimit.text = "-"
-                        binding.tvEventDist.text = "0m"
-                        binding.tvEventType.text = "이벤트 없음"
+                        binding.tvSdiSpeedLimit?.text = ""
+                        binding.tvSdiDist?.text = "--"
+                        binding.tvSdiDescr?.text = "--"
                     }
                 }
             } else {
                 runOnUiThread {
                     binding.tvOffsetTitle?.text = "구간단속"
                     binding.llBlockInfo?.visibility = android.view.View.GONE
-                    binding.llSdiEvent.visibility = android.view.View.VISIBLE
-                    binding.tvEventSpeedLimit.text = "-"
-                    binding.tvEventDist.text = "0m"
-                    binding.tvEventType.text = "이벤트 없음"
+                    binding.tvSdiSpeedLimit?.text = ""
+                    binding.tvSdiDist?.text = "--"
+                    binding.tvSdiDescr?.text = "--"
                 }
             }
         } catch (e: Exception) {

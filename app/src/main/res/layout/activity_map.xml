@@ -288,6 +288,26 @@
                     android:orientation="vertical"
                     android:gravity="center">
 
+                    <!-- tvCurrentSpeed: 가로모드(HUD) 전용, 세로모드에선 숨김 -->
+                    <TextView
+                        android:id="@+id/tvCurrentSpeed"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0"
+                        android:visibility="gone"/>
+
+                    <!-- 가로모드 HUD 전용 뷰들 (세로모드에서는 숨김) -->
+                    <LinearLayout
+                        android:id="@+id/llSdiInfo"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+                        <TextView android:id="@+id/tvSdiDescr" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="" android:visibility="gone"/>
+                        <TextView android:id="@+id/tvSdiDist" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="" android:visibility="gone"/>
+                        <TextView android:id="@+id/tvSdiSpeedLimit" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="" android:visibility="gone"/>
+                    </LinearLayout>
+
                     <TextView
                         android:id="@+id/tvActiveStatus"
                         android:layout_width="wrap_content"
