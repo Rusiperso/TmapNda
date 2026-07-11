@@ -24,6 +24,7 @@ class MapActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMapBinding
     private var navigationFragment: NavigationFragment? = null
     private var isEditMode = false
+    private var lastValidRoadLimit = 0  // 3번: 도로 규정속도 깜빡임 방지 - 마지막 유효값 저장
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -203,10 +204,14 @@ class MapActivity : AppCompatActivity() {
                     TmapUISDK.setVolume(this@MapActivity, 0)
                     
                     // 도로 기본 제한속도 추출 및 UI 업데이트
+                    // realRoadLimit이 -1이나 0이면 GPS/엔진 일시 소실 → 이전 유효값 유지 (깜빡임 방지)
                     val realRoadLimit = getRoadLimitSpeedFromEngine()
+                    if (realRoadLimit >= 30) {
+                        lastValidRoadLimit = realRoadLimit
+                    }
                     runOnUiThread {
-                        if (realRoadLimit >= 30) {
-                            binding.tvRoadSpeedLimit?.text = realRoadLimit.toString()
+                        if (lastValidRoadLimit >= 30) {
+                            binding.tvRoadSpeedLimit?.text = lastValidRoadLimit.toString()
                         }
                     }
 
@@ -221,10 +226,13 @@ class MapActivity : AppCompatActivity() {
                 val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
 
                 // GPS 속도 → tvCurrentSpeed 실시간 업데이트 (HUD 속도계용)
+                // speedKph가 0이면 GPS 신호 일시 소실 가능성 → 이전 값 유지 (깜빡임 방지)
                 val locationListener = android.location.LocationListener { location ->
                     val speedKph = (location.speed * 3.6).toInt()
-                    runOnUiThread {
-                        binding.tvCurrentSpeed?.text = speedKph.toString()
+                    if (speedKph > 0) {
+                        runOnUiThread {
+                            binding.tvCurrentSpeed?.text = speedKph.toString()
+                        }
                     }
                 }
                 try {
