@@ -9,7 +9,7 @@
 
     <!-- ===== 좌측 HUD 패널 ===== -->
     <LinearLayout
-        android:layout_width="150dp"
+        android:layout_width="300dp"
         android:layout_height="match_parent"
         android:orientation="vertical"
         android:background="#080808"
@@ -192,12 +192,14 @@
 
                 <TextView
                     android:id="@+id/tvSdiDist"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="--"
                     android:textColor="#FFFFFF"
-                    android:textSize="26sp"
-                    android:textStyle="bold"/>
+                    android:textSize="22sp"
+                    android:textStyle="bold"
+                    android:maxLines="1"
+                    android:ellipsize="end"/>
 
                 <TextView
                     android:id="@+id/tvSdiSpeedLimit"
@@ -211,7 +213,7 @@
                     android:layout_marginBottom="4dp"/>
             </LinearLayout>
 
-            <!-- 구간단속 상세 -->
+            <!-- 구간단속 상세 (tvSdiDescr에 이미 "구간단속 중" 표시되므로 제목 중복 제거) -->
             <LinearLayout
                 android:id="@+id/llBlockInfo"
                 android:layout_width="match_parent"
@@ -220,13 +222,15 @@
                 android:layout_marginTop="4dp"
                 android:visibility="gone">
 
+                <!-- tvOffsetTitle: 세로모드 호환용으로 gone 처리 -->
                 <TextView
                     android:id="@+id/tvOffsetTitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="구간단속"
                     android:textColor="#FFC107"
-                    android:textSize="10sp"/>
+                    android:textSize="10sp"
+                    android:visibility="gone"/>
 
                 <TextView
                     android:id="@+id/tvBlockAvgSpeed"
@@ -234,7 +238,7 @@
                     android:layout_height="wrap_content"
                     android:text=""
                     android:textColor="#FFFFFF"
-                    android:textSize="11sp"
+                    android:textSize="13sp"
                     android:textStyle="bold"/>
 
                 <TextView
@@ -243,7 +247,7 @@
                     android:layout_height="wrap_content"
                     android:text=""
                     android:textColor="#AAAAAA"
-                    android:textSize="10sp"/>
+                    android:textSize="12sp"/>
 
                 <TextView
                     android:id="@+id/tvBlockTime"
@@ -251,7 +255,7 @@
                     android:layout_height="wrap_content"
                     android:text=""
                     android:textColor="#AAAAAA"
-                    android:textSize="10sp"/>
+                    android:textSize="12sp"/>
             </LinearLayout>
         </LinearLayout>
 
