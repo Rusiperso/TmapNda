@@ -9,7 +9,7 @@
 
     <!-- ===== 좌측 HUD 패널 ===== -->
     <LinearLayout
-        android:layout_width="300dp"
+        android:layout_width="220dp"
         android:layout_height="match_parent"
         android:orientation="vertical"
         android:background="#080808"
@@ -199,7 +199,11 @@
                     android:textSize="22sp"
                     android:textStyle="bold"
                     android:maxLines="1"
-                    android:ellipsize="end"/>
+                    android:ellipsize="none"
+                    android:autoSizeTextType="uniform"
+                    android:autoSizeMinTextSize="12sp"
+                    android:autoSizeMaxTextSize="22sp"
+                    android:autoSizeStepGranularity="1sp"/>
 
                 <TextView
                     android:id="@+id/tvSdiSpeedLimit"
