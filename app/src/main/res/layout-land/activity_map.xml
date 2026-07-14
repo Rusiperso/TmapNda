@@ -13,8 +13,8 @@
         android:layout_height="match_parent"
         android:orientation="vertical"
         android:background="#080808"
-        android:paddingTop="14dp"
-        android:paddingBottom="10dp"
+        android:paddingTop="0dp"
+        android:paddingBottom="0dp"
         android:paddingHorizontal="12dp">
 
         <!-- 1. 속도계 -->
@@ -22,6 +22,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
+            android:layout_marginTop="14dp"
             android:layout_marginBottom="6dp">
 
             <TextView
@@ -366,7 +367,8 @@
             android:text=""
             android:textColor="#222222"
             android:textSize="9sp"
-            android:layout_marginTop="4dp"/>
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="10dp"/>
 
     </LinearLayout>
 
