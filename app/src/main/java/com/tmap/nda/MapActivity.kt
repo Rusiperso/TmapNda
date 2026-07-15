@@ -205,9 +205,31 @@ class MapActivity : AppCompatActivity() {
                     
                     // 도로 기본 제한속도 추출 및 UI 업데이트
                     // realRoadLimit이 -1이나 0이면 GPS/엔진 일시 소실 → 이전 유효값 유지 (깜빡임 방지)
+                    //
+                    // 추가: 분기로(예: 80→40) 순간 오매칭 방지
+                    // - 다음 안내지점(nTBTDist)이 가까우면 실제 분기 진입 가능성이 높으므로 즉시 반영
+                    // - 안내지점과 무관하게 갑자기 낮아지면 오매칭 의심 → 최소 확인 후 반영 (최대한 타이트하게)
                     val realRoadLimit = getRoadLimitSpeedFromEngine()
                     if (realRoadLimit >= 30) {
-                        lastValidRoadLimit = realRoadLimit
+                        val tbtDist = getTbtDistFromEngine()
+                        val nearManeuverPoint = tbtDist in 0..TBT_NEAR_THRESHOLD_M
+
+                        if (realRoadLimit < lastValidRoadLimit && !nearManeuverPoint) {
+                            if (realRoadLimit == pendingRoadLimit) {
+                                pendingRoadLimitCount++
+                            } else {
+                                pendingRoadLimit = realRoadLimit
+                                pendingRoadLimitCount = 1
+                            }
+                            if (pendingRoadLimitCount >= REQUIRED_CONSECUTIVE) {
+                                lastValidRoadLimit = realRoadLimit
+                                pendingRoadLimitCount = 0
+                            }
+                        } else {
+                            // 안내지점 근처거나, 속도가 높아지는 방향 → 즉시 반영
+                            lastValidRoadLimit = realRoadLimit
+                            pendingRoadLimitCount = 0
+                        }
                     }
                     runOnUiThread {
                         if (lastValidRoadLimit >= 30) {
@@ -385,6 +407,43 @@ class MapActivity : AppCompatActivity() {
     private var getInstanceMethod: java.lang.reflect.Method? = null
     private var getRecentRGDataMethod: java.lang.reflect.Method? = null
     private var nRoadLimitSpeedField: java.lang.reflect.Field? = null
+    private var nTBTDistField: java.lang.reflect.Field? = null
+
+    // 분기 오매칭 방지용 상태
+    private var pendingRoadLimit = 0
+    private var pendingRoadLimitCount = 0
+    private val REQUIRED_CONSECUTIVE = 2          // 오매칭 의심 시 최소 확인 횟수 (타이트하게)
+    private val TBT_NEAR_THRESHOLD_M = 250        // 이 거리 이내면 "진짜 분기"로 간주하고 즉시 반영
+
+    // getRecentRGData()에서 nTBTDist(다음 안내지점까지 거리)를 뽑아온다.
+    // 실패하거나 값이 없으면 Int.MAX_VALUE를 반환해 "안내지점 아님"으로 안전하게 처리한다.
+    private fun getTbtDistFromEngine(): Int {
+        try {
+            if (sdkManagerCompanion == null) {
+                val sdkManagerClass = Class.forName("com.skt.tmap.engine.navigation.SDKManager")
+                val companionField = sdkManagerClass.getField("Companion")
+                sdkManagerCompanion = companionField.get(null)
+                getInstanceMethod = sdkManagerCompanion?.javaClass?.getMethod("getInstance")
+            }
+
+            val sdkManager = getInstanceMethod?.invoke(sdkManagerCompanion)
+            if (sdkManager != null) {
+                if (getRecentRGDataMethod == null) {
+                    getRecentRGDataMethod = sdkManager.javaClass.getMethod("getRecentRGData")
+                }
+                val rgData = getRecentRGDataMethod?.invoke(sdkManager)
+                if (rgData != null) {
+                    if (nTBTDistField == null) {
+                        nTBTDistField = rgData.javaClass.getField("nTBTDist")
+                    }
+                    return nTBTDistField?.getInt(rgData) ?: Int.MAX_VALUE
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MapActivity", "Reflection error (TBTDist): ${e.message}")
+        }
+        return Int.MAX_VALUE
+    }
 
     private fun getRoadLimitSpeedFromEngine(): Int {
         try {
