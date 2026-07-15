@@ -198,14 +198,11 @@
                     android:layout_height="wrap_content"
                     android:text="--"
                     android:textColor="#FFFFFF"
-                    android:textSize="22sp"
+                    android:textSize="20sp"
                     android:textStyle="bold"
                     android:maxLines="1"
-                    android:ellipsize="none"
-                    android:autoSizeTextType="uniform"
-                    android:autoSizeMinTextSize="12sp"
-                    android:autoSizeMaxTextSize="22sp"
-                    android:autoSizeStepGranularity="1sp"/>
+                    android:singleLine="true"
+                    android:ellipsize="none"/>
 
                 <TextView
                     android:id="@+id/tvSdiSpeedLimit"
