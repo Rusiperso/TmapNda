@@ -172,12 +172,98 @@ class MapActivity : AppCompatActivity() {
         })
     }
 
+    // ===== 길안내(목적지 검색) UI =====
+    private fun setupDestinationSearchUi() {
+        binding.btnOpenSearch?.setOnClickListener {
+            binding.llSearchPanel?.visibility = View.VISIBLE
+            binding.etDestination?.requestFocus()
+        }
+        binding.btnSearchClose?.setOnClickListener {
+            binding.llSearchPanel?.visibility = View.GONE
+        }
+        binding.btnSearchGo?.setOnClickListener {
+            val query = binding.etDestination?.text?.toString()?.trim().orEmpty()
+            if (query.isNotEmpty()) {
+                performDestinationSearch(query)
+            }
+        }
+        binding.btnStopGuidance?.setOnClickListener {
+            stopGuidance()
+        }
+    }
+
+    // 1단계: SDK 안에 실제로 어떤 검색/경로 관련 메서드가 있는지 로그로 확인.
+    // adb logcat | grep TmapNav 로 실제 메서드 이름/시그니처를 확인한 뒤,
+    // performDestinationSearch()의 TODO 부분을 그 이름으로 교체하면 됨.
+    private fun dumpNavigationApiCandidates() {
+        try {
+            val keywords = listOf("search", "poi", "destination", "route", "guide", "navi", "goal")
+            fun dump(label: String, clazz: Class<*>) {
+                for (m in clazz.methods) {
+                    val n = m.name.lowercase()
+                    if (keywords.any { n.contains(it) }) {
+                        Log.d("TmapNav", "$label: ${m.name}(${m.parameterTypes.joinToString { it.simpleName }}) -> ${m.returnType.simpleName}")
+                    }
+                }
+            }
+            dump("NavigationFragment", NavigationFragment::class.java)
+            dump("TmapUISDK", TmapUISDK::class.java)
+            dump("TmapUISDK.Companion", TmapUISDK.Companion::class.java)
+        } catch (e: Exception) {
+            Log.e("TmapNav", "dumpNavigationApiCandidates error: ${e.message}")
+        }
+    }
+
+    // 검색 실행. 지금은 후보 API 확인용 스텁 — dumpNavigationApiCandidates() 로그 확인 후
+    // 실제 메서드 이름으로 채워넣어야 함.
+    private fun performDestinationSearch(query: String) {
+        binding.tvSearchStatus?.text = "검색 중: $query"
+        Log.d("TmapNav", "performDestinationSearch query=$query")
+
+        // TODO: 실제 SDK 검색 API로 교체.
+        // 후보 예시(확인 전이라 실제 존재 여부/시그니처 불확실):
+        //   navigationFragment?.search(query, listener)
+        //   TmapUISDK.searchPOI(this, query, callback)
+        // dumpNavigationApiCandidates() 로그에서 정확한 이름 확인 후 아래를 채워넣기.
+        try {
+            val candidate = navigationFragment?.javaClass?.methods
+                ?.firstOrNull { it.name.lowercase().contains("search") && it.parameterTypes.size >= 1 }
+            if (candidate != null) {
+                Log.d("TmapNav", "search 후보 메서드 발견: ${candidate.name} params=${candidate.parameterTypes.joinToString()}")
+                binding.tvSearchStatus?.text = "후보 메서드 발견(로그 확인): ${candidate.name}"
+            } else {
+                binding.tvSearchStatus?.text = "검색 API 미확인 - logcat TmapNav 태그 확인 필요"
+            }
+        } catch (e: Exception) {
+            Log.e("TmapNav", "performDestinationSearch error: ${e.message}")
+            binding.tvSearchStatus?.text = "오류: ${e.message}"
+        }
+    }
+
+    // 목적지가 정해졌을 때 실제 길안내를 시작. (검색 API 확인 후 이 함수도 채워야 함)
+    private fun startGuidanceTo(destName: String, lat: Double, lon: Double) {
+        Log.d("TmapNav", "startGuidanceTo dest=$destName lat=$lat lon=$lon")
+        // TODO: 실제 SDK route/guide 시작 API로 교체.
+        binding.llSearchPanel?.visibility = View.GONE
+        binding.llGuidanceBar?.visibility = View.VISIBLE
+        binding.tvGuidanceDest?.text = "길안내 중: $destName"
+    }
+
+    private fun stopGuidance() {
+        Log.d("TmapNav", "stopGuidance")
+        // TODO: 실제 SDK 경로 취소 API로 교체.
+        binding.llGuidanceBar?.visibility = View.GONE
+    }
+
     private fun startSafeDriveMode() {
         navigationFragment = getFragment() as NavigationFragment
         
         supportFragmentManager.beginTransaction()
             .add(R.id.tmapUILayout, navigationFragment!!)
             .commitAllowingStateLoss()
+
+        setupDestinationSearchUi()
+        dumpNavigationApiCandidates()
 
         navigationFragment?.let { frag ->
             // 프래그먼트가 완전히 뷰에 등록된 후 안전운행 모드를 시작하도록 약간의 딜레이를 줍니다.
