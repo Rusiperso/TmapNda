@@ -438,6 +438,19 @@
             android:scaleType="center"
             android:elevation="6dp" />
 
+        <!-- 로그 메일 전송 버튼 (우상단) -->
+        <ImageButton
+            android:id="@+id/btnShareLog"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_gravity="top|end"
+            android:layout_marginEnd="16dp"
+            android:layout_marginTop="16dp"
+            android:src="@android:drawable/ic_menu_send"
+            android:background="@drawable/shape_circle_gray"
+            android:scaleType="center"
+            android:elevation="10dp" />
+
         <!-- 목적지 검색 열기 버튼 (좌하단) -->
         <ImageButton
             android:id="@+id/btnOpenSearch"

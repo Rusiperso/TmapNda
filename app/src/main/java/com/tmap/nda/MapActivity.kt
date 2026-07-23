@@ -190,6 +190,19 @@ class MapActivity : AppCompatActivity() {
         binding.btnStopGuidance?.setOnClickListener {
             stopGuidance()
         }
+        binding.btnShareLog?.setOnClickListener {
+            shareNavLog()
+        }
+    }
+
+    // 로그 파일을 이메일(jaeeok.cho@icloud.com)로 공유
+    private fun shareNavLog() {
+        val intent = NavLogger.buildShareIntent(this)
+        if (intent == null) {
+            Toast.makeText(this, "저장된 로그가 없어. 먼저 검색을 시도해봐.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        startActivity(Intent.createChooser(intent, "로그 공유"))
     }
 
     // 1단계: SDK 안에 실제로 어떤 검색/경로 관련 메서드가 있는지 로그로 확인.
@@ -202,7 +215,7 @@ class MapActivity : AppCompatActivity() {
                 for (m in clazz.methods) {
                     val n = m.name.lowercase()
                     if (keywords.any { n.contains(it) }) {
-                        Log.d("TmapNav", "$label: ${m.name}(${m.parameterTypes.joinToString { it.simpleName }}) -> ${m.returnType.simpleName}")
+                        NavLogger.d(this@MapActivity, "$label: ${m.name}(${m.parameterTypes.joinToString { it.simpleName }}) -> ${m.returnType.simpleName}")
                     }
                 }
             }
@@ -210,7 +223,7 @@ class MapActivity : AppCompatActivity() {
             dump("TmapUISDK", TmapUISDK::class.java)
             dump("TmapUISDK.Companion", TmapUISDK.Companion::class.java)
         } catch (e: Exception) {
-            Log.e("TmapNav", "dumpNavigationApiCandidates error: ${e.message}")
+            NavLogger.e(this, "dumpNavigationApiCandidates error: ${e.message}")
         }
     }
 
@@ -218,7 +231,7 @@ class MapActivity : AppCompatActivity() {
     // 실제 메서드 이름으로 채워넣어야 함.
     private fun performDestinationSearch(query: String) {
         binding.tvSearchStatus?.text = "검색 중: $query"
-        Log.d("TmapNav", "performDestinationSearch query=$query")
+        NavLogger.d(this, "performDestinationSearch query=$query")
 
         // TODO: 실제 SDK 검색 API로 교체.
         // 후보 예시(확인 전이라 실제 존재 여부/시그니처 불확실):
@@ -229,20 +242,20 @@ class MapActivity : AppCompatActivity() {
             val candidate = navigationFragment?.javaClass?.methods
                 ?.firstOrNull { it.name.lowercase().contains("search") && it.parameterTypes.size >= 1 }
             if (candidate != null) {
-                Log.d("TmapNav", "search 후보 메서드 발견: ${candidate.name} params=${candidate.parameterTypes.joinToString()}")
+                NavLogger.d(this, "search 후보 메서드 발견: ${candidate.name} params=${candidate.parameterTypes.joinToString()}")
                 binding.tvSearchStatus?.text = "후보 메서드 발견(로그 확인): ${candidate.name}"
             } else {
                 binding.tvSearchStatus?.text = "검색 API 미확인 - logcat TmapNav 태그 확인 필요"
             }
         } catch (e: Exception) {
-            Log.e("TmapNav", "performDestinationSearch error: ${e.message}")
+            NavLogger.e(this, "performDestinationSearch error: ${e.message}")
             binding.tvSearchStatus?.text = "오류: ${e.message}"
         }
     }
 
     // 목적지가 정해졌을 때 실제 길안내를 시작. (검색 API 확인 후 이 함수도 채워야 함)
     private fun startGuidanceTo(destName: String, lat: Double, lon: Double) {
-        Log.d("TmapNav", "startGuidanceTo dest=$destName lat=$lat lon=$lon")
+        NavLogger.d(this, "startGuidanceTo dest=$destName lat=$lat lon=$lon")
         // TODO: 실제 SDK route/guide 시작 API로 교체.
         binding.llSearchPanel?.visibility = View.GONE
         binding.llGuidanceBar?.visibility = View.VISIBLE
@@ -250,7 +263,7 @@ class MapActivity : AppCompatActivity() {
     }
 
     private fun stopGuidance() {
-        Log.d("TmapNav", "stopGuidance")
+        NavLogger.d(this, "stopGuidance")
         // TODO: 실제 SDK 경로 취소 API로 교체.
         binding.llGuidanceBar?.visibility = View.GONE
     }
