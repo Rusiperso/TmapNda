@@ -157,7 +157,7 @@ class MapActivity : AppCompatActivity() {
 
                     // 차선(유도차로) 관련 API 존재 여부 확인용 덤프
                     try {
-                        val laneKeywords = listOf("lane", "road", "guide", "listener")
+                        val laneKeywords = listOf("lane", "road", "guide", "listener", "traffic", "signal", "light")
                         fun dumpClass(tag: String, clazz: Class<*>) {
                             for (m in clazz.methods) {
                                 if (laneKeywords.any { m.name.contains(it, ignoreCase = true) }) {
