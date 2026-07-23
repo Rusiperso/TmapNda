@@ -134,13 +134,13 @@ class MapActivity : AppCompatActivity() {
                         val methods = NavigationFragment::class.java.methods
                         for (m in methods) {
                             if (m.name.contains("mute", ignoreCase = true) || m.name.contains("volume", ignoreCase = true) || m.name.contains("sound", ignoreCase = true) || m.name.contains("audio", ignoreCase = true)) {
-                                Log.e("TmapVolume", "NavigationFragment method: ${m.name}")
+                                NavLogger.e(this@MapActivity, "NavigationFragment method: ${m.name}")
                             }
                         }
                         val uiMethods = TmapUISDK::class.java.methods
                         for (m in uiMethods) {
                             if (m.name.contains("mute", ignoreCase = true) || m.name.contains("volume", ignoreCase = true) || m.name.contains("sound", ignoreCase = true) || m.name.contains("audio", ignoreCase = true)) {
-                                Log.e("TmapVolume", "TmapUISDK method: ${m.name}")
+                                NavLogger.e(this@MapActivity, "TmapUISDK method: ${m.name}")
                             }
                         }
                         
@@ -148,7 +148,7 @@ class MapActivity : AppCompatActivity() {
                         val compMethods = TmapUISDK.Companion::class.java.methods
                         for (m in compMethods) {
                             if (m.name.contains("mute", ignoreCase = true) || m.name.contains("volume", ignoreCase = true) || m.name.contains("sound", ignoreCase = true) || m.name.contains("audio", ignoreCase = true)) {
-                                Log.e("TmapVolume", "TmapUISDK.Companion method: ${m.name}")
+                                NavLogger.e(this@MapActivity, "TmapUISDK.Companion method: ${m.name}")
                             }
                         }
                     } catch (e: Exception) {
@@ -158,16 +158,16 @@ class MapActivity : AppCompatActivity() {
                     // SDK 전체 API 노출 여부 확인용 전수 덤프 (필터 없음)
                     try {
                         fun dumpClass(tag: String, clazz: Class<*>) {
-                            Log.e("TmapDump", "===== $tag (${clazz.name}) =====")
+                            NavLogger.e(this@MapActivity, "===== $tag (${clazz.name}) =====")
                             for (m in clazz.methods) {
-                                Log.e("TmapDump", "$tag method: ${m.name}(${m.parameterTypes.joinToString { it.simpleName }}): ${m.returnType.simpleName}")
+                                NavLogger.e(this@MapActivity, "$tag method: ${m.name}(${m.parameterTypes.joinToString { it.simpleName }}): ${m.returnType.simpleName}")
                             }
                             for (f in clazz.declaredFields) {
-                                Log.e("TmapDump", "$tag field: ${f.name} : ${f.type.simpleName}")
+                                NavLogger.e(this@MapActivity, "$tag field: ${f.name} : ${f.type.simpleName}")
                             }
                             // 이 클래스가 갖고 있는 내부/중첩 클래스도 이름만 같이 보여줌 (콜백 데이터 클래스 파악용)
                             for (inner in clazz.declaredClasses) {
-                                Log.e("TmapDump", "$tag inner class: ${inner.name}")
+                                NavLogger.e(this@MapActivity, "$tag inner class: ${inner.name}")
                             }
                         }
                         dumpClass("NavigationFragment", NavigationFragment::class.java)
