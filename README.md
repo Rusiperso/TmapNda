@@ -15,6 +15,7 @@ https://openapi.sk.com/ 이 주소에서 AppKey를 발급받아 TmapNda앱에 �
 TmapNda가 실행중인 폰 및 엔미러에서 핫스팟 <====> 콤마 연결이 기본이 되어야 합니다.
 
 
+
 발급 순서
 
 1. Tmap 계정으로 로그인
