@@ -28,4 +28,6 @@ https://openapi.sk.com/ 이 주소에서 AppKey를 발급받아 TmapNda앱에 �
 18. <img width="1034" height="783" alt="image" src="https://github.com/user-attachments/assets/f9d94165-48bb-4d63-9b92-7c6efb142eae" />
 19. 앱 키 확인
 20. <img width="1276" height="1276" alt="제목 없음" src="https://github.com/user-attachments/assets/54058e02-e008-4f64-bd8d-2f694116f9d0" />
-21. TmapNda 앱에 앱키 붙여넣기
+21. 앱키 활성화 확인
+22. <img width="1272" height="438" alt="image" src="https://github.com/user-attachments/assets/c243adeb-084a-4ee4-b0eb-030ffb3c5798" />
+23. TmapNda 앱에 앱키 붙여넣기
