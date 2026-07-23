@@ -155,24 +155,39 @@ class MapActivity : AppCompatActivity() {
                         e.printStackTrace()
                     }
 
-                    // 차선(유도차로) 관련 API 존재 여부 확인용 덤프
+                    // SDK 전체 API 노출 여부 확인용 전수 덤프 (필터 없음)
                     try {
-                        val laneKeywords = listOf("lane", "road", "guide", "listener", "traffic", "signal", "light")
                         fun dumpClass(tag: String, clazz: Class<*>) {
+                            Log.e("TmapDump", "===== $tag (${clazz.name}) =====")
                             for (m in clazz.methods) {
-                                if (laneKeywords.any { m.name.contains(it, ignoreCase = true) }) {
-                                    Log.e("TmapLane", "$tag method: ${m.name}(${m.parameterTypes.joinToString { it.simpleName }}): ${m.returnType.simpleName}")
-                                }
+                                Log.e("TmapDump", "$tag method: ${m.name}(${m.parameterTypes.joinToString { it.simpleName }}): ${m.returnType.simpleName}")
                             }
                             for (f in clazz.declaredFields) {
-                                if (laneKeywords.any { f.name.contains(it, ignoreCase = true) }) {
-                                    Log.e("TmapLane", "$tag field: ${f.name} : ${f.type.simpleName}")
-                                }
+                                Log.e("TmapDump", "$tag field: ${f.name} : ${f.type.simpleName}")
+                            }
+                            // 이 클래스가 갖고 있는 내부/중첩 클래스도 이름만 같이 보여줌 (콜백 데이터 클래스 파악용)
+                            for (inner in clazz.declaredClasses) {
+                                Log.e("TmapDump", "$tag inner class: ${inner.name}")
                             }
                         }
                         dumpClass("NavigationFragment", NavigationFragment::class.java)
                         dumpClass("TmapUISDK", TmapUISDK::class.java)
                         dumpClass("TmapUISDK.Companion", TmapUISDK.Companion::class.java)
+
+                        // 이름상 데이터를 담고 있을 가능성이 높은 클래스는, 패키지 경로 추측 대신
+                        // 실제 메서드의 리턴/파라미터 타입에서 Class를 런타임으로 가져와서 덤프
+                        try {
+                            val getConfigMethod = TmapUISDK::class.java.methods.firstOrNull { it.name == "getRouteGuidanceConfig" }
+                            getConfigMethod?.returnType?.let { dumpClass("RouteGuidanceConfig", it) }
+                        } catch (e: Exception) { e.printStackTrace() }
+
+                        try {
+                            val setListenerMethod = NavigationFragment::class.java.methods.firstOrNull { it.name == "setNavigationScreenStateListener" }
+                            setListenerMethod?.parameterTypes?.firstOrNull()?.let { dumpClass("NavigationScreenStateListener", it) }
+                        } catch (e: Exception) { e.printStackTrace() }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
