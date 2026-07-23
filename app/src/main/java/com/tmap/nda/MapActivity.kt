@@ -155,6 +155,28 @@ class MapActivity : AppCompatActivity() {
                         e.printStackTrace()
                     }
 
+                    // 차선(유도차로) 관련 API 존재 여부 확인용 덤프
+                    try {
+                        val laneKeywords = listOf("lane", "road", "guide", "listener")
+                        fun dumpClass(tag: String, clazz: Class<*>) {
+                            for (m in clazz.methods) {
+                                if (laneKeywords.any { m.name.contains(it, ignoreCase = true) }) {
+                                    Log.e("TmapLane", "$tag method: ${m.name}(${m.parameterTypes.joinToString { it.simpleName }}): ${m.returnType.simpleName}")
+                                }
+                            }
+                            for (f in clazz.declaredFields) {
+                                if (laneKeywords.any { f.name.contains(it, ignoreCase = true) }) {
+                                    Log.e("TmapLane", "$tag field: ${f.name} : ${f.type.simpleName}")
+                                }
+                            }
+                        }
+                        dumpClass("NavigationFragment", NavigationFragment::class.java)
+                        dumpClass("TmapUISDK", TmapUISDK::class.java)
+                        dumpClass("TmapUISDK.Companion", TmapUISDK.Companion::class.java)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+
                     startSafeDriveMode()
                     startUdpSenderService()
                 }
