@@ -1,570 +1,455 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
+<!-- 세로모드: 가로모드(Style D)와 톤 통일 - 지도 풀스크린 + 슬림 오버레이 HUD -->
+<FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="#222222">
+    android:background="#080808">
 
-    <!-- 상단 통합 UI 영역 -->
+    <!-- 지도: 풀스크린 (기존엔 상단 패널이 이 영역을 밀어내렸음) -->
+    <FrameLayout
+        android:id="@+id/tmapUILayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 지도 터치 무력화 (기존 중복 오버레이 1개로 통합) -->
+    <View
+        android:id="@+id/vTouchLockOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#00000000" />
+
+    <!-- ===== 상단 슬림 HUD 바 (가로모드 좌측 패널과 동일한 톤) ===== -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="12dp"
+        android:background="#CC080808"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="10dp"
         android:gravity="center_vertical"
-        android:background="#222222">
+        android:elevation="8dp">
 
-        <!-- 연결 상태 (왼쪽) -->
+        <!-- 현재/제한 속도 -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center_vertical"
-            android:background="@drawable/bg_sdi_panel"
-            android:padding="12dp">
+            android:orientation="horizontal"
+            android:gravity="bottom">
 
+            <TextView
+                android:id="@+id/tvCurrentSpeed"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0"
+                android:textColor="#FFFFFF"
+                android:textSize="34sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="km/h"
+                android:textColor="#555555"
+                android:textSize="10sp"
+                android:layout_marginStart="3dp"
+                android:layout_marginBottom="6dp"/>
+
+            <TextView
+                android:id="@+id/tvRoadSpeedLimit"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="--"
+                android:textColor="#FF5252"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:background="@drawable/bg_speed_limit_hud"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="1dp"
+                android:layout_marginStart="10dp"
+                android:layout_marginBottom="6dp"/>
+        </LinearLayout>
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="30dp"
+            android:background="#222222"
+            android:layout_marginHorizontal="12dp"/>
+
+        <!-- 카메라/이벤트 (간결화: 아이콘 없이 텍스트만, 없으면 자동 숨김) -->
+        <LinearLayout
+            android:id="@+id/llSdiInfo"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvSdiDescr"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="--"
+                android:textColor="#FFC107"
+                android:textSize="10sp"/>
 
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginBottom="4dp">
-                <View
-                    android:id="@+id/vConnectionDot"
-                    android:layout_width="8dp"
-                    android:layout_height="8dp"
-                    android:background="@drawable/shape_circle_gray"
-                    android:layout_marginEnd="6dp"/>
+                android:gravity="bottom">
+
                 <TextView
-                    android:id="@+id/tvConnectionStatus"
+                    android:id="@+id/tvSdiDist"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="OP 연결 대기"
-                    android:textColor="#AAAAAA"
+                    android:text="--"
+                    android:textColor="#FFFFFF"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:maxLines="1"
+                    android:singleLine="true"/>
+
+                <TextView
+                    android:id="@+id/tvSdiSpeedLimit"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=""
+                    android:textColor="#FF5252"
                     android:textSize="12sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <Button
-                android:id="@+id/btnGpsStatus"
-                android:layout_width="wrap_content"
-                android:layout_height="32dp"
-                android:text="GPS 확인 중"
-                android:textSize="10sp"
-                android:paddingHorizontal="10dp"
-                android:backgroundTint="#555555"
-                android:layout_marginBottom="4dp" />
-
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
-                <TextView
-                    android:id="@+id/tvCarrotVersion"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Ver: -"
-                    android:textColor="#AAAAAA"
-                    android:textSize="10sp"
-                    android:layout_marginBottom="2dp" />
-                <TextView
-                    android:id="@+id/tvCarrotIp"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="IP: -"
-                    android:textColor="#888888"
-                    android:textSize="10sp" />
+                    android:textStyle="bold"
+                    android:layout_marginStart="6dp"
+                    android:layout_marginBottom="2dp"/>
             </LinearLayout>
         </LinearLayout>
 
-        <!-- 버튼 그룹 (오른쪽) -->
-        <LinearLayout
-            android:id="@+id/llButtons"
+        <!-- OP 상태 -->
+        <TextView
+            android:id="@+id/tvActiveStatus"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:text="OP OFF"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="4dp"
+            android:background="@drawable/bg_status_off"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:layout_marginStart="8dp"/>
+
+        <View
+            android:id="@+id/vTrafficLight"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:background="@drawable/shape_circle_gray"
+            android:layout_marginStart="8dp"/>
+
+        <TextView
+            android:id="@+id/tvXStateBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="CRUISE"
+            android:textColor="#2196F3"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            android:layout_marginStart="6dp"/>
+
+        <!-- 연결상태 점 + 설정 아이콘: 탭하면 기존 설정/연결정보 패널 노출(코드에서 처리) -->
+        <View
+            android:id="@+id/vConnectionDot"
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:background="@drawable/shape_circle_gray"
+            android:layout_marginStart="10dp"/>
+
+        <ImageButton
+            android:id="@+id/btnEditKey"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:layout_marginStart="6dp"
+            android:src="@android:drawable/ic_menu_manage"
+            android:background="@drawable/shape_circle_gray"
+            android:scaleType="center"/>
+    </LinearLayout>
+
+    <!-- ===== 상세 정보(연결IP/버전/GPS/업데이트/종료) - 평소엔 숨김, 톱니 아이콘 눌러야 펼쳐짐 ===== -->
+    <LinearLayout
+        android:id="@+id/llDetailPanel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="64dp"
+        android:layout_marginEnd="14dp"
+        android:background="@drawable/bg_sdi_panel"
+        android:padding="14dp"
+        android:elevation="10dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvConnectionStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="OP 연결 대기"
+            android:textColor="#AAAAAA"
+            android:textSize="12sp"
+            android:layout_marginBottom="6dp"/>
+
+        <TextView
+            android:id="@+id/tvCarrotVersion"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Ver: -"
+            android:textColor="#888888"
+            android:textSize="10sp"
+            android:layout_marginBottom="2dp"/>
+
+        <TextView
+            android:id="@+id/tvCarrotIp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="IP: -"
+            android:textColor="#888888"
+            android:textSize="10sp"
+            android:layout_marginBottom="8dp"/>
+
+        <Button
+            android:id="@+id/btnGpsStatus"
+            android:layout_width="match_parent"
+            android:layout_height="32dp"
+            android:text="GPS 확인 중"
+            android:textSize="10sp"
+            android:backgroundTint="#333333"
+            android:layout_marginBottom="6dp"/>
+
+        <Button
+            android:id="@+id/btnCheckUpdate"
+            android:layout_width="match_parent"
+            android:layout_height="32dp"
+            android:text="업데이트 확인"
+            android:textSize="10sp"
+            android:backgroundTint="#333333"
+            android:layout_marginBottom="6dp"/>
+
+        <TextView
+            android:id="@+id/tvAppVersion"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="v-"
+            android:textColor="#555555"
+            android:textSize="10sp"
+            android:layout_marginBottom="6dp"/>
+
+        <Button
+            android:id="@+id/btnExitApp"
+            android:layout_width="match_parent"
+            android:layout_height="32dp"
+            android:text="앱 종료"
+            android:textSize="10sp"
+            android:backgroundTint="#F44336"/>
+    </LinearLayout>
+
+    <!-- ===== 구간단속 플로팅 카드 (기존 우상단 큰 카드 -> 슬림화, HUD 바 아래로 이동해 겹침 제거) ===== -->
+    <LinearLayout
+        android:id="@+id/llOffset"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="64dp"
+        android:layout_marginEnd="14dp"
+        android:background="@drawable/bg_sdi_panel"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="10dp"
+        android:gravity="center"
+        android:elevation="8dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvOffsetTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="구간단속"
+            android:textColor="#FFC107"
+            android:textSize="11sp"
+            android:textStyle="bold"/>
+
+        <LinearLayout
+            android:id="@+id/llBlockInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:gravity="end"
-            android:layout_marginStart="8dp">
+            android:layout_marginTop="4dp"
+            android:gravity="center"
+            android:visibility="gone">
 
             <TextView
-                android:id="@+id/tvAppVersion"
+                android:id="@+id/tvBlockAvgSpeed"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="v-"
+                android:text="평균: 0km/h"
                 android:textColor="#FFFFFF"
-                android:textSize="12sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="4dp"/>
+                android:textSize="13sp"
+                android:textStyle="bold" />
 
-            <Button
-                android:id="@+id/btnCheckUpdate"
-                android:layout_width="wrap_content"
-                android:layout_height="32dp"
-                android:text="업데이트 확인"
-                android:textSize="10sp"
-                android:paddingHorizontal="10dp"
-                android:layout_marginBottom="4dp"
-                android:layout_gravity="end" />
-
-            <LinearLayout
+            <TextView
+                android:id="@+id/tvBlockDist"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal">
+                android:text="거리: 0m"
+                android:textColor="#AAAAAA"
+                android:textSize="11sp"/>
 
-                <Button
-                    android:id="@+id/btnEditKey"
-                    android:layout_width="wrap_content"
-                    android:layout_height="40dp"
-                    android:text="설정"
-                    android:textSize="12sp"
-                    android:paddingHorizontal="12dp"
-                    android:layout_marginEnd="8dp"/>
-
-                <Button
-                    android:id="@+id/btnExitApp"
-                    android:layout_width="wrap_content"
-                    android:layout_height="40dp"
-                    android:text="앱 종료"
-                    android:textSize="12sp"
-                    android:paddingHorizontal="12dp"
-                    android:backgroundTint="#F44336" />
-            </LinearLayout>
+            <TextView
+                android:id="@+id/tvBlockTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="시간: 0:00"
+                android:textColor="#AAAAAA"
+                android:textSize="11sp"/>
         </LinearLayout>
     </LinearLayout>
 
-    <!-- 하단 지도 영역 -->
-    <FrameLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1">
-        
-        <FrameLayout
-            android:id="@+id/tmapUILayout"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+    <!-- ===== 우측 세로 아이콘 스택 (Tmap 자체 하단 코너 아이콘과 안 겹치게 중간 높이로 이동) ===== -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_gravity="center_vertical|end"
+        android:layout_marginEnd="14dp">
 
-        <!-- Tmap 지도 터치 무력화: 항상 터치를 가로채서 하위 NavigationFragment(지도)로 전달 안 함. -->
-        <View
-            android:id="@+id/vTouchLockOverlay"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="#00000000" />
-
-        <!-- 주행 정보 오버레이 통합 대시보드 (2x2 배열) -->
-        <LinearLayout
-            android:id="@+id/llRoadInfo"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/bg_sdi_panel"
-            android:layout_margin="16dp"
-            android:paddingHorizontal="16dp"
-            android:paddingVertical="12dp"
-            android:layout_gravity="top|start"
-            android:elevation="6dp">
-
-            <!-- 첫 번째 줄 (제한속도, 단속카메라) -->
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center">
-
-                <!-- 1. 현재 도로 제한속도 -->
-                <LinearLayout
-                    android:id="@+id/llRoadSpeedLimit"
-                    android:layout_width="wrap_content"
-                    android:layout_height="match_parent"
-                    android:orientation="vertical"
-                    android:background="@drawable/bg_us_speed_limit"
-                    android:paddingHorizontal="8dp"
-                    android:paddingVertical="4dp"
-                    android:gravity="center">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="SPEED"
-                        android:textColor="#000000"
-                        android:textSize="10sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="LIMIT"
-                        android:textColor="#000000"
-                        android:textSize="10sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/tvRoadSpeedLimit"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="-"
-                        android:textColor="#000000"
-                        android:textSize="28sp"
-                        android:textStyle="bold" />
-                </LinearLayout>
-
-                <View
-                    android:layout_width="1dp"
-                    android:layout_height="match_parent"
-                    android:background="#33FFFFFF"
-                    android:layout_marginHorizontal="16dp"
-                    android:layout_marginVertical="4dp"/>
-
-                <!-- 2. 과속 카메라 (SDI 이벤트) -->
-                <LinearLayout
-                    android:id="@+id/llSdiEvent"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:gravity="center">
-
-                    <FrameLayout
-                        android:layout_width="56dp"
-                        android:layout_height="56dp">
-                        <View
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:background="@drawable/bg_speed_limit"/>
-                        <TextView
-                            android:id="@+id/tvEventSpeedLimit"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_gravity="center"
-                            android:text="60"
-                            android:textColor="#000000"
-                            android:textSize="24sp"
-                            android:textStyle="bold" />
-                    </FrameLayout>
-
-                    <TextView
-                        android:id="@+id/tvEventDist"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="300m"
-                        android:textColor="#FFEB3B"
-                        android:textSize="18sp"
-                        android:textStyle="bold"
-                        android:layout_marginTop="6dp" />
-
-                    <TextView
-                        android:id="@+id/tvEventType"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="단속"
-                        android:textColor="#FFFFFF"
-                        android:textSize="12sp"
-                        android:layout_marginTop="2dp" />
-                </LinearLayout>
-            </LinearLayout>
-
-            <!-- 가로 구분선 -->
-            <View
-                android:id="@+id/vDividerSdi"
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="#33FFFFFF"
-                android:layout_marginVertical="12dp"/>
-
-            <!-- 두 번째 줄 (OP 상태) -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center">
-
-                <!-- 4. Openpilot 상태 패널 -->
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:gravity="center">
-
-                    <!-- tvCurrentSpeed: 가로모드(HUD) 전용, 세로모드에선 숨김 -->
-                    <TextView
-                        android:id="@+id/tvCurrentSpeed"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="0"
-                        android:visibility="gone"/>
-
-                    <!-- 가로모드 HUD 전용 뷰들 (세로모드에서는 숨김) -->
-                    <LinearLayout
-                        android:id="@+id/llSdiInfo"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:visibility="gone">
-                        <TextView android:id="@+id/tvSdiDescr" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="" android:visibility="gone"/>
-                        <TextView android:id="@+id/tvSdiDist" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="" android:visibility="gone"/>
-                        <TextView android:id="@+id/tvSdiSpeedLimit" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="" android:visibility="gone"/>
-                    </LinearLayout>
-
-                    <TextView
-                        android:id="@+id/tvActiveStatus"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="OP OFF"
-                        android:paddingHorizontal="6dp"
-                        android:paddingVertical="4dp"
-                        android:background="@drawable/bg_status_off"
-                        android:textColor="#FFFFFF"
-                        android:textSize="12sp"
-                        android:textStyle="bold"
-                        android:layout_marginBottom="6dp"/>
-
-                    <LinearLayout
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:layout_marginBottom="6dp">
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="신호:"
-                            android:textColor="#AAAAAA"
-                            android:textSize="10sp" />
-                        <View
-                            android:id="@+id/vTrafficLight"
-                            android:layout_width="10dp"
-                            android:layout_height="10dp"
-                            android:background="@drawable/shape_circle_gray"
-                            android:layout_marginStart="4dp"/>
-                    </LinearLayout>
-
-                    <TextView
-                        android:id="@+id/tvXStateBadge"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="CRUISE"
-                        android:textColor="#2196F3"
-                        android:textSize="12sp"
-                        android:textStyle="bold"
-                        android:visibility="gone" />
-                </LinearLayout>
-            </LinearLayout>
-        </LinearLayout>
-
-
-        <!-- 지도 터치 방지용 투명 오버레이 -->
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:clickable="true"
-            android:focusable="true" />
-
-        <!-- 구간단속 평균속도 정보 패널 -->
-        <LinearLayout
-            android:id="@+id/llOffset"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_gravity="top|end"
-            android:layout_marginEnd="16dp"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/bg_sdi_panel"
-            android:paddingHorizontal="16dp"
-            android:paddingVertical="12dp"
-            android:gravity="center"
-            android:elevation="6dp">
-
-            <TextView
-                android:id="@+id/tvOffsetTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="구간단속"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
-                android:textStyle="bold"/>
-
-                <!-- 구간단속 정보 -->
-                <LinearLayout
-                    android:id="@+id/llBlockInfo"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:layout_marginTop="8dp"
-                    android:gravity="center"
-                    android:visibility="gone">
-                    
-                    <TextView
-                        android:id="@+id/tvBlockAvgSpeed"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="평균: 0km/h"
-                        android:textColor="#FFFFFF"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
-                        
-                    <TextView
-                        android:id="@+id/tvBlockDist"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="거리: 0m"
-                        android:textColor="#EEEEEE"
-                        android:textSize="13sp"
-                        android:layout_marginTop="4dp" />
-                        
-                    <TextView
-                        android:id="@+id/tvBlockTime"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="시간: 0:00"
-                        android:textColor="#EEEEEE"
-                        android:textSize="13sp"
-                        android:layout_marginTop="2dp" />
-                </LinearLayout>
-        </LinearLayout>
-
-        <!-- 오버레이 편집 모드 버튼 (그래픽) -->
-        <ImageButton
-            android:id="@+id/btnEditMode"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_gravity="bottom|end"
-            android:layout_marginEnd="16dp"
-            android:layout_marginBottom="32dp"
-            android:src="@android:drawable/ic_menu_edit"
-            android:background="@drawable/shape_circle_gray"
-            android:scaleType="center"
-            android:elevation="6dp" />
-
-        <!-- 로그 메일 전송 버튼 (우상단) -->
         <ImageButton
             android:id="@+id/btnShareLog"
             android:layout_width="40dp"
             android:layout_height="40dp"
-            android:layout_gravity="top|end"
-            android:layout_marginEnd="16dp"
-            android:layout_marginTop="16dp"
             android:src="@android:drawable/ic_menu_send"
             android:background="@drawable/shape_circle_gray"
             android:scaleType="center"
-            android:elevation="10dp" />
+            android:elevation="8dp"
+            android:layout_marginBottom="10dp"/>
 
-        <!-- 목적지 검색 열기 버튼 (좌하단) -->
         <ImageButton
-            android:id="@+id/btnOpenSearch"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_gravity="bottom|start"
-            android:layout_marginStart="16dp"
-            android:layout_marginBottom="32dp"
-            android:src="@android:drawable/ic_menu_search"
+            android:id="@+id/btnEditMode"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@android:drawable/ic_menu_edit"
             android:background="@drawable/shape_circle_gray"
             android:scaleType="center"
-            android:elevation="10dp" />
+            android:elevation="8dp"/>
+    </LinearLayout>
 
-        <!-- 목적지 검색 패널 (평소엔 숨김) -->
+    <!-- 목적지 검색 열기 버튼: Tmap 자체 좌하단 검색 아이콘과 겹치지 않도록 좌측 중간으로 이동 -->
+    <ImageButton
+        android:id="@+id/btnOpenSearch"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_gravity="center_vertical|start"
+        android:layout_marginStart="14dp"
+        android:src="@android:drawable/ic_menu_search"
+        android:background="@drawable/shape_circle_gray"
+        android:scaleType="center"
+        android:elevation="8dp" />
+
+    <!-- 목적지 검색 패널 -->
+    <LinearLayout
+        android:id="@+id/llSearchPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_gravity="bottom"
+        android:background="#EE111111"
+        android:padding="16dp"
+        android:elevation="12dp"
+        android:visibility="gone">
+
         <LinearLayout
-            android:id="@+id/llSearchPanel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_gravity="bottom"
-            android:background="#EE111111"
-            android:padding="16dp"
-            android:elevation="12dp"
-            android:visibility="gone">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <EditText
-                    android:id="@+id/etDestination"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_weight="1"
-                    android:hint="목적지를 입력하세요 (예: 서울역)"
-                    android:textColor="#FFFFFF"
-                    android:textColorHint="#888888"
-                    android:background="@drawable/bg_sdi_panel"
-                    android:paddingHorizontal="12dp"
-                    android:singleLine="true"
-                    android:imeOptions="actionSearch"
-                    android:inputType="text" />
-
-                <Button
-                    android:id="@+id/btnSearchGo"
-                    android:layout_width="wrap_content"
-                    android:layout_height="48dp"
-                    android:layout_marginStart="8dp"
-                    android:text="검색"
-                    android:textSize="13sp" />
-
-                <Button
-                    android:id="@+id/btnSearchClose"
-                    android:layout_width="wrap_content"
-                    android:layout_height="48dp"
-                    android:layout_marginStart="8dp"
-                    android:text="닫기"
-                    android:textSize="13sp"
-                    android:backgroundTint="#555555" />
-            </LinearLayout>
-
-            <!-- 검색 결과 리스트 -->
-            <ListView
-                android:id="@+id/lvSearchResults"
-                android:layout_width="match_parent"
-                android:layout_height="240dp"
-                android:layout_marginTop="8dp"
-                android:divider="#33FFFFFF"
-                android:dividerHeight="1dp"
-                android:visibility="gone" />
-
-            <TextView
-                android:id="@+id/tvSearchStatus"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text=""
-                android:textColor="#AAAAAA"
-                android:textSize="12sp" />
-        </LinearLayout>
-
-        <!-- 길안내 중 표시 + 안내 종료 버튼 -->
-        <LinearLayout
-            android:id="@+id/llGuidanceBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_gravity="bottom"
-            android:background="#EE1B5E20"
-            android:padding="12dp"
-            android:elevation="10dp"
-            android:gravity="center_vertical"
-            android:visibility="gone">
+            android:gravity="center_vertical">
 
-            <TextView
-                android:id="@+id/tvGuidanceDest"
+            <EditText
+                android:id="@+id/etDestination"
                 android:layout_width="0dp"
+                android:layout_height="48dp"
                 android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:text="길안내 중"
+                android:hint="목적지를 입력하세요 (예: 서울역)"
                 android:textColor="#FFFFFF"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:textColorHint="#888888"
+                android:background="@drawable/bg_sdi_panel"
+                android:paddingHorizontal="12dp"
+                android:singleLine="true"
+                android:imeOptions="actionSearch"
+                android:inputType="text" />
 
             <Button
-                android:id="@+id/btnStopGuidance"
+                android:id="@+id/btnSearchGo"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="안내 종료"
-                android:textSize="12sp"
-                android:backgroundTint="#F44336" />
-        </LinearLayout>
-    </FrameLayout>
+                android:layout_height="48dp"
+                android:layout_marginStart="8dp"
+                android:text="검색"
+                android:textSize="13sp" />
 
-</LinearLayout>
+            <Button
+                android:id="@+id/btnSearchClose"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:layout_marginStart="8dp"
+                android:text="닫기"
+                android:textSize="13sp"
+                android:backgroundTint="#555555" />
+        </LinearLayout>
+
+        <ListView
+            android:id="@+id/lvSearchResults"
+            android:layout_width="match_parent"
+            android:layout_height="240dp"
+            android:layout_marginTop="8dp"
+            android:divider="#33FFFFFF"
+            android:dividerHeight="1dp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tvSearchStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text=""
+            android:textColor="#AAAAAA"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- 길안내 중 표시 + 안내 종료 버튼 -->
+    <LinearLayout
+        android:id="@+id/llGuidanceBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_gravity="bottom"
+        android:background="#EE1B5E20"
+        android:padding="12dp"
+        android:elevation="10dp"
+        android:gravity="center_vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvGuidanceDest"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="길안내 중"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnStopGuidance"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="안내 종료"
+            android:textSize="12sp"
+            android:backgroundTint="#F44336" />
+    </LinearLayout>
+
+</FrameLayout>
