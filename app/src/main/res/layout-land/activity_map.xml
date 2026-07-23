@@ -413,8 +413,133 @@
             android:src="@android:drawable/ic_menu_edit"
             android:background="@drawable/shape_circle_gray"
             android:scaleType="center"
-            android:elevation="6dp"
-            android:visibility="gone"/>
+            android:elevation="6dp"/>
+
+        <!-- 로그 메일 전송 버튼 -->
+        <ImageButton
+            android:id="@+id/btnShareLog"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="60dp"
+            android:layout_marginBottom="12dp"
+            android:src="@android:drawable/ic_menu_send"
+            android:background="@drawable/shape_circle_gray"
+            android:scaleType="center"
+            android:elevation="6dp"/>
+
+        <!-- 목적지 검색 열기 버튼 -->
+        <ImageButton
+            android:id="@+id/btnOpenSearch"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_gravity="bottom|start"
+            android:layout_margin="12dp"
+            android:src="@android:drawable/ic_menu_search"
+            android:background="@drawable/shape_circle_gray"
+            android:scaleType="center"
+            android:elevation="6dp"/>
+
+        <!-- 목적지 검색 패널 -->
+        <LinearLayout
+            android:id="@+id/llSearchPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_gravity="bottom"
+            android:background="#EE111111"
+            android:padding="12dp"
+            android:elevation="12dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <EditText
+                    android:id="@+id/etDestination"
+                    android:layout_width="0dp"
+                    android:layout_height="42dp"
+                    android:layout_weight="1"
+                    android:hint="목적지를 입력하세요 (예: 서울역)"
+                    android:textColor="#FFFFFF"
+                    android:textColorHint="#888888"
+                    android:background="@drawable/bg_sdi_panel"
+                    android:paddingHorizontal="10dp"
+                    android:singleLine="true"
+                    android:imeOptions="actionSearch"
+                    android:inputType="text" />
+
+                <Button
+                    android:id="@+id/btnSearchGo"
+                    android:layout_width="wrap_content"
+                    android:layout_height="42dp"
+                    android:layout_marginStart="6dp"
+                    android:text="검색"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/btnSearchClose"
+                    android:layout_width="wrap_content"
+                    android:layout_height="42dp"
+                    android:layout_marginStart="6dp"
+                    android:text="닫기"
+                    android:textSize="12sp"
+                    android:backgroundTint="#555555" />
+            </LinearLayout>
+
+            <ListView
+                android:id="@+id/lvSearchResults"
+                android:layout_width="match_parent"
+                android:layout_height="180dp"
+                android:layout_marginTop="6dp"
+                android:divider="#33FFFFFF"
+                android:dividerHeight="1dp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tvSearchStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text=""
+                android:textColor="#AAAAAA"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <!-- 길안내 중 표시 + 안내 종료 버튼 -->
+        <LinearLayout
+            android:id="@+id/llGuidanceBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_gravity="bottom"
+            android:background="#EE1B5E20"
+            android:padding="10dp"
+            android:elevation="10dp"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvGuidanceDest"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:text="길안내 중"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnStopGuidance"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="안내 종료"
+                android:textSize="11sp"
+                android:backgroundTint="#F44336" />
+        </LinearLayout>
 
     </FrameLayout>
 
