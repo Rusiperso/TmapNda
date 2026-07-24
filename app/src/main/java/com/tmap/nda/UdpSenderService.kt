@@ -627,6 +627,7 @@ class UdpSenderService : Service() {
     private var getInstanceMethod: java.lang.reflect.Method? = null
     private var getRecentRGDataMethod: java.lang.reflect.Method? = null
     private var nRoadLimitSpeedField: java.lang.reflect.Field? = null
+    private var lastRgDataDumpTime = 0L
 
     private fun getRoadLimitSpeedFromEngine(): Int {
         try {
@@ -643,6 +644,27 @@ class UdpSenderService : Service() {
                     getRecentRGDataMethod = sdkManager.javaClass.getMethod("getRecentRGData")
                 }
                 val rgData = getRecentRGDataMethod?.invoke(sdkManager)
+
+                if (rgData != null) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastRgDataDumpTime > 10000) {
+                        lastRgDataDumpTime = now
+                        try {
+                            NavLogger.e(this, "===== (UdpSenderService) rgData 전체 필드 덤프 =====")
+                            for (field in rgData.javaClass.fields) {
+                                try {
+                                    field.isAccessible = true
+                                    val value = field.get(rgData)
+                                    NavLogger.e(this, "rgData.${field.name} = $value (${field.type.simpleName})")
+                                } catch (fe: Exception) {
+                                    NavLogger.e(this, "rgData.${field.name} 읽기 실패: ${fe.message}")
+                                }
+                            }
+                        } catch (e: Exception) {
+                            NavLogger.e(this, "rgData 전체 덤프 실패: ${e.message}")
+                        }
+                    }
+                }
                 if (rgData != null) {
                     if (nRoadLimitSpeedField == null) {
                         nRoadLimitSpeedField = rgData.javaClass.getField("nRoadLimitSpeed")
@@ -655,6 +677,7 @@ class UdpSenderService : Service() {
             }
         } catch (e: Exception) {
             android.util.Log.e("UdpSenderService", "Reflection error: ${e.message}")
+            NavLogger.e(this, "Reflection error (RoadLimitSpeed): ${e.message}")
         }
         return -1
     }

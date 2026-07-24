@@ -40,6 +40,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        NavLogger.appContext = applicationContext
         
         dumpTmapAudioSettings()
         
@@ -148,6 +149,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun dumpTmapAudioSettings() {
         android.util.Log.e("TmapVolume", "dumpTmapAudioSettings started")
+        NavLogger.e(this, "dumpTmapAudioSettings started")
         val kw = listOf("mute", "volume", "sound", "audio", "tts", "speech", "voice", "guide", "guidance", "announce", "alert")
         val sb = java.lang.StringBuilder()
         sb.append("dumpTmapAudioSettings started\n")
@@ -168,16 +170,19 @@ class MainActivity : AppCompatActivity() {
                             val line = "$className method: ${m.name}(${m.parameterTypes.joinToString { it.name }}) -> ${m.returnType.name}\n"
                             sb.append(line)
                             android.util.Log.e("TmapVolume", line.trim())
+                            NavLogger.e(this, line.trim())
                         }
                     }
                 } catch (e: Throwable) {
                     sb.append("Failed to inspect $className\n")
                     android.util.Log.e("TmapVolume", "Failed to inspect $className")
+                    NavLogger.e(this, "Failed to inspect $className")
                 }
             }
         } catch (e: Throwable) {
             sb.append("Error in dumpTmapAudioSettings: ${e.message}\n")
             android.util.Log.e("TmapVolume", "Error in dumpTmapAudioSettings", e)
+            NavLogger.e(this, "Error in dumpTmapAudioSettings: ${e.message}")
         }
         
         try {
