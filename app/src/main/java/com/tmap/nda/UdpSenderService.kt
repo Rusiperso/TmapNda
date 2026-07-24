@@ -59,8 +59,9 @@ class UdpSenderService : Service() {
         try {
             udpSocket = DatagramSocket()
             udpSocket?.broadcast = true
+            NavLogger.d(this, "openpilot 전송용 UDP 소켓 생성 성공 (port=$UDP_PORT)")
         } catch (e: Exception) {
-            e.printStackTrace()
+            NavLogger.e(this, "openpilot 전송용 UDP 소켓 생성 실패: ${e.message}")
         }
 
         try {
@@ -119,8 +120,27 @@ class UdpSenderService : Service() {
     private var lastSdiPlusJsonStr: String? = null
     private var lastSdiPlusUpdateTime = 0L
 
+    private var lastFullBundleDumpTime = 0L
+    private var lastSendErrorLogTime = 0L
+
     private val edcObserver = Observer<Bundle> { bundle ->
         if (bundle != null && isRunning.get()) {
+            // Tmap이 실제로 넘겨주는 EDCData bundle 전체 key/value를 10초 간격으로 로그에 남김
+            // (차선/신호등 등 우리가 안 쓰고 있는 필드가 있는지 확인하기 위함)
+            val now = System.currentTimeMillis()
+            if (now - lastFullBundleDumpTime > 10000) {
+                lastFullBundleDumpTime = now
+                try {
+                    NavLogger.e(this, "===== EDCData bundle 전체 키 덤프 =====")
+                    for (key in bundle.keySet()) {
+                        val value = bundle.get(key)
+                        NavLogger.e(this, "EDCData[$key] = $value (${value?.javaClass?.simpleName})")
+                    }
+                } catch (e: Exception) {
+                    NavLogger.e(this, "EDCData 전체 덤프 실패: ${e.message}")
+                }
+            }
+
             serviceScope.launch {
                 try {
                     val json = JSONObject()
@@ -292,11 +312,23 @@ class UdpSenderService : Service() {
                 receiveSocket = DatagramSocket(null)
                 receiveSocket?.reuseAddress = true
                 receiveSocket?.bind(java.net.InetSocketAddress("0.0.0.0", 7705))
-                
+                receiveSocket?.soTimeout = 5000
+                NavLogger.d(this@UdpSenderService, "openpilot UDP 수신 소켓 bind 성공: 0.0.0.0:7705")
+
                 val buffer = ByteArray(4096)
+                var lastActive: Boolean? = null
                 while (isActive && isRunning.get()) {
                     val packet = DatagramPacket(buffer, buffer.size)
-                    receiveSocket?.receive(packet)
+                    try {
+                        receiveSocket?.receive(packet)
+                    } catch (e: java.net.SocketTimeoutException) {
+                        NavLogger.e(this@UdpSenderService, "openpilot으로부터 5초간 UDP 수신 없음 (연결 끊김 또는 openpilot 미실행 가능성)")
+                        if (lastActive != false) {
+                            OpenpilotStateRepository.updateState("-", "-", 0, 0, false)
+                            lastActive = false
+                        }
+                        continue
+                    }
                     val data = String(packet.data, 0, packet.length, Charsets.UTF_8)
                     try {
                         val json = JSONObject(data)
@@ -305,14 +337,19 @@ class UdpSenderService : Service() {
                         val trafficState = json.optInt("trafficState", 0)
                         val xState = json.optInt("xState", 0)
                         val active = json.optBoolean("active", false)
-                        
+
+                        if (lastActive != active) {
+                            NavLogger.d(this@UdpSenderService, "openpilot 연결 상태 변경: active=$active, ip=${packet.address?.hostAddress}, carrot2=$carrot2")
+                            lastActive = active
+                        }
+
                         OpenpilotStateRepository.updateState(carrot2, ip, trafficState, xState, active)
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        NavLogger.e(this@UdpSenderService, "openpilot UDP 패킷 파싱 실패: ${e.message}, raw=$data")
                     }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                NavLogger.e(this@UdpSenderService, "openpilot UDP 수신 소켓 bind/수신 실패: ${e.message}")
             }
         }
     }
@@ -345,7 +382,11 @@ class UdpSenderService : Service() {
                 udpSocket?.send(packet)
             }
         } catch (e: Exception) {
-            // Ignore
+            val now = System.currentTimeMillis()
+            if (now - lastSendErrorLogTime > 5000) {
+                lastSendErrorLogTime = now
+                NavLogger.e(this, "openpilot UDP 전송 실패: ${e.message}")
+            }
         }
     }
 
