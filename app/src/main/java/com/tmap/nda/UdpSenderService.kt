@@ -507,6 +507,10 @@ class UdpSenderService : Service() {
                 return@launch
             }
 
+            var ndaSendSuccessCount = 0
+            var ndaSendFailCount = 0
+            var lastNdaSendLogTime = 0L
+
             while (isActive && isRunning.get()) {
                 val addr = ndaRemoteAddr
                 if (addr != null) {
@@ -514,14 +518,33 @@ class UdpSenderService : Service() {
                     val bytes = json.toString().toByteArray(Charsets.UTF_8)
                     try {
                         ndaSendSocket?.send(DatagramPacket(bytes, bytes.size, addr, ndaRemotePort))
+                        ndaSendSuccessCount++
                     } catch (e: Exception) {
                         // 기본 포트 실패 시 fallback 포트로 한번 시도
                         try {
                             ndaSendSocket?.send(DatagramPacket(bytes, bytes.size, addr, NDA_SEND_PORT_FALLBACK))
                             ndaRemotePort = NDA_SEND_PORT_FALLBACK
+                            ndaSendSuccessCount++
                         } catch (e2: Exception) {
-                            NavLogger.e(this@UdpSenderService, "[NDA] 송신 실패(843/2843 모두): ${e2.message}")
+                            ndaSendFailCount++
+                            NavLogger.e(this@UdpSenderService, "[NDA] 송신 실패(843/2843 모두) target=$addr:$ndaRemotePort/${NDA_SEND_PORT_FALLBACK}: ${e2.message}")
                         }
+                    }
+
+                    // 5초 간격으로 송신 시도/성공/실패 카운트 요약 로그
+                    // (send()는 UDP 특성상 상대가 안 받아도 예외를 안 던지는 경우가 대부분이라,
+                    //  "예외 발생 여부"만으론 실제 전달 여부를 알 수 없다. 그래도 최소한
+                    //  "우리가 실제로 sendto를 호출은 하고 있는지, 어느 IP:PORT로 쏘는지"는
+                    //  여기서 확인 가능하다.)
+                    val now = System.currentTimeMillis()
+                    if (now - lastNdaSendLogTime > 5000) {
+                        lastNdaSendLogTime = now
+                        NavLogger.d(
+                            this@UdpSenderService,
+                            "[NDA] 송신 요약: target=$addr:$ndaRemotePort success=$ndaSendSuccessCount fail=$ndaSendFailCount (최근 5초)"
+                        )
+                        ndaSendSuccessCount = 0
+                        ndaSendFailCount = 0
                     }
 
                     // 8초 넘게 비콘이 없으면 연결 끊긴 것으로 보고 초기화
