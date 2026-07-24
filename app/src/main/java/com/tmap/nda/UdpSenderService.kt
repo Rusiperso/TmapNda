@@ -26,6 +26,17 @@ class UdpSenderService : Service() {
     private val UDP_PORT = 7706
     private var targetIp = "255.255.255.255"
 
+    // ===== NDA(EON:ROAD_LIMIT_SERVICE:v1) 호환 브릿지 관련 상수 =====
+    // road_speed_limiter.py (carrot 계열이 아닌 다수의 HKG 커뮤니티 fork에도 포함된 표준 UDP 브릿지) 프로토콜을
+    // 그대로 흉내내어, nMirror 없이도 이 프로토콜을 쓰는 openpilot과 직접 연동한다.
+    //  - openpilot -> phone : "EON:ROAD_LIMIT_SERVICE:v1" 비콘(5초 주기, broadcast) + GPS 위치 JSON, 전부 UDP 2899
+    //  - phone -> openpilot : road_limit / active / request_gps JSON, UDP 843 (실패시 2843)
+    private val NDA_BEACON = "EON:ROAD_LIMIT_SERVICE:v1"
+    private val NDA_LISTEN_PORT = 2899
+    private val NDA_SEND_PORT_PRIMARY = 843
+    private val NDA_SEND_PORT_FALLBACK = 2843
+    private val NDA_ACTIVE_TIMEOUT_MS = 8000L
+
     private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
     private var udpSocket: DatagramSocket? = null
 
@@ -34,6 +45,13 @@ class UdpSenderService : Service() {
     
     private var packetIndex = 0
     private var wakeLock: PowerManager.WakeLock? = null
+
+    // NDA 브릿지 상태
+    private var ndaListenSocket: DatagramSocket? = null
+    private var ndaSendSocket: DatagramSocket? = null
+    @Volatile private var ndaRemoteAddr: InetAddress? = null
+    @Volatile private var ndaRemotePort = NDA_SEND_PORT_PRIMARY
+    @Volatile private var ndaLastBeaconTime = 0L
 
     // Latest Safe Drive Info
     private var roadLimitSpeed = 0
@@ -111,6 +129,8 @@ class UdpSenderService : Service() {
         startObservingEDC()
         startSendingLoop()
         startReceivingLoop()
+        startNdaListenLoop()
+        startNdaSendLoop()
 
         return START_STICKY
     }
@@ -390,6 +410,148 @@ class UdpSenderService : Service() {
         }
     }
 
+    // ===== NDA(EON:ROAD_LIMIT_SERVICE:v1) 브릿지 =====
+
+    /** openpilot이 5초마다 뿌리는 비콘("EON:ROAD_LIMIT_SERVICE:v1")과, request_gps=1 응답으로 오는
+     *  GPS 위치 JSON({"location":[lat,lon,alt,speed,bearing,acc,time,vAcc,bAcc,sAcc]})을 같은 2899 포트에서 수신. */
+    private fun startNdaListenLoop() {
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                ndaListenSocket = DatagramSocket(null).apply {
+                    reuseAddress = true
+                    bind(java.net.InetSocketAddress("0.0.0.0", NDA_LISTEN_PORT))
+                    soTimeout = 8000
+                }
+                NavLogger.d(this@UdpSenderService, "[NDA] 비콘/GPS 수신 소켓 bind 성공: 0.0.0.0:$NDA_LISTEN_PORT")
+
+                val buffer = ByteArray(2048)
+                while (isActive && isRunning.get()) {
+                    val packet = DatagramPacket(buffer, buffer.size)
+                    try {
+                        ndaListenSocket?.receive(packet)
+                    } catch (e: java.net.SocketTimeoutException) {
+                        continue
+                    } catch (e: Exception) {
+                        NavLogger.e(this@UdpSenderService, "[NDA] 수신 오류: ${e.message}")
+                        continue
+                    }
+
+                    val text = String(packet.data, 0, packet.length, Charsets.UTF_8)
+
+                    if (text.trim() == NDA_BEACON) {
+                        val isNewHost = ndaRemoteAddr == null || ndaRemoteAddr != packet.address
+                        ndaRemoteAddr = packet.address
+                        ndaRemotePort = NDA_SEND_PORT_PRIMARY
+                        ndaLastBeaconTime = System.currentTimeMillis()
+                        if (isNewHost) {
+                            NavLogger.d(this@UdpSenderService, "[NDA] openpilot 발견: ${packet.address?.hostAddress}")
+                        }
+                        continue
+                    }
+
+                    try {
+                        val json = JSONObject(text)
+                        if (json.has("location")) {
+                            val arr = json.getJSONArray("location")
+                            val lat = arr.getDouble(0)
+                            val lon = arr.getDouble(1)
+                            val alt = arr.getDouble(2)
+                            val speed = arr.getDouble(3)
+                            val bearing = arr.getDouble(4)
+                            val accuracy = arr.getDouble(5)
+                            val timeMs = arr.optLong(6, System.currentTimeMillis())
+                            NavLogger.d(
+                                this@UdpSenderService,
+                                "[NDA] GPS 역수신: lat=$lat lon=$lon speed=$speed acc=$accuracy"
+                            )
+                            OpenpilotStateRepository.updateNdaGps(lat, lon, alt, speed, bearing, accuracy, timeMs)
+                        }
+                    } catch (e: Exception) {
+                        // 비콘도 GPS JSON도 아니면 무시 (알 수 없는 패킷)
+                    }
+                }
+            } catch (e: Exception) {
+                NavLogger.e(this@UdpSenderService, "[NDA] 리슨 소켓 bind/수신 실패: ${e.message}")
+            }
+        }
+    }
+
+    /** 발견된 openpilot IP의 843(안되면 2843)으로 road_limit/active/request_gps JSON을 2Hz로 송신. */
+    private fun startNdaSendLoop() {
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                ndaSendSocket = DatagramSocket()
+            } catch (e: Exception) {
+                NavLogger.e(this@UdpSenderService, "[NDA] 송신 소켓 생성 실패: ${e.message}")
+                return@launch
+            }
+
+            while (isActive && isRunning.get()) {
+                val addr = ndaRemoteAddr
+                if (addr != null) {
+                    val json = buildNdaRoadLimitJson()
+                    val bytes = json.toString().toByteArray(Charsets.UTF_8)
+                    try {
+                        ndaSendSocket?.send(DatagramPacket(bytes, bytes.size, addr, ndaRemotePort))
+                    } catch (e: Exception) {
+                        // 기본 포트 실패 시 fallback 포트로 한번 시도
+                        try {
+                            ndaSendSocket?.send(DatagramPacket(bytes, bytes.size, addr, NDA_SEND_PORT_FALLBACK))
+                            ndaRemotePort = NDA_SEND_PORT_FALLBACK
+                        } catch (e2: Exception) {
+                            NavLogger.e(this@UdpSenderService, "[NDA] 송신 실패(843/2843 모두): ${e2.message}")
+                        }
+                    }
+
+                    // 8초 넘게 비콘이 없으면 연결 끊긴 것으로 보고 초기화
+                    if (System.currentTimeMillis() - ndaLastBeaconTime > NDA_ACTIVE_TIMEOUT_MS) {
+                        NavLogger.d(this@UdpSenderService, "[NDA] 비콘 타임아웃, openpilot 연결 해제")
+                        ndaRemoteAddr = null
+                    }
+                }
+                delay(500) // 2Hz
+            }
+        }
+    }
+
+    /** 기존 latestPayload(carrot 프로토콜용 JSON)에서 값을 뽑아 road_speed_limiter.py 스키마로 재매핑. */
+    private fun buildNdaRoadLimitJson(): JSONObject {
+        val out = JSONObject()
+        out.put("active", 1)
+        out.put("request_gps", 1) // 오파 GPS를 역으로 받고 싶으면 계속 요청 유지
+
+        try {
+            val src = JSONObject(latestPayload)
+            val roadLimit = JSONObject()
+
+            val sdiType = src.optInt("nSdiType", 0)
+            val sdiSpeedLimit = src.optInt("nSdiSpeedLimit", 0)
+            val sdiDist = src.optInt("nSdiDist", 0)
+
+            roadLimit.put("road_limit_speed", src.optInt("nRoadLimitSpeed", 0))
+            roadLimit.put("is_highway", false)
+            roadLimit.put("cam_type", sdiType)
+            roadLimit.put("cam_limit_speed", sdiSpeedLimit)
+            roadLimit.put("cam_limit_speed_left_dist", sdiDist)
+
+            // 구간단속(secondSDIInfo/블록 정보)이 있으면 section_* 로 매핑
+            val plusSpeedLimit = src.optInt("nSdiPlusSpeedLimit", 0)
+            val plusDist = src.optInt("nSdiPlusDist", 0)
+            if (plusSpeedLimit > 0 && plusDist > 0) {
+                roadLimit.put("section_limit_speed", plusSpeedLimit)
+                roadLimit.put("section_left_dist", plusDist)
+            }
+
+            roadLimit.put("cam_speed_factor", 1.05)
+
+            out.put("road_limit", roadLimit)
+        } catch (e: Exception) {
+            // latestPayload가 아직 비어있으면(= "{}") road_limit 없이 active/request_gps만 전송
+        }
+
+        return out
+    }
+
     override fun onBind(intent: Intent?): IBinder? {
         return null
     }
@@ -403,6 +565,8 @@ class UdpSenderService : Service() {
         serviceScope.cancel()
         udpSocket?.close()
         receiveSocket?.close()
+        ndaListenSocket?.close()
+        ndaSendSocket?.close()
         
         try {
             if (wakeLock?.isHeld == true) {
