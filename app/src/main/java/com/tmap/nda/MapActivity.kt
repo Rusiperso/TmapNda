@@ -552,6 +552,60 @@ class MapActivity : AppCompatActivity() {
     private val REQUIRED_CONSECUTIVE = 2          // 오매칭 의심 시 최소 확인 횟수 (타이트하게)
     private val TBT_NEAR_THRESHOLD_M = 250        // 이 거리 이내면 "진짜 분기"로 간주하고 즉시 반영
 
+    // rgData 필드 재귀 덤프용 (LaneInfoData[]/TBTInfo 같은 객체·배열 내부 필드까지 확인하기 위함)
+    // - 배열: 앞에서 maxArrayItems개까지만 각 원소를 펼쳐서 찍음 (로그 폭주 방지)
+    // - com.skt.tmap.* 패키지의 객체: 한 단계 더 파고들어서 필드를 찍음 (depth 2까지만, 무한재귀 방지)
+    // - 그 외(String/Number/Boolean 등): 그냥 toString
+    private fun dumpValueRecursive(label: String, value: Any?, declaredType: Class<*>, depth: Int, maxArrayItems: Int = 3) {
+        if (value == null) {
+            NavLogger.e(this, "$label = null (${declaredType.simpleName})")
+            return
+        }
+
+        val cls = value.javaClass
+
+        if (cls.isArray) {
+            val length = java.lang.reflect.Array.getLength(value)
+            NavLogger.e(this, "$label = ${cls.simpleName} (length=$length)")
+            val itemCount = minOf(length, maxArrayItems)
+            for (i in 0 until itemCount) {
+                val item = java.lang.reflect.Array.get(value, i)
+                dumpValueRecursive("$label[$i]", item, cls.componentType, depth + 1, maxArrayItems)
+            }
+            if (length > itemCount) {
+                NavLogger.e(this, "$label[...] 나머지 ${length - itemCount}개 생략")
+            }
+            return
+        }
+
+        val isPrimitiveLike = cls.isPrimitive ||
+            value is String || value is Number || value is Boolean ||
+            value is Char || value is CharSequence
+
+        if (isPrimitiveLike) {
+            NavLogger.e(this, "$label = $value (${cls.simpleName})")
+            return
+        }
+
+        // com.skt.tmap.* 소속 커스텀 데이터 클래스면 한 단계 더 파고든다 (depth 2까지만)
+        if (depth < 2 && (cls.name.startsWith("com.skt.tmap"))) {
+            NavLogger.e(this, "$label = ${cls.simpleName} 인스턴스, 내부 필드:")
+            for (field in cls.fields) {
+                try {
+                    field.isAccessible = true
+                    val fieldValue = field.get(value)
+                    dumpValueRecursive("$label.${field.name}", fieldValue, field.type, depth + 1, maxArrayItems)
+                } catch (fe: Exception) {
+                    NavLogger.e(this, "$label.${field.name} 읽기 실패: ${fe.message}")
+                }
+            }
+            return
+        }
+
+        // 그 외 타입이거나 depth 한도 초과 시 toString으로만 표시
+        NavLogger.e(this, "$label = $value (${cls.simpleName})")
+    }
+
     // getRecentRGData()에서 nTBTDist(다음 안내지점까지 거리)를 뽑아온다.
     // 실패하거나 값이 없으면 Int.MAX_VALUE를 반환해 "안내지점 아님"으로 안전하게 처리한다.
     private fun getTbtDistFromEngine(): Int {
@@ -572,6 +626,8 @@ class MapActivity : AppCompatActivity() {
 
                 // rgData 객체의 모든 필드를 10초 간격으로 통째로 로그에 남김
                 // (nTBTDist/nRoadLimitSpeed 외에 차선/신호등 관련 필드가 있는지 확인하기 위함)
+                // 2026-07-24: LaneInfoData[]/TBTInfo 등 객체·배열 필드는 toString()만 찍혀서
+                // 내부 구조가 안 보이는 문제 -> 재귀 덤프로 교체 (차선/신호등 잔여시간 필드 탐색용)
                 if (rgData != null) {
                     val now = System.currentTimeMillis()
                     if (now - lastRgDataDumpTime > 10000) {
@@ -582,7 +638,7 @@ class MapActivity : AppCompatActivity() {
                                 try {
                                     field.isAccessible = true
                                     val value = field.get(rgData)
-                                    NavLogger.e(this, "rgData.${field.name} = $value (${field.type.simpleName})")
+                                    dumpValueRecursive("rgData.${field.name}", value, field.type, 0)
                                 } catch (fe: Exception) {
                                     NavLogger.e(this, "rgData.${field.name} 읽기 실패: ${fe.message}")
                                 }
