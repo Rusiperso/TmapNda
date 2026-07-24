@@ -40,9 +40,14 @@ class UdpSenderService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
     private var udpSocket: DatagramSocket? = null
 
+    // isRunning: 서비스 전체 생존 여부가 아니라, "루프들이 이미 시작되었는가"를 나타내는 가드로 사용.
+    // onStartCommand가 여러 번 호출되어도(START_STICKY 재시작, 인텐트 재전달 등) 소켓/코루틴이
+    // 중복 생성되지 않도록 막는다. 이게 없으면 startReceivingLoop() 등이 두 번 실행되면서
+    // 같은 DatagramSocket 필드에 여러 코루틴이 동시에 receive()를 거는 경쟁 상태가 생기고,
+    // 한쪽에서 close()가 불리는 순간 다른 쪽에서 EBADF(Bad file descriptor)가 터진다.
     private val isRunning = AtomicBoolean(false)
     private val gson = Gson()
-    
+
     private var packetIndex = 0
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -73,7 +78,7 @@ class UdpSenderService : Service() {
         } else {
             startForeground(1, createNotification())
         }
-        
+
         try {
             udpSocket = DatagramSocket()
             udpSocket?.broadcast = true
@@ -89,8 +94,6 @@ class UdpSenderService : Service() {
         } catch (e: Exception) {
             e.printStackTrace()
         }
-
-        isRunning.set(true)
 
         // GPS 상태 모니터링 등록
         try {
@@ -126,11 +129,15 @@ class UdpSenderService : Service() {
         val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         targetIp = sharedPref.getString("TARGET_IP", "255.255.255.255") ?: "255.255.255.255"
 
-        startObservingEDC()
-        startSendingLoop()
-        startReceivingLoop()
-        startNdaListenLoop()
-        startNdaSendLoop()
+        // 핵심 수정: onStartCommand가 여러 번 호출되어도 루프/소켓은 딱 한 번만 시작.
+        // 이미 돌고 있으면(compareAndSet 실패) 아무것도 하지 않고 targetIp 갱신만 반영.
+        if (isRunning.compareAndSet(false, true)) {
+            startObservingEDC()
+            startSendingLoop()
+            startReceivingLoop()
+            startNdaListenLoop()
+            startNdaSendLoop()
+        }
 
         return START_STICKY
     }
@@ -166,14 +173,14 @@ class UdpSenderService : Service() {
                     val json = JSONObject()
                     json.put("carrotIndex", packetIndex++)
                     json.put("navitype", "tmap")
-                    
+
                     // 1. limitSpeed 처리
                     val limitSpeedStr = bundle.getString("limitSpeed", bundle.getInt("limitSpeed", 0).toString())
                     val currentLimitSpeed = limitSpeedStr.toIntOrNull() ?: 0
                     if (currentLimitSpeed >= 30) {
                         roadLimitSpeed = currentLimitSpeed
                     }
-                    
+
                     // 2. firstSDIInfo (GRT47과 동일하게 모든 key를 최상위로 복사)
                     val sdiObj = bundle.get("firstSDIInfo")
                     if (sdiObj != null) {
@@ -182,22 +189,22 @@ class UdpSenderService : Service() {
                     } else if (System.currentTimeMillis() - lastSdiUpdateTime > 2000) {
                         lastSdiJsonStr = null
                     }
-                    
+
                     if (lastSdiJsonStr != null) {
                         val sdiJson = JSONObject(lastSdiJsonStr)
-                        
+
                         val keys = sdiJson.keys()
                         while (keys.hasNext()) {
                             val k = keys.next()
                             json.put(k, sdiJson.get(k))
                         }
-                        
+
                         // Fallback logic for point camera (사용자 피드백 반영)
                         val sdiType = json.optInt("nSdiType", 0)
                         val sdiSpeedLimit = json.optInt("nSdiSpeedLimit", 0)
                         var sdiDist = json.optInt("nSdiDist", 0)
                         val bSdiBlockSection = json.optBoolean("bSdiBlockSection", false)
-                        
+
                         var nSdiBlockType = 0
                         if (bSdiBlockSection) {
                             nSdiBlockType = if (sdiType == 3) 3 else 2
@@ -216,24 +223,24 @@ class UdpSenderService : Service() {
                             }
                             json.put("roadcate", 8)
                         }
-                        
+
                         if (sdiSpeedLimit >= 30) {
                             roadLimitSpeed = sdiSpeedLimit
                         }
-                        
+
                         if (sdiType == 0 && sdiSpeedLimit > 0 && sdiDist > 0) {
                             json.put("nSdiType", 1) // 강제로 1로 세팅
                         }
                     }
-                    
+
                     // 1.5. Reflection을 통한 도로 기본 제한속도 추출 (TMAP 코어 엔진)
                     val realRoadLimit = getRoadLimitSpeedFromEngine()
                     if (realRoadLimit >= 30) {
                         roadLimitSpeed = realRoadLimit
                     }
-                    
+
                     json.put("nRoadLimitSpeed", roadLimitSpeed)
-                    
+
                     // 3. secondSDIInfo (GRT47과 동일하게 nSdiPlus... 접두어로 추가)
                     val sdiPlusObj = bundle.get("secondSDIInfo")
                     if (sdiPlusObj != null) {
@@ -242,14 +249,14 @@ class UdpSenderService : Service() {
                     } else if (System.currentTimeMillis() - lastSdiPlusUpdateTime > 2000) {
                         lastSdiPlusJsonStr = null
                     }
-                    
+
                     if (lastSdiPlusJsonStr != null) {
                         val plusJson = JSONObject(lastSdiPlusJsonStr)
-                        
+
                         val plusType = plusJson.optInt("nSdiType", 0)
                         var plusDist = plusJson.optInt("nSdiDist", 0)
                         if (plusType == 22 && plusDist <= 0) plusDist = 150
-                        
+
                         if (plusJson.has("nSdiType")) json.put("nSdiPlusType", plusJson.get("nSdiType"))
                         if (plusJson.has("nSdiSpeedLimit")) json.put("nSdiPlusSpeedLimit", plusJson.get("nSdiSpeedLimit"))
                         if (plusJson.has("nSdiDist") || plusDist > 0) json.put("nSdiPlusDist", plusDist)
@@ -257,7 +264,7 @@ class UdpSenderService : Service() {
                         if (plusJson.has("nSdiBlockSpeed")) json.put("nSdiPlusBlockSpeed", plusJson.get("nSdiBlockSpeed"))
                         if (plusJson.has("nSdiBlockDist")) json.put("nSdiPlusBlockDist", plusJson.get("nSdiBlockDist"))
                     }
-                    
+
                     // 목적지 남은 거리 및 소요 시간 처리 (안심주행 모드 대응을 위해 값이 없거나 0이면 더미 값 주입)
                     val nGoPosDist = bundle.getInt("nGoPosDist", bundle.getInt("remainDistanceToGoPositionInMeter", 0))
                     val nGoPosTime = bundle.getInt("nGoPosTime", bundle.getInt("remainTimeToGoPositionInSec", 0))
@@ -273,7 +280,7 @@ class UdpSenderService : Service() {
                     // 상시 안내 텍스트 표시를 위한 필수 TBT 더미 값 주입
                     var tbtDist = json.optInt("nSdiDist", 0)
                     var activeType = json.optInt("nSdiType", 0)
-                    
+
                     if (tbtDist <= 0) {
                         tbtDist = json.optInt("nSdiPlusDist", 0)
                         activeType = json.optInt("nSdiPlusType", 0)
@@ -329,10 +336,11 @@ class UdpSenderService : Service() {
     private fun startReceivingLoop() {
         serviceScope.launch(Dispatchers.IO) {
             try {
-                receiveSocket = DatagramSocket(null)
-                receiveSocket?.reuseAddress = true
-                receiveSocket?.bind(java.net.InetSocketAddress("0.0.0.0", 7705))
-                receiveSocket?.soTimeout = 5000
+                val socket = DatagramSocket(null)
+                socket.reuseAddress = true
+                socket.bind(java.net.InetSocketAddress("0.0.0.0", 7705))
+                socket.soTimeout = 5000
+                receiveSocket = socket
                 NavLogger.d(this@UdpSenderService, "openpilot UDP 수신 소켓 bind 성공: 0.0.0.0:7705")
 
                 val buffer = ByteArray(4096)
@@ -340,7 +348,7 @@ class UdpSenderService : Service() {
                 while (isActive && isRunning.get()) {
                     val packet = DatagramPacket(buffer, buffer.size)
                     try {
-                        receiveSocket?.receive(packet)
+                        socket.receive(packet)
                     } catch (e: java.net.SocketTimeoutException) {
                         NavLogger.e(this@UdpSenderService, "openpilot으로부터 5초간 UDP 수신 없음 (연결 끊김 또는 openpilot 미실행 가능성)")
                         if (lastActive != false) {
@@ -348,6 +356,14 @@ class UdpSenderService : Service() {
                             lastActive = false
                         }
                         continue
+                    } catch (e: java.io.IOException) {
+                        // 소켓이 외부(onDestroy 등)에서 close()된 경우 EBADF 등이 여기로 들어옴.
+                        // 더 이상 죽은 소켓을 붙잡고 반복하지 말고 조용히 루프 종료.
+                        if (!isActive || !isRunning.get()) {
+                            break
+                        }
+                        NavLogger.e(this@UdpSenderService, "openpilot UDP 수신 중 오류: ${e.message}")
+                        break
                     }
                     val data = String(packet.data, 0, packet.length, Charsets.UTF_8)
                     try {
@@ -378,11 +394,11 @@ class UdpSenderService : Service() {
         if (latestPayload == "{}") return
         try {
             val buffer = latestPayload.toByteArray(Charsets.UTF_8)
-            
+
             // GRT47의 UDP 전송 로직 유지 (127.0.0.1, 255.255.255.255 및 모든 인터페이스 브로드캐스트)
             val targetAddresses = mutableSetOf<InetAddress>()
             targetAddresses.add(InetAddress.getByName("127.0.0.1"))
-            
+
             if (targetIp == "255.255.255.255") {
                 targetAddresses.add(InetAddress.getByName("255.255.255.255"))
                 val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
@@ -417,23 +433,28 @@ class UdpSenderService : Service() {
     private fun startNdaListenLoop() {
         serviceScope.launch(Dispatchers.IO) {
             try {
-                ndaListenSocket = DatagramSocket(null).apply {
+                val socket = DatagramSocket(null).apply {
                     reuseAddress = true
                     bind(java.net.InetSocketAddress("0.0.0.0", NDA_LISTEN_PORT))
                     soTimeout = 8000
                 }
+                ndaListenSocket = socket
                 NavLogger.d(this@UdpSenderService, "[NDA] 비콘/GPS 수신 소켓 bind 성공: 0.0.0.0:$NDA_LISTEN_PORT")
 
                 val buffer = ByteArray(2048)
                 while (isActive && isRunning.get()) {
                     val packet = DatagramPacket(buffer, buffer.size)
                     try {
-                        ndaListenSocket?.receive(packet)
+                        socket.receive(packet)
                     } catch (e: java.net.SocketTimeoutException) {
                         continue
-                    } catch (e: Exception) {
+                    } catch (e: java.io.IOException) {
+                        // 외부에서 close()된 경우(EBADF 등) 죽은 소켓을 계속 붙잡지 말고 루프 종료
+                        if (!isActive || !isRunning.get()) {
+                            break
+                        }
                         NavLogger.e(this@UdpSenderService, "[NDA] 수신 오류: ${e.message}")
-                        continue
+                        break
                     }
 
                     val text = String(packet.data, 0, packet.length, Charsets.UTF_8)
@@ -558,16 +579,22 @@ class UdpSenderService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        // isRunning을 가장 먼저 false로 내려서, 각 수신 루프들이 while(isActive && isRunning.get())
+        // 조건에서 스스로 빠져나오도록 신호를 준 뒤 소켓을 닫는다.
+        // (신호 → 소켓 close 순서를 지키지 않으면, 루프가 아직 receive() 중인 소켓을
+        //  다른 스레드가 close()해서 EBADF가 발생할 수 있다.)
         isRunning.set(false)
+
         CoroutineScope(Dispatchers.Main).launch {
             TmapUISDK.observableEDCData.removeObserver(edcObserver)
         }
         serviceScope.cancel()
+
         udpSocket?.close()
         receiveSocket?.close()
         ndaListenSocket?.close()
         ndaSendSocket?.close()
-        
+
         try {
             if (wakeLock?.isHeld == true) {
                 wakeLock?.release()
@@ -609,7 +636,7 @@ class UdpSenderService : Service() {
                 sdkManagerCompanion = companionField.get(null)
                 getInstanceMethod = sdkManagerCompanion?.javaClass?.getMethod("getInstance")
             }
-            
+
             val sdkManager = getInstanceMethod?.invoke(sdkManagerCompanion)
             if (sdkManager != null) {
                 if (getRecentRGDataMethod == null) {
