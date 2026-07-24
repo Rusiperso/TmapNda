@@ -188,9 +188,6 @@ class MapActivity : AppCompatActivity() {
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
 
                     startSafeDriveMode()
                     startUdpSenderService()
