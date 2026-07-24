@@ -35,6 +35,11 @@ object NavLogger {
         }
     }
 
+    // Context를 직접 받을 수 없는 곳(예: 오디오 포커스 후킹 등)에서도 로그를 남길 수 있도록
+    // 앱 시작 시점에 한 번 세팅해두는 전역 컨텍스트
+    @Volatile
+    var appContext: Context? = null
+
     fun d(context: Context, message: String) {
         Log.d(TAG, message)
         appendToFile(context, "D", message)
@@ -43,6 +48,17 @@ object NavLogger {
     fun e(context: Context, message: String) {
         Log.e(TAG, message)
         appendToFile(context, "E", message)
+    }
+
+    /** Context 없이 호출하는 버전. appContext가 세팅 안 돼있으면 logcat에만 남고 파일에는 못 남음. */
+    fun d(message: String) {
+        Log.d(TAG, message)
+        appContext?.let { appendToFile(it, "D", message) }
+    }
+
+    fun e(message: String) {
+        Log.e(TAG, message)
+        appContext?.let { appendToFile(it, "E", message) }
     }
 
     /** 로그 파일을 이메일로 공유하는 Intent 생성 (jaeeok.cho@icloud.com 으로 수신자 프리필) */

@@ -28,6 +28,7 @@ class MapActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        NavLogger.appContext = applicationContext
         binding = ActivityMapBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -316,7 +317,7 @@ class MapActivity : AppCompatActivity() {
             // 프래그먼트가 완전히 뷰에 등록된 후 안전운행 모드를 시작하도록 약간의 딜레이를 줍니다.
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 frag.startSafeDrive()
-                Log.d("MapActivity", "startSafeDrive() called")
+                NavLogger.d(this@MapActivity, "startSafeDrive() called")
             }, 1000)
 
             /* 
@@ -325,14 +326,14 @@ class MapActivity : AppCompatActivity() {
 
             TmapUISDK.observableRouteData.observe(this@MapActivity, Observer { data ->
                 data?.let {
-                    Log.e("SdiDebug", "observableRouteData class: ${it.javaClass.name}")
-                    Log.e("SdiDebug", "observableRouteData: $it")
+                    NavLogger.e(this@MapActivity, "observableRouteData class: ${it.javaClass.name}")
+                    NavLogger.e(this@MapActivity, "observableRouteData: $it")
                 }
             })
             TmapUISDK.observableEDCData.observe(this@MapActivity, Observer { data ->
                 data?.let {
-                    Log.e("SdiDebug", "observableEDCData class: ${it.javaClass.name}")
-                    Log.e("SdiDebug", "observableEDCData: $it")
+                    NavLogger.e(this@MapActivity, "observableEDCData class: ${it.javaClass.name}")
+                    NavLogger.e(this@MapActivity, "observableEDCData: $it")
                     
                     TmapUISDK.setVolume(this@MapActivity, 0)
                     
@@ -432,6 +433,7 @@ class MapActivity : AppCompatActivity() {
                 }, android.os.Handler(android.os.Looper.getMainLooper()))
             } catch (e: SecurityException) {
                 Log.e("MapActivity", "GPS Permission Error")
+                NavLogger.e(this, "GPS Permission Error: ${e.message}")
             }
 
             // 앱 버전 표시 (tvAppVersion은 레이아웃에 있는 경우만)
@@ -532,6 +534,7 @@ class MapActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             Log.e("MapActivity", "Error extracting SDI Info: ${e.message}")
+            NavLogger.e(this, "Error extracting SDI Info: ${e.message}")
         }
     }
 
@@ -541,6 +544,7 @@ class MapActivity : AppCompatActivity() {
     private var getRecentRGDataMethod: java.lang.reflect.Method? = null
     private var nRoadLimitSpeedField: java.lang.reflect.Field? = null
     private var nTBTDistField: java.lang.reflect.Field? = null
+    private var lastRgDataDumpTime = 0L
 
     // 분기 오매칭 방지용 상태
     private var pendingRoadLimit = 0
@@ -565,6 +569,30 @@ class MapActivity : AppCompatActivity() {
                     getRecentRGDataMethod = sdkManager.javaClass.getMethod("getRecentRGData")
                 }
                 val rgData = getRecentRGDataMethod?.invoke(sdkManager)
+
+                // rgData 객체의 모든 필드를 10초 간격으로 통째로 로그에 남김
+                // (nTBTDist/nRoadLimitSpeed 외에 차선/신호등 관련 필드가 있는지 확인하기 위함)
+                if (rgData != null) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastRgDataDumpTime > 10000) {
+                        lastRgDataDumpTime = now
+                        try {
+                            NavLogger.e(this, "===== rgData(getRecentRGData) 전체 필드 덤프 =====")
+                            for (field in rgData.javaClass.fields) {
+                                try {
+                                    field.isAccessible = true
+                                    val value = field.get(rgData)
+                                    NavLogger.e(this, "rgData.${field.name} = $value (${field.type.simpleName})")
+                                } catch (fe: Exception) {
+                                    NavLogger.e(this, "rgData.${field.name} 읽기 실패: ${fe.message}")
+                                }
+                            }
+                        } catch (e: Exception) {
+                            NavLogger.e(this, "rgData 전체 덤프 실패: ${e.message}")
+                        }
+                    }
+                }
+
                 if (rgData != null) {
                     if (nTBTDistField == null) {
                         nTBTDistField = rgData.javaClass.getField("nTBTDist")
@@ -574,6 +602,7 @@ class MapActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             Log.e("MapActivity", "Reflection error (TBTDist): ${e.message}")
+            NavLogger.e(this, "Reflection error (TBTDist): ${e.message}")
         }
         return Int.MAX_VALUE
     }
@@ -605,6 +634,7 @@ class MapActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             Log.e("MapActivity", "Reflection error: ${e.message}")
+            NavLogger.e(this, "Reflection error (RoadLimitSpeed): ${e.message}")
         }
         return -1
     }

@@ -13,6 +13,7 @@ object AudioFocusHacker {
         durationHint: Int
     ): Int {
         Log.e("TmapVolume", "[AudioFocusHacker] requestAudioFocus(old) intercepted! NOP!")
+        NavLogger.e("[AudioFocusHacker] requestAudioFocus(old) intercepted! NOP!")
         return AudioManager.AUDIOFOCUS_REQUEST_GRANTED
     }
 
@@ -22,6 +23,7 @@ object AudioFocusHacker {
         request: AudioFocusRequest
     ): Int {
         Log.e("TmapVolume", "[AudioFocusHacker] requestAudioFocus(new) intercepted! NOP!")
+        NavLogger.e("[AudioFocusHacker] requestAudioFocus(new) intercepted! NOP!")
         return AudioManager.AUDIOFOCUS_REQUEST_GRANTED
     }
 
@@ -31,6 +33,7 @@ object AudioFocusHacker {
         l: AudioManager.OnAudioFocusChangeListener
     ): Int {
         Log.e("TmapVolume", "[AudioFocusHacker] abandonAudioFocus(old) intercepted! NOP!")
+        NavLogger.e("[AudioFocusHacker] abandonAudioFocus(old) intercepted! NOP!")
         return AudioManager.AUDIOFOCUS_REQUEST_GRANTED
     }
 
@@ -40,6 +43,7 @@ object AudioFocusHacker {
         request: AudioFocusRequest
     ): Int {
         Log.e("TmapVolume", "[AudioFocusHacker] abandonAudioFocusRequest(new) intercepted! NOP!")
+        NavLogger.e("[AudioFocusHacker] abandonAudioFocusRequest(new) intercepted! NOP!")
         return AudioManager.AUDIOFOCUS_REQUEST_GRANTED
     }
 }

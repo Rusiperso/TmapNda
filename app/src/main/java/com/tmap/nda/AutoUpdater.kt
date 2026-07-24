@@ -63,6 +63,7 @@ object AutoUpdater {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Update check failed", e)
+                NavLogger.e(context, "Update check failed: ${e.message}")
             }
         }
     }
@@ -156,6 +157,7 @@ object AutoUpdater {
                         Toast.makeText(context, "허용 후 다시 '업데이트 확인'을 눌러주세요.", Toast.LENGTH_LONG).show()
                     } catch (e: Exception) {
                         Log.e(TAG, "Settings intent failed", e)
+                        NavLogger.e(context, "Settings intent failed: ${e.message}")
                     }
                 }
                 .setNegativeButton("취소", null)
@@ -176,6 +178,7 @@ object AutoUpdater {
         } catch (e: Exception) {
             Toast.makeText(context, "업데이트 설치에 실패했습니다.", Toast.LENGTH_SHORT).show()
             Log.e(TAG, "Install Failed", e)
+            NavLogger.e(context, "Install Failed: ${e.message}")
         }
     }
 }
