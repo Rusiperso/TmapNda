@@ -1,53 +1,93 @@
-콤마를 이용한 가감속을 위한 TmapNda App으로 일종의 Bridge App 입니다.
+# TmapNda
 
-기본 안전운전 모드를 기반으로 Tmap에서 데이터를 받아 처리하는 방식입니다.
+콤마(openpilot)의 가감속 제어를 위한 **Bridge 앱**입니다.
+콤마 기본 안전운전 모드를 기반으로, Tmap에서 받아온 도로 정보(제한속도, 과속카메라, 곡선구간 등)를 콤마에 전달해 길 상황에 맞게 속도를 조절하도록 도와줍니다.
 
-테슬라나 현대 플레오스OS 처럼 왼쪽에 각종 정보 패널이 있고 그 패널을 통해 정보를 확인 할 수 있습니다.
+테슬라나 현대 플레오스(ccOS)처럼 화면 왼쪽에 정보 패널이 있고, 이 패널을 통해 주행 중 각종 정보를 확인할 수 있습니다.
 
-https://openapi.sk.com/ 이 주소에서 AppKey를 발급받아 TmapNda앱에 적용 시킨 후 실행하여야 합니다.
+---
 
-순정 티맵과 충돌은 이루어지지 않으며 위 앱으로 연결시 콤마에 각종 연결 표시 ( APN/NDA 등 ) 가 나오며 위 표시가 나와야 연결된 것입니다.
+## 시작하기 전에
 
-차량의 순정 네비와도 충돌하지 않습니다. 하여 어느 네비를 이용하던지 상관없이 단독으로 켜지는 TmapNda입니다.
+- TmapNda 실행에는 [openapi.sk.com](https://openapi.sk.com)에서 발급받은 **AppKey**가 필요합니다. 앱에 적용 후 실행해야 정상 동작합니다.
+- 순정 Tmap이나 차량 순정 내비게이션과 **충돌하지 않습니다.** 어떤 내비를 쓰든 TmapNda는 독립적으로 켜지고 동작합니다.
+- TmapNda는 콤마와 **같은 IP 대역(같은 핫스팟)** 에 있어야 합니다. 즉 TmapNda가 실행 중인 폰(또는 엔미러) → 핫스팟 → 콤마 순으로 연결되어야 합니다.
+- 정상 연결되면 콤마 화면에 `APN` / `NDA` 등 연결 표시가 나타납니다. 이 표시가 떠야 연결된 것입니다.
 
-잘 아시겠지만 당연히 TmapNda는 콤마와 같은 IP 환경이어야 합니다.
+---
 
-그리고 사용시 불편함 및 에러 같은 상황 발생시 오른쪽 상단 종이비행기 클릭 -> 이메일 선택 -> jae로 시작하는 이메일로 자동 주소 입력 되어 있으니 로그 파일만 메일 보내주시면 됩니다.
+## 1. Tmap AppKey 발급받기
 
-TmapNda가 실행중인 폰 및 엔미러에서 핫스팟 <====> 콤마 연결이 기본이 되어야 합니다.
+1. [openapi.sk.com](https://openapi.sk.com) 접속 (PC 권장)
+2. 우측 상단 **로그인** 클릭 → 보유한 **Tmap 계정**으로 로그인 (별도 회원가입 불필요)
+3. 로그인 후 **대시보드** 이동
+4. 좌측(또는 상단) 메뉴에서 **앱** 클릭
+5. **앱 만들기** 버튼 클릭
+6. 아래 항목 입력
+   | 항목 | 값 |
+   |---|---|
+   | 앱명 | 자유 입력 (예: 내차TmapNda) |
+   | 이용 API | `Tmap` 선택 |
+   | 사용요금제 | `무료` 선택 |
+   | 이용약관 | 필수 항목 전부 동의 |
+7. **신청하기** → **앱 신청** 클릭
+8. 앱 목록에서 방금 만든 앱 클릭 (Tmap 무료 API는 보통 즉시~몇 분 내 승인)
+9. 앱 상세 페이지에서 **APP Key** 옆 복사 아이콘으로 전체 복사
+10. TmapNda 앱 실행 → **설정** → 앱키 입력란에 붙여넣기 → 저장
+11. TmapNda 앱 완전 종료 후 재실행 → 콤마 화면에 `APN` / `NDA` 표시 확인
 
-카카오톡 오픈채팅을 시작해 보세요.
-링크를 선택하면 카카오톡이 실행됩니다.
+> 안 될 때 체크 순서: ① 앱키 복사 시 누락 글자 없는지 → ② 폰과 콤마가 같은 핫스팟인지 → ③ TmapNda 재실행했는지
 
-TmapNda
-https://open.kakao.com/o/gORB6tFi
+---
 
-해당 단톡방으로 입장하시면 되고 비번은 000192 입니다. 
+## 2. Kakao API 키 발급받기 (참고용)
 
+현재 TmapNda 실행에는 Tmap 앱키만 있으면 됩니다. 아래는 추후 지도·검색 관련 기능이 추가될 경우를 대비한 참고 가이드입니다.
 
+1. [developers.kakao.com](https://developers.kakao.com) 접속 (PC 권장)
+2. 우측 상단 **로그인** → 카카오 계정으로 로그인
+3. 상단 메뉴 **내 애플리케이션** 이동
+4. **애플리케이션 추가하기** 클릭
+5. 팝업에서 아래 항목 입력 후 **저장**
+   | 항목 | 값 |
+   |---|---|
+   | 앱 아이콘 | 선택 사항 (생략 가능) |
+   | 앱 이름 * | 자유 입력 (예: TmapNda) |
+   | 사업자명(회사명) * | 개인이면 이름 등 아무 문자열 |
+6. 생성된 앱 카드 클릭해서 상세 화면 진입 (별도 심사 없이 즉시 생성)
+7. 좌측 메뉴 **앱 → 앱 키**(또는 **플랫폼 키**) 클릭
+8. 필요한 키 복사
+   | 키 종류 | 용도 |
+   |---|---|
+   | REST API 키 | 검색·길찾기 등 API 호출 (기본으로 복사해두면 됨) |
+   | Native App Key | 안드로이드 SDK 지도 표시 |
+   | JavaScript 키 | 웹뷰 지도 사용 시에만 필요 (보통 불필요) |
+9. TmapNda 설정 화면의 키 입력란에 붙여넣기 → 저장
 
-발급 순서
+---
 
-1. Tmap 계정으로 로그인
-2. <img width="1273" height="1276" alt="제목 없음" src="https://github.com/user-attachments/assets/f7013ad8-7e0a-4fb2-99dd-5586ac10f381" />
-3. 대시보드 클릭
-4. <img width="1279" height="1206" alt="image" src="https://github.com/user-attachments/assets/9400b627-cc47-4475-baa3-23760f2198bb" />
-5. 앱 클릭
-6. <img width="1269" height="1208" alt="image" src="https://github.com/user-attachments/assets/adddddf6-0e43-4724-b70c-9fad3f597084" />
-7. 앱 만들기 클릭
-8. <img width="1274" height="1204" alt="image" src="https://github.com/user-attachments/assets/07367506-3ecb-408f-a4da-f9e35a4aa417" />
-9. 앱명 작성 ( 본인 하고 싶은 이름으로 )
-10. <img width="699" height="512" alt="image" src="https://github.com/user-attachments/assets/7206e8ab-3940-4d10-97eb-25de579d4b42" />
-11. Tmap 선택
-12. <img width="1269" height="613" alt="image" src="https://github.com/user-attachments/assets/73991755-04c3-4a81-8e2f-3bc47f2dfaba" />
-13. 사용요금 선택 ( 무료 )
-14. <img width="1274" height="1208" alt="image" src="https://github.com/user-attachments/assets/615c02c3-fabe-4104-8a76-0fc81a709a01" />
-15. 신청하기 선택
-16. <img width="1040" height="1109" alt="image" src="https://github.com/user-attachments/assets/e2011220-1698-4d01-bb35-a6bfcbd53e02" />
-17. 앱 신청 선택
-18. <img width="1034" height="783" alt="image" src="https://github.com/user-attachments/assets/f9d94165-48bb-4d63-9b92-7c6efb142eae" />
-19. 앱 키 확인
-20. <img width="1276" height="1276" alt="제목 없음" src="https://github.com/user-attachments/assets/54058e02-e008-4f64-bd8d-2f694116f9d0" />
-21. 앱키 활성화 확인
-22. <img width="1272" height="438" alt="image" src="https://github.com/user-attachments/assets/c243adeb-084a-4ee4-b0eb-030ffb3c5798" />
-23. TmapNda 앱에 앱키 붙여넣기
+## 문제 발생 시 (에러/불편함 신고)
+
+1. TmapNda 앱 우측 상단 **종이비행기 아이콘** 클릭
+2. **이메일** 선택 → `jae`로 시작하는 주소가 자동 입력됨
+3. **로그 파일만 첨부**해서 전송
+
+---
+
+## 커뮤니티
+
+사용법 질문, 버그 공유, 업데이트 소식은 카카오톡 오픈채팅방에서 확인할 수 있습니다.
+
+- 오픈채팅: https://open.kakao.com/o/gORB6tFi
+- 입장 비밀번호: `000192`
+
+---
+
+## 연결 안 될 때 체크리스트
+
+| 확인 항목 | 방법 |
+|---|---|
+| Tmap 앱키 입력 여부 | TmapNda 설정 화면에서 키가 채워져 있는지 확인 |
+| 같은 네트워크 여부 | TmapNda 실행 폰의 핫스팟에 콤마가 와이파이로 붙어있는지 확인 |
+| 콤마 화면 표시 | `APN` / `NDA` 표시가 뜨는지 확인 |
+| 앱 재실행 | 키 입력 후 TmapNda를 껐다 다시 켰는지 확인 |
