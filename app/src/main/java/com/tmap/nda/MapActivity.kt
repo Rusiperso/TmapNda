@@ -3,8 +3,10 @@ package com.tmap.nda
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.speech.RecognizerIntent
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.tmap.nda.databinding.ActivityMapBinding
 
@@ -32,6 +34,52 @@ class MapActivity : AppCompatActivity() {
     private var navigationFragment: NavigationFragment? = null
     private var isEditMode = false
     private var lastValidRoadLimit = 0  // 3번: 도로 규정속도 깜빡임 방지 - 마지막 유효값 저장
+    private var isTmapMuted = true  // 티맵 안내음성 음소거 여부 (기본값: 기존 동작 유지 = 음소거)
+
+    // 음성 검색 결과 수신용 런처. 안드로이드 표준 음성인식 액티비티(RecognizerIntent)를 위임 호출하는 방식이라
+    // 별도의 RECORD_AUDIO 런타임 권한 요청 없이 동작함 (인식은 시스템 음성입력 앱이 수행).
+    private val voiceSearchLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val spokenText = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+                ?.trim()
+            if (!spokenText.isNullOrEmpty()) {
+                binding.etDestination?.setText(spokenText)
+                binding.etDestination?.setSelection(spokenText.length)
+                NavLogger.d(this, "음성검색 결과: $spokenText")
+                performDestinationSearch(spokenText)
+            } else {
+                Toast.makeText(this, "음성 인식 결과가 없습니다.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun startVoiceSearch() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR")
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "목적지를 말씀하세요")
+        }
+        try {
+            voiceSearchLauncher.launch(intent)
+        } catch (e: Exception) {
+            NavLogger.e(this, "음성인식 실행 실패: ${e.message}")
+            Toast.makeText(this, "이 기기에서 음성 인식을 사용할 수 없습니다.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun applyMuteState() {
+        binding.btnMuteToggle?.setBackgroundResource(
+            if (isTmapMuted) R.drawable.shape_circle_gray else R.drawable.shape_circle_green
+        )
+        if (!isTmapMuted) {
+            // 음소거 해제 시 실제 볼륨 적용. observableEDCData 콜백에서도 이 값을 참조해 매 갱신마다 재적용함.
+            TmapUISDK.setVolume(this, 100)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -81,6 +129,15 @@ class MapActivity : AppCompatActivity() {
             Toast.makeText(this, "App Key가 설정되지 않았습니다.", Toast.LENGTH_SHORT).show()
             finish()
             return
+        }
+
+        isTmapMuted = sharedPref.getBoolean("tmap_muted", true)
+        applyMuteState()
+        binding.btnMuteToggle?.setOnClickListener {
+            isTmapMuted = !isTmapMuted
+            sharedPref.edit().putBoolean("tmap_muted", isTmapMuted).apply()
+            applyMuteState()
+            Toast.makeText(this, if (isTmapMuted) "티맵 안내음성 음소거" else "티맵 안내음성 켜짐", Toast.LENGTH_SHORT).show()
         }
 
         binding.btnCheckUpdate.setOnClickListener {
@@ -252,6 +309,9 @@ class MapActivity : AppCompatActivity() {
         binding.btnSearchGo?.setOnLongClickListener {
             promptForKakaoKeyThenSearch("") // 빈 쿼리로 열면 저장만 하고 검색은 안 함(취소 눌러도 됨)
             true
+        }
+        binding.btnVoiceSearch?.setOnClickListener {
+            startVoiceSearch()
         }
         binding.btnStopGuidance?.setOnClickListener {
             stopGuidance()
@@ -575,7 +635,10 @@ class MapActivity : AppCompatActivity() {
                     NavLogger.e(this@MapActivity, "observableEDCData class: ${it.javaClass.name}")
                     NavLogger.e(this@MapActivity, "observableEDCData: $it")
                     
-                    TmapUISDK.setVolume(this@MapActivity, 0)
+                    // 음소거 옵션 켜져 있을 때만 강제 0. 꺼져 있으면 매 갱신마다 볼륨을 되돌리지 않도록 스킵.
+                    if (isTmapMuted) {
+                        TmapUISDK.setVolume(this@MapActivity, 0)
+                    }
                     
                     // 도로 기본 제한속도 추출 및 UI 업데이트
                     // realRoadLimit이 -1이나 0이면 GPS/엔진 일시 소실 → 이전 유효값 유지 (깜빡임 방지)
