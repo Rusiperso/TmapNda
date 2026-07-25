@@ -337,31 +337,31 @@
         <Button
             android:id="@+id/btnCheckUpdate"
             android:layout_width="match_parent"
-            android:layout_height="30dp"
+            android:layout_height="44dp"
             android:text="업데이트 확인"
-            android:textSize="10sp"
+            android:textSize="13sp"
             android:padding="0dp"
             android:backgroundTint="#111111"
             android:textColor="#888888"
-            android:layout_marginBottom="4dp"/>
+            android:layout_marginBottom="6dp"/>
 
         <Button
             android:id="@+id/btnEditKey"
             android:layout_width="match_parent"
-            android:layout_height="30dp"
+            android:layout_height="44dp"
             android:text="설정"
-            android:textSize="10sp"
+            android:textSize="13sp"
             android:padding="0dp"
             android:backgroundTint="#111111"
             android:textColor="#888888"
-            android:layout_marginBottom="4dp"/>
+            android:layout_marginBottom="6dp"/>
 
         <Button
             android:id="@+id/btnExitApp"
             android:layout_width="match_parent"
-            android:layout_height="30dp"
+            android:layout_height="44dp"
             android:text="앱 종료"
-            android:textSize="10sp"
+            android:textSize="13sp"
             android:padding="0dp"
             android:backgroundTint="#1A0000"
             android:textColor="#EF5350"/>
@@ -413,10 +413,10 @@
         <!-- 로그 메일 전송 버튼 -->
         <ImageButton
             android:id="@+id/btnShareLog"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:layout_gravity="bottom|end"
-            android:layout_marginEnd="60dp"
+            android:layout_marginEnd="64dp"
             android:layout_marginBottom="12dp"
             android:src="@android:drawable/ic_menu_send"
             android:background="@drawable/shape_circle_gray"
@@ -426,8 +426,8 @@
         <!-- 음소거 토글 버튼: 티맵 안내 음성 음소거/소리 전환 -->
         <ImageButton
             android:id="@+id/btnMuteToggle"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:layout_gravity="top|end"
             android:layout_margin="12dp"
             android:src="@android:drawable/ic_lock_silent_mode"
@@ -435,13 +435,15 @@
             android:scaleType="center"
             android:elevation="6dp"/>
 
-        <!-- 목적지 검색 열기 버튼 -->
+        <!-- 목적지 검색 열기 버튼: Tmap 자체 좌하단 검색/주행종료 아이콘과 겹치지 않도록
+             portrait와 동일하게 좌측 중간으로 이동 (기존엔 bottom|start라 Tmap 네이티브
+             돋보기 아이콘과 같은 자리에 겹쳐 그려지던 문제) -->
         <ImageButton
             android:id="@+id/btnOpenSearch"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:layout_gravity="bottom|start"
-            android:layout_margin="12dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_gravity="center_vertical|start"
+            android:layout_marginStart="12dp"
             android:src="@android:drawable/ic_menu_search"
             android:background="@drawable/shape_circle_gray"
             android:scaleType="center"

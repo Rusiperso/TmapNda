@@ -228,27 +228,27 @@
         <Button
             android:id="@+id/btnCheckUpdate"
             android:layout_width="wrap_content"
-            android:layout_height="28dp"
+            android:layout_height="40dp"
             android:minWidth="0dp"
             android:text="업데이트"
-            android:textSize="9sp"
-            android:paddingHorizontal="8dp"
+            android:textSize="12sp"
+            android:paddingHorizontal="10dp"
             android:backgroundTint="#333333"
-            android:layout_marginEnd="6dp"/>
+            android:layout_marginEnd="8dp"/>
 
         <ImageButton
             android:id="@+id/btnEditKey"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:src="@android:drawable/ic_menu_manage"
             android:background="@drawable/shape_circle_gray"
             android:scaleType="center"
-            android:layout_marginEnd="6dp"/>
+            android:layout_marginEnd="8dp"/>
 
         <ImageButton
             android:id="@+id/btnExitApp"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:src="@android:drawable/ic_menu_close_clear_cancel"
             android:background="@drawable/shape_circle_gray"
             android:backgroundTint="#F44336"
