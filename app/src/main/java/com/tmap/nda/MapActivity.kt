@@ -236,6 +236,10 @@ class MapActivity : AppCompatActivity() {
                 performDestinationSearch(query)
             }
         }
+        binding.btnSearchGo?.setOnLongClickListener {
+            promptForKakaoKeyThenSearch("") // 빈 쿼리로 열면 저장만 하고 검색은 안 함(취소 눌러도 됨)
+            true
+        }
         binding.btnStopGuidance?.setOnClickListener {
             stopGuidance()
         }
@@ -291,6 +295,40 @@ class MapActivity : AppCompatActivity() {
 
     private val httpClient by lazy { OkHttpClient() }
 
+    // 옵션 A: 카카오 REST API 키를 사용자별로 입력받아 SharedPreferences에 저장.
+    // (앱에 고정 키를 박아넣으면 모든 설치자가 같은 키/같은 할당량을 공유하게 되는 문제 방지)
+    private fun getUserKakaoKey(): String {
+        return getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .getString("kakao_rest_api_key", "") ?: ""
+    }
+
+    private fun saveUserKakaoKey(key: String) {
+        getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .edit().putString("kakao_rest_api_key", key).apply()
+    }
+
+    private fun promptForKakaoKeyThenSearch(query: String) {
+        val input = android.widget.EditText(this)
+        input.hint = "카카오 REST API 키 (카카오 디벨로퍼스 > 내 앱 > REST API 키)"
+        android.app.AlertDialog.Builder(this)
+            .setTitle("카카오 로컬 검색 API 키 입력")
+            .setMessage("목적지 검색을 쓰려면 본인의 카카오 REST API 키가 필요해.\n각자 본인 키를 써야 검색 할당량을 나눠 쓰지 않아.\n(https://developers.kakao.com 에서 무료 발급)")
+            .setView(input)
+            .setPositiveButton("저장하고 검색") { _, _ ->
+                val key = input.text.toString().trim()
+                if (key.isNotBlank()) {
+                    saveUserKakaoKey(key)
+                    if (query.isNotBlank()) {
+                        performDestinationSearch(query)
+                    } else {
+                        Toast.makeText(this, "카카오 키 저장됨", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("취소", null)
+            .show()
+    }
+
     // 검색 실행: 카카오 로컬 API로 텍스트→좌표 변환 후 Tmap SDK로 경로요청/주행시작.
     // WayPoint 생성자/필드명이 SDK 문서 없이 리플렉션으로 확인된 게 아니라서,
     // 첫 실행 시 로그(NavLogger)에 시도한 생성자/실패 사유가 다 남게 해뒀음.
@@ -299,10 +337,10 @@ class MapActivity : AppCompatActivity() {
         binding.tvSearchStatus?.text = "검색 중: $query"
         NavLogger.d(this, "performDestinationSearch query=$query")
 
-        val restKey = BuildConfig.KAKAO_REST_API_KEY
+        val restKey = getUserKakaoKey()
         if (restKey.isBlank()) {
-            binding.tvSearchStatus?.text = "카카오 API 키 미설정"
-            NavLogger.e(this, "KAKAO_REST_API_KEY 비어있음 - local.properties 또는 CI Secret 확인 필요")
+            NavLogger.d(this, "사용자 카카오 키 없음 - 입력 다이얼로그 표시")
+            promptForKakaoKeyThenSearch(query)
             return
         }
 
@@ -355,14 +393,7 @@ class MapActivity : AppCompatActivity() {
     // 파라미터 타입(WayPoint)을 가져와 리플렉션으로 생성자를 순회 탐색함.
     private fun requestRouteAndStartDriving(name: String, lat: Double, lon: Double) {
         try {
-            val fragment = navigationFragment
-            if (fragment == null) {
-                NavLogger.e(this, "requestRouteAndStartDriving: navigationFragment == null")
-                binding.tvSearchStatus?.text = "경로요청 실패: navigationFragment 없음"
-                return
-            }
-
-            val requestRouteMethod = fragment.javaClass.methods.firstOrNull {
+            val requestRouteMethod = navigationFragment?.javaClass?.methods?.firstOrNull {
                 it.name == "requestRoute" && it.parameterTypes.size == 8
             }
             if (requestRouteMethod == null) {
@@ -416,7 +447,7 @@ class MapActivity : AppCompatActivity() {
             args[7] = false
 
             NavLogger.d(this, "requestRoute 호출 시도: dest=$name")
-            requestRouteMethod.invoke(fragment, *args)
+            requestRouteMethod.invoke(navigationFragment, *args)
         } catch (e: Exception) {
             NavLogger.e(this, "requestRouteAndStartDriving 예외: ${e.message}")
             binding.tvSearchStatus?.text = "경로요청 예외: ${e.message}"
@@ -455,8 +486,7 @@ class MapActivity : AppCompatActivity() {
 
     private fun startDrivingWithRouteResult(routeResult: Any) {
         try {
-            val fragment = navigationFragment ?: return
-            val method = fragment.javaClass.methods.firstOrNull {
+            val method = navigationFragment?.javaClass?.methods?.firstOrNull {
                 it.name == "startDrivingForJava"
             }
             if (method == null) {
@@ -474,7 +504,7 @@ class MapActivity : AppCompatActivity() {
                 null
             }
             NavLogger.d(this, "startDrivingForJava 호출 시도")
-            method.invoke(fragment, 0, routeResult, false, callbackProxy)
+            method.invoke(navigationFragment, 0, routeResult, false, callbackProxy)
             binding.tvSearchStatus?.text = "길안내 시작 시도됨"
             binding.llSearchPanel?.visibility = View.GONE
             binding.llGuidanceBar?.visibility = View.VISIBLE
