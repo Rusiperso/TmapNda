@@ -334,14 +334,6 @@
             android:elevation="8dp"
             android:layout_marginBottom="10dp"/>
 
-        <ImageButton
-            android:id="@+id/btnEditMode"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@android:drawable/ic_menu_edit"
-            android:background="@drawable/shape_circle_gray"
-            android:scaleType="center"
-            android:elevation="8dp"/>
     </LinearLayout>
 
     <!-- 목적지 검색 열기 버튼: Tmap 자체 좌하단 검색 아이콘과 겹치지 않도록 좌측 중간으로 이동 -->
