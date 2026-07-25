@@ -106,17 +106,6 @@ class MapActivity : AppCompatActivity() {
             makeDraggable(it, "llOffset", isLandscape, emptyList())
         }
 
-        binding.btnEditMode?.setOnClickListener {
-            isEditMode = !isEditMode
-            if (isEditMode) {
-                binding.btnEditMode?.setBackgroundResource(R.drawable.shape_circle_green)
-                Toast.makeText(this, "오버레이 편집 모드 켜짐", Toast.LENGTH_SHORT).show()
-            } else {
-                binding.btnEditMode?.setBackgroundResource(R.drawable.shape_circle_gray)
-                Toast.makeText(this, "오버레이 편집 모드 꺼짐", Toast.LENGTH_SHORT).show()
-            }
-        }
-
         // Tmap 지도 터치 무력화: 화면/정보 표시는 그대로, 지도(NavigationFragment)로 가는
         // 터치 입력만 항상 차단. 해제 수단 없음(의도적).
         binding.vTouchLockOverlay?.setOnTouchListener { _, _ -> true }
