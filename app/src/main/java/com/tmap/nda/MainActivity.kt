@@ -58,15 +58,15 @@ class MainActivity : AppCompatActivity() {
 
         val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         val savedAppKey = sharedPref.getString("APP_KEY", "")
+        val savedKakaoKey = sharedPref.getString("kakao_rest_api_key", "")
         val savedTargetIp = sharedPref.getString("TARGET_IP", "255.255.255.255")
         val savedReqBackground = sharedPref.getBoolean("REQ_BACKGROUND", false)
-        val savedBlockSpeedOffset = sharedPref.getInt("BLOCK_SPEED_OFFSET", 0)
         val savedDistanceFormatKm = sharedPref.getBoolean("USE_KM_DISTANCE_FORMAT", true)
         
         binding.etAppKey.setText(savedAppKey)
+        binding.etKakaoAppKey.setText(savedKakaoKey)
         binding.etTargetIp.setText(savedTargetIp)
         binding.cbBackgroundLocation.isChecked = savedReqBackground
-        binding.etBlockSpeedOffset.setText(savedBlockSpeedOffset.toString())
         binding.cbDistanceFormatKm.isChecked = savedDistanceFormatKm
 
         try {
@@ -84,10 +84,10 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnStartNavi.setOnClickListener {
             val appKey = binding.etAppKey.text.toString().trim()
+            val kakaoKey = binding.etKakaoAppKey.text.toString().trim()
             val targetIp = binding.etTargetIp.text.toString().trim()
             val reqBackground = binding.cbBackgroundLocation.isChecked
             val distanceFormatKm = binding.cbDistanceFormatKm.isChecked
-            val blockSpeedOffset = binding.etBlockSpeedOffset.text.toString().toIntOrNull() ?: 0
 
             if (appKey.isEmpty()) {
                 Toast.makeText(this, "App Key를 입력하세요.", Toast.LENGTH_SHORT).show()
@@ -97,9 +97,9 @@ class MainActivity : AppCompatActivity() {
             // Save to SharedPreferences
             sharedPref.edit().apply {
                 putString("APP_KEY", appKey)
+                putString("kakao_rest_api_key", kakaoKey)
                 putString("TARGET_IP", targetIp)
                 putBoolean("REQ_BACKGROUND", reqBackground)
-                putInt("BLOCK_SPEED_OFFSET", blockSpeedOffset)
                 putBoolean("USE_KM_DISTANCE_FORMAT", distanceFormatKm)
                 apply()
             }

@@ -47,7 +47,7 @@ class MapActivity : AppCompatActivity() {
         // 자동 업데이트 체크
         AutoUpdater.checkForUpdates(this)
 
-        val minBottomSafeAreaPx = (24 * resources.displayMetrics.density).toInt()
+        val minBottomSafeAreaPx = (36 * resources.displayMetrics.density).toInt()
 
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())

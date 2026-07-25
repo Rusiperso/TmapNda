@@ -33,6 +33,20 @@
     <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:hint="카카오 REST API 키 (목적지 검색용, 선택)"
+        android:layout_marginBottom="16dp">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etKakaoAppKey"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"/>
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
         android:hint="UDP Target IP (기본: 255.255.255.255)"
         android:layout_marginBottom="16dp">
 
@@ -42,21 +56,6 @@
             android:layout_height="wrap_content"
             android:inputType="textUri"
             android:text="255.255.255.255"/>
-
-    </com.google.android.material.textfield.TextInputLayout>
-
-    <com.google.android.material.textfield.TextInputLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="구간단속 여유 가속 (km/h, 기본: 0)"
-        android:layout_marginBottom="32dp">
-
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/etBlockSpeedOffset"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="numberSigned"
-            android:text="0"/>
 
     </com.google.android.material.textfield.TextInputLayout>
 
