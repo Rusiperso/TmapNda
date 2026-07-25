@@ -9,6 +9,7 @@
 
     <!-- ===== 좌측 HUD 패널 ===== -->
     <LinearLayout
+        android:id="@+id/llLeftHudPanel"
         android:layout_width="220dp"
         android:layout_height="match_parent"
         android:orientation="vertical"

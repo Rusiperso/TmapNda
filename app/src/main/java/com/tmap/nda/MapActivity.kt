@@ -17,6 +17,7 @@ import android.content.res.Configuration
 import android.view.MotionEvent
 import android.view.View
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import okhttp3.Call
 import okhttp3.Callback
@@ -35,15 +36,38 @@ class MapActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         NavLogger.appContext = applicationContext
+        // 시스템 내비게이션 바(제스처/버튼) 뒤까지 그려지는 edge-to-edge를 명시적으로 켜야
+        // 아래 인셋 리스너가 실제 하단 바 높이를 받아온다. (기존엔 미설정이라 하단 UI가
+        // 기기에 따라 시스템 바에 가려지는 문제 발생)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
         binding = ActivityMapBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
         // 자동 업데이트 체크
         AutoUpdater.checkForUpdates(this)
 
+        val minBottomSafeAreaPx = (24 * resources.displayMetrics.density).toInt()
+
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+            // 지도(root)는 좌/상/우만 인셋 적용, 하단은 지도가 풀스크린으로 남도록 0 유지
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, 0)
+
+            // 세로모드 하단 상태바: 실제 시스템 바 높이와 최소 안전 여백 중 큰 값을 패딩으로 적용
+            val detailPanel = v.findViewById<View>(R.id.llDetailPanel)
+            detailPanel?.setPadding(
+                detailPanel.paddingLeft, detailPanel.paddingTop, detailPanel.paddingRight,
+                maxOf(systemBars.bottom, minBottomSafeAreaPx)
+            )
+
+            // 가로모드 좌측 HUD 패널(하단 버튼들이 여기 있음): 동일하게 하단 안전 여백 확보
+            val leftHudPanel = v.findViewById<View>(R.id.llLeftHudPanel)
+            leftHudPanel?.setPadding(
+                leftHudPanel.paddingLeft, leftHudPanel.paddingTop, leftHudPanel.paddingRight,
+                maxOf(systemBars.bottom, minBottomSafeAreaPx)
+            )
+
             insets
         }
 
