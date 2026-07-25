@@ -540,6 +540,29 @@ class MapActivity : AppCompatActivity() {
                     // (double lat, double lon)
                     types.size == 2 && types[0] == Double::class.javaPrimitiveType && types[1] == Double::class.javaPrimitiveType ->
                         ctor.newInstance(lat, lon)
+                    // (String name, MapPoint point)
+                    types.size == 2 && types[0] == String::class.java && types[1] != String::class.java -> {
+                        val mapPoint = buildMapPointViaReflection(types[1], lat, lon)
+                        if (mapPoint != null) ctor.newInstance(name, mapPoint) else null
+                    }
+                    // (String name, MapPoint point, String extra, byte flag)
+                    types.size == 4 && types[0] == String::class.java && types[1] != String::class.java &&
+                        types[2] == String::class.java && types[3] == Byte::class.javaPrimitiveType -> {
+                        val mapPoint = buildMapPointViaReflection(types[1], lat, lon)
+                        if (mapPoint != null) ctor.newInstance(name, mapPoint, name, 0.toByte()) else null
+                    }
+                    // (String name, String address, MapPoint point)
+                    types.size == 3 && types[0] == String::class.java && types[1] == String::class.java && types[2] != String::class.java -> {
+                        val mapPoint = buildMapPointViaReflection(types[2], lat, lon)
+                        if (mapPoint != null) ctor.newInstance(name, name, mapPoint) else null
+                    }
+                    // (String name, String address, MapPoint point, MapPoint navPoint)
+                    types.size == 4 && types[0] == String::class.java && types[1] == String::class.java &&
+                        types[2] != String::class.java && types[3] != String::class.java -> {
+                        val mapPoint = buildMapPointViaReflection(types[2], lat, lon)
+                        val navPoint = buildMapPointViaReflection(types[3], lat, lon)
+                        if (mapPoint != null && navPoint != null) ctor.newInstance(name, name, mapPoint, navPoint) else null
+                    }
                     else -> null
                 }
                 if (instance != null) {
@@ -553,6 +576,32 @@ class MapActivity : AppCompatActivity() {
         // 매칭되는 생성자가 없으면 전체 생성자 목록을 로그로 남겨서 다음에 정확히 매핑 가능하게 함.
         for (ctor in wayPointClass.declaredConstructors) {
             NavLogger.d(this, "WayPoint 생성자 후보: ${ctor}")
+        }
+        return null
+    }
+
+    // WayPoint 생성자에 필요한 MapPoint(위경도 좌표 객체)를 리플렉션으로 생성.
+    // Tmap SDK 좌표계 기준 보통 (lat, lon) 순서지만, 실패하면 (lon, lat) 순서도 시도.
+    private fun buildMapPointViaReflection(mapPointClass: Class<*>, lat: Double, lon: Double): Any? {
+        for (ctor in mapPointClass.declaredConstructors) {
+            val types = ctor.parameterTypes
+            if (types.size == 2 && types[0] == Double::class.javaPrimitiveType && types[1] == Double::class.javaPrimitiveType) {
+                ctor.isAccessible = true
+                try {
+                    return ctor.newInstance(lat, lon)
+                } catch (e: Exception) {
+                    NavLogger.d(this, "MapPoint(lat,lon) 생성 실패 - ${e.message}")
+                }
+                try {
+                    return ctor.newInstance(lon, lat)
+                } catch (e: Exception) {
+                    NavLogger.d(this, "MapPoint(lon,lat) 생성 실패 - ${e.message}")
+                }
+            }
+        }
+        NavLogger.e(this, "MapPoint 생성 실패 (${mapPointClass.name}) - (double,double) 생성자 없음")
+        for (ctor in mapPointClass.declaredConstructors) {
+            NavLogger.d(this, "MapPoint 생성자 후보: ${ctor}")
         }
         return null
     }
