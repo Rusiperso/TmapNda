@@ -417,6 +417,18 @@
             android:scaleType="center"
             android:elevation="6dp"/>
 
+        <!-- 음소거 토글 버튼: 티맵 안내 음성 음소거/소리 전환 -->
+        <ImageButton
+            android:id="@+id/btnMuteToggle"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_gravity="top|end"
+            android:layout_margin="12dp"
+            android:src="@android:drawable/ic_lock_silent_mode"
+            android:background="@drawable/shape_circle_gray"
+            android:scaleType="center"
+            android:elevation="6dp"/>
+
         <!-- 목적지 검색 열기 버튼 -->
         <ImageButton
             android:id="@+id/btnOpenSearch"
@@ -460,6 +472,15 @@
                     android:singleLine="true"
                     android:imeOptions="actionSearch"
                     android:inputType="text" />
+
+                <ImageButton
+                    android:id="@+id/btnVoiceSearch"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:layout_marginStart="6dp"
+                    android:src="@android:drawable/ic_btn_speak_now"
+                    android:background="@drawable/shape_circle_gray"
+                    android:scaleType="center" />
 
                 <Button
                     android:id="@+id/btnSearchGo"

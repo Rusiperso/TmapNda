@@ -334,6 +334,16 @@
             android:elevation="8dp"
             android:layout_marginBottom="10dp"/>
 
+        <!-- 음소거 토글 버튼: 티맵 안내 음성 음소거/소리 전환 -->
+        <ImageButton
+            android:id="@+id/btnMuteToggle"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@android:drawable/ic_lock_silent_mode"
+            android:background="@drawable/shape_circle_gray"
+            android:scaleType="center"
+            android:elevation="8dp"/>
+
     </LinearLayout>
 
     <!-- 목적지 검색 열기 버튼: Tmap 자체 좌하단 검색 아이콘과 겹치지 않도록 좌측 중간으로 이동 -->
@@ -379,6 +389,15 @@
                 android:singleLine="true"
                 android:imeOptions="actionSearch"
                 android:inputType="text" />
+
+            <ImageButton
+                android:id="@+id/btnVoiceSearch"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:src="@android:drawable/ic_btn_speak_now"
+                android:background="@drawable/shape_circle_gray"
+                android:scaleType="center" />
 
             <Button
                 android:id="@+id/btnSearchGo"
