@@ -207,6 +207,9 @@ class MapActivity : AppCompatActivity() {
         })
     }
 
+    private var lastSearchClickAt = 0L
+    private val SEARCH_CLICK_DEBOUNCE_MS = 800L
+
     // ===== 길안내(목적지 검색) UI =====
     private fun setupDestinationSearchUi() {
         binding.btnOpenSearch?.setOnClickListener {
@@ -217,6 +220,11 @@ class MapActivity : AppCompatActivity() {
             binding.llSearchPanel?.visibility = View.GONE
         }
         binding.btnSearchGo?.setOnClickListener {
+            val now = System.currentTimeMillis()
+            if (now - lastSearchClickAt < SEARCH_CLICK_DEBOUNCE_MS) {
+                return@setOnClickListener // 연타 방지 (로그에서 같은 쿼리 수십회 중복 호출되던 문제)
+            }
+            lastSearchClickAt = now
             val query = binding.etDestination?.text?.toString()?.trim().orEmpty()
             if (query.isNotEmpty()) {
                 performDestinationSearch(query)

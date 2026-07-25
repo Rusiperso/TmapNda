@@ -352,8 +352,9 @@ class UdpSenderService : Service() {
                     try {
                         socket.receive(packet)
                     } catch (e: java.net.SocketTimeoutException) {
-                        NavLogger.e(this@UdpSenderService, "openpilot으로부터 5초간 UDP 수신 없음 (연결 끊김 또는 openpilot 미실행 가능성)")
+                        // 상태가 바뀔 때만 로그 (매 5초 반복 스팸 방지). 계속 끊긴 상태면 조용히 재시도만.
                         if (lastActive != false) {
+                            NavLogger.e(this@UdpSenderService, "openpilot으로부터 5초간 UDP 수신 없음 (연결 끊김 또는 openpilot 미실행 가능성)")
                             OpenpilotStateRepository.updateState("-", "-", 0, 0, false)
                             lastActive = false
                         }
