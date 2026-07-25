@@ -12,8 +12,20 @@ android {
         applicationId = "com.tmap.nda"
         minSdk = 24
         targetSdk = 36
-        versionCode = 32
-        versionName = "1.0.32"
+        versionCode = 33
+        versionName = "1.0.33"
+
+        // 카카오 로컬 API REST 키. 로컬 개발: local.properties의 KAKAO_REST_API_KEY=...
+        // CI(GitHub Actions): KAKAO_REST_API_KEY 환경변수(Secrets)에서 읽음. 절대 소스에 하드코딩 금지.
+        val localProps = java.util.Properties()
+        val localPropsFile = rootProject.file("local.properties")
+        if (localPropsFile.exists()) {
+            localProps.load(localPropsFile.inputStream())
+        }
+        val kakaoKey = localProps.getProperty("KAKAO_REST_API_KEY")
+            ?: System.getenv("KAKAO_REST_API_KEY")
+            ?: ""
+        buildConfigField("String", "KAKAO_REST_API_KEY", "\"$kakaoKey\"")
     }
 
     signingConfigs {

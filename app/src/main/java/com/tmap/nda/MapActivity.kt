@@ -18,6 +18,12 @@ import android.view.MotionEvent
 import android.view.View
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
+import java.io.IOException
 
 class MapActivity : AppCompatActivity() {
 
@@ -283,29 +289,199 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    // 검색 실행. 지금은 후보 API 확인용 스텁 — dumpNavigationApiCandidates() 로그 확인 후
-    // 실제 메서드 이름으로 채워넣어야 함.
+    private val httpClient by lazy { OkHttpClient() }
+
+    // 검색 실행: 카카오 로컬 API로 텍스트→좌표 변환 후 Tmap SDK로 경로요청/주행시작.
+    // WayPoint 생성자/필드명이 SDK 문서 없이 리플렉션으로 확인된 게 아니라서,
+    // 첫 실행 시 로그(NavLogger)에 시도한 생성자/실패 사유가 다 남게 해뒀음.
+    // 실패하면 로그 캡처해서 다시 보내주면 정확한 시그니처로 고칠 수 있음.
     private fun performDestinationSearch(query: String) {
         binding.tvSearchStatus?.text = "검색 중: $query"
         NavLogger.d(this, "performDestinationSearch query=$query")
 
-        // TODO: 실제 SDK 검색 API로 교체.
-        // 후보 예시(확인 전이라 실제 존재 여부/시그니처 불확실):
-        //   navigationFragment?.search(query, listener)
-        //   TmapUISDK.searchPOI(this, query, callback)
-        // dumpNavigationApiCandidates() 로그에서 정확한 이름 확인 후 아래를 채워넣기.
-        try {
-            val candidate = navigationFragment?.javaClass?.methods
-                ?.firstOrNull { it.name.lowercase().contains("search") && it.parameterTypes.size >= 1 }
-            if (candidate != null) {
-                NavLogger.d(this, "search 후보 메서드 발견: ${candidate.name} params=${candidate.parameterTypes.joinToString()}")
-                binding.tvSearchStatus?.text = "후보 메서드 발견(로그 확인): ${candidate.name}"
-            } else {
-                binding.tvSearchStatus?.text = "검색 API 미확인 - logcat TmapNav 태그 확인 필요"
+        val restKey = BuildConfig.KAKAO_REST_API_KEY
+        if (restKey.isBlank()) {
+            binding.tvSearchStatus?.text = "카카오 API 키 미설정"
+            NavLogger.e(this, "KAKAO_REST_API_KEY 비어있음 - local.properties 또는 CI Secret 확인 필요")
+            return
+        }
+
+        val url = "https://dapi.kakao.com/v2/local/search/keyword.json?query=" +
+            java.net.URLEncoder.encode(query, "UTF-8")
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", "KakaoAK $restKey")
+            .build()
+
+        httpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                NavLogger.e(this@MapActivity, "카카오 검색 요청 실패: ${e.message}")
+                runOnUiThread { binding.tvSearchStatus?.text = "검색 실패(네트워크): ${e.message}" }
             }
+
+            override fun onResponse(call: Call, response: okhttp3.Response) {
+                response.use {
+                    if (!it.isSuccessful) {
+                        val body = it.body?.string()
+                        // 401/403이면 키 종류/헤더 형식 문제일 확률이 매우 높음.
+                        NavLogger.e(this@MapActivity, "카카오 검색 실패 code=${it.code} body=$body")
+                        runOnUiThread { binding.tvSearchStatus?.text = "검색 실패(${it.code}) - REST 키/헤더 확인" }
+                        return
+                    }
+                    val json = JSONObject(it.body?.string() ?: "{}")
+                    val documents = json.optJSONArray("documents")
+                    if (documents == null || documents.length() == 0) {
+                        NavLogger.d(this@MapActivity, "카카오 검색 결과 없음: query=$query")
+                        runOnUiThread { binding.tvSearchStatus?.text = "검색 결과 없음: $query" }
+                        return
+                    }
+                    val first = documents.getJSONObject(0)
+                    val placeName = first.optString("place_name", query)
+                    // 카카오 로컬 API 기본 좌표계는 WGS84 (x=경도, y=위도)
+                    val lon = first.optDouble("x")
+                    val lat = first.optDouble("y")
+                    NavLogger.d(this@MapActivity, "카카오 검색 결과: $placeName lat=$lat lon=$lon")
+
+                    runOnUiThread {
+                        binding.tvSearchStatus?.text = "찾음: $placeName ($lat, $lon) - 경로요청 시도"
+                        requestRouteAndStartDriving(placeName, lat, lon)
+                    }
+                }
+            }
+        })
+    }
+
+    // WayPoint 생성자 시그니처를 모르므로, NavigationFragment의 requestRoute 시그니처에서
+    // 파라미터 타입(WayPoint)을 가져와 리플렉션으로 생성자를 순회 탐색함.
+    private fun requestRouteAndStartDriving(name: String, lat: Double, lon: Double) {
+        try {
+            val fragment = navigationFragment
+            if (fragment == null) {
+                NavLogger.e(this, "requestRouteAndStartDriving: navigationFragment == null")
+                binding.tvSearchStatus?.text = "경로요청 실패: navigationFragment 없음"
+                return
+            }
+
+            val requestRouteMethod = fragment.javaClass.methods.firstOrNull {
+                it.name == "requestRoute" && it.parameterTypes.size == 8
+            }
+            if (requestRouteMethod == null) {
+                NavLogger.e(this, "requestRoute(8 params) 메서드를 찾지 못함")
+                binding.tvSearchStatus?.text = "경로요청 실패: requestRoute 시그니처 불일치"
+                return
+            }
+
+            val wayPointClass = requestRouteMethod.parameterTypes[0] // WayPoint
+            val wayPoint = buildWayPointViaReflection(wayPointClass, name, lat, lon)
+            if (wayPoint == null) {
+                NavLogger.e(this, "WayPoint 생성 실패 (${wayPointClass.name}) - 생성자 후보를 못 찾음")
+                binding.tvSearchStatus?.text = "경로요청 실패: WayPoint 생성 불가 (로그 확인 필요)"
+                return
+            }
+
+            val emptyWaypoints = java.util.ArrayList<Any>() // 경유지 없음
+
+            // RouteRequestListener는 인터페이스라 동적 프록시로 구현.
+            val listenerClass = requestRouteMethod.parameterTypes[4]
+            val listenerProxy = java.lang.reflect.Proxy.newProxyInstance(
+                listenerClass.classLoader,
+                arrayOf(listenerClass)
+            ) { _, method, args ->
+                NavLogger.d(this, "RouteRequestListener.${method.name} 콜백 args=${args?.joinToString()}")
+                when (method.name) {
+                    "onSuccess", "onSuccessRoute", "onRouteRequestSuccess" -> {
+                        val routeResult = args?.getOrNull(0)
+                        if (routeResult != null) {
+                            runOnUiThread { startDrivingWithRouteResult(routeResult) }
+                        }
+                    }
+                    "onFailure", "onFail", "onRouteRequestFail" -> {
+                        NavLogger.e(this, "경로 요청 실패 콜백: ${args?.joinToString()}")
+                        runOnUiThread { binding.tvSearchStatus?.text = "경로 요청 실패 (SDK 콜백)" }
+                    }
+                }
+                null
+            }
+
+            // requestRoute(origin, viaList, destination, ?, listener, ?, ?, ?)
+            // origin은 null 전달 시 현재 위치를 쓰는 구현이 많아 우선 null 시도.
+            val args = arrayOfNulls<Any?>(8)
+            args[0] = null            // origin WayPoint (현재 위치 기대)
+            args[1] = emptyWaypoints  // via list
+            args[2] = wayPoint        // destination WayPoint
+            args[3] = false
+            args[4] = listenerProxy
+            args[5] = null
+            args[6] = null
+            args[7] = false
+
+            NavLogger.d(this, "requestRoute 호출 시도: dest=$name")
+            requestRouteMethod.invoke(fragment, *args)
         } catch (e: Exception) {
-            NavLogger.e(this, "performDestinationSearch error: ${e.message}")
-            binding.tvSearchStatus?.text = "오류: ${e.message}"
+            NavLogger.e(this, "requestRouteAndStartDriving 예외: ${e.message}")
+            binding.tvSearchStatus?.text = "경로요청 예외: ${e.message}"
+        }
+    }
+
+    private fun buildWayPointViaReflection(wayPointClass: Class<*>, name: String, lat: Double, lon: Double): Any? {
+        for (ctor in wayPointClass.declaredConstructors) {
+            val types = ctor.parameterTypes
+            try {
+                ctor.isAccessible = true
+                val instance = when {
+                    // (String name, double lat, double lon)
+                    types.size == 3 && types[0] == String::class.java &&
+                        (types[1] == Double::class.javaPrimitiveType) && (types[2] == Double::class.javaPrimitiveType) ->
+                        ctor.newInstance(name, lat, lon)
+                    // (double lat, double lon)
+                    types.size == 2 && types[0] == Double::class.javaPrimitiveType && types[1] == Double::class.javaPrimitiveType ->
+                        ctor.newInstance(lat, lon)
+                    else -> null
+                }
+                if (instance != null) {
+                    NavLogger.d(this, "WayPoint 생성 성공: 생성자=${ctor}")
+                    return instance
+                }
+            } catch (e: Exception) {
+                NavLogger.d(this, "WayPoint 생성자 시도 실패: ${ctor} - ${e.message}")
+            }
+        }
+        // 매칭되는 생성자가 없으면 전체 생성자 목록을 로그로 남겨서 다음에 정확히 매핑 가능하게 함.
+        for (ctor in wayPointClass.declaredConstructors) {
+            NavLogger.d(this, "WayPoint 생성자 후보: ${ctor}")
+        }
+        return null
+    }
+
+    private fun startDrivingWithRouteResult(routeResult: Any) {
+        try {
+            val fragment = navigationFragment ?: return
+            val method = fragment.javaClass.methods.firstOrNull {
+                it.name == "startDrivingForJava"
+            }
+            if (method == null) {
+                NavLogger.e(this, "startDrivingForJava 메서드를 찾지 못함")
+                binding.tvSearchStatus?.text = "주행시작 실패: 메서드 없음"
+                return
+            }
+            // startDrivingForJava(int, RouteResult, boolean, DrivingStartCallback)
+            val callbackClass = method.parameterTypes[3]
+            val callbackProxy = java.lang.reflect.Proxy.newProxyInstance(
+                callbackClass.classLoader,
+                arrayOf(callbackClass)
+            ) { _, m, args ->
+                NavLogger.d(this, "DrivingStartCallback.${m.name} args=${args?.joinToString()}")
+                null
+            }
+            NavLogger.d(this, "startDrivingForJava 호출 시도")
+            method.invoke(fragment, 0, routeResult, false, callbackProxy)
+            binding.tvSearchStatus?.text = "길안내 시작 시도됨"
+            binding.llSearchPanel?.visibility = View.GONE
+            binding.llGuidanceBar?.visibility = View.VISIBLE
+            binding.tvGuidanceDest?.text = binding.etDestination?.text?.toString().orEmpty()
+        } catch (e: Exception) {
+            NavLogger.e(this, "startDrivingWithRouteResult 예외: ${e.message}")
+            binding.tvSearchStatus?.text = "주행시작 예외: ${e.message}"
         }
     }
 
