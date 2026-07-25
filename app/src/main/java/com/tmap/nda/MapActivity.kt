@@ -253,7 +253,10 @@ class MapActivity : AppCompatActivity() {
     // performDestinationSearch()의 TODO 부분을 그 이름으로 교체하면 됨.
     private fun dumpNavigationApiCandidates() {
         try {
-            val keywords = listOf("search", "poi", "destination", "route", "guide", "navi", "goal")
+            val keywords = listOf(
+                "search", "poi", "destination", "route", "guide", "navi", "goal",
+                "lane", "link", "road", "match", "position", "location", "gps"
+            )
             fun dump(label: String, clazz: Class<*>) {
                 for (m in clazz.methods) {
                     val n = m.name.lowercase()
@@ -265,6 +268,16 @@ class MapActivity : AppCompatActivity() {
             dump("NavigationFragment", NavigationFragment::class.java)
             dump("TmapUISDK", TmapUISDK::class.java)
             dump("TmapUISDK.Companion", TmapUISDK.Companion::class.java)
+            try {
+                val sdkManagerClass = Class.forName("com.skt.tmap.engine.navigation.SDKManager")
+                dump("SDKManager", sdkManagerClass)
+                val companion = sdkManagerClass.getField("Companion").get(null)
+                if (companion != null) {
+                    dump("SDKManager.Companion", companion.javaClass)
+                }
+            } catch (e: Exception) {
+                NavLogger.e(this, "SDKManager dump error: ${e.message}")
+            }
         } catch (e: Exception) {
             NavLogger.e(this, "dumpNavigationApiCandidates error: ${e.message}")
         }
