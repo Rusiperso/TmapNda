@@ -1,17 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 스타일 D: 좌측 세로 HUD + 우측 지도 풀스크린 -->
-<LinearLayout
+<!-- 지도(tmapUILayout)를 실제로 풀스크린 폭으로 두고, 좌측 HUD는 그 위에 얹는 불투명 오버레이로 변경.
+     이유: Tmap SDK NavigationFragment가 내부적으로 일부 위젯(오프셋/상태 배지 등)을
+     "화면 전체 폭" 기준 절대좌표로 배치하는 것으로 추정됨. 예전처럼 LinearLayout(weight)로
+     지도 컨테이너 폭을 220dp만큼 줄여두면, SDK 내부 절대좌표 계산은 여전히 전체 폭 기준이라
+     일부 위젯이 HUD 패널과 지도 경계선에 걸쳐서 겹쳐 보이는 문제가 있었음.
+     지도 컨테이너를 전체 폭으로 주고, HUD는 불투명 배경으로 그 위에 덮어써서 경계 문제를 회피. -->
+<FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="horizontal"
     android:background="#080808">
 
-    <!-- ===== 좌측 HUD 패널 ===== -->
+    <!-- ===== 좌측 HUD 패널 (지도 위 오버레이, 불투명 배경으로 그 아래 겹치는 SDK 위젯을 가림) ===== -->
     <LinearLayout
         android:id="@+id/llLeftHudPanel"
         android:layout_width="220dp"
         android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:elevation="20dp"
         android:orientation="vertical"
         android:background="#080808"
         android:paddingTop="0dp"
@@ -371,11 +378,10 @@
 
     </LinearLayout>
 
-    <!-- ===== 우측 지도 영역 ===== -->
+    <!-- ===== 지도 영역: 실제로는 전체 화면 폭 (SDK 내부 절대좌표 위젯과 좌표계를 맞추기 위함) ===== -->
     <FrameLayout
-        android:layout_width="0dp"
-        android:layout_height="match_parent"
-        android:layout_weight="1">
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
 
         <FrameLayout
             android:id="@+id/tmapUILayout"
@@ -553,4 +559,4 @@
 
     </FrameLayout>
 
-</LinearLayout>
+</FrameLayout>
