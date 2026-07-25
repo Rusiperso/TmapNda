@@ -12,8 +12,8 @@ android {
         applicationId = "com.tmap.nda"
         minSdk = 24
         targetSdk = 36
-        versionCode = 33
-        versionName = "1.0.33"
+        versionCode = 34
+        versionName = "1.0.34"
 
         // 카카오 로컬 API REST 키. 로컬 개발: local.properties의 KAKAO_REST_API_KEY=...
         // CI(GitHub Actions): KAKAO_REST_API_KEY 환경변수(Secrets)에서 읽음. 절대 소스에 하드코딩 금지.

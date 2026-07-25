@@ -326,14 +326,14 @@ class MapActivity : AppCompatActivity() {
                         // 401/403이면 키 종류/헤더 형식 문제일 확률이 매우 높음.
                         NavLogger.e(this@MapActivity, "카카오 검색 실패 code=${it.code} body=$body")
                         runOnUiThread { binding.tvSearchStatus?.text = "검색 실패(${it.code}) - REST 키/헤더 확인" }
-                        return
+                        return@use
                     }
                     val json = JSONObject(it.body?.string() ?: "{}")
                     val documents = json.optJSONArray("documents")
                     if (documents == null || documents.length() == 0) {
                         NavLogger.d(this@MapActivity, "카카오 검색 결과 없음: query=$query")
                         runOnUiThread { binding.tvSearchStatus?.text = "검색 결과 없음: $query" }
-                        return
+                        return@use
                     }
                     val first = documents.getJSONObject(0)
                     val placeName = first.optString("place_name", query)
