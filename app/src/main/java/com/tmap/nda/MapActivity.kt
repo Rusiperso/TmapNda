@@ -346,7 +346,7 @@ class MapActivity : AppCompatActivity() {
     private fun logKakaoKeyHashOnce() {
         try {
             val info = packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
-            for (signature in info.signatures) {
+            for (signature in info.signatures ?: emptyArray()) {
                 val md = MessageDigest.getInstance("SHA")
                 md.update(signature.toByteArray())
                 val keyHash = Base64.encodeToString(md.digest(), Base64.NO_WRAP)
