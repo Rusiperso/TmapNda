@@ -273,6 +273,20 @@ class MapActivity : AppCompatActivity() {
                             val setListenerMethod = NavigationFragment::class.java.methods.firstOrNull { it.name == "setNavigationScreenStateListener" }
                             setListenerMethod?.parameterTypes?.firstOrNull()?.let { dumpClass("NavigationScreenStateListener", it) }
                         } catch (e: Exception) { e.printStackTrace() }
+
+                        // 검색결과/목적지가 좌측 HUD 패널에 가려지는 문제 해결용:
+                        // 지도 패딩(setMapPadding 류) 또는 카메라 오프셋 API가
+                        // NavigationFragment가 아니라 실제 지도 엔진 객체 쪽에 있을 가능성이 높아서
+                        // getMapView()/getVsmMapView()의 리턴 타입도 같이 덤프해서 확인. #문제시 원복
+                        try {
+                            val getMapViewMethod = NavigationFragment::class.java.methods.firstOrNull { it.name == "getMapView" }
+                            getMapViewMethod?.returnType?.let { dumpClass("MapEngine", it) }
+                        } catch (e: Exception) { e.printStackTrace() }
+
+                        try {
+                            val getVsmMapViewMethod = NavigationFragment::class.java.methods.firstOrNull { it.name == "getVsmMapView" }
+                            getVsmMapViewMethod?.returnType?.let { dumpClass("VsmSdkMapView", it) }
+                        } catch (e: Exception) { e.printStackTrace() }
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
@@ -294,19 +308,26 @@ class MapActivity : AppCompatActivity() {
         })
     }
 
+    private var lastKnownLat: Double? = null
+    private var lastKnownLon: Double? = null
+
     private var lastSearchClickAt = 0L
     private val SEARCH_CLICK_DEBOUNCE_MS = 800L
 
     // ===== 길안내(목적지 검색) UI =====
     private fun setupDestinationSearchUi() {
         binding.btnOpenSearch?.setOnClickListener {
-            // 이전엔 여기서 바로 음성인식을 띄워서, 이력 목록이 뜨자마자 음성인식
-            // 풀스크린 UI에 가려지고 돌아오면 자동검색이 또 가려버리는 문제가 있었음.
-            // 패널을 열고 이력을 보여주는 것까지만 하고, 음성인식은 패널 안 마이크
-            // 버튼(btnVoiceSearch)이 전담하도록 분리함.
+            // 좌측 HUD 패널에 최근 검색 이력이 항상 보이도록 바뀌어서, 팝업 이력을
+            // 따로 볼 필요가 없어짐. 원래 요청대로 1탭 = 바로 음성인식으로 복귀.
+            binding.llSearchPanel?.visibility = View.VISIBLE
+            startVoiceSearch()
+        }
+        binding.btnOpenSearch?.setOnLongClickListener {
+            // 텍스트로 직접 치고 싶을 때: 길게 누르면 키보드 포커스로 전환.
             binding.llSearchPanel?.visibility = View.VISIBLE
             binding.etDestination?.requestFocus()
             showSearchHistory()
+            true
         }
         binding.etDestination?.setOnFocusChangeListener { _, hasFocus ->
             if (hasFocus) showSearchHistory()
@@ -584,9 +605,21 @@ class MapActivity : AppCompatActivity() {
             }
 
             // requestRoute(origin, viaList, destination, ?, listener, ?, ?, ?)
-            // origin은 null 전달 시 현재 위치를 쓰는 구현이 많아 우선 null 시도.
+            // 이전엔 origin에 null을 넘겼는데("null이면 현재위치를 쓰는 구현이 많다"는 가정),
+            // 이 SDK 버전은 그걸 지원 안 해서 내부에서 NPE가 터지는 것으로 로그에서 확인됨.
+            // 실제 현재 위치로 origin WayPoint를 만들어서 넘김. 위치를 아직 못 받은 경우엔
+            // 어쩔 수 없이 null로 시도(기존 동작 유지, 대신 실패 원인은 아래서 정확히 로깅함).
+            val originLat = lastKnownLat
+            val originLon = lastKnownLon
+            val originWayPoint = if (originLat != null && originLon != null) {
+                buildWayPointViaReflection(wayPointClass, "현재위치", originLat, originLon)
+            } else null
+            if (originWayPoint == null) {
+                NavLogger.e(this, "현재 위치를 아직 못 받아서 origin을 null로 시도함 (실패 가능성 있음)")
+            }
+
             val args = arrayOfNulls<Any?>(8)
-            args[0] = null            // origin WayPoint (현재 위치 기대)
+            args[0] = originWayPoint  // origin WayPoint (현재 위치)
             args[1] = emptyWaypoints  // via list
             args[2] = wayPoint        // destination WayPoint
             args[3] = false
@@ -595,11 +628,15 @@ class MapActivity : AppCompatActivity() {
             args[6] = null
             args[7] = false
 
-            NavLogger.d(this, "requestRoute 호출 시도: dest=$name")
+            NavLogger.d(this, "requestRoute 호출 시도: dest=$name origin=(${originLat},${originLon})")
             requestRouteMethod.invoke(navigationFragment, *args)
         } catch (e: Exception) {
-            NavLogger.e(this, "requestRouteAndStartDriving 예외: ${e.message}")
-            binding.tvSearchStatus?.text = "경로요청 예외: ${e.message}"
+            // 리플렉션 invoke()가 내부 예외를 InvocationTargetException으로 한번 감싸서 던지는데,
+            // 이 감싸는 예외 자체의 message는 항상 null이라 화면에 "null"만 찍히던 문제.
+            // 진짜 원인은 e.cause 쪽에 있어서 그걸 우선 사용하도록 수정. #문제시 원복
+            val realMessage = e.cause?.message ?: e.message ?: e.cause?.javaClass?.simpleName ?: e.javaClass.simpleName
+            NavLogger.e(this, "requestRouteAndStartDriving 예외: $realMessage (wrapper=${e.javaClass.simpleName}, cause=${e.cause?.javaClass?.simpleName})")
+            binding.tvSearchStatus?.text = "경로요청 예외: $realMessage"
         }
     }
 
@@ -816,6 +853,8 @@ class MapActivity : AppCompatActivity() {
                 // GPS 속도 → tvCurrentSpeed 실시간 업데이트 (HUD 속도계용)
                 // speedKph가 0이면 GPS 신호 일시 소실 가능성 → 이전 값 유지 (깜빡임 방지)
                 val locationListener = android.location.LocationListener { location ->
+                    lastKnownLat = location.latitude
+                    lastKnownLon = location.longitude
                     val speedKph = (location.speed * 3.6).toInt()
                     if (speedKph > 0) {
                         runOnUiThread {
@@ -833,6 +872,15 @@ class MapActivity : AppCompatActivity() {
                             android.location.LocationManager.NETWORK_PROVIDER, 1000L, 0f,
                             locationListener, android.os.Looper.getMainLooper()
                         )
+                    }
+                } catch (_: SecurityException) {}
+
+                try {
+                    val lastKnown = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                        ?: locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                    if (lastKnown != null) {
+                        lastKnownLat = lastKnown.latitude
+                        lastKnownLon = lastKnown.longitude
                     }
                 } catch (_: SecurityException) {}
 
