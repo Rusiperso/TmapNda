@@ -372,6 +372,82 @@
                 android:scaleType="center"/>
         </LinearLayout>
 
+        <!-- 최근 검색 이력 (최근 3개 상시 표시 + 더보기) -->
+        <LinearLayout
+            android:id="@+id/llRecentSearchPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="최근 검색"
+                android:textColor="#666666"
+                android:textSize="9sp"
+                android:letterSpacing="0.1"
+                android:layout_marginBottom="4dp"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="#141414">
+
+                <TextView
+                    android:id="@+id/tvRecentSearch1"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="9dp"
+                    android:textColor="#DDDDDD"
+                    android:textSize="12sp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:visibility="gone"/>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#1E1E1E"/>
+
+                <TextView
+                    android:id="@+id/tvRecentSearch2"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="9dp"
+                    android:textColor="#DDDDDD"
+                    android:textSize="12sp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:visibility="gone"/>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#1E1E1E"/>
+
+                <TextView
+                    android:id="@+id/tvRecentSearch3"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="9dp"
+                    android:textColor="#DDDDDD"
+                    android:textSize="12sp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:visibility="gone"/>
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnMoreHistory"
+                android:layout_width="match_parent"
+                android:layout_height="32dp"
+                android:layout_marginTop="4dp"
+                android:text="+ 더보기"
+                android:textSize="11sp"
+                android:textColor="#888888"
+                android:background="@drawable/shape_circle_gray"
+                android:minHeight="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"/>
+        </LinearLayout>
+
         <!-- 7. 하단 버튼들 -->
         <Button
             android:id="@+id/btnCheckUpdate"
