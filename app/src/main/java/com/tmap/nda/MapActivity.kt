@@ -72,6 +72,9 @@ class MapActivity : AppCompatActivity() {
     }
 
     private fun applyMuteState() {
+        binding.btnMuteToggle?.setImageResource(
+            if (isTmapMuted) android.R.drawable.ic_lock_silent_mode else android.R.drawable.ic_lock_silent_mode_off
+        )
         binding.btnMuteToggle?.setBackgroundResource(
             if (isTmapMuted) R.drawable.shape_circle_gray else R.drawable.shape_circle_green
         )
@@ -297,12 +300,13 @@ class MapActivity : AppCompatActivity() {
     // ===== 길안내(목적지 검색) UI =====
     private fun setupDestinationSearchUi() {
         binding.btnOpenSearch?.setOnClickListener {
-            // 검색버튼 클릭 시 기본 동작을 음성검색으로 변경 (요청사항).
-            // 텍스트 입력 패널은 그대로 열어서 인식된 문구가 눈에 보이게 하되,
-            // 키보드로 포커스 주는 대신 바로 음성인식을 띄운다.
+            // 이전엔 여기서 바로 음성인식을 띄워서, 이력 목록이 뜨자마자 음성인식
+            // 풀스크린 UI에 가려지고 돌아오면 자동검색이 또 가려버리는 문제가 있었음.
+            // 패널을 열고 이력을 보여주는 것까지만 하고, 음성인식은 패널 안 마이크
+            // 버튼(btnVoiceSearch)이 전담하도록 분리함.
             binding.llSearchPanel?.visibility = View.VISIBLE
+            binding.etDestination?.requestFocus()
             showSearchHistory()
-            startVoiceSearch()
         }
         binding.etDestination?.setOnFocusChangeListener { _, hasFocus ->
             if (hasFocus) showSearchHistory()
