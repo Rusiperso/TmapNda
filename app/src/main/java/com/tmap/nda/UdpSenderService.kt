@@ -489,6 +489,21 @@ class UdpSenderService : Service() {
                                 "[NDA] GPS 역수신: lat=$lat lon=$lon speed=$speed acc=$accuracy"
                             )
                             OpenpilotStateRepository.updateNdaGps(lat, lon, alt, speed, bearing, accuracy, timeMs)
+
+                            // 사용자 진단용: openpilot road_speed_limiter.py에서 GPS 패킷에 얹어보내는
+                            // 방지턱/크루즈 디버그 값. 4,5,6번 문제 확인용. (없는 구버전 openpilot이면
+                            // json.optJSONObject가 null 반환하므로 조용히 무시됨) #문제시 원복
+                            val debug = json.optJSONObject("debug")
+                            if (debug != null) {
+                                NavLogger.d(
+                                    this@UdpSenderService,
+                                    "[NDA][OP-DEBUG] cam_type=${debug.optInt("cam_type")} " +
+                                        "raw_sdi_type=${debug.optInt("raw_sdi_type")} " +
+                                        "cam_limit_speed=${debug.optInt("cam_limit_speed")} " +
+                                        "cam_limit_speed_left_dist=${debug.optInt("cam_limit_speed_left_dist")} " +
+                                        "road_limit_speed=${debug.optInt("road_limit_speed")}"
+                                )
+                            }
                         }
                     } catch (e: Exception) {
                         // 비콘도 GPS JSON도 아니면 무시 (알 수 없는 패킷)
