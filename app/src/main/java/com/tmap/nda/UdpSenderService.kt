@@ -149,16 +149,15 @@ class UdpSenderService : Service() {
     private var lastSdiPlusJsonStr: String? = null
     private var lastSdiPlusUpdateTime = 0L
 
-    private var lastFullBundleDumpTime = 0L
+    private var fullBundleDumped = false
     private var lastSendErrorLogTime = 0L
 
     private val edcObserver = Observer<Bundle> { bundle ->
         if (bundle != null && isRunning.get()) {
-            // Tmap이 실제로 넘겨주는 EDCData bundle 전체 key/value를 10초 간격으로 로그에 남김
-            // (차선/신호등 등 우리가 안 쓰고 있는 필드가 있는지 확인하기 위함)
-            val now = System.currentTimeMillis()
-            if (now - lastFullBundleDumpTime > 10000) {
-                lastFullBundleDumpTime = now
+            // 이전엔 10초마다 영구 반복 덤프해서 장시간 주행 시 로그가 계속 쌓였음.
+            // 진단 목적(안 쓰는 필드 확인)이면 세션당 1번이면 충분해서 1회성으로 변경. #문제시 원복
+            if (!fullBundleDumped) {
+                fullBundleDumped = true
                 try {
                     NavLogger.e(this, "===== EDCData bundle 전체 키 덤프 =====")
                     for (key in bundle.keySet()) {
@@ -674,7 +673,7 @@ class UdpSenderService : Service() {
     private var getInstanceMethod: java.lang.reflect.Method? = null
     private var getRecentRGDataMethod: java.lang.reflect.Method? = null
     private var nRoadLimitSpeedField: java.lang.reflect.Field? = null
-    private var lastRgDataDumpTime = 0L
+    private var rgDataDumped = false
 
     private fun getRoadLimitSpeedFromEngine(): Int {
         try {
@@ -692,24 +691,35 @@ class UdpSenderService : Service() {
                 }
                 val rgData = getRecentRGDataMethod?.invoke(sdkManager)
 
-                if (rgData != null) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastRgDataDumpTime > 10000) {
-                        lastRgDataDumpTime = now
-                        try {
-                            NavLogger.e(this, "===== (UdpSenderService) rgData 전체 필드 덤프 =====")
-                            for (field in rgData.javaClass.fields) {
-                                try {
-                                    field.isAccessible = true
-                                    val value = field.get(rgData)
-                                    NavLogger.e(this, "rgData.${field.name} = $value (${field.type.simpleName})")
-                                } catch (fe: Exception) {
-                                    NavLogger.e(this, "rgData.${field.name} 읽기 실패: ${fe.message}")
+                if (rgData != null && !rgDataDumped) {
+                    // 이전엔 10초마다 영구 반복 + stGuidePoint(TBTInfo) 같은 중첩 객체는 toString()만
+                    // 찍혀서 내부 필드(진짜 "다음 안내지점까지 거리" 필드명)를 확인할 수 없었음.
+                    // 세션당 1회만, 그리고 com.skt.tmap.* 중첩 객체는 한 단계 더 파고들어서 덤프. #문제시 원복
+                    rgDataDumped = true
+                    try {
+                        NavLogger.e(this, "===== (UdpSenderService) rgData 전체 필드 덤프 =====")
+                        for (field in rgData.javaClass.fields) {
+                            try {
+                                field.isAccessible = true
+                                val value = field.get(rgData)
+                                NavLogger.e(this, "rgData.${field.name} = $value (${field.type.simpleName})")
+                                if (value != null && value.javaClass.name.startsWith("com.skt.tmap") && !value.javaClass.isArray) {
+                                    for (innerField in value.javaClass.fields) {
+                                        try {
+                                            innerField.isAccessible = true
+                                            val innerValue = innerField.get(value)
+                                            NavLogger.e(this, "rgData.${field.name}.${innerField.name} = $innerValue (${innerField.type.simpleName})")
+                                        } catch (ife: Exception) {
+                                            NavLogger.e(this, "rgData.${field.name}.${innerField.name} 읽기 실패: ${ife.message}")
+                                        }
+                                    }
                                 }
+                            } catch (fe: Exception) {
+                                NavLogger.e(this, "rgData.${field.name} 읽기 실패: ${fe.message}")
                             }
-                        } catch (e: Exception) {
-                            NavLogger.e(this, "rgData 전체 덤프 실패: ${e.message}")
                         }
+                    } catch (e: Exception) {
+                        NavLogger.e(this, "rgData 전체 덤프 실패: ${e.message}")
                     }
                 }
                 if (rgData != null) {
