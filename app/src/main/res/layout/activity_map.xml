@@ -25,7 +25,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:background="#CC080808"
+        android:background="#FF080808"
         android:paddingHorizontal="14dp"
         android:paddingVertical="10dp"
         android:gravity="center_vertical"
@@ -154,6 +154,34 @@
             android:textStyle="bold"
             android:visibility="gone"
             android:layout_marginStart="6dp"/>
+
+        <!-- 음소거 | 검색 | 전송 (상단 HUD 바 안, 요청한 순서) -->
+        <ImageButton
+            android:id="@+id/btnMuteToggle"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="10dp"
+            android:src="@android:drawable/ic_lock_silent_mode"
+            android:background="@drawable/shape_circle_gray"
+            android:scaleType="center"/>
+
+        <ImageButton
+            android:id="@+id/btnOpenSearch"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="8dp"
+            android:src="@android:drawable/ic_menu_search"
+            android:background="@drawable/shape_circle_gray"
+            android:scaleType="center"/>
+
+        <ImageButton
+            android:id="@+id/btnShareLog"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="8dp"
+            android:src="@android:drawable/ic_menu_send"
+            android:background="@drawable/shape_circle_gray"
+            android:scaleType="center"/>
     </LinearLayout>
 
     <!-- ===== 하단 상태바: 연결/GPS/버전/업데이트/설정/종료를 한 줄로 항상 표시 ===== -->
@@ -316,47 +344,7 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- ===== 우측 세로 아이콘 스택 (Tmap 자체 하단 코너 아이콘과 안 겹치게 중간 높이로 이동) ===== -->
-    <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:layout_gravity="center_vertical|end"
-        android:layout_marginEnd="14dp">
-
-        <ImageButton
-            android:id="@+id/btnShareLog"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@android:drawable/ic_menu_send"
-            android:background="@drawable/shape_circle_gray"
-            android:scaleType="center"
-            android:elevation="8dp"
-            android:layout_marginBottom="10dp"/>
-
-        <!-- 음소거 토글 버튼: 티맵 안내 음성 음소거/소리 전환 -->
-        <ImageButton
-            android:id="@+id/btnMuteToggle"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@android:drawable/ic_lock_silent_mode"
-            android:background="@drawable/shape_circle_gray"
-            android:scaleType="center"
-            android:elevation="8dp"/>
-
-    </LinearLayout>
-
-    <!-- 목적지 검색 열기 버튼: Tmap 자체 좌하단 검색 아이콘과 겹치지 않도록 좌측 중간으로 이동 -->
-    <ImageButton
-        android:id="@+id/btnOpenSearch"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:layout_gravity="center_vertical|start"
-        android:layout_marginStart="14dp"
-        android:src="@android:drawable/ic_menu_search"
-        android:background="@drawable/shape_circle_gray"
-        android:scaleType="center"
-        android:elevation="8dp" />
+    <!-- 음소거/검색/전송 버튼은 상단 HUD 바 안으로 이동함 -->
 
     <!-- 목적지 검색 패널 -->
     <LinearLayout

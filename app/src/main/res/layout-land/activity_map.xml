@@ -333,6 +333,45 @@
         <!-- spacer -->
         <View android:layout_width="0dp" android:layout_height="0dp" android:layout_weight="1"/>
 
+        <!-- 음소거 | 검색 | 전송 (패널 밖 지도 위에 떠 있으면 이 패널에 가려지므로 패널 안으로 이동) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:layout_marginBottom="8dp">
+
+            <ImageButton
+                android:id="@+id/btnMuteToggle"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:src="@android:drawable/ic_lock_silent_mode"
+                android:background="@drawable/shape_circle_gray"
+                android:scaleType="center"/>
+
+            <ImageButton
+                android:id="@+id/btnOpenSearch"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="4dp"
+                android:src="@android:drawable/ic_menu_search"
+                android:background="@drawable/shape_circle_gray"
+                android:scaleType="center"/>
+
+            <ImageButton
+                android:id="@+id/btnShareLog"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:src="@android:drawable/ic_menu_send"
+                android:background="@drawable/shape_circle_gray"
+                android:scaleType="center"/>
+        </LinearLayout>
+
         <!-- 7. 하단 버튼들 -->
         <Button
             android:id="@+id/btnCheckUpdate"
@@ -410,44 +449,7 @@
             android:elevation="6dp"
             android:visibility="gone"/>
 
-        <!-- 로그 메일 전송 버튼 -->
-        <ImageButton
-            android:id="@+id/btnShareLog"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_gravity="bottom|end"
-            android:layout_marginEnd="64dp"
-            android:layout_marginBottom="12dp"
-            android:src="@android:drawable/ic_menu_send"
-            android:background="@drawable/shape_circle_gray"
-            android:scaleType="center"
-            android:elevation="6dp"/>
-
-        <!-- 음소거 토글 버튼: 티맵 안내 음성 음소거/소리 전환 -->
-        <ImageButton
-            android:id="@+id/btnMuteToggle"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_gravity="top|end"
-            android:layout_margin="12dp"
-            android:src="@android:drawable/ic_lock_silent_mode"
-            android:background="@drawable/shape_circle_gray"
-            android:scaleType="center"
-            android:elevation="6dp"/>
-
-        <!-- 목적지 검색 열기 버튼: Tmap 자체 좌하단 검색/주행종료 아이콘과 겹치지 않도록
-             portrait와 동일하게 좌측 중간으로 이동 (기존엔 bottom|start라 Tmap 네이티브
-             돋보기 아이콘과 같은 자리에 겹쳐 그려지던 문제) -->
-        <ImageButton
-            android:id="@+id/btnOpenSearch"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_gravity="center_vertical|start"
-            android:layout_marginStart="12dp"
-            android:src="@android:drawable/ic_menu_search"
-            android:background="@drawable/shape_circle_gray"
-            android:scaleType="center"
-            android:elevation="6dp"/>
+        <!-- 음소거/검색/전송 버튼은 좌측 HUD 패널 안으로 이동함 (llLeftHudPanel 참고) -->
 
         <!-- 목적지 검색 패널 -->
         <LinearLayout
