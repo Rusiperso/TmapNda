@@ -2,7 +2,10 @@ package com.tmap.nda
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Base64
+import java.security.MessageDigest
 import android.speech.RecognizerIntent
 import android.util.Log
 import android.widget.Toast
@@ -113,6 +116,11 @@ class MapActivity : AppCompatActivity() {
 
         // 자동 업데이트 체크
         AutoUpdater.checkForUpdates(this)
+
+        // 카카오 개발자콘솔 "네이티브 앱 키"에 등록할 키 해시 확인용 - 세션당 1회만 로그로 남김.
+        // keystore 비밀번호 없이도 "실제 폰에 설치되어 서명 검증되는 그 앱"의 정확한 해시를 얻기 위함.
+        // 확인 후 이 블록은 지워도 됨(진단 전용). #문제시 원복
+        logKakaoKeyHashOnce()
 
         val minBottomSafeAreaPx = (36 * resources.displayMetrics.density).toInt()
 
@@ -329,6 +337,25 @@ class MapActivity : AppCompatActivity() {
 
     private var lastSearchClickAt = 0L
     private val SEARCH_CLICK_DEBOUNCE_MS = 800L
+
+    // 카카오 개발자콘솔 "네이티브 앱 키 > 키 해시"에 등록할 값을 로그로 남김.
+    // keystore 파일/비밀번호 없이도, 실제 이 기기에 설치되어 서명 검증되는 앱 그대로의
+    // 정확한 해시를 얻을 수 있음. (릴리즈 서명 앱을 설치해서 실행하면 릴리즈용 해시가,
+    // 디버그 빌드로 실행하면 디버그용 해시가 나옴 - 콘솔엔 둘 다 등록 가능)
+    @Suppress("DEPRECATION")
+    private fun logKakaoKeyHashOnce() {
+        try {
+            val info = packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
+            for (signature in info.signatures) {
+                val md = MessageDigest.getInstance("SHA")
+                md.update(signature.toByteArray())
+                val keyHash = Base64.encodeToString(md.digest(), Base64.NO_WRAP)
+                NavLogger.d(this, "카카오 콘솔용 KeyHash(패키지=$packageName): $keyHash")
+            }
+        } catch (e: Exception) {
+            NavLogger.e(this, "KeyHash 계산 실패: ${e.message}")
+        }
+    }
 
     // ===== 길안내(목적지 검색) UI =====
     private fun setupDestinationSearchUi() {
