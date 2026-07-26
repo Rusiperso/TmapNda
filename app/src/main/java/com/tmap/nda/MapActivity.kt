@@ -40,6 +40,20 @@ class MapActivity : AppCompatActivity() {
 
     // 음성 검색 결과 수신용 런처. 안드로이드 표준 음성인식 액티비티(RecognizerIntent)를 위임 호출하는 방식이라
     // 별도의 RECORD_AUDIO 런타임 권한 요청 없이 동작함 (인식은 시스템 음성입력 앱이 수행).
+    // 로그 공유 화면(이메일 앱 등)에서 돌아왔을 때, 방금 보낸 로그 파일들을 삭제하기 위한 목록.
+    // ACTION_SEND_MULTIPLE은 "진짜 전송됨"까지는 확인 못 하고 "공유 화면에서 돌아옴"까지만 알 수 있어서
+    // 그 시점을 "보냈다"로 간주하고 삭제함.
+    private var pendingSharedLogPaths: List<String> = emptyList()
+    private val shareLogLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (pendingSharedLogPaths.isNotEmpty()) {
+            NavLogger.deleteLogFiles(pendingSharedLogPaths)
+            NavLogger.d(this, "공유 완료 후 로그 ${pendingSharedLogPaths.size}개 삭제됨")
+            pendingSharedLogPaths = emptyList()
+        }
+    }
+
     private val voiceSearchLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -368,14 +382,16 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    // 로그 파일을 이메일(jaeeok.cho@icloud.com)로 공유
+    // 로그 파일을 이메일(jaeeok.cho@icloud.com)로 공유 - 회전되어 쌓여있던 로그까지 전부 한번에 보냄
     private fun shareNavLog() {
-        val intent = NavLogger.buildShareIntent(this)
-        if (intent == null) {
+        val result = NavLogger.buildShareIntent(this)
+        if (result == null) {
             Toast.makeText(this, "저장된 로그가 없어. 먼저 검색을 시도해봐.", Toast.LENGTH_SHORT).show()
             return
         }
-        startActivity(Intent.createChooser(intent, "로그 공유"))
+        val (intent, paths) = result
+        pendingSharedLogPaths = paths
+        shareLogLauncher.launch(Intent.createChooser(intent, "로그 공유 (${paths.size}개 파일)"))
     }
 
     // 1단계: SDK 안에 실제로 어떤 검색/경로 관련 메서드가 있는지 로그로 확인.
