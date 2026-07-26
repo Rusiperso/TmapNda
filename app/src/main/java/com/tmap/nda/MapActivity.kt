@@ -34,6 +34,8 @@ class MapActivity : AppCompatActivity() {
     private var navigationFragment: NavigationFragment? = null
     private var isEditMode = false
     private var lastValidRoadLimit = 0  // 3번: 도로 규정속도 깜빡임 방지 - 마지막 유효값 저장
+    private var lastEdcAnomalyState = false  // observableEDCData 이상징후 로깅용 (상태 변화시에만 기록)
+    private var tbtDistErrorLogged = false   // nTBTDist 리플렉션 실패는 최초 1회만 로깅
     private var isTmapMuted = true  // 티맵 안내음성 음소거 여부 (기본값: 기존 동작 유지 = 음소거)
 
     // 음성 검색 결과 수신용 런처. 안드로이드 표준 음성인식 액티비티(RecognizerIntent)를 위임 호출하는 방식이라
@@ -380,6 +382,10 @@ class MapActivity : AppCompatActivity() {
     // adb logcat | grep TmapNav 로 실제 메서드 이름/시그니처를 확인한 뒤,
     // performDestinationSearch()의 TODO 부분을 그 이름으로 교체하면 됨.
     private fun dumpNavigationApiCandidates() {
+        // 이전엔 안전운행 모드 시작할 때마다(즉 앱 켤 때마다) 수백 줄짜리 API 서베이 덤프를
+        // 무조건 다시 찍고 있었음. 이건 API 시그니처 확인용 1회성 진단이라 최초 1번만 하면 충분함.
+        val prefs = getSharedPreferences("nav_diag", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("api_candidates_dumped", false)) return
         try {
             val keywords = listOf(
                 "search", "poi", "destination", "route", "guide", "navi", "goal",
@@ -467,8 +473,17 @@ class MapActivity : AppCompatActivity() {
                 tv.visibility = View.VISIBLE
                 tv.text = text
                 tv.setOnClickListener {
+                    // 예전엔 클릭해도 화면상 반응이 전혀 안 보여서 사용자가 연타 -> 로그에서
+                    // 같은 검색이 2초 안에 12번씩 중복 호출되는 게 확인됨(requestRoute NPE와 별개 문제).
+                    // 탭 즉시 시각적 피드백 + 짧은 시간 재클릭 방지.
+                    tv.isEnabled = false
+                    tv.alpha = 0.5f
                     binding.etDestination?.setText(text)
                     performDestinationSearch(text)
+                    tv.postDelayed({
+                        tv.isEnabled = true
+                        tv.alpha = 1.0f
+                    }, 1500)
                 }
             }
         }
@@ -481,9 +496,27 @@ class MapActivity : AppCompatActivity() {
     private fun showFullSearchHistoryDialog() {
         val history = getSearchHistory()
         if (history.isEmpty()) return
+        // 이전엔 플랫폼 android.app.AlertDialog + Theme.MaterialComponents 테마 조합이라
+        // 텍스트/배경 색상이 제대로 안 먹어서 다이얼로그가 까맣게(또는 텍스트가 안 보이게) 뜨는
+        // 문제가 있었음. 배경/텍스트 색을 아이템 레벨에서 명시적으로 강제해서 테마에 안 흔들리게 함.
+        val adapter = object : android.widget.ArrayAdapter<String>(
+            this, android.R.layout.simple_list_item_1, history
+        ) {
+            override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
+                val view = super.getView(position, convertView, parent)
+                (view as? android.widget.TextView)?.apply {
+                    setTextColor(android.graphics.Color.WHITE)
+                    setBackgroundColor(android.graphics.Color.parseColor("#181818"))
+                    setPadding(24, 24, 24, 24)
+                }
+                return view
+            }
+        }
         val listView = android.widget.ListView(this)
-        listView.adapter = android.widget.ArrayAdapter(this, android.R.layout.simple_list_item_1, history)
+        listView.adapter = adapter
         listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
+        listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
+        listView.dividerHeight = 1
         val dialog = android.app.AlertDialog.Builder(this)
             .setTitle("검색 이력 전체")
             .setView(listView)
@@ -496,6 +529,8 @@ class MapActivity : AppCompatActivity() {
             performDestinationSearch(picked)
         }
         dialog.show()
+        // 다이얼로그 창 배경 자체도 명시적으로 지정 (테마 상속으로 까맣게 뜨는 것 방지)
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
     }
 
     private fun showSearchHistory() {
@@ -674,6 +709,16 @@ class MapActivity : AppCompatActivity() {
                 NavLogger.e(this, "현재 위치를 아직 못 받아서 origin을 null로 시도함 (실패 가능성 있음)")
             }
 
+            // args[6] (AdditionalRouteRequestData)에 null을 넘기면 이 SDK 버전에서 매번
+            // "parameter additionalRouteRequestData is null" NPE로 100% 실패함(로그로 확인됨).
+            // Kotlin의 non-null 파라미터 체크는 "객체 자체가 null이면 안 된다"는 것뿐이라,
+            // 필드값은 전부 기본값이어도 되니 리플렉션으로 빈 인스턴스라도 만들어서 넘김.
+            val additionalRouteRequestDataClass = requestRouteMethod.parameterTypes[6]
+            val additionalRouteRequestData = buildDefaultInstanceViaReflection(additionalRouteRequestDataClass)
+            if (additionalRouteRequestData == null) {
+                NavLogger.e(this, "AdditionalRouteRequestData 기본 인스턴스 생성 실패 - 여전히 NPE 가능성 있음")
+            }
+
             val args = arrayOfNulls<Any?>(8)
             args[0] = originWayPoint  // origin WayPoint (현재 위치)
             args[1] = emptyWaypoints  // via list
@@ -681,7 +726,7 @@ class MapActivity : AppCompatActivity() {
             args[3] = false
             args[4] = listenerProxy
             args[5] = null
-            args[6] = null
+            args[6] = additionalRouteRequestData
             args[7] = false
 
             NavLogger.d(this, "requestRoute 호출 시도: dest=$name origin=(${originLat},${originLon})")
@@ -694,6 +739,42 @@ class MapActivity : AppCompatActivity() {
             NavLogger.e(this, "requestRouteAndStartDriving 예외: $realMessage (wrapper=${e.javaClass.simpleName}, cause=${e.cause?.javaClass?.simpleName})")
             binding.tvSearchStatus?.text = "경로요청 예외: $realMessage"
         }
+    }
+
+    // 필드 구조를 몰라도 되는 파라미터 객체(예: AdditionalRouteRequestData)를 위한 범용 리플렉션 생성기.
+    // 각 생성자를 순회하며 모든 파라미터에 "가장 무난한 기본값"(reference=null, boolean=false,
+    // 숫자=0, String="")을 채워서 시도. 필드 검증 로직이 있으면 실패할 수 있는데, 그건 실패 로그로
+    // 다음에 정확히 대응 가능하게 남겨둠.
+    private fun buildDefaultInstanceViaReflection(clazz: Class<*>): Any? {
+        val ctors = clazz.declaredConstructors.sortedBy { it.parameterTypes.size }
+        for (ctor in ctors) {
+            try {
+                ctor.isAccessible = true
+                val args = ctor.parameterTypes.map { type ->
+                    when {
+                        type == Boolean::class.javaPrimitiveType -> false
+                        type == Int::class.javaPrimitiveType -> 0
+                        type == Long::class.javaPrimitiveType -> 0L
+                        type == Short::class.javaPrimitiveType -> 0.toShort()
+                        type == Byte::class.javaPrimitiveType -> 0.toByte()
+                        type == Double::class.javaPrimitiveType -> 0.0
+                        type == Float::class.javaPrimitiveType -> 0f
+                        type == Char::class.javaPrimitiveType -> ' '
+                        type == String::class.java -> ""
+                        else -> null
+                    }
+                }.toTypedArray()
+                val instance = ctor.newInstance(*args)
+                NavLogger.d(this, "${clazz.simpleName} 기본 인스턴스 생성 성공: 생성자=$ctor")
+                return instance
+            } catch (e: Exception) {
+                NavLogger.d(this, "${clazz.simpleName} 생성자 시도 실패: ${ctor} - ${e.cause?.message ?: e.message}")
+            }
+        }
+        for (ctor in ctors) {
+            NavLogger.d(this, "${clazz.simpleName} 생성자 후보: $ctor")
+        }
+        return null
     }
 
     private fun buildWayPointViaReflection(wayPointClass: Class<*>, name: String, lat: Double, lon: Double): Any? {
@@ -855,9 +936,19 @@ class MapActivity : AppCompatActivity() {
             })
             TmapUISDK.observableEDCData.observe(this@MapActivity, Observer { data ->
                 data?.let {
-                    NavLogger.e(this@MapActivity, "observableEDCData class: ${it.javaClass.name}")
-                    NavLogger.e(this@MapActivity, "observableEDCData: $it")
-                    
+                    // 이전엔 매초 전체 Bundle을 그대로 파일에 찍어서 로그가 무한정 쌓였음.
+                    // 정상 주행 중엔 로그 안 남기고, GPS 신호 끊김/매칭 이상 같은 "이상 징후"일 때만
+                    // 그리고 그 상태가 바뀌는 순간에만 1줄 남기도록 축소. #문제시 원복
+                    if (it is android.os.Bundle) {
+                        val noSignal = it.getBoolean("noLocationSignal", false)
+                        val gpsState = it.getInt("gpsState", -1)
+                        val isAnomaly = noSignal || gpsState <= 0
+                        if (isAnomaly != lastEdcAnomalyState) {
+                            lastEdcAnomalyState = isAnomaly
+                            NavLogger.e(this@MapActivity, "observableEDCData 상태변화: anomaly=$isAnomaly ($it)")
+                        }
+                    }
+
                     // 음소거 옵션 켜져 있을 때만 강제 0. 꺼져 있으면 매 갱신마다 볼륨을 되돌리지 않도록 스킵.
                     if (isTmapMuted) {
                         TmapUISDK.setVolume(this@MapActivity, 0)
@@ -1081,7 +1172,8 @@ class MapActivity : AppCompatActivity() {
     private var getRecentRGDataMethod: java.lang.reflect.Method? = null
     private var nRoadLimitSpeedField: java.lang.reflect.Field? = null
     private var nTBTDistField: java.lang.reflect.Field? = null
-    private var lastRgDataDumpTime = 0L
+    private var tbtDistFieldLookupFailed = false
+    private var rgDataRecursiveDumped = false
 
     // 분기 오매칭 방지용 상태
     private var pendingRoadLimit = 0
@@ -1161,39 +1253,42 @@ class MapActivity : AppCompatActivity() {
                 }
                 val rgData = getRecentRGDataMethod?.invoke(sdkManager)
 
-                // rgData 객체의 모든 필드를 10초 간격으로 통째로 로그에 남김
-                // (nTBTDist/nRoadLimitSpeed 외에 차선/신호등 관련 필드가 있는지 확인하기 위함)
-                // 2026-07-24: LaneInfoData[]/TBTInfo 등 객체·배열 필드는 toString()만 찍혀서
-                // 내부 구조가 안 보이는 문제 -> 재귀 덤프로 교체 (차선/신호등 잔여시간 필드 탐색용)
-                if (rgData != null) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastRgDataDumpTime > 10000) {
-                        lastRgDataDumpTime = now
-                        try {
-                            NavLogger.e(this, "===== rgData(getRecentRGData) 전체 필드 덤프 =====")
-                            for (field in rgData.javaClass.fields) {
-                                try {
-                                    field.isAccessible = true
-                                    val value = field.get(rgData)
-                                    dumpValueRecursive("rgData.${field.name}", value, field.type, 0)
-                                } catch (fe: Exception) {
-                                    NavLogger.e(this, "rgData.${field.name} 읽기 실패: ${fe.message}")
-                                }
+                // 세션당 1회만 재귀 덤프 (이전엔 10초 간격 영구 반복이라 로그가 계속 쌓였음)
+                if (rgData != null && !rgDataRecursiveDumped) {
+                    rgDataRecursiveDumped = true
+                    try {
+                        NavLogger.e(this, "===== rgData(getRecentRGData) 전체 필드 덤프 =====")
+                        for (field in rgData.javaClass.fields) {
+                            try {
+                                field.isAccessible = true
+                                val value = field.get(rgData)
+                                dumpValueRecursive("rgData.${field.name}", value, field.type, 0)
+                            } catch (fe: Exception) {
+                                NavLogger.e(this, "rgData.${field.name} 읽기 실패: ${fe.message}")
                             }
-                        } catch (e: Exception) {
-                            NavLogger.e(this, "rgData 전체 덤프 실패: ${e.message}")
                         }
+                    } catch (e: Exception) {
+                        NavLogger.e(this, "rgData 전체 덤프 실패: ${e.message}")
                     }
                 }
 
                 if (rgData != null) {
-                    if (nTBTDistField == null) {
-                        nTBTDistField = rgData.javaClass.getField("nTBTDist")
+                    if (nTBTDistField == null && !tbtDistFieldLookupFailed) {
+                        try {
+                            nTBTDistField = rgData.javaClass.getField("nTBTDist")
+                        } catch (fe: Exception) {
+                            // "nTBTDist"라는 필드 자체가 이 SDK 버전엔 없음(stGuidePoint 내부 dump로 확인 필요).
+                            // 매번 재시도+로깅하면 로그만 쌓이고 어차피 계속 실패하니 1회만 로깅하고 이후엔 조용히 스킵.
+                            tbtDistFieldLookupFailed = true
+                            Log.e("MapActivity", "Reflection error (TBTDist): ${fe.message}")
+                            NavLogger.e(this, "Reflection error (TBTDist): ${fe.message} - 이후 재시도 안 함")
+                        }
                     }
                     return nTBTDistField?.getInt(rgData) ?: Int.MAX_VALUE
                 }
             }
         } catch (e: Exception) {
+            // 그 외 예외(SDKManager 접근 실패 등)는 기존처럼 로깅
             Log.e("MapActivity", "Reflection error (TBTDist): ${e.message}")
             NavLogger.e(this, "Reflection error (TBTDist): ${e.message}")
         }
