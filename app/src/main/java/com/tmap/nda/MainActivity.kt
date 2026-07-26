@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -41,7 +42,23 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         NavLogger.appContext = applicationContext
-        
+
+        // 이전엔 앱이 강제종료돼도 원인이 로그파일 어디에도 안 남아서(NavLogger는 우리가 명시적으로
+        // 호출한 것만 기록함) 사후분석이 불가능했음. 전역 크래시 핸들러를 걸어서 마지막 순간에
+        // 최소한 스택트레이스라도 파일에 남긴 뒤 기존 핸들러(시스템 강제종료 다이얼로그 등)로 넘김.
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                NavLogger.e(
+                    applicationContext,
+                    "===== FATAL: 앱 강제종료 (thread=${thread.name}) =====\n${Log.getStackTraceString(throwable)}"
+                )
+            } catch (_: Exception) {
+                // 로깅 자체가 실패해도 앱 종료 흐름은 막지 않음
+            }
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
+
         dumpTmapAudioSettings()
         
         binding = ActivityMainBinding.inflate(layoutInflater)
