@@ -32,19 +32,31 @@ object NavLogger {
     // 10MB 넘으면 이전 로그를 밀어내고(1개만 보관) 새로 시작.
     private const val MAX_LOG_SIZE_BYTES = 10L * 1024 * 1024
 
+    // 이전엔 회전될 때마다 prev 파일 하나만 남기고 그 이전 건 덮어써서 지워버렸음.
+    // "로그 보내기"를 오래 안 누르면 회전된 로그들이 통째로 유실되던 문제 -> 타임스탬프 파일로
+    // 각각 보관하고, 공유할 때 한꺼번에 다 보낸 뒤(공유 성공 시) 삭제하는 방식으로 변경. #문제시 원복
     private fun appendToFile(context: Context, level: String, message: String) {
         try {
             val file = logFile(context)
             if (file.exists() && file.length() > MAX_LOG_SIZE_BYTES) {
-                val oldFile = File(file.parentFile, "tmapnda_log_prev.txt")
-                oldFile.delete()
-                file.renameTo(oldFile)
+                val rotatedName = "tmapnda_log_${System.currentTimeMillis()}.txt"
+                file.renameTo(File(file.parentFile, rotatedName))
             }
             val line = "${timeFormat.format(Date())} [$level] $message\n"
             FileWriter(logFile(context), true).use { it.write(line) }
         } catch (e: Exception) {
             Log.e(TAG, "NavLogger appendToFile error: ${e.message}")
         }
+    }
+
+    /** logs 디렉토리에 있는 tmapnda_log*.txt 전부 (현재 쓰는 파일 + 회전되어 보관중인 파일들) */
+    private fun allLogFiles(context: Context): List<File> {
+        val dir = File(context.getExternalFilesDir(null), "logs")
+        if (!dir.exists()) return emptyList()
+        return dir.listFiles { f -> f.isFile && f.name.startsWith("tmapnda_log") && f.name.endsWith(".txt") }
+            ?.filter { it.length() > 0 }
+            ?.sortedBy { it.name }
+            ?: emptyList()
     }
 
     // Context를 직접 받을 수 없는 곳(예: 오디오 포커스 후킹 등)에서도 로그를 남길 수 있도록
@@ -73,24 +85,36 @@ object NavLogger {
         appContext?.let { appendToFile(it, "E", message) }
     }
 
-    /** 로그 파일을 이메일로 공유하는 Intent 생성 (jaeeok.cho@icloud.com 으로 수신자 프리필) */
-    fun buildShareIntent(context: Context): Intent? {
-        val file = logFile(context)
-        if (!file.exists() || file.length() == 0L) return null
+    /** 로그 파일(들)을 이메일로 공유하는 Intent 생성. 회전되어 쌓여있던 로그가 있으면 전부 한번에 첨부함.
+     *  반환값의 두 번째 항목은 공유에 포함된 파일 경로 목록 - 공유 완료(사용자가 공유 화면에서 돌아옴) 후
+     *  deleteLogFiles()에 넘겨서 삭제하면 됨. */
+    fun buildShareIntent(context: Context): Pair<Intent, List<String>>? {
+        val files = allLogFiles(context)
+        if (files.isEmpty()) return null
 
-        val uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            file
-        )
+        val uris = ArrayList(files.map { file ->
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        })
 
-        return Intent(Intent.ACTION_SEND).apply {
+        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_EMAIL, arrayOf("jaeeok.cho@icloud.com"))
-            putExtra(Intent.EXTRA_SUBJECT, "TmapNda 로그 ($FILE_NAME)")
-            putExtra(Intent.EXTRA_TEXT, "TmapNda 앱에서 자동 첨부된 로그입니다.")
-            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "TmapNda 로그 (${files.size}개 파일)")
+            putExtra(Intent.EXTRA_TEXT, "TmapNda 앱에서 자동 첨부된 로그입니다. (회전분 포함 총 ${files.size}개)")
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        return intent to files.map { it.absolutePath }
+    }
+
+    /** 공유 완료 후 호출 - 방금 보낸 로그 파일들만 삭제 (그 사이 새로 쌓인 현재 로그는 안 건드림) */
+    fun deleteLogFiles(paths: List<String>) {
+        for (path in paths) {
+            try {
+                File(path).delete()
+            } catch (e: Exception) {
+                Log.e(TAG, "NavLogger deleteLogFiles error: ${e.message}")
+            }
         }
     }
 
