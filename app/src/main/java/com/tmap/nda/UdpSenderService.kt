@@ -574,6 +574,12 @@ class UdpSenderService : Service() {
             val sdiType = src.optInt("nSdiType", 0)
             val sdiSpeedLimit = src.optInt("nSdiSpeedLimit", 0)
             val sdiDist = src.optInt("nSdiDist", 0)
+            if (sdiType != 0) {
+                // 방지턱 미감속 문제 진단용: Tmap SDK의 nSdiType 원본값이 openpilot이
+                // 기대하는 cam_type=22(방지턱) 체계와 실제로 일치하는지 확인하기 위한 로그.
+                // #문제시 원복
+                NavLogger.d(this@UdpSenderService, "[NDA] nSdiType=$sdiType (openpilot cam_type으로 그대로 전달됨) speedLimit=$sdiSpeedLimit dist=$sdiDist")
+            }
 
             roadLimit.put("road_limit_speed", src.optInt("nRoadLimitSpeed", 0))
             roadLimit.put("is_highway", false)

@@ -206,7 +206,15 @@ class MapActivity : AppCompatActivity() {
         initialize(this, "", appKey, "", "", object : TmapUISDK.InitializeListener {
             override fun onSuccess() {
                 runOnUiThread {
-                    
+                    // 회전(가로/세로 전환)으로 Activity가 destroy → recreate 되는 사이에
+                    // 이전 Activity 인스턴스가 캡처한 이 콜백이 뒤늦게 실행되면서
+                    // 이미 죽은 Activity의 FragmentManager에 add()를 시도해 크래시가 나던
+                    // 문제 방지. 콜백 진입 시점에 이 Activity가 이미 종료/파괴됐으면 무시.
+                    if (isFinishing || isDestroyed) {
+                        NavLogger.d(this@MapActivity, "SDK onSuccess 도착했지만 Activity 이미 종료됨 - 무시")
+                        return@runOnUiThread
+                    }
+
                     try {
                         val methods = NavigationFragment::class.java.methods
                         for (m in methods) {
@@ -289,8 +297,20 @@ class MapActivity : AppCompatActivity() {
     // ===== 길안내(목적지 검색) UI =====
     private fun setupDestinationSearchUi() {
         binding.btnOpenSearch?.setOnClickListener {
+            // 검색버튼 클릭 시 기본 동작을 음성검색으로 변경 (요청사항).
+            // 텍스트 입력 패널은 그대로 열어서 인식된 문구가 눈에 보이게 하되,
+            // 키보드로 포커스 주는 대신 바로 음성인식을 띄운다.
             binding.llSearchPanel?.visibility = View.VISIBLE
+            showSearchHistory()
+            startVoiceSearch()
+        }
+        binding.etDestination?.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) showSearchHistory()
+        }
+        // 텍스트로 직접 치고 싶을 때를 위해 입력창을 길게 누르면 키보드 포커스로 전환.
+        binding.etDestination?.setOnLongClickListener {
             binding.etDestination?.requestFocus()
+            true
         }
         binding.btnSearchClose?.setOnClickListener {
             binding.llSearchPanel?.visibility = View.GONE
@@ -370,6 +390,56 @@ class MapActivity : AppCompatActivity() {
 
     // 옵션 A: 카카오 REST API 키를 사용자별로 입력받아 SharedPreferences에 저장.
     // (앱에 고정 키를 박아넣으면 모든 설치자가 같은 키/같은 할당량을 공유하게 되는 문제 방지)
+    // ===== 목적지 검색 이력 =====
+    private val SEARCH_HISTORY_KEY = "search_history_json"
+    private val SEARCH_HISTORY_MAX = 15
+
+    private fun getSearchHistory(): List<String> {
+        val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        val raw = sharedPref.getString(SEARCH_HISTORY_KEY, "[]") ?: "[]"
+        return try {
+            val arr = org.json.JSONArray(raw)
+            (0 until arr.length()).map { arr.getString(it) }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun saveSearchHistory(query: String) {
+        if (query.isBlank()) return
+        val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        val current = getSearchHistory().toMutableList()
+        current.remove(query) // 중복 있으면 지우고 맨 앞으로
+        current.add(0, query)
+        while (current.size > SEARCH_HISTORY_MAX) current.removeAt(current.size - 1)
+        val arr = org.json.JSONArray()
+        current.forEach { arr.put(it) }
+        sharedPref.edit().putString(SEARCH_HISTORY_KEY, arr.toString()).apply()
+    }
+
+    private fun showSearchHistory() {
+        val history = getSearchHistory()
+        val listView = binding.lvSearchResults ?: return
+        if (history.isEmpty()) {
+            listView.visibility = View.GONE
+            return
+        }
+        val adapter = android.widget.ArrayAdapter(
+            this,
+            android.R.layout.simple_list_item_1,
+            history
+        )
+        listView.adapter = adapter
+        listView.visibility = View.VISIBLE
+        listView.setOnItemClickListener { _, _, position, _ ->
+            val picked = history[position]
+            binding.etDestination?.setText(picked)
+            binding.etDestination?.setSelection(picked.length)
+            listView.visibility = View.GONE
+            performDestinationSearch(picked)
+        }
+    }
+
     private fun getUserKakaoKey(): String {
         return getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             .getString("kakao_rest_api_key", "") ?: ""
@@ -409,6 +479,8 @@ class MapActivity : AppCompatActivity() {
     private fun performDestinationSearch(query: String) {
         binding.tvSearchStatus?.text = "검색 중: $query"
         NavLogger.d(this, "performDestinationSearch query=$query")
+        binding.lvSearchResults?.visibility = View.GONE
+        saveSearchHistory(query)
 
         val restKey = getUserKakaoKey()
         if (restKey.isBlank()) {
@@ -653,6 +725,10 @@ class MapActivity : AppCompatActivity() {
     }
 
     private fun startSafeDriveMode() {
+        if (isFinishing || isDestroyed) {
+            NavLogger.d(this, "startSafeDriveMode 호출됐지만 Activity 이미 종료됨 - 무시")
+            return
+        }
         navigationFragment = getFragment() as NavigationFragment
         
         supportFragmentManager.beginTransaction()
