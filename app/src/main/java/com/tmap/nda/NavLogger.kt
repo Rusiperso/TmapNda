@@ -26,8 +26,20 @@ object NavLogger {
         return File(dir, FILE_NAME)
     }
 
+    // 로그 파일에 회전/크기제한이 없어서 리플렉션 전체 필드 덤프(세션마다 반복) +
+    // 주행 중 매 틱마다 rgData 전체 필드 덤프가 계속 append되어 로그 파일이 무한정 커지는 문제가
+    // 있었음(실사용 며칠 만에 40~48MB, 앱 데이터 용량 문제의 주요 원인으로 확인됨).
+    // 10MB 넘으면 이전 로그를 밀어내고(1개만 보관) 새로 시작.
+    private const val MAX_LOG_SIZE_BYTES = 10L * 1024 * 1024
+
     private fun appendToFile(context: Context, level: String, message: String) {
         try {
+            val file = logFile(context)
+            if (file.exists() && file.length() > MAX_LOG_SIZE_BYTES) {
+                val oldFile = File(file.parentFile, "tmapnda_log_prev.txt")
+                oldFile.delete()
+                file.renameTo(oldFile)
+            }
             val line = "${timeFormat.format(Date())} [$level] $message\n"
             FileWriter(logFile(context), true).use { it.write(line) }
         } catch (e: Exception) {
