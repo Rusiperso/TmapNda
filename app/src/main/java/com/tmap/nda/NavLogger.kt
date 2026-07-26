@@ -5,7 +5,9 @@ import android.content.Intent
 import android.util.Log
 import androidx.core.content.FileProvider
 import java.io.File
-import java.io.FileWriter
+import java.io.FileOutputStream
+import java.io.OutputStreamWriter
+import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -43,7 +45,9 @@ object NavLogger {
                 file.renameTo(File(file.parentFile, rotatedName))
             }
             val line = "${timeFormat.format(Date())} [$level] $message\n"
-            FileWriter(logFile(context), true).use { it.write(line) }
+            // 플랫폼 기본 charset에 의존하던 FileWriter 대신 UTF-8을 명시함.
+            // 예전엔 로그 공유/전송 과정에서 한글이 mojibake(占쏙옙 패턴)로 영구 손상되는 문제가 있었음. #문제시 원복
+            OutputStreamWriter(FileOutputStream(logFile(context), true), StandardCharsets.UTF_8).use { it.write(line) }
         } catch (e: Exception) {
             Log.e(TAG, "NavLogger appendToFile error: ${e.message}")
         }
