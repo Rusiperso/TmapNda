@@ -440,6 +440,62 @@ class MapActivity : AppCompatActivity() {
         val arr = org.json.JSONArray()
         current.forEach { arr.put(it) }
         sharedPref.edit().putString(SEARCH_HISTORY_KEY, arr.toString()).apply()
+        updateRecentSearchPanel()
+    }
+
+    // 좌측 HUD 패널(가로모드)에 최근 검색 3개를 상시로 보여줌. 세로모드/이 뷰가 없는
+    // 레이아웃에서는 findViewById 결과가 null이라 안전하게 아무 것도 안 함.
+    private fun updateRecentSearchPanel() {
+        val panel = findViewById<View?>(resources.getIdentifier("llRecentSearchPanel", "id", packageName)) ?: return
+        val history = getSearchHistory()
+        val rows = listOf(
+            findViewById<android.widget.TextView?>(resources.getIdentifier("tvRecentSearch1", "id", packageName)),
+            findViewById<android.widget.TextView?>(resources.getIdentifier("tvRecentSearch2", "id", packageName)),
+            findViewById<android.widget.TextView?>(resources.getIdentifier("tvRecentSearch3", "id", packageName))
+        )
+        if (history.isEmpty()) {
+            panel.visibility = View.GONE
+            return
+        }
+        panel.visibility = View.VISIBLE
+        rows.forEachIndexed { i, tv ->
+            val text = history.getOrNull(i)
+            if (tv == null) return@forEachIndexed
+            if (text == null) {
+                tv.visibility = View.GONE
+            } else {
+                tv.visibility = View.VISIBLE
+                tv.text = text
+                tv.setOnClickListener {
+                    binding.etDestination?.setText(text)
+                    performDestinationSearch(text)
+                }
+            }
+        }
+        findViewById<View?>(resources.getIdentifier("btnMoreHistory", "id", packageName))?.setOnClickListener {
+            showFullSearchHistoryDialog()
+        }
+    }
+
+    // "+ 더보기" 클릭 시 전체 이력을 중앙 다이얼로그로 표시
+    private fun showFullSearchHistoryDialog() {
+        val history = getSearchHistory()
+        if (history.isEmpty()) return
+        val listView = android.widget.ListView(this)
+        listView.adapter = android.widget.ArrayAdapter(this, android.R.layout.simple_list_item_1, history)
+        listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("검색 이력 전체")
+            .setView(listView)
+            .setNegativeButton("닫기", null)
+            .create()
+        listView.setOnItemClickListener { _, _, position, _ ->
+            val picked = history[position]
+            binding.etDestination?.setText(picked)
+            dialog.dismiss()
+            performDestinationSearch(picked)
+        }
+        dialog.show()
     }
 
     private fun showSearchHistory() {
@@ -777,6 +833,7 @@ class MapActivity : AppCompatActivity() {
             .commitAllowingStateLoss()
 
         setupDestinationSearchUi()
+        updateRecentSearchPanel()
         dumpNavigationApiCandidates()
 
         navigationFragment?.let { frag ->
