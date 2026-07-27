@@ -1,8 +1,7 @@
 package com.tmap.nda
 
 import android.content.Context
-import com.kakaomobility.knsdk.KNError
-import com.kakaomobility.knsdk.KNGuideRouteChangeReason
+import com.kakaomobility.knsdk.common.objects.KNError
 import com.kakaomobility.knsdk.guidance.knguidance.*
 import com.kakaomobility.knsdk.guidance.knguidance.citsguide.KNGuide_Cits
 import com.kakaomobility.knsdk.guidance.knguidance.common.KNLocation
@@ -103,7 +102,7 @@ class KakaoGuidanceDelegate(
     override fun shouldPlayVoiceGuide(
         guidance: KNGuidance,
         voiceGuide: KNGuide_Voice,
-        newData: List<ByteArray>
+        newData: MutableList<ByteArray>
     ): Boolean = true
 
     override fun willPlayVoiceGuide(guidance: KNGuidance, voiceGuide: KNGuide_Voice) {
