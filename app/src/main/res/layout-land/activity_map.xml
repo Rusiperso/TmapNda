@@ -650,8 +650,9 @@
         android:elevation="50dp"
         android:background="#000000">
 
-        <com.kakaomobility.knsdk.ui.view.KNNaviView
-            android:id="@+id/naviView"
+        <ViewStub
+            android:id="@+id/naviViewStub"
+            android:layout="@layout/kakao_navi_view_stub"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
