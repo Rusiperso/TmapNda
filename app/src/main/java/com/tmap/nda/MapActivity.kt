@@ -707,9 +707,15 @@ class MapActivity : AppCompatActivity() {
     }
 
     // ===== 카카오내비 오버레이 길안내 =====
-    // 카카오 콘솔 "TmapNda"(ID 1524853) 앱의 네이티브 앱 키.
-    // 예전엔 CommaNavi(ID 1508825) 앱 키를 잘못 넣어놔서 INVALID_TOKEN 났었음. #문제시 원복
-    private val KAKAO_NATIVE_APP_KEY = "656bfa63fb6c4376040f2a119a5cd8b9"
+    // 코드에 하드코딩하면 TmapNda 쓰는 모든 사람이 재억 개인 카카오 앱 쿼터를 나눠쓰게 됨
+    // (Tmap 하루1회 제한과 같은 문제 반복). 그래서 각자 본인 카카오 콘솔에서 발급받은
+    // 네이티브 앱 키를 기기별 설정값으로 넣도록 변경. #문제시 원복
+    // 설정 안 했으면 재억 개인키로 폴백(당장 테스트용) - 나중엔 이 폴백도 빼는 게 맞음.
+    private fun getKakaoNativeAppKey(): String {
+        val prefs = getSharedPreferences("tmapnda_prefs", Context.MODE_PRIVATE)
+        val userKey = prefs.getString("KAKAO_NATIVE_APP_KEY", "") ?: ""
+        return userKey.ifBlank { "656bfa63fb6c4376040f2a119a5cd8b9" }
+    }
     private var knsdkInitialized = false
     private var kakaoGuidanceDelegate: KakaoGuidanceDelegate? = null
     private var kakaoNaviView: KNNaviView? = null
@@ -752,7 +758,7 @@ class MapActivity : AppCompatActivity() {
             NavLogger.d(this, "KNSDK install 시도: $dbPath")
             KNSDK.install(application, dbPath)
             KNSDK.initializeWithAppKey(
-                KAKAO_NATIVE_APP_KEY,
+                getKakaoNativeAppKey(),
                 "1.0",
                 "tmapnda_user",
                 "ko",
