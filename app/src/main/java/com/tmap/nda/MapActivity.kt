@@ -6,6 +6,19 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Base64
 import java.security.MessageDigest
+import com.kakaomobility.knsdk.KNSDK
+import com.kakaomobility.knsdk.KNLanguageType
+import com.kakaomobility.knsdk.KNRoutePriority
+import com.kakaomobility.knsdk.KNRouteAvoidOption
+import com.kakaomobility.knsdk.common.objects.KNPOI
+import com.kakaomobility.knsdk.common.objects.KNError
+import com.kakaomobility.knsdk.guidance.knguidance.*
+import com.kakaomobility.knsdk.guidance.knguidance.common.KNLocation
+import com.kakaomobility.knsdk.guidance.knguidance.locationguide.KNGuide_Location
+import com.kakaomobility.knsdk.guidance.knguidance.routeguide.KNGuide_Route
+import com.kakaomobility.knsdk.guidance.knguidance.safetyguide.KNGuide_Safety
+import com.kakaomobility.knsdk.trip.kntrip.KNTrip
+import com.kakaomobility.knsdk.ui.view.KNNaviView
 import android.speech.RecognizerIntent
 import android.util.Log
 import android.widget.Toast
@@ -686,11 +699,129 @@ class MapActivity : AppCompatActivity() {
 
                     runOnUiThread {
                         binding.tvSearchStatus?.text = "찾음: $placeName ($lat, $lon) - 경로요청 시도"
-                        requestRouteAndStartDriving(placeName, lat, lon)
+                        startKakaoOverlayGuidance(placeName, lat, lon)
                     }
                 }
             }
         })
+    }
+
+    // ===== 카카오내비 오버레이 길안내 =====
+    // 카카오 콘솔 "네이티브 앱 키" - 패키지명 com.tmap.nda / KeyHash 등록 필요 (logKakaoKeyHashOnce 참고)
+    private val KAKAO_NATIVE_APP_KEY = "845ce0b06c71c3e0a690dc2b5ba598dd"
+    private var knsdkInitialized = false
+    private var kakaoGuidanceDelegate: KakaoGuidanceDelegate? = null
+
+    private fun hideKakaoOverlay() {
+        runOnUiThread {
+            binding.flKakaoOverlay?.visibility = View.GONE
+        }
+    }
+
+    private fun stopKakaoGuidanceAndReturnToTmap() {
+        try {
+            KNSDK.sharedGuidance()?.stop()
+        } catch (e: Exception) {
+            NavLogger.e(this, "카카오 안내 중지 예외: ${e.message}")
+        }
+        hideKakaoOverlay()
+    }
+
+    private fun startKakaoOverlayGuidance(name: String, goalLat: Double, goalLon: Double) {
+        binding.flKakaoOverlay?.visibility = View.VISIBLE
+        binding.btnStopKakaoGuidance?.setOnClickListener { stopKakaoGuidanceAndReturnToTmap() }
+
+        if (knsdkInitialized) {
+            requestKakaoRoute(name, goalLat, goalLon)
+            return
+        }
+
+        try {
+            val dbPath = filesDir.absolutePath + "/knsdk"
+            NavLogger.d(this, "KNSDK install 시도: $dbPath")
+            KNSDK.install(application, dbPath)
+            KNSDK.initializeWithAppKey(
+                KAKAO_NATIVE_APP_KEY,
+                "1.0",
+                "tmapnda_user",
+                "ko",
+                KNLanguageType.KNLanguageType_KOREAN
+            ) { error ->
+                runOnUiThread {
+                    if (error == null) {
+                        NavLogger.d(this, "KNSDK 초기화 성공")
+                        knsdkInitialized = true
+                        requestKakaoRoute(name, goalLat, goalLon)
+                    } else {
+                        NavLogger.e(this, "KNSDK 초기화 실패: ${error.code} / ${error.msg}")
+                        Toast.makeText(this, "카카오내비 초기화 실패: ${error.msg}", Toast.LENGTH_LONG).show()
+                        hideKakaoOverlay()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            NavLogger.e(this, "KNSDK install/init 예외: ${e.message}")
+            Toast.makeText(this, "카카오내비 초기화 예외: ${e.message}", Toast.LENGTH_LONG).show()
+            hideKakaoOverlay()
+        }
+    }
+
+    private fun requestKakaoRoute(name: String, goalLat: Double, goalLon: Double) {
+        // 출발지(현재위치): SDK 자체 GPS 우선, 없으면 시스템 LocationManager 폴백, 그래도 없으면 1초 후 재시도
+        var startPoi: KNPOI? = null
+        val currentGps = KNSDK.sharedGpsManager()?.recentGpsData
+        if (currentGps != null && currentGps.pos.x > 0 && currentGps.pos.y > 0) {
+            startPoi = KNPOI("현 위치", currentGps.pos.x.toInt(), currentGps.pos.y.toInt(), "")
+        } else {
+            try {
+                val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+                val loc = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                    ?: locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                if (loc != null) {
+                    val katec = KNSDK.convertWGS84ToKATEC(loc.longitude, loc.latitude)
+                    startPoi = KNPOI("현 위치", katec.x.toInt(), katec.y.toInt(), "")
+                }
+            } catch (e: SecurityException) {
+                NavLogger.e(this, "위치 권한 없음: ${e.message}")
+            }
+        }
+
+        if (startPoi == null) {
+            Toast.makeText(this, "GPS 확인 중입니다...", Toast.LENGTH_SHORT).show()
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                requestKakaoRoute(name, goalLat, goalLon)
+            }, 1000)
+            return
+        }
+
+        val katec = KNSDK.convertWGS84ToKATEC(goalLon, goalLat)
+        val goalPoi = KNPOI(name, katec.x.toInt(), katec.y.toInt(), "")
+
+        KNSDK.makeTripWithStart(startPoi, goalPoi, null) { error, trip ->
+            runOnUiThread {
+                if (error != null || trip == null) {
+                    NavLogger.e(this, "카카오 경로요청 실패: ${error?.msg ?: "알 수 없는 오류"}")
+                    Toast.makeText(this, "경로 탐색 실패: ${error?.msg ?: "알 수 없는 오류"}", Toast.LENGTH_SHORT).show()
+                    hideKakaoOverlay()
+                } else {
+                    NavLogger.d(this, "카카오 경로요청 성공, 안내 시작: $name")
+                    val guidance = KNSDK.sharedGuidance()!!
+                    binding.naviView?.guideNewDestinations(
+                        trip,
+                        KNRoutePriority.KNRoutePriority_Recommand,
+                        KNRouteAvoidOption.KNRouteAvoidOption_None.value
+                    )
+                    val delegate = KakaoGuidanceDelegate(this) { stopKakaoGuidanceAndReturnToTmap() }
+                    kakaoGuidanceDelegate = delegate
+                    guidance.guideStateDelegate = delegate
+                    guidance.routeGuideDelegate = delegate
+                    guidance.safetyGuideDelegate = delegate
+                    guidance.voiceGuideDelegate = delegate
+                    guidance.citsGuideDelegate = delegate
+                    guidance.locationGuideDelegate = delegate
+                }
+            }
+        }
     }
 
     // WayPoint 생성자 시그니처를 모르므로, NavigationFragment의 requestRoute 시그니처에서
