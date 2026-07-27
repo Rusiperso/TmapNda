@@ -711,6 +711,16 @@ class MapActivity : AppCompatActivity() {
     private val KAKAO_NATIVE_APP_KEY = "845ce0b06c71c3e0a690dc2b5ba598dd"
     private var knsdkInitialized = false
     private var kakaoGuidanceDelegate: KakaoGuidanceDelegate? = null
+    private var kakaoNaviView: KNNaviView? = null
+
+    // KNNaviView는 SDK 초기화가 끝나기 전에 생성자가 돌면 죽는 것으로 추정됨 - #문제시 원복
+    // 그래서 레이아웃엔 ViewStub만 두고, SDK 초기화 성공한 뒤에만 실제로 inflate함.
+    private fun ensureKakaoNaviViewInflated(): KNNaviView? {
+        if (kakaoNaviView == null) {
+            kakaoNaviView = binding.naviViewStub?.inflate() as? KNNaviView
+        }
+        return kakaoNaviView
+    }
 
     private fun hideKakaoOverlay() {
         runOnUiThread {
@@ -806,7 +816,14 @@ class MapActivity : AppCompatActivity() {
                 } else {
                     NavLogger.d(this, "카카오 경로요청 성공, 안내 시작: $name")
                     val guidance = KNSDK.sharedGuidance()!!
-                    binding.naviView?.guideNewDestinations(
+                    val naviView = ensureKakaoNaviViewInflated()
+                    if (naviView == null) {
+                        NavLogger.e(this, "KNNaviView inflate 실패")
+                        Toast.makeText(this, "카카오내비 화면 생성 실패", Toast.LENGTH_SHORT).show()
+                        hideKakaoOverlay()
+                        return@runOnUiThread
+                    }
+                    naviView.guideNewDestinations(
                         trip,
                         KNRoutePriority.KNRoutePriority_Recommand,
                         KNRouteAvoidOption.KNRouteAvoidOption_None.value
