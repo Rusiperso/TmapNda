@@ -800,7 +800,12 @@ class MapActivity : AppCompatActivity() {
 
     private fun startKakaoOverlayGuidance(name: String, goalLat: Double, goalLon: Double) {
         dismissKeyboardAndSearchPanel()
-        binding.flKakaoOverlay?.visibility = View.VISIBLE
+        binding.flKakaoOverlay?.apply {
+            visibility = View.VISIBLE
+            bringToFront()
+            requestLayout()
+            invalidate()
+        }
         binding.btnStopKakaoGuidance?.setOnClickListener { stopKakaoGuidanceAndReturnToTmap() }
 
         // 세로모드: 상단 슬림 HUD 바 높이만큼 오버레이 상단을 내림 (그만큼이 실제 Tmap 지도 영역).
@@ -913,12 +918,21 @@ class MapActivity : AppCompatActivity() {
                     // 처음 안내를 시작할 땐 naviView 내부 guidance 프로퍼티가 세팅되지 않아
                     // 몇 초 뒤 KNTrip 내부 콜백에서 UninitializedPropertyAccessException으로 크래시났음.
                     // 최초 시작은 반드시 initWithGuidance()를 써야 함. #문제시 원복
-                    naviView.initWithGuidance(
-                        guidance,
-                        trip,
-                        KNRoutePriority.KNRoutePriority_Recommand,
-                        KNRouteAvoidOption.KNRouteAvoidOption_None.value
-                    )
+                    //
+                    // ViewStub.inflate() 직후엔 KNNaviView가 아직 레이아웃/측정을 한 번도
+                    // 거치지 않은 상태(크기 0x0)라서, 바로 initWithGuidance()를 부르면 내부
+                    // GL 렌더링 서페이스가 화면에 안 그려지는 것으로 추정됨(그래서 "두 번째
+                    // 시도에서만 보임" - 첫 시도 때 만들어진 뷰가 그 사이 레이아웃을 마쳐서
+                    // 두번째 initWithGuidance 호출부턴 정상 렌더링). post{}로 레이아웃 패스가
+                    // 끝난 뒤에 호출하도록 미룸. #문제시 원복
+                    naviView.post {
+                        naviView.initWithGuidance(
+                            guidance,
+                            trip,
+                            KNRoutePriority.KNRoutePriority_Recommand,
+                            KNRouteAvoidOption.KNRouteAvoidOption_None.value
+                        )
+                    }
                 }
             }
         }
