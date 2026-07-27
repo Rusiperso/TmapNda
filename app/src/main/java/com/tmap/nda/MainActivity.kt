@@ -76,12 +76,14 @@ class MainActivity : AppCompatActivity() {
         val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         val savedAppKey = sharedPref.getString("APP_KEY", "")
         val savedKakaoKey = sharedPref.getString("kakao_rest_api_key", "")
+        val savedKakaoNativeKey = sharedPref.getString("kakao_native_app_key", "")
         val savedTargetIp = sharedPref.getString("TARGET_IP", "255.255.255.255")
         val savedReqBackground = sharedPref.getBoolean("REQ_BACKGROUND", false)
         val savedDistanceFormatKm = sharedPref.getBoolean("USE_KM_DISTANCE_FORMAT", true)
         
         binding.etAppKey.setText(savedAppKey)
         binding.etKakaoAppKey.setText(savedKakaoKey)
+        binding.etKakaoNativeAppKey.setText(savedKakaoNativeKey)
         binding.etTargetIp.setText(savedTargetIp)
         binding.cbBackgroundLocation.isChecked = savedReqBackground
         binding.cbDistanceFormatKm.isChecked = savedDistanceFormatKm
@@ -102,6 +104,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnStartNavi.setOnClickListener {
             val appKey = binding.etAppKey.text.toString().trim()
             val kakaoKey = binding.etKakaoAppKey.text.toString().trim()
+            val kakaoNativeKey = binding.etKakaoNativeAppKey.text.toString().trim()
             val targetIp = binding.etTargetIp.text.toString().trim()
             val reqBackground = binding.cbBackgroundLocation.isChecked
             val distanceFormatKm = binding.cbDistanceFormatKm.isChecked
@@ -115,6 +118,7 @@ class MainActivity : AppCompatActivity() {
             sharedPref.edit().apply {
                 putString("APP_KEY", appKey)
                 putString("kakao_rest_api_key", kakaoKey)
+                putString("kakao_native_app_key", kakaoNativeKey)
                 putString("TARGET_IP", targetIp)
                 putBoolean("REQ_BACKGROUND", reqBackground)
                 putBoolean("USE_KM_DISTANCE_FORMAT", distanceFormatKm)

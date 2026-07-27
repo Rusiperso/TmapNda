@@ -712,8 +712,8 @@ class MapActivity : AppCompatActivity() {
     // 네이티브 앱 키를 기기별 설정값으로 넣도록 변경. #문제시 원복
     // 설정 안 했으면 재억 개인키로 폴백(당장 테스트용) - 나중엔 이 폴백도 빼는 게 맞음.
     private fun getKakaoNativeAppKey(): String {
-        val prefs = getSharedPreferences("tmapnda_prefs", Context.MODE_PRIVATE)
-        val userKey = prefs.getString("KAKAO_NATIVE_APP_KEY", "") ?: ""
+        val prefs = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        val userKey = prefs.getString("kakao_native_app_key", "") ?: ""
         return userKey.ifBlank { "656bfa63fb6c4376040f2a119a5cd8b9" }
     }
     private var knsdkInitialized = false
