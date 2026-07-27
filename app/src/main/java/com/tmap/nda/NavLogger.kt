@@ -90,8 +90,8 @@ object NavLogger {
     }
 
     /** 로그 파일(들)을 이메일로 공유하는 Intent 생성. 회전되어 쌓여있던 로그가 있으면 전부 한번에 첨부함.
-     *  반환값의 두 번째 항목은 공유에 포함된 파일 경로 목록 - 공유 완료(사용자가 공유 화면에서 돌아옴) 후
-     *  deleteLogFiles()에 넘겨서 삭제하면 됨. */
+     *  공유해도 파일은 삭제되지 않음 - 로그는 앱 실행 중 계속 쌓이고(10MB 넘으면 회전),
+     *  앱 종료(deleteAllLogFiles) 시에만 전체 삭제됨. */
     fun buildShareIntent(context: Context): Pair<Intent, List<String>>? {
         val files = allLogFiles(context)
         if (files.isEmpty()) return null
@@ -111,13 +111,14 @@ object NavLogger {
         return intent to files.map { it.absolutePath }
     }
 
-    /** 공유 완료 후 호출 - 방금 보낸 로그 파일들만 삭제 (그 사이 새로 쌓인 현재 로그는 안 건드림) */
-    fun deleteLogFiles(paths: List<String>) {
-        for (path in paths) {
+    /** 앱 종료 시 호출 - logs 디렉토리의 로그 파일(현재 파일 + 회전되어 보관중이던 파일) 전부 삭제.
+     *  실행 중엔 계속 쌓이다가(10MB 넘으면 회전) 종료할 때만 비워지는 방식으로 변경. #문제시 원복 */
+    fun deleteAllLogFiles(context: Context) {
+        for (file in allLogFiles(context)) {
             try {
-                File(path).delete()
+                file.delete()
             } catch (e: Exception) {
-                Log.e(TAG, "NavLogger deleteLogFiles error: ${e.message}")
+                Log.e(TAG, "NavLogger deleteAllLogFiles error: ${e.message}")
             }
         }
     }
