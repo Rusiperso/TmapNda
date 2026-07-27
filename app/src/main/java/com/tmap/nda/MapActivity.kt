@@ -59,16 +59,12 @@ class MapActivity : AppCompatActivity() {
     // 로그 공유 화면(이메일 앱 등)에서 돌아왔을 때, 방금 보낸 로그 파일들을 삭제하기 위한 목록.
     // ACTION_SEND_MULTIPLE은 "진짜 전송됨"까지는 확인 못 하고 "공유 화면에서 돌아옴"까지만 알 수 있어서
     // 그 시점을 "보냈다"로 간주하고 삭제함.
-    private var pendingSharedLogPaths: List<String> = emptyList()
+    // 로그 공유 화면(이메일 앱 등)에서 돌아왔을 때 쓰던 삭제 로직은 제거함.
+    // 이제 로그는 공유해도 지워지지 않고(계속 쌓임, 10MB 넘으면 회전), 앱 종료 시에만
+    // 전체 삭제됨 (btnExitApp 참고). #문제시 원복
     private val shareLogLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) {
-        if (pendingSharedLogPaths.isNotEmpty()) {
-            NavLogger.deleteLogFiles(pendingSharedLogPaths)
-            NavLogger.d(this, "공유 완료 후 로그 ${pendingSharedLogPaths.size}개 삭제됨")
-            pendingSharedLogPaths = emptyList()
-        }
-    }
+    ) { /* no-op: 공유해도 로그 유지 */ }
 
     private val voiceSearchLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -193,6 +189,9 @@ class MapActivity : AppCompatActivity() {
         }
 
         binding.btnExitApp.setOnClickListener {
+            // 공유시 삭제하던 방식에서 변경: 이제 로그는 실행 중엔 계속 쌓이고(10MB 회전),
+            // 앱을 종료하는 이 시점에 전체 삭제. #문제시 원복
+            NavLogger.deleteAllLogFiles(this)
             finishAffinity()
         }
 
@@ -422,7 +421,8 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    // 로그 파일을 이메일(jaeeok.cho@icloud.com)로 공유 - 회전되어 쌓여있던 로그까지 전부 한번에 보냄
+    // 로그 파일을 이메일(jaeeok.cho@icloud.com)로 공유 - 회전되어 쌓여있던 로그까지 전부 한번에 보냄.
+    // 공유해도 삭제되지 않음(앱 종료시에만 전체 삭제).
     private fun shareNavLog() {
         val result = NavLogger.buildShareIntent(this)
         if (result == null) {
@@ -430,7 +430,6 @@ class MapActivity : AppCompatActivity() {
             return
         }
         val (intent, paths) = result
-        pendingSharedLogPaths = paths
         shareLogLauncher.launch(Intent.createChooser(intent, "로그 공유 (${paths.size}개 파일)"))
     }
 
