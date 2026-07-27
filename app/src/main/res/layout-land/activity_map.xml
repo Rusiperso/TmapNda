@@ -641,4 +641,28 @@
 
     </FrameLayout>
 
+    <!-- ===== 카카오내비 오버레이 (검색→길안내 시에만 Tmap 화면 위에 얹힘, 평소엔 GONE) ===== -->
+    <FrameLayout
+        android:id="@+id/flKakaoOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:elevation="50dp"
+        android:background="#000000">
+
+        <com.kakaomobility.knsdk.ui.view.KNNaviView
+            android:id="@+id/naviView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <Button
+            android:id="@+id/btnStopKakaoGuidance"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_margin="12dp"
+            android:text="Tmap으로 복귀"
+            android:backgroundTint="#F44336" />
+    </FrameLayout>
+
 </FrameLayout>

@@ -104,6 +104,8 @@ dependencies {
 
   // TMapUISDK
   implementation("com.tmapmobility.tmap:tmap-ui-sdk:1.0.0.0146")
+  // 카카오내비 SDK - 검색/경로계산/실시간안내를 카카오로 우회 (Tmap 화면 위에 오버레이로 얹음)
+  implementation("com.kakaomobility.knsdk:knsdk_ui:1.12.8-hotfix02")
 
   // for vsm sdk
   implementation("com.google.flatbuffers:flatbuffers-java:1.11.0")
