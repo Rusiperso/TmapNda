@@ -10,10 +10,10 @@ android {
     compileSdk = 36
     defaultConfig {
         applicationId = "com.tmap.nda"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 36
-        versionCode = 49
-        versionName = "1.0.49"
+        versionCode = 50
+        versionName = "1.0.50"
     }
 
     signingConfigs {
