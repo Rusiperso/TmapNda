@@ -505,15 +505,16 @@ class MapActivity : AppCompatActivity() {
         updateRecentSearchPanel()
     }
 
-    // 좌측 HUD 패널(가로모드)에 최근 검색 3개를 상시로 보여줌. 세로모드/이 뷰가 없는
-    // 레이아웃에서는 findViewById 결과가 null이라 안전하게 아무 것도 안 함.
+    // 좌측 HUD 패널(가로모드)에 최근 검색 1개만 상시로 보여줌. 예전엔 3개를 상시 표시했는데
+    // 이력이 쌓일수록 이 패널 높이가 늘어나서 하단 "앱 종료" 버튼이 화면 밖으로 밀려나는
+    // 문제가 있었음. 나머지는 "+ 더보기" 눌러서 전체 다이얼로그(showFullSearchHistoryDialog)로
+    // 확인하는 구조라 기능 손실은 없음. #문제시 원복
+    // 세로모드/이 뷰가 없는 레이아웃에서는 findViewById 결과가 null이라 안전하게 아무 것도 안 함.
     private fun updateRecentSearchPanel() {
         val panel = findViewById<View?>(resources.getIdentifier("llRecentSearchPanel", "id", packageName)) ?: return
         val history = getSearchHistory()
         val rows = listOf(
-            findViewById<android.widget.TextView?>(resources.getIdentifier("tvRecentSearch1", "id", packageName)),
-            findViewById<android.widget.TextView?>(resources.getIdentifier("tvRecentSearch2", "id", packageName)),
-            findViewById<android.widget.TextView?>(resources.getIdentifier("tvRecentSearch3", "id", packageName))
+            findViewById<android.widget.TextView?>(resources.getIdentifier("tvRecentSearch1", "id", packageName))
         )
         if (history.isEmpty()) {
             panel.visibility = View.GONE

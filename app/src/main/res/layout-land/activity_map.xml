@@ -396,34 +396,11 @@
                 android:orientation="vertical"
                 android:background="#141414">
 
+                <!-- 상시 표시는 최근 1개만: 이력이 늘어날 때마다 이 패널 높이가 커져서
+                     하단 "앱 종료" 버튼이 화면 밖으로 밀려나는 문제가 있었음. 나머지는
+                     "+ 더보기"로 전체 다이얼로그에서 확인. #문제시 원복 -->
                 <TextView
                     android:id="@+id/tvRecentSearch1"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:padding="9dp"
-                    android:textColor="#DDDDDD"
-                    android:textSize="12sp"
-                    android:maxLines="1"
-                    android:ellipsize="end"
-                    android:visibility="gone"/>
-
-                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#1E1E1E"/>
-
-                <TextView
-                    android:id="@+id/tvRecentSearch2"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:padding="9dp"
-                    android:textColor="#DDDDDD"
-                    android:textSize="12sp"
-                    android:maxLines="1"
-                    android:ellipsize="end"
-                    android:visibility="gone"/>
-
-                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#1E1E1E"/>
-
-                <TextView
-                    android:id="@+id/tvRecentSearch3"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:padding="9dp"
