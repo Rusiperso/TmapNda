@@ -922,17 +922,37 @@ class MapActivity : AppCompatActivity() {
                     // ViewStub.inflate() 직후엔 KNNaviView가 아직 레이아웃/측정을 한 번도
                     // 거치지 않은 상태(크기 0x0)라서, 바로 initWithGuidance()를 부르면 내부
                     // GL 렌더링 서페이스가 화면에 안 그려지는 것으로 추정됨(그래서 "두 번째
-                    // 시도에서만 보임" - 첫 시도 때 만들어진 뷰가 그 사이 레이아웃을 마쳐서
-                    // 두번째 initWithGuidance 호출부턴 정상 렌더링). post{}로 레이아웃 패스가
-                    // 끝난 뒤에 호출하도록 미룸. #문제시 원복
-                    naviView.post {
-                        naviView.initWithGuidance(
-                            guidance,
-                            trip,
-                            KNRoutePriority.KNRoutePriority_Recommand,
-                            KNRouteAvoidOption.KNRouteAvoidOption_None.value
-                        )
+                    // 시도에서만 보임"). post{} 1회로는 레이아웃 패스 1번 뒤에만 실행되는데,
+                    // 실제로는 그 다음에도 내부 서페이스가 준비되기까지 시간이 더 걸려서
+                    // 여전히 레이스가 남았음(post 한번으론 화면 전환이 되다가 멈추고,
+                    // 두번째 탭에서야 완료되는 증상 재현됨). 그래서 post 1회 고정 대신
+                    // naviView.width/height가 실제로 0보다 커질 때까지 재귀적으로
+                    // post{}를 반복해서 진짜 레이아웃 완료 시점을 기다리도록 변경.
+                    // 최대 대기횟수를 두어 무한루프 방지. #문제시 원복
+                    var initRetryCount = 0
+                    fun attemptInitWithGuidance() {
+                        if (naviView.width > 0 && naviView.height > 0) {
+                            naviView.initWithGuidance(
+                                guidance,
+                                trip,
+                                KNRoutePriority.KNRoutePriority_Recommand,
+                                KNRouteAvoidOption.KNRouteAvoidOption_None.value
+                            )
+                        } else if (initRetryCount < 30) {
+                            initRetryCount++
+                            naviView.post { attemptInitWithGuidance() }
+                        } else {
+                            // 30프레임(약 0.5초) 지나도 크기가 안 잡히면 그냥 강행 (기존 동작으로 폴백)
+                            NavLogger.e(this@MapActivity, "KNNaviView 레이아웃 대기 타임아웃 - 강제 초기화")
+                            naviView.initWithGuidance(
+                                guidance,
+                                trip,
+                                KNRoutePriority.KNRoutePriority_Recommand,
+                                KNRouteAvoidOption.KNRouteAvoidOption_None.value
+                            )
+                        }
                     }
+                    attemptInitWithGuidance()
                 }
             }
         }
