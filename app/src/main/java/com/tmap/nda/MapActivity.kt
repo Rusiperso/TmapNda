@@ -729,6 +729,49 @@ class MapActivity : AppCompatActivity() {
         return kakaoNaviView
     }
 
+    // KNNaviView 내장 UI엔 자체 "안내종료" 버튼이 있는데, 그건 우리 stopKakaoGuidanceAndReturnToTmap()과
+    // 연결이 안 돼있어서 눌러도 flKakaoOverlay가 안 걷히는 문제가 있었음(카카오 화면만 내부적으로
+    // 종료되고 우리 오버레이는 그대로 남음). KNSDK 버전에 따라 상태 델리게이트 인터페이스/메서드명이
+    // 조금씩 다를 수 있어서(예: KNNaviView_StateDelegate), 리플렉션으로 "...Delegate"를 받는 setter를
+    // 찾아서 프록시를 걸고, 콜백 인자에 "exit"/"end"/"종료" 계열 값이 보이면 오버레이를 닫음.
+    // 정상적으로 등록 안 되더라도 앱 동작엔 영향 없음(그냥 훅이 안 걸릴 뿐). #문제시 원복
+    private var kakaoNaviViewExitHookAttached = false
+    private fun attachKakaoNaviViewExitHook(naviView: KNNaviView) {
+        if (kakaoNaviViewExitHookAttached) return
+        try {
+            val setterCandidates = naviView.javaClass.methods.filter {
+                it.name.contains("Delegate", ignoreCase = true) &&
+                    it.parameterTypes.size == 1 &&
+                    it.parameterTypes[0].isInterface
+            }
+            for (setter in setterCandidates) {
+                val ifaceClass = setter.parameterTypes[0]
+                val proxy = java.lang.reflect.Proxy.newProxyInstance(
+                    ifaceClass.classLoader,
+                    arrayOf(ifaceClass)
+                ) { _, method, args ->
+                    val argsText = args?.joinToString { it?.toString() ?: "null" } ?: ""
+                    NavLogger.d(this, "[KNNaviView ${ifaceClass.simpleName}] ${method.name}($argsText)")
+                    if (argsText.contains("exit", true) || argsText.contains("end", true) ||
+                        method.name.contains("exit", true) || method.name.contains("finish", true)
+                    ) {
+                        runOnUiThread { stopKakaoGuidanceAndReturnToTmap() }
+                    }
+                    if (method.returnType == Boolean::class.javaPrimitiveType) true else null
+                }
+                try {
+                    setter.invoke(naviView, proxy)
+                    NavLogger.d(this, "KNNaviView 델리게이트 후킹 성공: ${setter.name}(${ifaceClass.simpleName})")
+                } catch (e: Exception) {
+                    NavLogger.e(this, "KNNaviView 델리게이트 후킹 실패(${setter.name}): ${e.message}")
+                }
+            }
+            kakaoNaviViewExitHookAttached = true
+        } catch (e: Exception) {
+            NavLogger.e(this, "KNNaviView exit hook 예외: ${e.message}")
+        }
+    }
+
     private fun hideKakaoOverlay() {
         runOnUiThread {
             binding.flKakaoOverlay?.visibility = View.GONE
@@ -744,7 +787,19 @@ class MapActivity : AppCompatActivity() {
         hideKakaoOverlay()
     }
 
+    // 검색 성공 후 오버레이를 띄우기 직전에 호출. 검색창에 포커스가 남아있으면 소프트키보드가
+    // 오버레이 위를 계속 가리고 있어서 "화면 전환이 안 된 것처럼" 보였음(실제론 전환은 됐는데
+    // 키보드에 가려서 안 보였던 것). 최근 검색 목록 탭 시엔 애초에 키보드 포커스가 없어서
+    // 이 문제가 없었음. #문제시 원복
+    private fun dismissKeyboardAndSearchPanel() {
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+        currentFocus?.let { imm?.hideSoftInputFromWindow(it.windowToken, 0) }
+        binding.etDestination?.clearFocus()
+        binding.llSearchPanel?.visibility = View.GONE
+    }
+
     private fun startKakaoOverlayGuidance(name: String, goalLat: Double, goalLon: Double) {
+        dismissKeyboardAndSearchPanel()
         binding.flKakaoOverlay?.visibility = View.VISIBLE
         binding.btnStopKakaoGuidance?.setOnClickListener { stopKakaoGuidanceAndReturnToTmap() }
 
@@ -844,6 +899,7 @@ class MapActivity : AppCompatActivity() {
                         hideKakaoOverlay()
                         return@runOnUiThread
                     }
+                    attachKakaoNaviViewExitHook(naviView)
                     // 델리게이트는 initWithGuidance 호출 전에 등록해야 안내 시작 콜백을 놓치지 않음.
                     val delegate = KakaoGuidanceDelegate(this) { stopKakaoGuidanceAndReturnToTmap() }
                     kakaoGuidanceDelegate = delegate
