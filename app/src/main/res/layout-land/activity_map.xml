@@ -618,11 +618,15 @@
 
     </FrameLayout>
 
-    <!-- ===== 카카오내비 오버레이 (검색→길안내 시에만 Tmap 화면 위에 얹힘, 평소엔 GONE) ===== -->
+    <!-- ===== 카카오내비 오버레이 (검색→길안내 시에만 Tmap 화면 위에 얹힘, 평소엔 GONE) =====
+         layout_marginStart를 좌측 HUD 패널(220dp)만큼 줘서, Tmap 실제 지도가 보이던
+         영역(HUD 제외 나머지)만큼만 차지하게 함. 이전엔 match_parent라 HUD 패널 위까지
+         덮어서 화면이 과하게 커 보였음. #문제시 원복 -->
     <FrameLayout
         android:id="@+id/flKakaoOverlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:layout_marginStart="220dp"
         android:visibility="gone"
         android:elevation="50dp"
         android:background="#000000">

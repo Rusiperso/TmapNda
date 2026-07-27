@@ -748,6 +748,20 @@ class MapActivity : AppCompatActivity() {
         binding.flKakaoOverlay?.visibility = View.VISIBLE
         binding.btnStopKakaoGuidance?.setOnClickListener { stopKakaoGuidanceAndReturnToTmap() }
 
+        // 세로모드: 상단 슬림 HUD 바 높이만큼 오버레이 상단을 내림 (그만큼이 실제 Tmap 지도 영역).
+        // 가로모드는 레이아웃 XML에서 좌측 HUD 패널(220dp)만큼 layout_marginStart로 이미 처리됨.
+        // #문제시 원복
+        val topHudBar = findViewById<View?>(resources.getIdentifier("llTopHudBar", "id", packageName))
+        if (topHudBar != null) {
+            topHudBar.post {
+                val params = binding.flKakaoOverlay?.layoutParams as? android.view.ViewGroup.MarginLayoutParams
+                if (params != null && params.topMargin != topHudBar.height) {
+                    params.topMargin = topHudBar.height
+                    binding.flKakaoOverlay?.layoutParams = params
+                }
+            }
+        }
+
         if (knsdkInitialized) {
             requestKakaoRoute(name, goalLat, goalLon)
             return
@@ -830,11 +844,7 @@ class MapActivity : AppCompatActivity() {
                         hideKakaoOverlay()
                         return@runOnUiThread
                     }
-                    naviView.guideNewDestinations(
-                        trip,
-                        KNRoutePriority.KNRoutePriority_Recommand,
-                        KNRouteAvoidOption.KNRouteAvoidOption_None.value
-                    )
+                    // 델리게이트는 initWithGuidance 호출 전에 등록해야 안내 시작 콜백을 놓치지 않음.
                     val delegate = KakaoGuidanceDelegate(this) { stopKakaoGuidanceAndReturnToTmap() }
                     kakaoGuidanceDelegate = delegate
                     guidance.guideStateDelegate = delegate
@@ -843,6 +853,16 @@ class MapActivity : AppCompatActivity() {
                     guidance.voiceGuideDelegate = delegate
                     guidance.citsGuideDelegate = delegate
                     guidance.locationGuideDelegate = delegate
+                    // guideNewDestinations()는 "이미 안내 중인 상태에서 목적지 변경"용 메서드라
+                    // 처음 안내를 시작할 땐 naviView 내부 guidance 프로퍼티가 세팅되지 않아
+                    // 몇 초 뒤 KNTrip 내부 콜백에서 UninitializedPropertyAccessException으로 크래시났음.
+                    // 최초 시작은 반드시 initWithGuidance()를 써야 함. #문제시 원복
+                    naviView.initWithGuidance(
+                        guidance,
+                        trip,
+                        KNRoutePriority.KNRoutePriority_Recommand,
+                        KNRouteAvoidOption.KNRouteAvoidOption_None.value
+                    )
                 }
             }
         }
