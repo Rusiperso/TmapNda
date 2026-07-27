@@ -707,8 +707,9 @@ class MapActivity : AppCompatActivity() {
     }
 
     // ===== 카카오내비 오버레이 길안내 =====
-    // 카카오 콘솔 "네이티브 앱 키" - 패키지명 com.tmap.nda / KeyHash 등록 필요 (logKakaoKeyHashOnce 참고)
-    private val KAKAO_NATIVE_APP_KEY = "845ce0b06c71c3e0a690dc2b5ba598dd"
+    // 카카오 콘솔 "TmapNda"(ID 1524853) 앱의 네이티브 앱 키.
+    // 예전엔 CommaNavi(ID 1508825) 앱 키를 잘못 넣어놔서 INVALID_TOKEN 났었음. #문제시 원복
+    private val KAKAO_NATIVE_APP_KEY = "656bfa63fb6c4376040f2a119a5cd8b9"
     private var knsdkInitialized = false
     private var kakaoGuidanceDelegate: KakaoGuidanceDelegate? = null
     private var kakaoNaviView: KNNaviView? = null
