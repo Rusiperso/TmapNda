@@ -27,8 +27,8 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:background="#FF080808"
-        android:paddingHorizontal="14dp"
-        android:paddingVertical="10dp"
+        android:paddingHorizontal="@dimen/hud_top_bar_padding_h"
+        android:paddingVertical="@dimen/hud_top_bar_padding_v"
         android:gravity="center_vertical"
         android:elevation="8dp">
 
@@ -45,7 +45,7 @@
                 android:layout_height="wrap_content"
                 android:text="0"
                 android:textColor="#FFFFFF"
-                android:textSize="34sp"
+                android:textSize="@dimen/hud_speed_text_size"
                 android:textStyle="bold" />
 
             <TextView
@@ -53,7 +53,7 @@
                 android:layout_height="wrap_content"
                 android:text="km/h"
                 android:textColor="#555555"
-                android:textSize="10sp"
+                android:textSize="@dimen/hud_speed_unit_text_size"
                 android:layout_marginStart="3dp"
                 android:layout_marginBottom="6dp"/>
 
@@ -63,20 +63,20 @@
                 android:layout_height="wrap_content"
                 android:text="--"
                 android:textColor="#FF5252"
-                android:textSize="13sp"
+                android:textSize="@dimen/hud_road_limit_text_size"
                 android:textStyle="bold"
                 android:background="@drawable/bg_speed_limit_hud"
-                android:paddingHorizontal="6dp"
-                android:paddingVertical="1dp"
-                android:layout_marginStart="10dp"
+                android:paddingHorizontal="@dimen/hud_road_limit_padding_h"
+                android:paddingVertical="@dimen/hud_road_limit_padding_v"
+                android:layout_marginStart="@dimen/hud_road_limit_margin_start"
                 android:layout_marginBottom="6dp"/>
         </LinearLayout>
 
         <View
-            android:layout_width="1dp"
-            android:layout_height="30dp"
+            android:layout_width="@dimen/hud_divider_width"
+            android:layout_height="@dimen/hud_divider_height"
             android:background="#222222"
-            android:layout_marginHorizontal="12dp"/>
+            android:layout_marginHorizontal="@dimen/hud_divider_margin_h"/>
 
         <!-- 카메라/이벤트 (간결화: 아이콘 없이 텍스트만, 없으면 자동 숨김) -->
         <LinearLayout
@@ -92,7 +92,7 @@
                 android:layout_height="wrap_content"
                 android:text="--"
                 android:textColor="#FFC107"
-                android:textSize="10sp"/>
+                android:textSize="@dimen/hud_sdi_descr_text_size"/>
 
             <LinearLayout
                 android:layout_width="wrap_content"
@@ -106,7 +106,7 @@
                     android:layout_height="wrap_content"
                     android:text="--"
                     android:textColor="#FFFFFF"
-                    android:textSize="18sp"
+                    android:textSize="@dimen/hud_sdi_dist_text_size"
                     android:textStyle="bold"
                     android:maxLines="1"
                     android:singleLine="true"/>
@@ -117,7 +117,7 @@
                     android:layout_height="wrap_content"
                     android:text=""
                     android:textColor="#FF5252"
-                    android:textSize="12sp"
+                    android:textSize="@dimen/hud_sdi_limit_text_size"
                     android:textStyle="bold"
                     android:layout_marginStart="6dp"
                     android:layout_marginBottom="2dp"/>
@@ -130,18 +130,18 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="OP OFF"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="4dp"
+            android:paddingHorizontal="@dimen/hud_status_padding_h"
+            android:paddingVertical="@dimen/hud_status_padding_v"
             android:background="@drawable/bg_status_off"
             android:textColor="#FFFFFF"
-            android:textSize="11sp"
+            android:textSize="@dimen/hud_status_text_size"
             android:textStyle="bold"
             android:layout_marginStart="8dp"/>
 
         <View
             android:id="@+id/vTrafficLight"
-            android:layout_width="10dp"
-            android:layout_height="10dp"
+            android:layout_width="@dimen/hud_traffic_light_size"
+            android:layout_height="@dimen/hud_traffic_light_size"
             android:background="@drawable/shape_circle_gray"
             android:layout_marginStart="8dp"/>
 
@@ -151,7 +151,7 @@
             android:layout_height="wrap_content"
             android:text="CRUISE"
             android:textColor="#2196F3"
-            android:textSize="10sp"
+            android:textSize="@dimen/hud_xstate_text_size"
             android:textStyle="bold"
             android:visibility="gone"
             android:layout_marginStart="6dp"/>
@@ -159,8 +159,8 @@
         <!-- 음소거 | 검색 | 전송 (상단 HUD 바 안, 요청한 순서) -->
         <ImageButton
             android:id="@+id/btnMuteToggle"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="@dimen/hud_icon_button_size"
+            android:layout_height="@dimen/hud_icon_button_size"
             android:layout_marginStart="10dp"
             android:src="@android:drawable/ic_lock_silent_mode"
             android:background="@drawable/shape_circle_gray"
@@ -168,8 +168,8 @@
 
         <ImageButton
             android:id="@+id/btnOpenSearch"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="@dimen/hud_icon_button_size"
+            android:layout_height="@dimen/hud_icon_button_size"
             android:layout_marginStart="8dp"
             android:src="@android:drawable/ic_menu_search"
             android:background="@drawable/shape_circle_gray"
@@ -177,8 +177,8 @@
 
         <ImageButton
             android:id="@+id/btnShareLog"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="@dimen/hud_icon_button_size"
+            android:layout_height="@dimen/hud_icon_button_size"
             android:layout_marginStart="8dp"
             android:src="@android:drawable/ic_menu_send"
             android:background="@drawable/shape_circle_gray"
@@ -193,15 +193,15 @@
         android:orientation="horizontal"
         android:layout_gravity="bottom"
         android:background="#CC080808"
-        android:paddingHorizontal="10dp"
-        android:paddingVertical="6dp"
+        android:paddingHorizontal="@dimen/bottom_panel_padding_h"
+        android:paddingVertical="@dimen/bottom_panel_padding_v"
         android:gravity="center_vertical"
         android:elevation="8dp">
 
         <View
             android:id="@+id/vConnectionDot"
-            android:layout_width="7dp"
-            android:layout_height="7dp"
+            android:layout_width="@dimen/bottom_dot_size"
+            android:layout_height="@dimen/bottom_dot_size"
             android:background="@drawable/shape_circle_gray"
             android:layout_marginEnd="5dp"/>
 
@@ -212,7 +212,7 @@
             android:layout_height="wrap_content"
             android:text="연결 대기"
             android:textColor="#888888"
-            android:textSize="10sp"
+            android:textSize="@dimen/bottom_status_text_size"
             android:maxLines="1"
             android:ellipsize="end"/>
 
@@ -222,7 +222,7 @@
             android:layout_height="wrap_content"
             android:text="Ver: -"
             android:textColor="#555555"
-            android:textSize="9sp"
+            android:textSize="@dimen/bottom_meta_text_size"
             android:layout_marginEnd="8dp"/>
 
         <TextView
@@ -231,7 +231,7 @@
             android:layout_height="wrap_content"
             android:text="IP: -"
             android:textColor="#555555"
-            android:textSize="9sp"
+            android:textSize="@dimen/bottom_meta_text_size"
             android:layout_marginEnd="8dp"/>
 
         <TextView
@@ -240,16 +240,16 @@
             android:layout_height="wrap_content"
             android:text="v-"
             android:textColor="#444444"
-            android:textSize="9sp"
+            android:textSize="@dimen/bottom_meta_text_size"
             android:layout_marginEnd="8dp"/>
 
         <Button
             android:id="@+id/btnGpsStatus"
             android:layout_width="wrap_content"
-            android:layout_height="28dp"
+            android:layout_height="@dimen/bottom_gps_button_height"
             android:minWidth="0dp"
             android:text="GPS"
-            android:textSize="9sp"
+            android:textSize="@dimen/bottom_gps_text_size"
             android:paddingHorizontal="8dp"
             android:backgroundTint="#333333"
             android:layout_marginEnd="6dp"/>
@@ -257,18 +257,18 @@
         <Button
             android:id="@+id/btnCheckUpdate"
             android:layout_width="wrap_content"
-            android:layout_height="40dp"
+            android:layout_height="@dimen/bottom_update_button_height"
             android:minWidth="0dp"
             android:text="업데이트"
-            android:textSize="12sp"
+            android:textSize="@dimen/bottom_update_text_size"
             android:paddingHorizontal="10dp"
             android:backgroundTint="#333333"
             android:layout_marginEnd="8dp"/>
 
         <ImageButton
             android:id="@+id/btnExitApp"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="@dimen/bottom_exit_button_size"
+            android:layout_height="@dimen/bottom_exit_button_size"
             android:src="@android:drawable/ic_menu_close_clear_cancel"
             android:background="@drawable/shape_circle_gray"
             android:backgroundTint="#F44336"
@@ -285,8 +285,8 @@
         android:layout_marginTop="64dp"
         android:layout_marginEnd="14dp"
         android:background="@drawable/bg_sdi_panel"
-        android:paddingHorizontal="14dp"
-        android:paddingVertical="10dp"
+        android:paddingHorizontal="@dimen/hud_top_bar_padding_h"
+        android:paddingVertical="@dimen/hud_top_bar_padding_v"
         android:gravity="center"
         android:elevation="8dp"
         android:visibility="gone">
@@ -315,7 +315,7 @@
                 android:layout_height="wrap_content"
                 android:text="평균: 0km/h"
                 android:textColor="#FFFFFF"
-                android:textSize="13sp"
+                android:textSize="@dimen/offset_avg_text_size"
                 android:textStyle="bold" />
 
             <TextView
@@ -324,7 +324,7 @@
                 android:layout_height="wrap_content"
                 android:text="거리: 0m"
                 android:textColor="#AAAAAA"
-                android:textSize="11sp"/>
+                android:textSize="@dimen/offset_dist_text_size"/>
 
             <TextView
                 android:id="@+id/tvBlockTime"
@@ -332,7 +332,7 @@
                 android:layout_height="wrap_content"
                 android:text="시간: 0:00"
                 android:textColor="#AAAAAA"
-                android:textSize="11sp"/>
+                android:textSize="@dimen/offset_dist_text_size"/>
         </LinearLayout>
     </LinearLayout>
 
@@ -346,7 +346,7 @@
         android:orientation="vertical"
         android:layout_gravity="bottom"
         android:background="#EE111111"
-        android:padding="16dp"
+        android:padding="@dimen/search_panel_padding"
         android:elevation="12dp"
         android:visibility="gone">
 
@@ -359,7 +359,7 @@
             <EditText
                 android:id="@+id/etDestination"
                 android:layout_width="0dp"
-                android:layout_height="48dp"
+                android:layout_height="@dimen/search_edit_height"
                 android:layout_weight="1"
                 android:hint="목적지를 입력하세요 (예: 서울역)"
                 android:textColor="#FFFFFF"
@@ -372,8 +372,8 @@
 
             <ImageButton
                 android:id="@+id/btnVoiceSearch"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="@dimen/search_button_size"
+                android:layout_height="@dimen/search_button_size"
                 android:layout_marginStart="8dp"
                 android:src="@android:drawable/ic_btn_speak_now"
                 android:background="@drawable/shape_circle_gray"
@@ -382,25 +382,25 @@
             <Button
                 android:id="@+id/btnSearchGo"
                 android:layout_width="wrap_content"
-                android:layout_height="48dp"
+                android:layout_height="@dimen/search_edit_height"
                 android:layout_marginStart="8dp"
                 android:text="검색"
-                android:textSize="13sp" />
+                android:textSize="@dimen/search_text_size" />
 
             <Button
                 android:id="@+id/btnSearchClose"
                 android:layout_width="wrap_content"
-                android:layout_height="48dp"
+                android:layout_height="@dimen/search_edit_height"
                 android:layout_marginStart="8dp"
                 android:text="닫기"
-                android:textSize="13sp"
+                android:textSize="@dimen/search_text_size"
                 android:backgroundTint="#555555" />
         </LinearLayout>
 
         <ListView
             android:id="@+id/lvSearchResults"
             android:layout_width="match_parent"
-            android:layout_height="240dp"
+            android:layout_height="@dimen/search_results_height"
             android:layout_marginTop="8dp"
             android:divider="#33FFFFFF"
             android:dividerHeight="1dp"
@@ -413,7 +413,7 @@
             android:layout_marginTop="8dp"
             android:text=""
             android:textColor="#AAAAAA"
-            android:textSize="12sp" />
+            android:textSize="@dimen/search_status_text_size" />
     </LinearLayout>
 
     <!-- 길안내 중 표시 + 안내 종료 버튼 -->
@@ -424,7 +424,7 @@
         android:orientation="horizontal"
         android:layout_gravity="bottom"
         android:background="#EE1B5E20"
-        android:padding="12dp"
+        android:padding="@dimen/guidance_bar_padding"
         android:elevation="10dp"
         android:gravity="center_vertical"
         android:visibility="gone">
@@ -436,7 +436,7 @@
             android:layout_height="wrap_content"
             android:text="길안내 중"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
+            android:textSize="@dimen/guidance_dest_text_size"
             android:textStyle="bold" />
 
         <Button
@@ -444,7 +444,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="안내 종료"
-            android:textSize="12sp"
+            android:textSize="@dimen/guidance_stop_text_size"
             android:backgroundTint="#F44336" />
     </LinearLayout>
 

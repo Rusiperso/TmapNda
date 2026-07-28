@@ -1,0 +1,53 @@
+<!-- values-sw600dp/dimens.xml : 소형 태블릿 (sw 600~819dp) -->
+<resources>
+    <dimen name="hud_top_bar_padding_h">18dp</dimen>
+    <dimen name="hud_top_bar_padding_v">13dp</dimen>
+    <dimen name="hud_speed_text_size">42sp</dimen>
+    <dimen name="hud_speed_unit_text_size">12sp</dimen>
+    <dimen name="hud_road_limit_text_size">16sp</dimen>
+    <dimen name="hud_road_limit_padding_h">8dp</dimen>
+    <dimen name="hud_road_limit_padding_v">2dp</dimen>
+    <dimen name="hud_road_limit_margin_start">13dp</dimen>
+    <dimen name="hud_divider_width">1dp</dimen>
+    <dimen name="hud_divider_height">36dp</dimen>
+    <dimen name="hud_divider_margin_h">16dp</dimen>
+    <dimen name="hud_sdi_descr_text_size">12sp</dimen>
+    <dimen name="hud_sdi_dist_text_size">22sp</dimen>
+    <dimen name="hud_sdi_limit_text_size">14sp</dimen>
+    <dimen name="hud_status_text_size">13sp</dimen>
+    <dimen name="hud_status_padding_h">10dp</dimen>
+    <dimen name="hud_status_padding_v">5dp</dimen>
+    <dimen name="hud_traffic_light_size">12dp</dimen>
+    <dimen name="hud_xstate_text_size">12sp</dimen>
+    <dimen name="hud_icon_button_size">44dp</dimen>
+
+    <dimen name="bottom_panel_padding_h">13dp</dimen>
+    <dimen name="bottom_panel_padding_v">8dp</dimen>
+    <dimen name="bottom_dot_size">9dp</dimen>
+    <dimen name="bottom_status_text_size">12sp</dimen>
+    <dimen name="bottom_meta_text_size">11sp</dimen>
+    <dimen name="bottom_gps_button_height">34dp</dimen>
+    <dimen name="bottom_gps_text_size">11sp</dimen>
+    <dimen name="bottom_update_button_height">48dp</dimen>
+    <dimen name="bottom_update_text_size">14sp</dimen>
+    <dimen name="bottom_exit_button_size">48dp</dimen>
+
+    <dimen name="offset_card_margin_top">76dp</dimen>
+    <dimen name="offset_card_padding_h">18dp</dimen>
+    <dimen name="offset_card_padding_v">13dp</dimen>
+    <dimen name="offset_title_text_size">13sp</dimen>
+    <dimen name="offset_avg_text_size">16sp</dimen>
+    <dimen name="offset_dist_text_size">13sp</dimen>
+
+    <dimen name="search_panel_padding">20dp</dimen>
+    <dimen name="search_edit_height">56dp</dimen>
+    <dimen name="search_button_size">48dp</dimen>
+    <dimen name="search_text_size">15sp</dimen>
+    <dimen name="search_results_height">300dp</dimen>
+    <dimen name="search_status_text_size">14sp</dimen>
+
+    <dimen name="guidance_bar_padding">15dp</dimen>
+    <dimen name="guidance_dest_text_size">17sp</dimen>
+    <dimen name="guidance_stop_text_size">14sp</dimen>
+    <dimen name="hud_panel_width">280dp</dimen>
+</resources>

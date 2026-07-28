@@ -1,0 +1,58 @@
+<!-- values/dimens.xml : 기준값 = 스마트폰 (sw < 600dp) -->
+<resources>
+    <!-- 상단 HUD 바 -->
+    <dimen name="hud_top_bar_padding_h">14dp</dimen>
+    <dimen name="hud_top_bar_padding_v">10dp</dimen>
+    <dimen name="hud_speed_text_size">34sp</dimen>
+    <dimen name="hud_speed_unit_text_size">10sp</dimen>
+    <dimen name="hud_road_limit_text_size">13sp</dimen>
+    <dimen name="hud_road_limit_padding_h">6dp</dimen>
+    <dimen name="hud_road_limit_padding_v">1dp</dimen>
+    <dimen name="hud_road_limit_margin_start">10dp</dimen>
+    <dimen name="hud_divider_width">1dp</dimen>
+    <dimen name="hud_divider_height">30dp</dimen>
+    <dimen name="hud_divider_margin_h">12dp</dimen>
+    <dimen name="hud_sdi_descr_text_size">10sp</dimen>
+    <dimen name="hud_sdi_dist_text_size">18sp</dimen>
+    <dimen name="hud_sdi_limit_text_size">12sp</dimen>
+    <dimen name="hud_status_text_size">11sp</dimen>
+    <dimen name="hud_status_padding_h">8dp</dimen>
+    <dimen name="hud_status_padding_v">4dp</dimen>
+    <dimen name="hud_traffic_light_size">10dp</dimen>
+    <dimen name="hud_xstate_text_size">10sp</dimen>
+    <dimen name="hud_icon_button_size">36dp</dimen>
+
+    <!-- 하단 상태바 -->
+    <dimen name="bottom_panel_padding_h">10dp</dimen>
+    <dimen name="bottom_panel_padding_v">6dp</dimen>
+    <dimen name="bottom_dot_size">7dp</dimen>
+    <dimen name="bottom_status_text_size">10sp</dimen>
+    <dimen name="bottom_meta_text_size">9sp</dimen>
+    <dimen name="bottom_gps_button_height">28dp</dimen>
+    <dimen name="bottom_gps_text_size">9sp</dimen>
+    <dimen name="bottom_update_button_height">40dp</dimen>
+    <dimen name="bottom_update_text_size">12sp</dimen>
+    <dimen name="bottom_exit_button_size">40dp</dimen>
+
+    <!-- 구간단속 플로팅 카드 -->
+    <dimen name="offset_card_margin_top">64dp</dimen>
+    <dimen name="offset_card_padding_h">14dp</dimen>
+    <dimen name="offset_card_padding_v">10dp</dimen>
+    <dimen name="offset_title_text_size">11sp</dimen>
+    <dimen name="offset_avg_text_size">13sp</dimen>
+    <dimen name="offset_dist_text_size">11sp</dimen>
+
+    <!-- 목적지 검색 패널 -->
+    <dimen name="search_panel_padding">16dp</dimen>
+    <dimen name="search_edit_height">48dp</dimen>
+    <dimen name="search_button_size">40dp</dimen>
+    <dimen name="search_text_size">13sp</dimen>
+    <dimen name="search_results_height">240dp</dimen>
+    <dimen name="search_status_text_size">12sp</dimen>
+
+    <!-- 길안내 바 / 가로모드 좌측 패널 -->
+    <dimen name="guidance_bar_padding">12dp</dimen>
+    <dimen name="guidance_dest_text_size">14sp</dimen>
+    <dimen name="guidance_stop_text_size">12sp</dimen>
+    <dimen name="hud_panel_width">220dp</dimen>
+</resources>
