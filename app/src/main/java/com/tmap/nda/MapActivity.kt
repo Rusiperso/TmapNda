@@ -761,10 +761,9 @@ class MapActivity : AppCompatActivity() {
                     NavLogger.d(this, "[KNNaviView ${ifaceClass.simpleName}] ${method.name}($argsText)")
 
                     // 하이브리드 전환: OnRouteGuide면 카카오 화면/음성 사용, OnSafetyGuide(경로 없는
-                    // 배경 안전운행)로 떨어지면 카카오 지도는 그대로 두되(기본 HUD가 카카오 지도라서)
-                    // 음성만 티맵 걸로 스위치하고, 강제로 낮췄던 티맵 볼륨도 원복.
-                    // guidance.stop()은 호출 안 함 - 카카오 세션 자체는 계속 살려두고
-                    // 음성만 스위치해서, 다시 OnRouteGuide로 돌아오면 바로 재개되게 함. #문제시 원복
+                    // 배경 안전운행)로 떨어지면 티맵 화면으로 복귀(오버레이 감춤) + 음성도 티맵으로.
+                    // (idle map을 기본 HUD로 쓰는 실험은 롤백함 - 재사용된 naviView가 경로모드로
+                    // 전환될 때 화면이 안 바뀌는 문제가 반복 확인됨) #문제시 원복
                     if (method.name == "naviViewGuideState") {
                         if (argsText.contains("OnRouteGuide", true) && !isKakaoGuidanceExplicitlyStopped) {
                             isKakaoRouteGuideActive = true
@@ -775,7 +774,10 @@ class MapActivity : AppCompatActivity() {
                                 applyMuteState()
                                 if (isTmapMuted) {
                                     TmapUISDK.setVolume(this@MapActivity, 0)
+                                } else {
+                                    TmapUISDK.setVolume(this@MapActivity, 100)
                                 }
+                                hideKakaoOverlay()
                             }
                         }
                     }
@@ -845,9 +847,16 @@ class MapActivity : AppCompatActivity() {
         }
         isKakaoGuidanceActive = false
         isKakaoGuidanceStarting = false
-        // 기존엔 오버레이를 GONE으로 감춰서 Tmap 화면으로 돌아갔는데, 이제 카카오 지도가
-        // 기본 HUD라서 감출 필요 없이 "경로 없는 기본지도"로만 되돌림. #문제시 원복
-        showKakaoIdleMap()
+        isKakaoRouteGuideActive = false
+        // idle map(카카오 지도를 기본 HUD로) 실험 롤백 - 다시 원래대로 오버레이를
+        // 감추고 티맵 화면으로 복귀. 사용자 음소거 설정도 원복. #문제시 원복
+        applyMuteState()
+        if (isTmapMuted) {
+            TmapUISDK.setVolume(this@MapActivity, 0)
+        } else {
+            TmapUISDK.setVolume(this@MapActivity, 100)
+        }
+        hideKakaoOverlay()
     }
 
     // 검색 성공 후 오버레이를 띄우기 직전에 호출. 검색창에 포커스가 남아있으면 소프트키보드가
@@ -960,15 +969,14 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    // onCreate 이후 최초 1회, Tmap SDK 초기화 성공 시점에 호출. Tmap의 startSafeDrive()는
-    // 그대로 유지(백그라운드에서 안전정보 계속 수신 - Fragment가 뷰에 add된 이상 화면에
-    // 안 보여도 동작하는 것으로 보임, "안전운행 모드" 자체가 원래 화면표시 없이 동작하도록
-    // 설계된 모드라서 가능성 높음). 대신 화면엔 처음부터 카카오 지도를 보여줌. #문제시 원복
+    // onCreate 이후 최초 1회, Tmap SDK 초기화 성공 시점에 호출.
+    // "앱 시작부터 카카오 지도를 기본 HUD로" 실험은 idle map으로 초기화해둔 naviView를
+    // 재사용해서 실제 경로 안내로 전환할 때 SDK 상태(OnRouteGuide)는 정상인데도 화면이
+    // 안 바뀌는 문제가 반복 확인되어(로그로 검증) 롤백함. 원래대로 기본 화면은 티맵이고,
+    // 카카오 SDK는 여기서 미리 install/initialize만 해둬서, 실제 목적지 검색 시점엔
+    // 초기화 대기 없이 바로 naviView를 새로 inflate해서 길안내를 시작할 수 있게 함. #문제시 원복
     private fun initKakaoSdkAndShowIdleMap() {
-        if (knsdkInitialized) {
-            showKakaoIdleMap()
-            return
-        }
+        if (knsdkInitialized) return
         try {
             val dbPath = filesDir.absolutePath + "/knsdk"
             NavLogger.d(this, "KNSDK install 시도(앱 시작 시점 선행 초기화): $dbPath")
@@ -984,7 +992,6 @@ class MapActivity : AppCompatActivity() {
                     if (error == null) {
                         NavLogger.d(this, "KNSDK 초기화 성공(앱 시작 시점)")
                         knsdkInitialized = true
-                        showKakaoIdleMap()
                     } else {
                         NavLogger.e(this, "KNSDK 초기화 실패(앱 시작 시점): ${error.code} / ${error.msg}")
                     }
