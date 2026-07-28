@@ -22,7 +22,8 @@ import com.kakaomobility.knsdk.trip.kntrip.knroute.KNRoute
  */
 class KakaoGuidanceDelegate(
     private val context: Context,
-    private val onGuideEnded: () -> Unit
+    private val onGuideEnded: () -> Unit,
+    private val onGuideStarted: () -> Unit = {}
 ) : KNGuidance_GuideStateDelegate,
     KNGuidance_LocationGuideDelegate,
     KNGuidance_RouteGuideDelegate,
@@ -33,6 +34,7 @@ class KakaoGuidanceDelegate(
     // ===== GuideStateDelegate =====
     override fun guidanceGuideStarted(guidance: KNGuidance) {
         NavLogger.d(context, "[카카오안내] 시작됨")
+        onGuideStarted()
     }
 
     override fun guidanceGuideEnded(guidance: KNGuidance) {

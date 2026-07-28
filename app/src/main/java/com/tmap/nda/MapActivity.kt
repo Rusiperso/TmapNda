@@ -770,10 +770,21 @@ class MapActivity : AppCompatActivity() {
     }
 
     private fun hideKakaoOverlay() {
+        isKakaoGuidanceStarting = false
         runOnUiThread {
             binding.flKakaoOverlay?.visibility = View.GONE
         }
     }
+
+    // 로그 분석 결과: 같은(또는 다른) 목적지를 짧은 간격으로 여러 번 재검색/재클릭하면
+    // 매번 KNSDK.makeTripWithStart + 새 KakaoGuidanceDelegate 생성 + initWithGuidance()를
+    // 처음부터 다시 실행했음. 이전 호출이 아직 화면에 실제로 반영되기 전에 새 호출이
+    // 덮어써버려서, 중간의 시도들은 "[카카오안내] 시작됨" 콜백이 영영 안 오고 사실상
+    // 버려짐 - 그래서 "화면 전환은 안 되고 음성만 나옴" 상태가 계속되다가, 마지막으로
+    // 누른 시도만 살아남아 그제서야 전환되는 것으로 확인됨(로그의 여수시청/부산광역시청
+    // 반복 케이스). 하나의 안내 시작 요청이 실제로 끝나기(성공 or 실패) 전까지는
+    // 새 요청을 무시하도록 가드. #문제시 원복
+    private var isKakaoGuidanceStarting = false
 
     private fun stopKakaoGuidanceAndReturnToTmap() {
         try {
@@ -796,6 +807,19 @@ class MapActivity : AppCompatActivity() {
     }
 
     private fun startKakaoOverlayGuidance(name: String, goalLat: Double, goalLon: Double) {
+        if (isKakaoGuidanceStarting) {
+            // 이전 요청이 아직 화면 전환을 못 끝낸 상태 - 여기서 또 새로 시작하면
+            // 그 요청이 덮어써져서 영영 전환 안 되는 게 반복됨. 그냥 무시.
+            NavLogger.d(this, "카카오 안내 시작 진행 중 - 중복 요청 무시: $name")
+            Toast.makeText(this, "안내 준비 중입니다. 잠시만 기다려줘", Toast.LENGTH_SHORT).show()
+            return
+        }
+        isKakaoGuidanceStarting = true
+        // 안전장치: guidanceGuideStarted 콜백이 무슨 이유로든 끝내 안 오는 경우
+        // 영원히 재시도가 막히지 않도록 10초 뒤엔 강제로 플래그 해제.
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            isKakaoGuidanceStarting = false
+        }, 10000)
         dismissKeyboardAndSearchPanel()
         binding.flKakaoOverlay?.apply {
             visibility = View.VISIBLE
@@ -916,7 +940,11 @@ class MapActivity : AppCompatActivity() {
                     }
                     attachKakaoNaviViewExitHook(naviView)
                     // 델리게이트는 initWithGuidance 호출 전에 등록해야 안내 시작 콜백을 놓치지 않음.
-                    val delegate = KakaoGuidanceDelegate(this) { stopKakaoGuidanceAndReturnToTmap() }
+                    val delegate = KakaoGuidanceDelegate(
+                        this,
+                        onGuideEnded = { stopKakaoGuidanceAndReturnToTmap() },
+                        onGuideStarted = { isKakaoGuidanceStarting = false }
+                    )
                     kakaoGuidanceDelegate = delegate
                     guidance.guideStateDelegate = delegate
                     guidance.routeGuideDelegate = delegate
