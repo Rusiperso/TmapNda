@@ -52,7 +52,7 @@ class MapActivity : AppCompatActivity() {
     private var lastValidRoadLimit = 0  // 3번: 도로 규정속도 깜빡임 방지 - 마지막 유효값 저장
     private var lastEdcAnomalyState = false  // observableEDCData 이상징후 로깅용 (상태 변화시에만 기록)
     private var tbtDistErrorLogged = false   // nTBTDist 리플렉션 실패는 최초 1회만 로깅
-    private var isTmapMuted = true  // 티맵 안내음성 음소거 여부 (기본값: 기존 동작 유지 = 음소거)
+    private var isTmapMuted = false  // 티맵 안내음성 음소거 여부 (기본값: 소리 켜짐. 카카오는 실제 경로안내 중에만 말하므로 기본상태에선 티맵 음성이 나와야 함)
 
     // 음성 검색 결과 수신용 런처. 안드로이드 표준 음성인식 액티비티(RecognizerIntent)를 위임 호출하는 방식이라
     // 별도의 RECORD_AUDIO 런타임 권한 요청 없이 동작함 (인식은 시스템 음성입력 앱이 수행).
@@ -173,7 +173,7 @@ class MapActivity : AppCompatActivity() {
             return
         }
 
-        isTmapMuted = sharedPref.getBoolean("tmap_muted", true)
+        isTmapMuted = sharedPref.getBoolean("tmap_muted", false)
         applyMuteState()
         binding.btnMuteToggle?.setOnClickListener {
             isTmapMuted = !isTmapMuted
