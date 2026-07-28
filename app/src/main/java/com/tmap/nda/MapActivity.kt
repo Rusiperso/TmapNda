@@ -858,22 +858,35 @@ class MapActivity : AppCompatActivity() {
     }
 
     private fun requestKakaoRoute(name: String, goalLat: Double, goalLon: Double) {
-        // 출발지(현재위치): SDK 자체 GPS 우선, 없으면 시스템 LocationManager 폴백, 그래도 없으면 1초 후 재시도
+        // 출발지(현재위치): HUD 속도계 갱신용으로 이미 실시간 업데이트되고 있는
+        // lastKnownLat/lastKnownLon을 최우선으로 사용. (기존엔 이 값을 안 쓰고
+        // KNSDK 자체 GPS(항상 null, 한번도 안 채워짐)나 시스템 getLastKnownLocation()
+        // 캐시(빈 경우 많음)만 확인해서, 앱 켜고 바로 검색하면 매번 첫 탭은 캐시가
+        // 비어 "GPS 확인중" 루프에 걸리고, 재탭할 즈음엔 다른 리스너가 lastKnownLat/Lon을
+        // 채워놔서 우연히 되는 것처럼 보였음 - 이게 "두번 눌러야 되는" 진짜 원인. #문제시 원복
         var startPoi: KNPOI? = null
-        val currentGps = KNSDK.sharedGpsManager()?.recentGpsData
-        if (currentGps != null && currentGps.pos.x > 0 && currentGps.pos.y > 0) {
-            startPoi = KNPOI("현 위치", currentGps.pos.x.toInt(), currentGps.pos.y.toInt(), "")
-        } else {
-            try {
-                val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
-                val loc = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
-                    ?: locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
-                if (loc != null) {
-                    val katec = KNSDK.convertWGS84ToKATEC(loc.longitude, loc.latitude)
-                    startPoi = KNPOI("현 위치", katec.x.toInt(), katec.y.toInt(), "")
+        val cachedLat = lastKnownLat
+        val cachedLon = lastKnownLon
+        if (cachedLat != null && cachedLon != null) {
+            val katecStart = KNSDK.convertWGS84ToKATEC(cachedLon, cachedLat)
+            startPoi = KNPOI("현 위치", katecStart.x.toInt(), katecStart.y.toInt(), "")
+        }
+        if (startPoi == null) {
+            val currentGps = KNSDK.sharedGpsManager()?.recentGpsData
+            if (currentGps != null && currentGps.pos.x > 0 && currentGps.pos.y > 0) {
+                startPoi = KNPOI("현 위치", currentGps.pos.x.toInt(), currentGps.pos.y.toInt(), "")
+            } else {
+                try {
+                    val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+                    val loc = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                        ?: locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                    if (loc != null) {
+                        val katec = KNSDK.convertWGS84ToKATEC(loc.longitude, loc.latitude)
+                        startPoi = KNPOI("현 위치", katec.x.toInt(), katec.y.toInt(), "")
+                    }
+                } catch (e: SecurityException) {
+                    NavLogger.e(this, "위치 권한 없음: ${e.message}")
                 }
-            } catch (e: SecurityException) {
-                NavLogger.e(this, "위치 권한 없음: ${e.message}")
             }
         }
 
