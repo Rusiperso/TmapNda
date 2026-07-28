@@ -123,6 +123,10 @@ class MapActivity : AppCompatActivity() {
         binding = ActivityMapBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // 화면 크기(폰/태블릿 등)가 기준(스마트폰)과 다르면 텍스트/여백/고정크기를
+        // 비율에 맞게 자동 조정. #문제시 원복 (이 한 줄만 지우면 됨)
+        UiAutoScaler.apply(this, binding.root)
+
         // 자동 업데이트 체크
         AutoUpdater.checkForUpdates(this)
 
@@ -179,13 +183,6 @@ class MapActivity : AppCompatActivity() {
         binding.btnCheckUpdate.setOnClickListener {
             Toast.makeText(this, "업데이트 확인 중...", Toast.LENGTH_SHORT).show()
             AutoUpdater.checkForUpdates(this)
-        }
-
-        binding.btnEditKey.setOnClickListener {
-            val intent = Intent(this, MainActivity::class.java)
-            intent.putExtra("auto_start", false)
-            startActivity(intent)
-            finish()
         }
 
         binding.btnExitApp.setOnClickListener {
