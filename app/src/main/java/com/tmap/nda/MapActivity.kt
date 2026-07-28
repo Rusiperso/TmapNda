@@ -123,9 +123,11 @@ class MapActivity : AppCompatActivity() {
         binding = ActivityMapBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // 화면 크기(폰/태블릿 등)가 기준(스마트폰)과 다르면 텍스트/여백/고정크기를
-        // 비율에 맞게 자동 조정. #문제시 원복 (이 한 줄만 지우면 됨)
-        UiAutoScaler.apply(this, binding.root)
+        // UiAutoScaler(전체 뷰트리 padding/margin/고정크기 일괄 스케일링)는
+        // 태블릿(sw~940dp)에서 1.8배가 그대로 곱해지며 좌측 패널 폭을 넘어
+        // 아이콘 겹침/텍스트 잘림을 유발함이 확인되어 즉시 롤백함.
+        // #문제시 원복 대상이었으나 현재는 비활성 상태. (UiAutoScaler.kt 자체는 보존)
+        // UiAutoScaler.apply(this, binding.root)
 
         // 자동 업데이트 체크
         AutoUpdater.checkForUpdates(this)
