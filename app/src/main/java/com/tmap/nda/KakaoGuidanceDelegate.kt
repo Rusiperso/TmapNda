@@ -23,7 +23,10 @@ import com.kakaomobility.knsdk.trip.kntrip.knroute.KNRoute
 class KakaoGuidanceDelegate(
     private val context: Context,
     private val onGuideEnded: () -> Unit,
-    private val onGuideStarted: () -> Unit = {}
+    private val onGuideStarted: () -> Unit = {},
+    // 세이프티(경로없음) 모드에선 false를 리턴해서 카카오 음성을 무음 처리하고,
+    // 티맵 자체 카메라/방지턱/구간단속 안내음이 대신 나오게 하는 하이브리드 스위치. #문제시 원복
+    private val isRouteGuideActive: () -> Boolean = { true }
 ) : KNGuidance_GuideStateDelegate,
     KNGuidance_LocationGuideDelegate,
     KNGuidance_RouteGuideDelegate,
@@ -105,7 +108,7 @@ class KakaoGuidanceDelegate(
         guidance: KNGuidance,
         voiceGuide: KNGuide_Voice,
         newData: MutableList<ByteArray>
-    ): Boolean = true
+    ): Boolean = isRouteGuideActive()
 
     override fun willPlayVoiceGuide(guidance: KNGuidance, voiceGuide: KNGuide_Voice) {
         // no-op (필요시 AudioFocusHacker 연동 지점)

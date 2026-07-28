@@ -752,9 +752,31 @@ class MapActivity : AppCompatActivity() {
                 ) { _, method, args ->
                     val argsText = args?.joinToString { it?.toString() ?: "null" } ?: ""
                     NavLogger.d(this, "[KNNaviView ${ifaceClass.simpleName}] ${method.name}($argsText)")
+
+                    // 하이브리드 전환: OnRouteGuide면 카카오 화면/음성 사용, OnSafetyGuide(경로 없는
+                    // 배경 안전운행)로 떨어지면 카카오 지도는 그대로 두되(기본 HUD가 카카오 지도라서)
+                    // 음성만 티맵 걸로 스위치하고, 강제로 낮췄던 티맵 볼륨도 원복.
+                    // guidance.stop()은 호출 안 함 - 카카오 세션 자체는 계속 살려두고
+                    // 음성만 스위치해서, 다시 OnRouteGuide로 돌아오면 바로 재개되게 함. #문제시 원복
+                    if (method.name == "naviViewGuideState") {
+                        if (argsText.contains("OnRouteGuide", true) && !isKakaoGuidanceExplicitlyStopped) {
+                            isKakaoRouteGuideActive = true
+                            runOnUiThread { reassertKakaoOverlayVisible() }
+                        } else if (argsText.contains("OnSafetyGuide", true)) {
+                            isKakaoRouteGuideActive = false
+                            runOnUiThread {
+                                applyMuteState()
+                                if (isTmapMuted) {
+                                    TmapUISDK.setVolume(this@MapActivity, 0)
+                                }
+                            }
+                        }
+                    }
+
                     if (argsText.contains("exit", true) || argsText.contains("end", true) ||
                         method.name.contains("exit", true) || method.name.contains("finish", true)
                     ) {
+                        isKakaoGuidanceExplicitlyStopped = true
                         runOnUiThread { stopKakaoGuidanceAndReturnToTmap() }
                     }
                     if (method.returnType == Boolean::class.javaPrimitiveType) true else null
@@ -794,6 +816,19 @@ class MapActivity : AppCompatActivity() {
     // 콜백이 영영 안 오는 경우가 확인됨(SDK 내부적으로 기존 세션과 충돌하는 것으로
     // 추정). 그래서 새로 시작하기 전에 기존 세션이 있으면 먼저 stop() 하도록 수정. #문제시 원복
     private var isKakaoGuidanceActive = false
+
+    // 실제 "경로 안내 중"인지(OnRouteGuide) vs "경로 없는 배경 안전운행"(OnSafetyGuide)인지 구분.
+    // true일 때만 카카오 오버레이/음성을 쓰고, false면 티맵 화면+티맵 자체 안전운행 음성으로 되돌림.
+    // (카메라/방지턱/구간단속 등 안내음은 세이프티모드에서도 티맵 걸 쓰기 위한 하이브리드 스위치) #문제시 원복
+    private var isKakaoRouteGuideActive = false
+
+    // "안내 종료" 눌렀을 때(exit/end 감지) 이후로, KNSDK가 내부적으로 종료 절차를 밟으며
+    // naviViewGuideState(OnRouteGuide) 등을 한 번 더 흘려보내는 경우가 있어서, 위 하이브리드
+    // 로직이 그걸 "다시 경로안내 시작됨"으로 오인해 오버레이를 재표시 -> 곧바로 종료가 실제
+    // 처리되며 다시 사라짐, 이 과정이 반복되어 "떴다가 없어졌다가" 깜빡이는 문제가 있었음.
+    // 명시적 종료 이후엔 새 안내가 진짜로 시작되기(startKakaoOverlayGuidance) 전까지
+    // OnRouteGuide 재표시를 무시하도록 가드. #문제시 원복
+    private var isKakaoGuidanceExplicitlyStopped = false
 
     private fun stopKakaoGuidanceAndReturnToTmap() {
         try {
@@ -926,6 +961,7 @@ class MapActivity : AppCompatActivity() {
             return
         }
         isKakaoGuidanceStarting = true
+        isKakaoGuidanceExplicitlyStopped = false
         // 안전장치: guidanceGuideStarted 콜백이 무슨 이유로든 끝내 안 오는 경우
         // 영원히 재시도가 막히지 않도록 10초 뒤엔 강제로 플래그 해제.
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
@@ -1076,13 +1112,15 @@ class MapActivity : AppCompatActivity() {
                         onGuideStarted = {
                             isKakaoGuidanceStarting = false
                             isKakaoGuidanceActive = true
+                            isKakaoRouteGuideActive = true
                             reassertKakaoOverlayVisible()
                             // 카카오 실제 길안내 음성과 티맵 음성이 동시에 나오는 걸 막기 위해
                             // 안내 시작 시점엔 사용자의 티맵 음소거 설정과 무관하게 강제로 낮춤.
                             // 사용자가 저장한 isTmapMuted 값 자체는 안 바꿈 - 안내 종료하면
                             // showKakaoIdleMap()에서 그 설정대로 원복. #문제시 원복
                             TmapUISDK.setVolume(this@MapActivity, 0)
-                        }
+                        },
+                        isRouteGuideActive = { isKakaoRouteGuideActive }
                     )
                     kakaoGuidanceDelegate = delegate
                     guidance.guideStateDelegate = delegate
