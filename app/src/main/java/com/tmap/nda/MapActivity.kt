@@ -808,6 +808,23 @@ class MapActivity : AppCompatActivity() {
         binding.llSearchPanel?.visibility = View.GONE
     }
 
+    // flKakaoOverlay를 VISIBLE + 최상위로 강제. 검색 클릭 시점 1회로는, 실제 KNSDK
+    // 안내가 준비되는 3~5초 사이 어딘가에서 다른 뷰(예: 소프트키보드 잔상, 검색패널
+    // 리레이아웃 등)에 의해 z-order/가시성이 도로 밀리는 경우가 있는 것으로 보임.
+    // (로그상 guidanceGuideStarted 콜백은 이미 왔는데도 화면은 안 넘어가 있다가
+    // 재탭 시점에야 실제로 보이는 패턴 확인됨). 그래서 탭 시점뿐 아니라 안내가
+    // 실제로 시작되는 시점(guidanceGuideStarted)에도 한 번 더 강제 재적용. #문제시 원복
+    private fun reassertKakaoOverlayVisible() {
+        runOnUiThread {
+            binding.flKakaoOverlay?.apply {
+                visibility = View.VISIBLE
+                bringToFront()
+                requestLayout()
+                invalidate()
+            }
+        }
+    }
+
     private fun startKakaoOverlayGuidance(name: String, goalLat: Double, goalLon: Double) {
         if (isKakaoGuidanceStarting) {
             // 이전 요청이 아직 화면 전환을 못 끝낸 상태 - 여기서 또 새로 시작하면
@@ -823,12 +840,12 @@ class MapActivity : AppCompatActivity() {
             isKakaoGuidanceStarting = false
         }, 10000)
         dismissKeyboardAndSearchPanel()
-        binding.flKakaoOverlay?.apply {
-            visibility = View.VISIBLE
-            bringToFront()
-            requestLayout()
-            invalidate()
-        }
+        reassertKakaoOverlayVisible()
+        // 탭 시점 1회 강제로는 부족했던 것으로 보여서, 이후에도 몇 차례 더
+        // 지연 재적용 (다른 뷰/키보드 애니메이션이 끝난 뒤 z-order가 밀리는 걸 방지). #문제시 원복
+        binding.flKakaoOverlay?.postDelayed({ reassertKakaoOverlayVisible() }, 300)
+        binding.flKakaoOverlay?.postDelayed({ reassertKakaoOverlayVisible() }, 1000)
+        binding.flKakaoOverlay?.postDelayed({ reassertKakaoOverlayVisible() }, 2500)
         binding.btnStopKakaoGuidance?.setOnClickListener { stopKakaoGuidanceAndReturnToTmap() }
 
         // 세로모드: 상단 슬림 HUD 바 높이만큼 오버레이 상단을 내림 (그만큼이 실제 Tmap 지도 영역).
@@ -945,7 +962,10 @@ class MapActivity : AppCompatActivity() {
                     val delegate = KakaoGuidanceDelegate(
                         this,
                         onGuideEnded = { stopKakaoGuidanceAndReturnToTmap() },
-                        onGuideStarted = { isKakaoGuidanceStarting = false }
+                        onGuideStarted = {
+                            isKakaoGuidanceStarting = false
+                            reassertKakaoOverlayVisible()
+                        }
                     )
                     kakaoGuidanceDelegate = delegate
                     guidance.guideStateDelegate = delegate
