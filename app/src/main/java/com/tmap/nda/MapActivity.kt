@@ -1165,15 +1165,30 @@ class MapActivity : AppCompatActivity() {
                     // naviView.width/height가 실제로 0보다 커질 때까지 재귀적으로
                     // post{}를 반복해서 진짜 레이아웃 완료 시점을 기다리도록 변경.
                     // 최대 대기횟수를 두어 무한루프 방지. #문제시 원복
+                    // 기존엔 naviView가 매번 새로 inflate돼서 크기가 0x0 -> non-zero로 바뀌는
+                    // 순간을 기다리는 걸로 "서페이스 준비 시간"을 확보했는데, 이제 idle map이
+                    // 앱 시작 때부터 naviView를 계속 띄워놓고 재사용하다 보니 재검색 시점엔
+                    // 이미 크기가 잡혀있어서 이 대기 로직이 사실상 0번 대기하고 그냥 바로
+                    // 실행돼버림(원래 의도했던 "GL 서페이스 준비 시간"을 다시 안 기다리게 됨).
+                    // 그래서 크기 조건과 별개로 최소 2프레임은 항상 대기하도록 수정. #문제시 원복
                     var initRetryCount = 0
+                    val minSettleFrames = 2
                     fun attemptInitWithGuidance() {
-                        if (naviView.width > 0 && naviView.height > 0) {
+                        if (naviView.width > 0 && naviView.height > 0 && initRetryCount >= minSettleFrames) {
                             naviView.initWithGuidance(
                                 guidance,
                                 trip,
                                 KNRoutePriority.KNRoutePriority_Recommand,
                                 KNRouteAvoidOption.KNRouteAvoidOption_None.value
                             )
+                            // 초기화 직후 서페이스가 이전(idle) 프레임을 그대로 들고 있을 수 있어서
+                            // 강제로 한 번 더 무효화/재측정 요청. #문제시 원복
+                            naviView.requestLayout()
+                            naviView.invalidate()
+                            naviView.postDelayed({
+                                naviView.requestLayout()
+                                naviView.invalidate()
+                            }, 300)
                         } else if (initRetryCount < 30) {
                             initRetryCount++
                             naviView.post { attemptInitWithGuidance() }
