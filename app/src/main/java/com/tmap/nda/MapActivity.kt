@@ -328,6 +328,7 @@ class MapActivity : AppCompatActivity() {
 
                     startSafeDriveMode()
                     startUdpSenderService()
+                    initKakaoSdkAndShowIdleMap()
                 }
             }
 
@@ -801,7 +802,10 @@ class MapActivity : AppCompatActivity() {
             NavLogger.e(this, "카카오 안내 중지 예외: ${e.message}")
         }
         isKakaoGuidanceActive = false
-        hideKakaoOverlay()
+        isKakaoGuidanceStarting = false
+        // 기존엔 오버레이를 GONE으로 감춰서 Tmap 화면으로 돌아갔는데, 이제 카카오 지도가
+        // 기본 HUD라서 감출 필요 없이 "경로 없는 기본지도"로만 되돌림. #문제시 원복
+        showKakaoIdleMap()
     }
 
     // 검색 성공 후 오버레이를 띄우기 직전에 호출. 검색창에 포커스가 남아있으면 소프트키보드가
@@ -829,6 +833,81 @@ class MapActivity : AppCompatActivity() {
                 requestLayout()
                 invalidate()
             }
+        }
+    }
+
+    // ============================================================
+    // 앱 시작 시점부터 카카오 지도를 기본 HUD로 사용하기 위한 실험적 기능.
+    // 카카오 개발자포럼(devtalk.kakao.com/t/android-knsdk-safetiesonguide)에
+    // KNNaviView.initWithGuidance(guidance, trip=null, ...)로 "경로 없이 지도+
+    // 안전정보만" 표시하는 방식이 언급됨 - 공식 확정 답변은 아니고 다른 개발자의
+    // 질문글이라 실기기 검증 필요. 안 되면 즉시 롤백 가능하도록 기존 흐름은
+    // 그대로 보존하고 이 함수만 추가. #문제시 원복
+    private fun showKakaoIdleMap() {
+        runOnUiThread {
+            val naviView = ensureKakaoNaviViewInflated()
+            if (naviView == null) {
+                NavLogger.e(this, "카카오 기본지도 표시 실패: naviView inflate 실패")
+                return@runOnUiThread
+            }
+            try {
+                val guidance = KNSDK.sharedGuidance()
+                if (guidance == null) {
+                    NavLogger.e(this, "카카오 기본지도 표시 실패: sharedGuidance() null (KNSDK 미초기화)")
+                    return@runOnUiThread
+                }
+                naviView.initWithGuidance(
+                    guidance,
+                    null,
+                    KNRoutePriority.KNRoutePriority_Recommand,
+                    KNRouteAvoidOption.KNRouteAvoidOption_None.value
+                )
+                NavLogger.d(this, "카카오 기본지도(경로 없음) 표시 성공")
+            } catch (e: Exception) {
+                NavLogger.e(this, "카카오 기본지도 표시 예외: ${e.message}")
+                return@runOnUiThread
+            }
+            binding.flKakaoOverlay?.apply {
+                visibility = View.VISIBLE
+                bringToFront()
+                requestLayout()
+                invalidate()
+            }
+        }
+    }
+
+    // onCreate 이후 최초 1회, Tmap SDK 초기화 성공 시점에 호출. Tmap의 startSafeDrive()는
+    // 그대로 유지(백그라운드에서 안전정보 계속 수신 - Fragment가 뷰에 add된 이상 화면에
+    // 안 보여도 동작하는 것으로 보임, "안전운행 모드" 자체가 원래 화면표시 없이 동작하도록
+    // 설계된 모드라서 가능성 높음). 대신 화면엔 처음부터 카카오 지도를 보여줌. #문제시 원복
+    private fun initKakaoSdkAndShowIdleMap() {
+        if (knsdkInitialized) {
+            showKakaoIdleMap()
+            return
+        }
+        try {
+            val dbPath = filesDir.absolutePath + "/knsdk"
+            NavLogger.d(this, "KNSDK install 시도(앱 시작 시점 선행 초기화): $dbPath")
+            KNSDK.install(application, dbPath)
+            KNSDK.initializeWithAppKey(
+                getKakaoNativeAppKey(),
+                "1.0",
+                "tmapnda_user",
+                "ko",
+                KNLanguageType.KNLanguageType_KOREAN
+            ) { error ->
+                runOnUiThread {
+                    if (error == null) {
+                        NavLogger.d(this, "KNSDK 초기화 성공(앱 시작 시점)")
+                        knsdkInitialized = true
+                        showKakaoIdleMap()
+                    } else {
+                        NavLogger.e(this, "KNSDK 초기화 실패(앱 시작 시점): ${error.code} / ${error.msg}")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            NavLogger.e(this, "KNSDK install/init 예외(앱 시작 시점): ${e.message}")
         }
     }
 
@@ -948,8 +1027,11 @@ class MapActivity : AppCompatActivity() {
         val katec = KNSDK.convertWGS84ToKATEC(goalLon, goalLat)
         val goalPoi = KNPOI(name, katec.x.toInt(), katec.y.toInt(), "")
 
-        if (isKakaoGuidanceActive) {
-            NavLogger.d(this, "기존 카카오 안내 세션 활성 중 - 새 목적지 시작 전 정리")
+        // idle 지도 상태(경로 없는 initWithGuidance)도 SDK 입장에선 "이미 시작된 세션"으로
+        // 취급될 수 있어서, isKakaoGuidanceActive 플래그와 무관하게 방어적으로 항상 정리.
+        // stop()은 이미 멈춰있는 상태에 불러도 안전한 것으로 확인됨(에러 없이 무시됨). #문제시 원복
+        run {
+            NavLogger.d(this, "새 목적지 시작 전 기존 세션(또는 idle 지도) 정리")
             try {
                 KNSDK.sharedGuidance()?.stop()
             } catch (e: Exception) {

@@ -469,7 +469,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="top|end"
             android:layout_margin="12dp"
-            android:text="Tmap으로 복귀"
+            android:text="안내 종료"
             android:backgroundTint="#F44336" />
     </FrameLayout>
 
