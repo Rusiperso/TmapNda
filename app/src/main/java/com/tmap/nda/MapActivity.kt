@@ -187,7 +187,7 @@ class MapActivity : AppCompatActivity() {
             AutoUpdater.checkForUpdates(this)
         }
 
-        binding.btnEditKey?.setOnClickListener {
+        binding.btnEditKey.setOnClickListener {
             val intent = Intent(this, MainActivity::class.java)
             intent.putExtra("auto_start", false)
             startActivity(intent)

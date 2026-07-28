@@ -255,6 +255,17 @@
             android:layout_marginEnd="6dp"/>
 
         <Button
+            android:id="@+id/btnEditKey"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/bottom_update_button_height"
+            android:minWidth="0dp"
+            android:text="설정"
+            android:textSize="@dimen/bottom_update_text_size"
+            android:paddingHorizontal="10dp"
+            android:backgroundTint="#333333"
+            android:layout_marginEnd="8dp"/>
+
+        <Button
             android:id="@+id/btnCheckUpdate"
             android:layout_width="wrap_content"
             android:layout_height="@dimen/bottom_update_button_height"
