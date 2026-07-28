@@ -845,6 +845,12 @@ class MapActivity : AppCompatActivity() {
     // 그대로 보존하고 이 함수만 추가. #문제시 원복
     private fun showKakaoIdleMap() {
         runOnUiThread {
+            // 카카오 안내 중엔 강제로 티맵 음성을 낮췄는데, idle(경로 없음) 상태로 돌아오면
+            // 사용자가 설정한 원래 음소거 상태로 복원. #문제시 원복
+            applyMuteState()
+            if (isTmapMuted) {
+                TmapUISDK.setVolume(this@MapActivity, 0)
+            }
             val naviView = ensureKakaoNaviViewInflated()
             if (naviView == null) {
                 NavLogger.e(this, "카카오 기본지도 표시 실패: naviView inflate 실패")
@@ -1071,6 +1077,11 @@ class MapActivity : AppCompatActivity() {
                             isKakaoGuidanceStarting = false
                             isKakaoGuidanceActive = true
                             reassertKakaoOverlayVisible()
+                            // 카카오 실제 길안내 음성과 티맵 음성이 동시에 나오는 걸 막기 위해
+                            // 안내 시작 시점엔 사용자의 티맵 음소거 설정과 무관하게 강제로 낮춤.
+                            // 사용자가 저장한 isTmapMuted 값 자체는 안 바꿈 - 안내 종료하면
+                            // showKakaoIdleMap()에서 그 설정대로 원복. #문제시 원복
+                            TmapUISDK.setVolume(this@MapActivity, 0)
                         }
                     )
                     kakaoGuidanceDelegate = delegate
