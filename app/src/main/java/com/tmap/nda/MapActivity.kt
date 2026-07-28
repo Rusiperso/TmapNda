@@ -956,6 +956,11 @@ class MapActivity : AppCompatActivity() {
                 NavLogger.e(this, "기존 안내 정리 중 예외: ${e.message}")
             }
             isKakaoGuidanceActive = false
+            // KNNaviView는 재사용되기 때문에 stop() 해도 화면엔 이전 경로의 마지막 프레임이
+            // 그대로 남아있음. 새 initWithGuidance가 끝나기 전까지 그 잔상이 잠깐 노출되는
+            // "간헐적으로 지난번 안내 화면이 보임" 문제의 원인으로 추정. 새 안내가 준비될
+            // 때까지(reassertKakaoOverlayVisible에서 다시 VISIBLE 처리) 잠깐 감춤. #문제시 원복
+            binding.flKakaoOverlay?.visibility = View.GONE
         }
 
         KNSDK.makeTripWithStart(startPoi, goalPoi, null) { error, trip ->
