@@ -1029,7 +1029,13 @@ class MapActivity : AppCompatActivity() {
 
         // idle 지도 상태(경로 없는 initWithGuidance)도 SDK 입장에선 "이미 시작된 세션"으로
         // 취급될 수 있어서, isKakaoGuidanceActive 플래그와 무관하게 방어적으로 항상 정리.
-        // stop()은 이미 멈춰있는 상태에 불러도 안전한 것으로 확인됨(에러 없이 무시됨). #문제시 원복
+        // stop()은 이미 멈춰있는 상태에 불러도 안전한 것으로 확인됨(에러 없이 무시됨).
+        //
+        // (이전엔 여기서 flKakaoOverlay를 잠깐 GONE 처리해서 이전 화면 잔상을 감췄는데,
+        // SDK 내부 로그(naviViewGuideState)는 매번 정상적으로 OnRouteGuide로 바뀌는데도
+        // 화면이 영영 안 뜨는 증상이 재발함 - KNNaviView 내부가 SurfaceView 기반이라
+        // 부모를 GONE 시키면 서페이스 자체가 파괴되고 재생성이 안 되는 것으로 추정.
+        // 잔상 한 번 보이는 것보다 화면이 아예 안 뜨는 게 훨씬 치명적이라 되돌림.) #문제시 원복
         run {
             NavLogger.d(this, "새 목적지 시작 전 기존 세션(또는 idle 지도) 정리")
             try {
@@ -1038,11 +1044,6 @@ class MapActivity : AppCompatActivity() {
                 NavLogger.e(this, "기존 안내 정리 중 예외: ${e.message}")
             }
             isKakaoGuidanceActive = false
-            // KNNaviView는 재사용되기 때문에 stop() 해도 화면엔 이전 경로의 마지막 프레임이
-            // 그대로 남아있음. 새 initWithGuidance가 끝나기 전까지 그 잔상이 잠깐 노출되는
-            // "간헐적으로 지난번 안내 화면이 보임" 문제의 원인으로 추정. 새 안내가 준비될
-            // 때까지(reassertKakaoOverlayVisible에서 다시 VISIBLE 처리) 잠깐 감춤. #문제시 원복
-            binding.flKakaoOverlay?.visibility = View.GONE
         }
 
         KNSDK.makeTripWithStart(startPoi, goalPoi, null) { error, trip ->
