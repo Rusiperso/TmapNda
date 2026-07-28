@@ -787,6 +787,12 @@ class MapActivity : AppCompatActivity() {
     // 반복 케이스). 하나의 안내 시작 요청이 실제로 끝나기(성공 or 실패) 전까지는
     // 새 요청을 무시하도록 가드. #문제시 원복
     private var isKakaoGuidanceStarting = false
+    // 이미 활성 중인 카카오 안내 세션이 있는지 추적. 기존엔 새 목적지를 검색할 때
+    // 이전 안내 세션을 stop() 하지 않은 채로 initWithGuidance()를 또 호출했는데,
+    // 로그 분석 결과 이 경우 "경로요청 성공"까지는 뜨지만 guidanceGuideStarted
+    // 콜백이 영영 안 오는 경우가 확인됨(SDK 내부적으로 기존 세션과 충돌하는 것으로
+    // 추정). 그래서 새로 시작하기 전에 기존 세션이 있으면 먼저 stop() 하도록 수정. #문제시 원복
+    private var isKakaoGuidanceActive = false
 
     private fun stopKakaoGuidanceAndReturnToTmap() {
         try {
@@ -794,6 +800,7 @@ class MapActivity : AppCompatActivity() {
         } catch (e: Exception) {
             NavLogger.e(this, "카카오 안내 중지 예외: ${e.message}")
         }
+        isKakaoGuidanceActive = false
         hideKakaoOverlay()
     }
 
@@ -941,6 +948,16 @@ class MapActivity : AppCompatActivity() {
         val katec = KNSDK.convertWGS84ToKATEC(goalLon, goalLat)
         val goalPoi = KNPOI(name, katec.x.toInt(), katec.y.toInt(), "")
 
+        if (isKakaoGuidanceActive) {
+            NavLogger.d(this, "기존 카카오 안내 세션 활성 중 - 새 목적지 시작 전 정리")
+            try {
+                KNSDK.sharedGuidance()?.stop()
+            } catch (e: Exception) {
+                NavLogger.e(this, "기존 안내 정리 중 예외: ${e.message}")
+            }
+            isKakaoGuidanceActive = false
+        }
+
         KNSDK.makeTripWithStart(startPoi, goalPoi, null) { error, trip ->
             runOnUiThread {
                 if (error != null || trip == null) {
@@ -964,6 +981,7 @@ class MapActivity : AppCompatActivity() {
                         onGuideEnded = { stopKakaoGuidanceAndReturnToTmap() },
                         onGuideStarted = {
                             isKakaoGuidanceStarting = false
+                            isKakaoGuidanceActive = true
                             reassertKakaoOverlayVisible()
                         }
                     )
