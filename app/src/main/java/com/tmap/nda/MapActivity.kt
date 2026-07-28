@@ -187,6 +187,13 @@ class MapActivity : AppCompatActivity() {
             AutoUpdater.checkForUpdates(this)
         }
 
+        binding.btnEditKey?.setOnClickListener {
+            val intent = Intent(this, MainActivity::class.java)
+            intent.putExtra("auto_start", false)
+            startActivity(intent)
+            finish()
+        }
+
         binding.btnExitApp.setOnClickListener {
             // 공유시 삭제하던 방식에서 변경: 이제 로그는 실행 중엔 계속 쌓이고(10MB 회전),
             // 앱을 종료하는 이 시점에 전체 삭제. #문제시 원복
@@ -878,6 +885,39 @@ class MapActivity : AppCompatActivity() {
     // 안전정보만" 표시하는 방식이 언급됨 - 공식 확정 답변은 아니고 다른 개발자의
     // 질문글이라 실기기 검증 필요. 안 되면 즉시 롤백 가능하도록 기존 흐름은
     // 그대로 보존하고 이 함수만 추가. #문제시 원복
+    // guidance(guideState/route/safety/voice/cits 전부)에 우리 델리게이트를 등록.
+    // 기존엔 목적지 검색해서 실제 길안내를 시작할 때만 이 델리게이트를 붙였는데,
+    // 그러면 앱 기본 화면(카카오 idle map, 경로 없음)에는 음성 게이트(shouldPlayVoiceGuide)가
+    // 아예 안 걸려있어서 "기본 안내음이 카카오로 나옴" 문제가 있었음. 이제 idle map을 처음
+    // 띄우는 시점에도 반드시 이 함수로 델리게이트를 등록해서, 앱 켜진 순간부터
+    // "경로 없으면 티맵 음성 / 실제 길안내 중에만 카카오 음성" 게이트가 항상 걸려있게 함.
+    // 델리게이트/훅은 한 번만 만들고 재사용(중복 생성 금지 - 과거 버그 원인). #문제시 원복
+    private fun ensureKakaoGuidanceDelegateAttached(guidance: KNGuidance, naviView: KNNaviView) {
+        attachKakaoNaviViewExitHook(naviView)
+        val delegate = kakaoGuidanceDelegate ?: KakaoGuidanceDelegate(
+            this,
+            onGuideEnded = { stopKakaoGuidanceAndReturnToTmap() },
+            onGuideStarted = {
+                isKakaoGuidanceStarting = false
+                isKakaoGuidanceActive = true
+                isKakaoRouteGuideActive = true
+                reassertKakaoOverlayVisible()
+                // 카카오 실제 길안내 음성과 티맵 음성이 동시에 나오는 걸 막기 위해
+                // 안내 시작 시점엔 사용자의 티맵 음소거 설정과 무관하게 강제로 낮춤.
+                // 사용자가 저장한 isTmapMuted 값 자체는 안 바꿈 - 안내 종료하면
+                // showKakaoIdleMap()에서 그 설정대로 원복. #문제시 원복
+                TmapUISDK.setVolume(this@MapActivity, 0)
+            },
+            isRouteGuideActive = { isKakaoRouteGuideActive }
+        ).also { kakaoGuidanceDelegate = it }
+        guidance.guideStateDelegate = delegate
+        guidance.routeGuideDelegate = delegate
+        guidance.safetyGuideDelegate = delegate
+        guidance.voiceGuideDelegate = delegate
+        guidance.citsGuideDelegate = delegate
+        guidance.locationGuideDelegate = delegate
+    }
+
     private fun showKakaoIdleMap() {
         runOnUiThread {
             // 카카오 안내 중엔 강제로 티맵 음성을 낮췄는데, idle(경로 없음) 상태로 돌아오면
@@ -886,6 +926,8 @@ class MapActivity : AppCompatActivity() {
             if (isTmapMuted) {
                 TmapUISDK.setVolume(this@MapActivity, 0)
             }
+            // idle(경로 없음) 상태이므로 음성 게이트도 티맵 쪽으로.
+            isKakaoRouteGuideActive = false
             val naviView = ensureKakaoNaviViewInflated()
             if (naviView == null) {
                 NavLogger.e(this, "카카오 기본지도 표시 실패: naviView inflate 실패")
@@ -897,6 +939,7 @@ class MapActivity : AppCompatActivity() {
                     NavLogger.e(this, "카카오 기본지도 표시 실패: sharedGuidance() null (KNSDK 미초기화)")
                     return@runOnUiThread
                 }
+                ensureKakaoGuidanceDelegateAttached(guidance, naviView)
                 naviView.initWithGuidance(
                     guidance,
                     null,
@@ -1104,31 +1147,9 @@ class MapActivity : AppCompatActivity() {
                         hideKakaoOverlay()
                         return@runOnUiThread
                     }
-                    attachKakaoNaviViewExitHook(naviView)
                     // 델리게이트는 initWithGuidance 호출 전에 등록해야 안내 시작 콜백을 놓치지 않음.
-                    val delegate = KakaoGuidanceDelegate(
-                        this,
-                        onGuideEnded = { stopKakaoGuidanceAndReturnToTmap() },
-                        onGuideStarted = {
-                            isKakaoGuidanceStarting = false
-                            isKakaoGuidanceActive = true
-                            isKakaoRouteGuideActive = true
-                            reassertKakaoOverlayVisible()
-                            // 카카오 실제 길안내 음성과 티맵 음성이 동시에 나오는 걸 막기 위해
-                            // 안내 시작 시점엔 사용자의 티맵 음소거 설정과 무관하게 강제로 낮춤.
-                            // 사용자가 저장한 isTmapMuted 값 자체는 안 바꿈 - 안내 종료하면
-                            // showKakaoIdleMap()에서 그 설정대로 원복. #문제시 원복
-                            TmapUISDK.setVolume(this@MapActivity, 0)
-                        },
-                        isRouteGuideActive = { isKakaoRouteGuideActive }
-                    )
-                    kakaoGuidanceDelegate = delegate
-                    guidance.guideStateDelegate = delegate
-                    guidance.routeGuideDelegate = delegate
-                    guidance.safetyGuideDelegate = delegate
-                    guidance.voiceGuideDelegate = delegate
-                    guidance.citsGuideDelegate = delegate
-                    guidance.locationGuideDelegate = delegate
+                    // (idle map에서 이미 붙어있으면 재사용, 없으면 새로 생성 - 공통 함수)
+                    ensureKakaoGuidanceDelegateAttached(guidance, naviView)
                     // guideNewDestinations()는 "이미 안내 중인 상태에서 목적지 변경"용 메서드라
                     // 처음 안내를 시작할 땐 naviView 내부 guidance 프로퍼티가 세팅되지 않아
                     // 몇 초 뒤 KNTrip 내부 콜백에서 UninitializedPropertyAccessException으로 크래시났음.
