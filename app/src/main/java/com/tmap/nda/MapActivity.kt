@@ -732,31 +732,43 @@ class MapActivity : AppCompatActivity() {
     private fun ensureKakaoNaviViewInflated(): KNNaviView? {
         if (kakaoNaviView == null) {
             kakaoNaviView = binding.naviViewStub?.inflate() as? KNNaviView
-            kakaoNaviView?.let { forceSurfaceViewsOnTop(it) }
+            kakaoNaviView?.let { hookSurfaceViewLifecycle(it) }
         }
         return kakaoNaviView
     }
 
     // naviViewGuideState/naviViewScreenState 델리게이트는 정상적으로 OnRouteGuide로 바뀌는데
-    // 화면은 전혀 안 바뀌는 증상 - KNNaviView 내부는 GL 렌더링용 SurfaceView를 쓰는데,
-    // Tmap 쪽 NavigationFragment 지도도 SurfaceView 기반이라 둘이 같은 하드웨어 합성
-    // "구멍(hole-punch)" 레이어를 두고 경쟁하는 것으로 추정됨. bringToFront()는 일반 뷰
-    // Z-order만 바꾸고 SurfaceView의 합성 순서엔 영향이 없어서, 델리게이트 콜백은 다 정상인데
-    // 실제로는 Tmap SurfaceView가 항상 위에 그려지고 있었을 가능성이 높음.
-    // KNNaviView 내부 뷰트리를 순회해서 찾은 SurfaceView에 setZOrderOnTop(true)를 강제로 걸어줌. #문제시 원복
-    private fun forceSurfaceViewsOnTop(root: View) {
+    // 화면은 전혀 안 바뀌는 증상. 이전엔 KNMapView(SurfaceView)에 setZOrderOnTop(true)를
+    // 강제로 걸어봤는데 - 실제로 적용은 됐지만(로그 확인) 화면은 여전히 안 바뀌었고,
+    // 오히려 안내종료 버튼처럼 KNNaviView 내부의 일반 View들까지 서페이스 밑에 깔려서
+    // 안 보이는 부작용만 생겼음. 즉 "다른 서페이스와 경쟁해서 밑에 깔린다"가 원인이
+    // 아니라 KNMapView 자체의 GL 서페이스가 애초에 유효한 프레임을 못 그리고 있을
+    // 가능성이 높음 - 그래서 setZOrderOnTop은 되돌리고, 대신 SurfaceHolder.Callback을
+    // 리플렉션으로 얹어서 surfaceCreated/surfaceChanged/surfaceDestroyed가 실제로
+    // 호출되는지, 언제/몇 번 호출되는지부터 순수 진단용으로 로그만 남김. #문제시 원복
+    private fun hookSurfaceViewLifecycle(root: View) {
         try {
             if (root is android.view.SurfaceView) {
-                root.setZOrderOnTop(true)
-                NavLogger.d(this, "forceSurfaceViewsOnTop: SurfaceView 발견, setZOrderOnTop(true) 적용 (${root.javaClass.name})")
+                NavLogger.d(this, "hookSurfaceViewLifecycle: SurfaceView 발견 (${root.javaClass.name}), holder.isCreating=${root.holder?.surface?.isValid}")
+                root.holder?.addCallback(object : android.view.SurfaceHolder.Callback {
+                    override fun surfaceCreated(holder: android.view.SurfaceHolder) {
+                        NavLogger.d(this@MapActivity, "[SurfaceHolder ${root.javaClass.simpleName}] surfaceCreated")
+                    }
+                    override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, width: Int, height: Int) {
+                        NavLogger.d(this@MapActivity, "[SurfaceHolder ${root.javaClass.simpleName}] surfaceChanged format=$format ${width}x$height")
+                    }
+                    override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {
+                        NavLogger.d(this@MapActivity, "[SurfaceHolder ${root.javaClass.simpleName}] surfaceDestroyed")
+                    }
+                })
             }
             if (root is android.view.ViewGroup) {
                 for (i in 0 until root.childCount) {
-                    forceSurfaceViewsOnTop(root.getChildAt(i))
+                    hookSurfaceViewLifecycle(root.getChildAt(i))
                 }
             }
         } catch (e: Exception) {
-            NavLogger.e(this, "forceSurfaceViewsOnTop 예외: ${e.message}")
+            NavLogger.e(this, "hookSurfaceViewLifecycle 예외: ${e.message}")
         }
     }
 
@@ -1236,7 +1248,9 @@ class MapActivity : AppCompatActivity() {
                             naviView.postDelayed({
                                 naviView.requestLayout()
                                 naviView.invalidate()
-                                forceSurfaceViewsOnTop(naviView)
+                                // initWithGuidance() 이후에야 KNMapView(SurfaceView)가 새로
+                                // 생성될 수도 있어서, 못 잡았을 경우를 대비해 한 번 더 순회. #문제시 원복
+                                hookSurfaceViewLifecycle(naviView)
                             }, 300)
                             isRequestingKakaoRoute = false
                         } else if (initRetryCount < 30) {
