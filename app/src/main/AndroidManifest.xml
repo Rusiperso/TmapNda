@@ -30,6 +30,11 @@
         </activity>
         
         <activity android:name=".MapActivity" />
+        <activity
+            android:name=".KakaoNaviActivity"
+            android:exported="false"
+            android:screenOrientation="unspecified"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
         
         <service
             android:name=".UdpSenderService"
