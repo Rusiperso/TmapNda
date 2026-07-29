@@ -732,8 +732,32 @@ class MapActivity : AppCompatActivity() {
     private fun ensureKakaoNaviViewInflated(): KNNaviView? {
         if (kakaoNaviView == null) {
             kakaoNaviView = binding.naviViewStub?.inflate() as? KNNaviView
+            kakaoNaviView?.let { forceSurfaceViewsOnTop(it) }
         }
         return kakaoNaviView
+    }
+
+    // naviViewGuideState/naviViewScreenState 델리게이트는 정상적으로 OnRouteGuide로 바뀌는데
+    // 화면은 전혀 안 바뀌는 증상 - KNNaviView 내부는 GL 렌더링용 SurfaceView를 쓰는데,
+    // Tmap 쪽 NavigationFragment 지도도 SurfaceView 기반이라 둘이 같은 하드웨어 합성
+    // "구멍(hole-punch)" 레이어를 두고 경쟁하는 것으로 추정됨. bringToFront()는 일반 뷰
+    // Z-order만 바꾸고 SurfaceView의 합성 순서엔 영향이 없어서, 델리게이트 콜백은 다 정상인데
+    // 실제로는 Tmap SurfaceView가 항상 위에 그려지고 있었을 가능성이 높음.
+    // KNNaviView 내부 뷰트리를 순회해서 찾은 SurfaceView에 setZOrderOnTop(true)를 강제로 걸어줌. #문제시 원복
+    private fun forceSurfaceViewsOnTop(root: View) {
+        try {
+            if (root is android.view.SurfaceView) {
+                root.setZOrderOnTop(true)
+                NavLogger.d(this, "forceSurfaceViewsOnTop: SurfaceView 발견, setZOrderOnTop(true) 적용 (${root.javaClass.name})")
+            }
+            if (root is android.view.ViewGroup) {
+                for (i in 0 until root.childCount) {
+                    forceSurfaceViewsOnTop(root.getChildAt(i))
+                }
+            }
+        } catch (e: Exception) {
+            NavLogger.e(this, "forceSurfaceViewsOnTop 예외: ${e.message}")
+        }
     }
 
     // KNNaviView 내장 UI엔 자체 "안내종료" 버튼이 있는데, 그건 우리 stopKakaoGuidanceAndReturnToTmap()과
@@ -1212,6 +1236,7 @@ class MapActivity : AppCompatActivity() {
                             naviView.postDelayed({
                                 naviView.requestLayout()
                                 naviView.invalidate()
+                                forceSurfaceViewsOnTop(naviView)
                             }, 300)
                             isRequestingKakaoRoute = false
                         } else if (initRetryCount < 30) {
