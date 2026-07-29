@@ -1032,6 +1032,14 @@ class MapActivity : AppCompatActivity() {
                     if (error == null) {
                         NavLogger.d(this, "KNSDK 초기화 성공(앱 시작 시점)")
                         knsdkInitialized = true
+                        // onResume()이 이미 지나간 뒤에 초기화가 끝날 수 있어서, 최초 활성 신호를
+                        // 놓치지 않도록 초기화 성공 직후에도 한 번 전달. #문제시 원복
+                        try {
+                            KNSDK.handleWillEnterForeground()
+                            KNSDK.handleDidBecomeActive()
+                        } catch (e: Exception) {
+                            NavLogger.e(this, "KNSDK 라이프사이클(초기화 직후) 전달 예외: ${e.message}")
+                        }
                     } else {
                         NavLogger.e(this, "KNSDK 초기화 실패(앱 시작 시점): ${error.code} / ${error.msg}")
                     }
@@ -1108,6 +1116,12 @@ class MapActivity : AppCompatActivity() {
                     if (error == null) {
                         NavLogger.d(this, "KNSDK 초기화 성공")
                         knsdkInitialized = true
+                        try {
+                            KNSDK.handleWillEnterForeground()
+                            KNSDK.handleDidBecomeActive()
+                        } catch (e: Exception) {
+                            NavLogger.e(this, "KNSDK 라이프사이클(초기화 직후) 전달 예외: ${e.message}")
+                        }
                         requestKakaoRoute(name, goalLat, goalLon)
                     } else {
                         NavLogger.e(this, "KNSDK 초기화 실패: ${error.code} / ${error.msg}")
@@ -1705,8 +1719,48 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
+    // 카카오내비 화면이 initWithGuidance() 직후 "안내 시작한 지점에서 그대로 멈춰있는" 증상 -
+    // KNSDK 공식 문서(class-KNSDK)에 앱 라이프사이클(재개/일시정지/포그라운드/백그라운드)을
+    // KNSDK에 명시적으로 알려주는 handleDidBecomeActive()/handleWillResignActive() 등이
+    // 있는데, 지금까지 MapActivity엔 onResume/onPause 자체가 없어서 이 신호를 KNSDK한테
+    // 한 번도 전달한 적이 없었음. 특히 handleDidBecomeActive()는 문서상 "재개 시 음성 안내의
+    // 일시정지 상태가 해제됨"이라고 명시돼 있어서, 위치 갱신에 따른 지도/안내 상태 갱신도
+    // 이 신호에 연동돼 있을 가능성이 높음. KNSDK 초기화 전에는 호출하면 안 되므로
+    // knsdkInitialized 가드. #문제시 원복
+    override fun onResume() {
+        super.onResume()
+        if (knsdkInitialized) {
+            try {
+                KNSDK.handleWillEnterForeground()
+                KNSDK.handleDidBecomeActive()
+                NavLogger.d(this, "KNSDK handleWillEnterForeground/handleDidBecomeActive 호출")
+            } catch (e: Exception) {
+                NavLogger.e(this, "KNSDK 라이프사이클(resume) 전달 예외: ${e.message}")
+            }
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (knsdkInitialized) {
+            try {
+                KNSDK.handleWillResignActive()
+                NavLogger.d(this, "KNSDK handleWillResignActive 호출")
+            } catch (e: Exception) {
+                NavLogger.e(this, "KNSDK 라이프사이클(pause) 전달 예외: ${e.message}")
+            }
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        if (knsdkInitialized) {
+            try {
+                KNSDK.handleWillTerminate()
+            } catch (e: Exception) {
+                NavLogger.e(this, "KNSDK 라이프사이클(terminate) 전달 예외: ${e.message}")
+            }
+        }
         val intent = Intent(this, UdpSenderService::class.java)
         stopService(intent)
     }
