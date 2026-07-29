@@ -1061,14 +1061,29 @@ class MapActivity : AppCompatActivity() {
             NavLogger.d(this, "이미 카카오 경로 요청 진행 중 - 재탭 무시: $name")
             return
         }
-        isRequestingKakaoRoute = true
         if (isKakaoGuidanceStarting) {
             // 이전 요청이 아직 화면 전환을 못 끝낸 상태 - 여기서 또 새로 시작하면
             // 그 요청이 덮어써져서 영영 전환 안 되는 게 반복됨. 그냥 무시.
+            // (버그 수정: 예전엔 이 분기로 return하기 전에 이미 isRequestingKakaoRoute를
+            // true로 만들어놔서, makeTripWithStart 콜백까지 아예 안 가는 이 경로에서
+            // 그 플래그가 영원히 안 풀리는 문제가 있었음 - v1.0.62~68 시절엔 있었던
+            // "최근 검색 재클릭하면 화면 넘어감" 워크어라운드까지 막아버린 원인.
+            // isKakaoGuidanceStarting 체크를 isRequestingKakaoRoute=true 대입보다
+            // 먼저 하도록 순서를 바꿔서 원천 차단.) #문제시 원복
             NavLogger.d(this, "카카오 안내 시작 진행 중 - 중복 요청 무시: $name")
             Toast.makeText(this, "안내 준비 중입니다. 잠시만 기다려줘", Toast.LENGTH_SHORT).show()
             return
         }
+        isRequestingKakaoRoute = true
+        // 안전장치: makeTripWithStart 콜백이 무슨 이유로든 끝내 안 오는 경우 재탭이
+        // 영원히 막히지 않도록 10초 뒤 강제 해제(v1.0.68 isKakaoGuidanceStarting에
+        // 있었던 것과 동일한 안전장치 - 새 가드에 빠뜨렸던 것 추가). #문제시 원복
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (isRequestingKakaoRoute) {
+                NavLogger.e(this, "카카오 경로요청 콜백 10초 타임아웃 - isRequestingKakaoRoute 강제 해제")
+                isRequestingKakaoRoute = false
+            }
+        }, 10000)
         isKakaoGuidanceStarting = true
         isKakaoGuidanceExplicitlyStopped = false
         // 안전장치: guidanceGuideStarted 콜백이 무슨 이유로든 끝내 안 오는 경우
