@@ -49,6 +49,7 @@ class KakaoGuidanceDelegate(
     // startKakaoOverlayGuidance()/showKakaoIdleMap()에서 naviView가 만들어지거나
     // 재사용될 때마다 갱신해줌. #문제시 원복
     var naviView: com.kakaomobility.knsdk.ui.view.KNNaviView? = null
+    private var lastLocationLogAt = 0L
 
     // ===== GuideStateDelegate =====
     override fun guidanceGuideStarted(guidance: KNGuidance) {
@@ -113,11 +114,33 @@ class KakaoGuidanceDelegate(
     // 화면이 안내 시작 지점에서 안 움직이던 핵심 원인으로 의심되는 지점 - naviView가 실제
     // 위치 갱신을 받아 현재위치 마커/카메라를 옮기려면 이 콜백을 받아야 함. #문제시 원복
     override fun guidanceDidUpdateLocation(guidance: KNGuidance, locationGuide: KNGuide_Location) {
+        // 이 콜백이 실제로 호출되는지, 좌표가 시간에 따라 바뀌는지 직접 확인하기 위한 로그.
+        // KNGuide_Location의 정확한 프로퍼티명이 확실치 않아 컴파일 안전하게 toString()과
+        // 리플렉션 getter 덤프로 남김. 매번 찍으면 시끄러워서 2초 스로틀. #문제시 원복
+        val now = System.currentTimeMillis()
+        if (now - lastLocationLogAt >= 2000) {
+            lastLocationLogAt = now
+            val dump = try {
+                locationGuide.javaClass.methods
+                    .filter { it.parameterTypes.isEmpty() && (it.name.startsWith("get") || it.name.startsWith("is")) }
+                    .joinToString(", ") { m ->
+                        try {
+                            "${m.name}=${m.invoke(locationGuide)}"
+                        } catch (e: Exception) {
+                            "${m.name}=<err>"
+                        }
+                    }
+            } catch (e: Exception) {
+                "덤프 실패: ${e.message}"
+            }
+            NavLogger.d(context, "guidanceDidUpdateLocation 호출됨: $locationGuide | $dump")
+        }
         (naviView as? KNGuidance_LocationGuideDelegate)?.guidanceDidUpdateLocation(guidance, locationGuide)
     }
 
     // ===== RouteGuideDelegate =====
     override fun guidanceDidUpdateRouteGuide(guidance: KNGuidance, routeGuide: KNGuide_Route) {
+        NavLogger.d(context, "guidanceDidUpdateRouteGuide 호출됨")
         (naviView as? KNGuidance_RouteGuideDelegate)?.guidanceDidUpdateRouteGuide(guidance, routeGuide)
     }
 
