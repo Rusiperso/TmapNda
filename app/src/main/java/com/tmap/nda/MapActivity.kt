@@ -1071,6 +1071,7 @@ class MapActivity : AppCompatActivity() {
                     if (error == null) {
                         NavLogger.d(this, "KNSDK 초기화 성공(앱 시작 시점)")
                         knsdkInitialized = true
+                        KakaoSdkState.initialized = true
                         // onResume()이 이미 지나간 뒤에 초기화가 끝날 수 있어서, 최초 활성 신호를
                         // 놓치지 않도록 초기화 성공 직후에도 한 번 전달. #문제시 원복
                         try {
@@ -1089,7 +1090,23 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
+    // v1.0.83: flKakaoOverlay 위에서 visibility/z-order/reassert를 직접 관리하던 방식(기존 함수는
+    // startKakaoOverlayGuidanceLegacy로 이름만 남겨두고 미사용 처리)을 버리고, CarrotNavi와 동일하게
+    // 카카오 안내를 완전히 별도의 Activity(KakaoNaviActivity)로 분리함. startActivity()/finish()는
+    // 안드로이드가 보장하는 화면전환이라 SurfaceView 타이밍/z-order 경쟁이 원천적으로 생기지 않음.
+    // 검색 패널만 우리 쪽에서 미리 닫아주고, 나머지(초기화/경로요청/안내화면)는 새 Activity가 전담. #문제시 원복
     private fun startKakaoOverlayGuidance(name: String, goalLat: Double, goalLon: Double) {
+        dismissKeyboardAndSearchPanel()
+        val intent = Intent(this, KakaoNaviActivity::class.java).apply {
+            putExtra("dest_name", name)
+            putExtra("dest_lat", goalLat)
+            putExtra("dest_lon", goalLon)
+            putExtra("kakao_native_app_key", getKakaoNativeAppKey())
+        }
+        startActivity(intent)
+    }
+
+    private fun startKakaoOverlayGuidanceLegacy(name: String, goalLat: Double, goalLon: Double) {
         // 화면 전환이 안 돼 보여서 사용자가 검색을 연타하면, 앞선 makeTripWithStart()
         // 콜백이 아직 안 돌아온 상태에서 stop()/initWithGuidance()가 새 요청과 뒤섞여
         // 레이스가 나던 것으로 의심됨. 진행 중인 요청이 있으면 재탭은 무시. #문제시 원복
@@ -1170,6 +1187,7 @@ class MapActivity : AppCompatActivity() {
                     if (error == null) {
                         NavLogger.d(this, "KNSDK 초기화 성공")
                         knsdkInitialized = true
+                        KakaoSdkState.initialized = true
                         try {
                             KNSDK.handleWillEnterForeground()
                             KNSDK.handleDidBecomeActive()
