@@ -15,6 +15,18 @@ import com.kakaomobility.knsdk.trip.kntrip.knroute.KNRoute
 
 /**
  * 카카오내비 SDK(KNSDK) 실시간 안내 콜백 모음.
+ *
+ * 카카오 공식 iOS 가이드("주행 설정하기")에 명시된 필수 패턴: guidance의 각 델리게이트
+ * 콜백은 앱이 받은 뒤 반드시 naviView에도 그대로 릴레이해줘야 함
+ * (예: `[naviView guidance:aGuidance didUpdateLocation:aLocationGuide]`).
+ * guidance는 델리게이트를 프로토콜당 1개만 가질 수 있어서, 우리 앱 델리게이트가 그
+ * 자리를 차지하면 naviView 자체의 내부 렌더링(현재위치 마커 이동, 경로 갱신 등)은
+ * 이 콜백을 전혀 못 받게 됨. 지금까지 naviViewGuideState(OnRouteGuide) 등 로그는
+ * 정상으로 찍히는데 실제 화면(위치/경로)은 안내 시작 지점에서 고정돼 있던 증상이
+ * 정확히 이 릴레이 누락과 일치함. KNNaviView가 이 인터페이스들을 직접 구현하고
+ * 있다는 전제로 safe-cast 후 동일 메서드를 그대로 호출해서 릴레이함.
+ * naviView는 검색/재검색 때마다 재사용될 수 있어 var로 나중에 갱신 가능하게 함. #문제시 원복
+ *
  * 지금은 NavLogger로만 남김 - 다음 단계에서 UdpSenderService의 road_limit 스키마에
  * 맞춰 rgData 필드(제한속도/카메라/차선 등)로 변환해서 UDP로 내보내는 작업이 남아있음. #TODO
  *
@@ -34,31 +46,41 @@ class KakaoGuidanceDelegate(
     KNGuidance_VoiceGuideDelegate,
     KNGuidance_CitsGuideDelegate {
 
+    // startKakaoOverlayGuidance()/showKakaoIdleMap()에서 naviView가 만들어지거나
+    // 재사용될 때마다 갱신해줌. #문제시 원복
+    var naviView: com.kakaomobility.knsdk.ui.view.KNNaviView? = null
+
     // ===== GuideStateDelegate =====
     override fun guidanceGuideStarted(guidance: KNGuidance) {
         NavLogger.d(context, "[카카오안내] 시작됨")
+        (naviView as? KNGuidance_GuideStateDelegate)?.guidanceGuideStarted(guidance)
         onGuideStarted()
     }
 
     override fun guidanceGuideEnded(guidance: KNGuidance) {
         NavLogger.d(context, "[카카오안내] 종료됨(도착) - Tmap으로 복귀")
+        (naviView as? KNGuidance_GuideStateDelegate)?.guidanceGuideEnded(guidance)
         onGuideEnded()
     }
 
     override fun guidanceOutOfRoute(guidance: KNGuidance) {
         NavLogger.d(context, "[카카오안내] 경로이탈 감지, 재탐색 위임")
+        (naviView as? KNGuidance_GuideStateDelegate)?.guidanceOutOfRoute(guidance)
     }
 
     override fun guidanceCheckingRouteChange(guidance: KNGuidance) {
         NavLogger.d(context, "[카카오안내] 경로변경 확인 중")
+        (naviView as? KNGuidance_GuideStateDelegate)?.guidanceCheckingRouteChange(guidance)
     }
 
     override fun guidanceRouteUnchanged(guidance: KNGuidance) {
         NavLogger.d(context, "[카카오안내] 경로 변경 없음")
+        (naviView as? KNGuidance_GuideStateDelegate)?.guidanceRouteUnchanged(guidance)
     }
 
     override fun guidanceRouteUnchangedWithError(guidance: KNGuidance, error: KNError) {
         NavLogger.e(context, "[카카오안내] 경로 재탐색 실패: ${error.msg}")
+        (naviView as? KNGuidance_GuideStateDelegate)?.guidanceRouteUnchangedWithError(guidance, error)
     }
 
     override fun guidanceRouteChanged(
@@ -70,6 +92,9 @@ class KakaoGuidanceDelegate(
         changeReason: KNGuideRouteChangeReason
     ) {
         NavLogger.d(context, "[카카오안내] 경로 변경됨: 사유=$changeReason")
+        (naviView as? KNGuidance_GuideStateDelegate)?.guidanceRouteChanged(
+            guidance, fromRoute, fromLocation, toRoute, toLocation, changeReason
+        )
     }
 
     override fun guidanceDidUpdateRoutes(
@@ -77,30 +102,32 @@ class KakaoGuidanceDelegate(
         routes: List<KNRoute>,
         multiRouteInfo: KNMultiRouteInfo?
     ) {
-        // no-op
+        (naviView as? KNGuidance_GuideStateDelegate)?.guidanceDidUpdateRoutes(guidance, routes, multiRouteInfo)
     }
 
     override fun guidanceDidUpdateIndoorRoute(guidance: KNGuidance, route: KNRoute?) {
-        // no-op
+        (naviView as? KNGuidance_GuideStateDelegate)?.guidanceDidUpdateIndoorRoute(guidance, route)
     }
 
     // ===== LocationGuideDelegate =====
+    // 화면이 안내 시작 지점에서 안 움직이던 핵심 원인으로 의심되는 지점 - naviView가 실제
+    // 위치 갱신을 받아 현재위치 마커/카메라를 옮기려면 이 콜백을 받아야 함. #문제시 원복
     override fun guidanceDidUpdateLocation(guidance: KNGuidance, locationGuide: KNGuide_Location) {
-        // #TODO: locationGuide.location, aheadDistance 등을 UdpSenderService의 road_limit 필드로 변환
+        (naviView as? KNGuidance_LocationGuideDelegate)?.guidanceDidUpdateLocation(guidance, locationGuide)
     }
 
     // ===== RouteGuideDelegate =====
     override fun guidanceDidUpdateRouteGuide(guidance: KNGuidance, routeGuide: KNGuide_Route) {
-        // #TODO: 턴바이턴(TBT) 정보를 carrot의 회전타입 넘버링으로 변환해서 UDP로 전송
+        (naviView as? KNGuidance_RouteGuideDelegate)?.guidanceDidUpdateRouteGuide(guidance, routeGuide)
     }
 
     // ===== SafetyGuideDelegate =====
     override fun guidanceDidUpdateSafetyGuide(guidance: KNGuidance, safetyGuide: KNGuide_Safety?) {
-        // #TODO: 카메라/제한속도(SDI) 정보를 UdpSenderService road_limit 스키마로 변환
+        (naviView as? KNGuidance_SafetyGuideDelegate)?.guidanceDidUpdateSafetyGuide(guidance, safetyGuide)
     }
 
     override fun guidanceDidUpdateAroundSafeties(guidance: KNGuidance, safeties: List<KNSafety>?) {
-        // no-op
+        (naviView as? KNGuidance_SafetyGuideDelegate)?.guidanceDidUpdateAroundSafeties(guidance, safeties)
     }
 
     // ===== VoiceGuideDelegate =====
@@ -108,18 +135,21 @@ class KakaoGuidanceDelegate(
         guidance: KNGuidance,
         voiceGuide: KNGuide_Voice,
         newData: MutableList<ByteArray>
-    ): Boolean = isRouteGuideActive()
+    ): Boolean {
+        (naviView as? KNGuidance_VoiceGuideDelegate)?.shouldPlayVoiceGuide(guidance, voiceGuide, newData)
+        return isRouteGuideActive()
+    }
 
     override fun willPlayVoiceGuide(guidance: KNGuidance, voiceGuide: KNGuide_Voice) {
-        // no-op (필요시 AudioFocusHacker 연동 지점)
+        (naviView as? KNGuidance_VoiceGuideDelegate)?.willPlayVoiceGuide(guidance, voiceGuide)
     }
 
     override fun didFinishPlayVoiceGuide(guidance: KNGuidance, voiceGuide: KNGuide_Voice) {
-        // no-op
+        (naviView as? KNGuidance_VoiceGuideDelegate)?.didFinishPlayVoiceGuide(guidance, voiceGuide)
     }
 
     // ===== CitsGuideDelegate =====
     override fun didUpdateCitsGuide(guidance: KNGuidance, citsGuide: KNGuide_Cits) {
-        // no-op
+        (naviView as? KNGuidance_CitsGuideDelegate)?.didUpdateCitsGuide(guidance, citsGuide)
     }
 }
