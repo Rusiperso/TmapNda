@@ -109,6 +109,45 @@ class KakaoNaviActivity : AppCompatActivity() {
             NavLogger.e(this, "KNSDK 라이프사이클 전달 예외: ${e.message}")
         }
 
+        // CarrotNavi 실제 동작 코드에서 확인된 핵심 패턴: naviView를 목적지가 확정된
+        // 시점에 initWithGuidance(trip=실제경로)로 처음 초기화하는 게 아니라,
+        // Activity가 뜨자마자(목적지 정보가 아직 없어도) trip=null로 "경로 없는 idle map"
+        // 상태로 먼저 initWithGuidance() 해버림. 그러면 실제 검색 결과(카카오 로컬 API
+        // 네트워크 왕복 몇 초)가 돌아올 때쯤엔 naviView/서페이스가 이미 완전히 살아있는
+        // 상태라 레이아웃/서페이스 타이밍 레이스가 원천적으로 안 생김. 실제 목적지가
+        // 잡히면 initWithGuidance()를 또 부르는 게 아니라 guideNewDestinations()로
+        // 이미 떠있는 세션에 목적지만 갈아끼움(이 방식이 정확히 CarrotNavi가 쓰는 방식).
+        // #문제시 원복
+        val guidance = KNSDK.sharedGuidance()
+        if (guidance == null) {
+            NavLogger.e(this, "setupContentAndStart: sharedGuidance() null")
+            finish()
+            return
+        }
+        hookSurfaceViewLifecycle(naviView)
+        attachExitHook(naviView)
+        val delegate = KakaoGuidanceDelegate(
+            this,
+            onGuideEnded = { finishGuidance() },
+            onGuideStarted = {},
+            isRouteGuideActive = { true }
+        ).also { kakaoGuidanceDelegate = it }
+        delegate.naviView = naviView
+        guidance.guideStateDelegate = delegate
+        guidance.routeGuideDelegate = delegate
+        guidance.safetyGuideDelegate = delegate
+        guidance.voiceGuideDelegate = delegate
+        guidance.citsGuideDelegate = delegate
+        guidance.locationGuideDelegate = delegate
+
+        NavLogger.d(this, "setupContentAndStart: initWithGuidance(trip=null) idle map 선초기화")
+        naviView.initWithGuidance(
+            guidance,
+            null,
+            KNRoutePriority.KNRoutePriority_Recommand,
+            KNRouteAvoidOption.KNRouteAvoidOption_None.value
+        )
+
         resolveCurrentPositionThenRequestRoute(destName, destLat, destLon)
     }
 
@@ -153,60 +192,15 @@ class KakaoNaviActivity : AppCompatActivity() {
                     return@runOnUiThread
                 }
                 NavLogger.d(this, "카카오 경로요청 성공, 안내 시작: $destName")
-                val guidance = KNSDK.sharedGuidance()!!
-                hookSurfaceViewLifecycle(naviView)
-                attachExitHook(naviView)
-                val delegate = KakaoGuidanceDelegate(
-                    this,
-                    onGuideEnded = { finishGuidance() },
-                    onGuideStarted = {},
-                    isRouteGuideActive = { true }
-                ).also { kakaoGuidanceDelegate = it }
-                delegate.naviView = naviView
-                guidance.guideStateDelegate = delegate
-                guidance.routeGuideDelegate = delegate
-                guidance.safetyGuideDelegate = delegate
-                guidance.voiceGuideDelegate = delegate
-                guidance.citsGuideDelegate = delegate
-                guidance.locationGuideDelegate = delegate
-
-                // MapActivity에서 검증됐던 것과 동일한 원인(ViewStub/새 View가 아직 레이아웃/측정을
-                // 한 번도 안 거친 상태(0x0)에서 바로 initWithGuidance()를 부르면 내부 GL 서페이스가
-                // 화면에 안 그려짐)이 새 Activity에서도 그대로 재현될 수 있음 - onCreate 직후엔
-                // naviView가 아직 첫 레이아웃 패스도 안 거쳤을 가능성이 높음. 크기가 잡히고
-                // 최소 2프레임 지날 때까지 재귀적으로 대기한 뒤 initWithGuidance() 호출. #문제시 원복
-                var initRetryCount = 0
-                val minSettleFrames = 2
-                fun attemptInitWithGuidance() {
-                    if (naviView.width > 0 && naviView.height > 0 && initRetryCount >= minSettleFrames) {
-                        NavLogger.d(this, "attemptInitWithGuidance: 정상 분기로 initWithGuidance 호출 (retry=$initRetryCount, ${naviView.width}x${naviView.height})")
-                        naviView.initWithGuidance(
-                            guidance,
-                            trip,
-                            KNRoutePriority.KNRoutePriority_Recommand,
-                            KNRouteAvoidOption.KNRouteAvoidOption_None.value
-                        )
-                        naviView.requestLayout()
-                        naviView.invalidate()
-                        naviView.postDelayed({
-                            naviView.requestLayout()
-                            naviView.invalidate()
-                            hookSurfaceViewLifecycle(naviView)
-                        }, 300)
-                    } else if (initRetryCount < 30) {
-                        initRetryCount++
-                        naviView.post { attemptInitWithGuidance() }
-                    } else {
-                        NavLogger.e(this, "KNNaviView 레이아웃 대기 타임아웃 - 강제 초기화")
-                        naviView.initWithGuidance(
-                            guidance,
-                            trip,
-                            KNRoutePriority.KNRoutePriority_Recommand,
-                            KNRouteAvoidOption.KNRouteAvoidOption_None.value
-                        )
-                    }
-                }
-                attemptInitWithGuidance()
+                // naviView는 setupContentAndStart()에서 이미 initWithGuidance(trip=null)로
+                // 초기화돼있는 상태(idle map) - 여기서 또 initWithGuidance()를 부르면 안 되고
+                // guideNewDestinations()로 이미 떠있는 세션에 실제 목적지만 갈아끼움.
+                // (CarrotNavi 실제 동작 코드에서 확인된 패턴) #문제시 원복
+                naviView.guideNewDestinations(
+                    trip,
+                    KNRoutePriority.KNRoutePriority_Recommand,
+                    KNRouteAvoidOption.KNRouteAvoidOption_None.value
+                )
             }
         }
     }
