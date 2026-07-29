@@ -959,6 +959,9 @@ class MapActivity : AppCompatActivity() {
             },
             isRouteGuideActive = { isKakaoRouteGuideActive }
         ).also { kakaoGuidanceDelegate = it }
+        // naviView는 검색/재검색/idle전환마다 재사용되거나 새로 만들어질 수 있어서,
+        // 델리게이트 콜백을 naviView로 릴레이하려면 항상 최신 참조로 갱신해줘야 함. #문제시 원복
+        delegate.naviView = naviView
         guidance.guideStateDelegate = delegate
         guidance.routeGuideDelegate = delegate
         guidance.safetyGuideDelegate = delegate
