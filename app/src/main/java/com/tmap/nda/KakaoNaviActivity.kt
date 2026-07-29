@@ -154,6 +154,7 @@ class KakaoNaviActivity : AppCompatActivity() {
                 }
                 NavLogger.d(this, "카카오 경로요청 성공, 안내 시작: $destName")
                 val guidance = KNSDK.sharedGuidance()!!
+                hookSurfaceViewLifecycle(naviView)
                 attachExitHook(naviView)
                 val delegate = KakaoGuidanceDelegate(
                     this,
@@ -169,13 +170,72 @@ class KakaoNaviActivity : AppCompatActivity() {
                 guidance.citsGuideDelegate = delegate
                 guidance.locationGuideDelegate = delegate
 
-                naviView.initWithGuidance(
-                    guidance,
-                    trip,
-                    KNRoutePriority.KNRoutePriority_Recommand,
-                    KNRouteAvoidOption.KNRouteAvoidOption_None.value
-                )
+                // MapActivity에서 검증됐던 것과 동일한 원인(ViewStub/새 View가 아직 레이아웃/측정을
+                // 한 번도 안 거친 상태(0x0)에서 바로 initWithGuidance()를 부르면 내부 GL 서페이스가
+                // 화면에 안 그려짐)이 새 Activity에서도 그대로 재현될 수 있음 - onCreate 직후엔
+                // naviView가 아직 첫 레이아웃 패스도 안 거쳤을 가능성이 높음. 크기가 잡히고
+                // 최소 2프레임 지날 때까지 재귀적으로 대기한 뒤 initWithGuidance() 호출. #문제시 원복
+                var initRetryCount = 0
+                val minSettleFrames = 2
+                fun attemptInitWithGuidance() {
+                    if (naviView.width > 0 && naviView.height > 0 && initRetryCount >= minSettleFrames) {
+                        NavLogger.d(this, "attemptInitWithGuidance: 정상 분기로 initWithGuidance 호출 (retry=$initRetryCount, ${naviView.width}x${naviView.height})")
+                        naviView.initWithGuidance(
+                            guidance,
+                            trip,
+                            KNRoutePriority.KNRoutePriority_Recommand,
+                            KNRouteAvoidOption.KNRouteAvoidOption_None.value
+                        )
+                        naviView.requestLayout()
+                        naviView.invalidate()
+                        naviView.postDelayed({
+                            naviView.requestLayout()
+                            naviView.invalidate()
+                            hookSurfaceViewLifecycle(naviView)
+                        }, 300)
+                    } else if (initRetryCount < 30) {
+                        initRetryCount++
+                        naviView.post { attemptInitWithGuidance() }
+                    } else {
+                        NavLogger.e(this, "KNNaviView 레이아웃 대기 타임아웃 - 강제 초기화")
+                        naviView.initWithGuidance(
+                            guidance,
+                            trip,
+                            KNRoutePriority.KNRoutePriority_Recommand,
+                            KNRouteAvoidOption.KNRouteAvoidOption_None.value
+                        )
+                    }
+                }
+                attemptInitWithGuidance()
             }
+        }
+    }
+
+    // 서페이스가 실제로 surfaceCreated/surfaceChanged까지 도달하는지 순수 진단용으로 로그만 남김.
+    // (이전 MapActivity 오버레이 방식 디버깅에서 이 로그가 근본 원인 진단에 핵심적이었음) #문제시 원복
+    private fun hookSurfaceViewLifecycle(root: View) {
+        try {
+            if (root is android.view.SurfaceView) {
+                NavLogger.d(this, "hookSurfaceViewLifecycle: SurfaceView 발견 (${root.javaClass.name}), holder.isCreating=${root.holder?.surface?.isValid}")
+                root.holder?.addCallback(object : android.view.SurfaceHolder.Callback {
+                    override fun surfaceCreated(holder: android.view.SurfaceHolder) {
+                        NavLogger.d(this@KakaoNaviActivity, "[SurfaceHolder ${root.javaClass.simpleName}] surfaceCreated")
+                    }
+                    override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, width: Int, height: Int) {
+                        NavLogger.d(this@KakaoNaviActivity, "[SurfaceHolder ${root.javaClass.simpleName}] surfaceChanged format=$format ${width}x$height")
+                    }
+                    override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {
+                        NavLogger.d(this@KakaoNaviActivity, "[SurfaceHolder ${root.javaClass.simpleName}] surfaceDestroyed")
+                    }
+                })
+            }
+            if (root is android.view.ViewGroup) {
+                for (i in 0 until root.childCount) {
+                    hookSurfaceViewLifecycle(root.getChildAt(i))
+                }
+            }
+        } catch (e: Exception) {
+            NavLogger.e(this, "hookSurfaceViewLifecycle 예외: ${e.message}")
         }
     }
 
@@ -196,6 +256,7 @@ class KakaoNaviActivity : AppCompatActivity() {
                     arrayOf(ifaceClass)
                 ) { _, method, args ->
                     val argsText = args?.joinToString { it?.toString() ?: "null" } ?: ""
+                    NavLogger.d(this, "[KNNaviView ${ifaceClass.simpleName}] ${method.name}($argsText)")
                     if (argsText.contains("exit", true) || argsText.contains("end", true) ||
                         method.name.contains("exit", true) || method.name.contains("finish", true)
                     ) {
@@ -205,6 +266,7 @@ class KakaoNaviActivity : AppCompatActivity() {
                 }
                 try {
                     setter.invoke(naviView, proxy)
+                    NavLogger.d(this, "KNNaviView 델리게이트 후킹 성공: ${setter.name}(${ifaceClass.simpleName})")
                 } catch (e: Exception) {
                     NavLogger.e(this, "KNNaviView 델리게이트 후킹 실패(${setter.name}): ${e.message}")
                 }
