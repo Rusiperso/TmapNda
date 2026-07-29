@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <!-- 좌측 220dp는 MapActivity의 llLeftHudPanel(속도/HUD)이 있던 자리 - 카카오내비 화면도
+         그 폭만큼은 가리지 않고 나머지 지도 영역만 채움. #문제시 원복 -->
+    <com.kakaomobility.knsdk.ui.view.KNNaviView
+        android:id="@+id/naviView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginStart="220dp" />
+
+    <Button
+        android:id="@+id/btnStopKakaoGuidance"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="12dp"
+        android:text="안내 종료"
+        android:backgroundTint="#F44336" />
+
+</FrameLayout>
