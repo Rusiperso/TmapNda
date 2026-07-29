@@ -825,6 +825,10 @@ class MapActivity : AppCompatActivity() {
     // 콜백이 영영 안 오는 경우가 확인됨(SDK 내부적으로 기존 세션과 충돌하는 것으로
     // 추정). 그래서 새로 시작하기 전에 기존 세션이 있으면 먼저 stop() 하도록 수정. #문제시 원복
     private var isKakaoGuidanceActive = false
+    // makeTripWithStart()는 비동기 콜백이라, 콜백이 돌아오기 전에 사용자가 검색을
+    // 재탭하면 stop()과 initWithGuidance()가 서로 다른 요청의 콜백과 뒤섞여 레이스가
+    // 나던 것으로 의심됨(화면 전환 안 되던 증상과 연관). 요청 진행 중엔 재탭 무시. #문제시 원복
+    private var isRequestingKakaoRoute = false
 
     // 실제 "경로 안내 중"인지(OnRouteGuide) vs "경로 없는 배경 안전운행"(OnSafetyGuide)인지 구분.
     // true일 때만 카카오 오버레이/음성을 쓰고, false면 티맵 화면+티맵 자체 안전운행 음성으로 되돌림.
@@ -1003,6 +1007,14 @@ class MapActivity : AppCompatActivity() {
     }
 
     private fun startKakaoOverlayGuidance(name: String, goalLat: Double, goalLon: Double) {
+        // 화면 전환이 안 돼 보여서 사용자가 검색을 연타하면, 앞선 makeTripWithStart()
+        // 콜백이 아직 안 돌아온 상태에서 stop()/initWithGuidance()가 새 요청과 뒤섞여
+        // 레이스가 나던 것으로 의심됨. 진행 중인 요청이 있으면 재탭은 무시. #문제시 원복
+        if (isRequestingKakaoRoute) {
+            NavLogger.d(this, "이미 카카오 경로 요청 진행 중 - 재탭 무시: $name")
+            return
+        }
+        isRequestingKakaoRoute = true
         if (isKakaoGuidanceStarting) {
             // 이전 요청이 아직 화면 전환을 못 끝낸 상태 - 여기서 또 새로 시작하면
             // 그 요청이 덮어써져서 영영 전환 안 되는 게 반복됨. 그냥 무시.
@@ -1064,6 +1076,7 @@ class MapActivity : AppCompatActivity() {
                     } else {
                         NavLogger.e(this, "KNSDK 초기화 실패: ${error.code} / ${error.msg}")
                         Toast.makeText(this, "카카오내비 초기화 실패: ${error.msg}", Toast.LENGTH_LONG).show()
+                        isRequestingKakaoRoute = false
                         hideKakaoOverlay()
                     }
                 }
@@ -1071,6 +1084,7 @@ class MapActivity : AppCompatActivity() {
         } catch (e: Exception) {
             NavLogger.e(this, "KNSDK install/init 예외: ${e.message}")
             Toast.makeText(this, "카카오내비 초기화 예외: ${e.message}", Toast.LENGTH_LONG).show()
+            isRequestingKakaoRoute = false
             hideKakaoOverlay()
         }
     }
@@ -1143,6 +1157,7 @@ class MapActivity : AppCompatActivity() {
                 if (error != null || trip == null) {
                     NavLogger.e(this, "카카오 경로요청 실패: ${error?.msg ?: "알 수 없는 오류"}")
                     Toast.makeText(this, "경로 탐색 실패: ${error?.msg ?: "알 수 없는 오류"}", Toast.LENGTH_SHORT).show()
+                    isRequestingKakaoRoute = false
                     hideKakaoOverlay()
                 } else {
                     NavLogger.d(this, "카카오 경로요청 성공, 안내 시작: $name")
@@ -1151,6 +1166,7 @@ class MapActivity : AppCompatActivity() {
                     if (naviView == null) {
                         NavLogger.e(this, "KNNaviView inflate 실패")
                         Toast.makeText(this, "카카오내비 화면 생성 실패", Toast.LENGTH_SHORT).show()
+                        isRequestingKakaoRoute = false
                         hideKakaoOverlay()
                         return@runOnUiThread
                     }
@@ -1182,6 +1198,7 @@ class MapActivity : AppCompatActivity() {
                     val minSettleFrames = 2
                     fun attemptInitWithGuidance() {
                         if (naviView.width > 0 && naviView.height > 0 && initRetryCount >= minSettleFrames) {
+                            NavLogger.d(this@MapActivity, "attemptInitWithGuidance: 정상 분기로 initWithGuidance 호출 (retry=$initRetryCount, ${naviView.width}x${naviView.height})")
                             naviView.initWithGuidance(
                                 guidance,
                                 trip,
@@ -1196,6 +1213,7 @@ class MapActivity : AppCompatActivity() {
                                 naviView.requestLayout()
                                 naviView.invalidate()
                             }, 300)
+                            isRequestingKakaoRoute = false
                         } else if (initRetryCount < 30) {
                             initRetryCount++
                             naviView.post { attemptInitWithGuidance() }
@@ -1208,6 +1226,7 @@ class MapActivity : AppCompatActivity() {
                                 KNRoutePriority.KNRoutePriority_Recommand,
                                 KNRouteAvoidOption.KNRouteAvoidOption_None.value
                             )
+                            isRequestingKakaoRoute = false
                         }
                     }
                     attemptInitWithGuidance()
