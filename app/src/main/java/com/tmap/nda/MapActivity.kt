@@ -729,12 +729,48 @@ class MapActivity : AppCompatActivity() {
 
     // KNNaviView는 SDK 초기화가 끝나기 전에 생성자가 돌면 죽는 것으로 추정됨 - #문제시 원복
     // 그래서 레이아웃엔 ViewStub만 두고, SDK 초기화 성공한 뒤에만 실제로 inflate함.
+    // idle map(경로 없음, 기본 지도)에서만 씀 - 재사용해도 큰 문제 없었음.
     private fun ensureKakaoNaviViewInflated(): KNNaviView? {
         if (kakaoNaviView == null) {
             kakaoNaviView = binding.naviViewStub?.inflate() as? KNNaviView
             kakaoNaviView?.let { hookSurfaceViewLifecycle(it) }
         }
         return kakaoNaviView
+    }
+
+    // v1.0.62~68 시절엔 화면 전환은 되고 턴바이턴 음성/텍스트 안내도 계속 갱신됐는데
+    // (지도 카메라/마커만 안 움직이는 순수 렌더링 버그), 이후 실제 길안내 시작 때마다
+    // 같은 KNNaviView 인스턴스를 stop()/initWithGuidance()로 계속 재사용하다 보니
+    // 내부적으로 이전 trip/guidance에 묶인 상태가 누적되어 오히려 더 심하게(TBT까지)
+    // 멈추는 쪽으로 퇴보한 것으로 의심됨. 카카오 공식 iOS 샘플도 매 안내 시작마다
+    // 새 KNNaviView 인스턴스를 만들어서 붙이는 방식이라 그 패턴을 그대로 따름 -
+    // 실제 "길안내 시작"(requestKakaoRoute 성공 시점)에서만 이 함수를 쓰고,
+    // 기존 뷰가 있으면 완전히 제거하고 새 인스턴스로 교체함. #문제시 원복
+    private fun recreateKakaoNaviView(): KNNaviView? {
+        return try {
+            kakaoNaviView?.let { old ->
+                try {
+                    (old.parent as? android.view.ViewGroup)?.removeView(old)
+                } catch (e: Exception) {
+                    NavLogger.e(this, "기존 KNNaviView 제거 중 예외: ${e.message}")
+                }
+            }
+            // 새 인스턴스라 이전 뷰에 붙였던 후킹/델리게이트 상태는 의미 없음 - 다시 붙여야 함.
+            kakaoNaviViewExitHookAttached = false
+            val fresh = KNNaviView(this)
+            val params = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            binding.flKakaoOverlay?.addView(fresh, 0, params)
+            hookSurfaceViewLifecycle(fresh)
+            kakaoNaviView = fresh
+            NavLogger.d(this, "recreateKakaoNaviView: 새 KNNaviView 인스턴스 생성/부착 완료")
+            fresh
+        } catch (e: Exception) {
+            NavLogger.e(this, "recreateKakaoNaviView 예외: ${e.message}")
+            null
+        }
     }
 
     // naviViewGuideState/naviViewScreenState 델리게이트는 정상적으로 OnRouteGuide로 바뀌는데
@@ -1230,9 +1266,9 @@ class MapActivity : AppCompatActivity() {
                 } else {
                     NavLogger.d(this, "카카오 경로요청 성공, 안내 시작: $name")
                     val guidance = KNSDK.sharedGuidance()!!
-                    val naviView = ensureKakaoNaviViewInflated()
+                    val naviView = recreateKakaoNaviView()
                     if (naviView == null) {
-                        NavLogger.e(this, "KNNaviView inflate 실패")
+                        NavLogger.e(this, "KNNaviView 생성 실패")
                         Toast.makeText(this, "카카오내비 화면 생성 실패", Toast.LENGTH_SHORT).show()
                         isRequestingKakaoRoute = false
                         hideKakaoOverlay()
