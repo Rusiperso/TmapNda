@@ -4,13 +4,14 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- 좌측 220dp는 MapActivity의 llLeftHudPanel(속도/HUD)이 있던 자리 - 카카오내비 화면도
-         그 폭만큼은 가리지 않고 나머지 지도 영역만 채움. #문제시 원복 -->
+    <!-- v1.0.90: marginStart=220dp로 좌측을 비워뒀었는데, 실제로는 그 자리에
+         MapActivity의 진짜 HUD가 비치는 게 아니라 그냥 검은 여백만 보였음
+         (별도 Activity/윈도우라 뒤에 있는 MapActivity 뷰가 보일 수 없음).
+         의미 없는 검은 여백이라 제거하고 전체 화면 사용. #문제시 원복 -->
     <com.kakaomobility.knsdk.ui.view.KNNaviView
         android:id="@+id/naviView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_marginStart="220dp" />
+        android:layout_height="match_parent" />
 
     <Button
         android:id="@+id/btnStopKakaoGuidance"
