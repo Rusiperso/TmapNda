@@ -58,6 +58,8 @@ class KakaoNaviActivity : AppCompatActivity() {
         wasTmapMuted = sharedPref.getBoolean("tmap_muted", false)
         try {
             TmapUISDK.setVolume(this, 0)
+            KakaoSdkState.lastAppliedTmapVolume = 0
+            NavLogger.d(this, "[음소거] KakaoNaviActivity 진입 - TmapUISDK.setVolume(0) 적용")
         } catch (e: Exception) {
             NavLogger.e(this, "티맵 볼륨 낮추기 예외: ${e.message}")
         }
@@ -389,6 +391,8 @@ class KakaoNaviActivity : AppCompatActivity() {
         try {
             if (!wasTmapMuted) {
                 TmapUISDK.setVolume(this, 100)
+                KakaoSdkState.lastAppliedTmapVolume = 100
+                NavLogger.d(this, "[음소거] KakaoNaviActivity 종료 - TmapUISDK.setVolume(100) 복원")
             }
         } catch (e: Exception) {
             NavLogger.e(this, "티맵 볼륨 복원 예외: ${e.message}")

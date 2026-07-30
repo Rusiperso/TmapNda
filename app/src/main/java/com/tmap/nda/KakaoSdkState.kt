@@ -10,4 +10,10 @@ package com.tmap.nda
 object KakaoSdkState {
     @Volatile
     var initialized: Boolean = false
+
+    // TmapUISDK.setVolume()은 조회(getter)가 없어서, 우리가 마지막으로 호출한 값을
+    // 직접 기록해뒀다가 로그에서 "카카오 음성 재생 시점에 티맵이 진짜 음소거 상태였는지"를
+    // 확인할 수 있게 함. #문제시 원복
+    @Volatile
+    var lastAppliedTmapVolume: Int? = null
 }

@@ -134,6 +134,12 @@ class KakaoGuidanceDelegate(
                 "덤프 실패: ${e.message}"
             }
             NavLogger.d(context, "guidanceDidUpdateLocation 호출됨: $locationGuide | $dump")
+            val summary = try {
+                val roadName = locationGuide.javaClass.methods.firstOrNull { it.name == "getRoadName" }?.invoke(locationGuide)
+                val distToDest = locationGuide.javaClass.methods.firstOrNull { it.name == "getDist" }?.invoke(locationGuide)
+                "[경로추적] 도로=$roadName 남은거리=$distToDest (경로선 위에서 매칭된 위치를 계속 받고 있으면 정상 추종 중)"
+            } catch (e: Exception) { "[경로추적] 요약 실패: ${e.message}" }
+            NavLogger.d(context, summary)
         }
         (naviView as? KNGuidance_LocationGuideDelegate)?.guidanceDidUpdateLocation(guidance, locationGuide)
     }
@@ -154,21 +160,32 @@ class KakaoGuidanceDelegate(
     }
 
     // ===== VoiceGuideDelegate =====
+    // "카카오 음성 중 티맵 음성이 안 나온다/겹친다"를 로그로 검증하기 위해, 카카오 음성이
+    // 재생되는 시점마다 티맵 쪽 음소거 상태(SharedPreferences tmap_muted)를 같이 찍음.
+    // 이게 재생 시점에 tmap_muted=true가 아니면 티맵 음성이 같이 나올 수 있다는 뜻. #문제시 원복
     override fun shouldPlayVoiceGuide(
         guidance: KNGuidance,
         voiceGuide: KNGuide_Voice,
         newData: MutableList<ByteArray>
     ): Boolean {
+        val allow = isRouteGuideActive()
+        NavLogger.d(context, "[음성] shouldPlayVoiceGuide 호출됨 allow=$allow ${tmapMuteStateSnapshot()}")
         (naviView as? KNGuidance_VoiceGuideDelegate)?.shouldPlayVoiceGuide(guidance, voiceGuide, newData)
-        return isRouteGuideActive()
+        return allow
     }
 
     override fun willPlayVoiceGuide(guidance: KNGuidance, voiceGuide: KNGuide_Voice) {
+        NavLogger.d(context, "[음성] willPlayVoiceGuide(카카오 음성 재생 시작) ${tmapMuteStateSnapshot()}")
         (naviView as? KNGuidance_VoiceGuideDelegate)?.willPlayVoiceGuide(guidance, voiceGuide)
     }
 
     override fun didFinishPlayVoiceGuide(guidance: KNGuidance, voiceGuide: KNGuide_Voice) {
+        NavLogger.d(context, "[음성] didFinishPlayVoiceGuide(카카오 음성 재생 끝) ${tmapMuteStateSnapshot()}")
         (naviView as? KNGuidance_VoiceGuideDelegate)?.didFinishPlayVoiceGuide(guidance, voiceGuide)
+    }
+
+    private fun tmapMuteStateSnapshot(): String {
+        return "lastAppliedTmapVolume=${KakaoSdkState.lastAppliedTmapVolume}"
     }
 
     // ===== CitsGuideDelegate =====
