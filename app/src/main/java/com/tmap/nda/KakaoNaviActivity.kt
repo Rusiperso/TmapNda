@@ -4,7 +4,6 @@ import android.content.Context
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
-import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
@@ -410,15 +409,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // v1.0.90: KNSDK.sharedGpsManager()는 안드로이드 실시간 GPS를 자동으로 받지 않음 -
     // 앱이 LocationManager로 직접 구독해서 매번 gpsManager.onLocationChanged(location)을
     // 리플렉션으로 찔러줘야 갱신됨(CarrotNavi 실제 코드에서 확인된 패턴). #문제시 원복
+    // v1.0.91: NETWORK_PROVIDER(기지국 기반) 위치는 정확도가 낮고 캐시된 값이 그대로
+    // 반복돼서(예: 매초 완전히 동일한 좌표) GPS_PROVIDER의 정확한 실시간 값과 번갈아
+    // KNSDK로 들어가는 바람에 위치가 오락가락했음(재억 - "평택인데 용인으로 잡힘").
+    // GPS_PROVIDER만 반영하고, 정확도가 너무 나쁜 픽스(accuracy > 50m)는 무시함. #문제시 원복
     private fun startRealtimeGpsForwarding() {
         try {
             locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
             locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0L, 0f, this)
-            locationManager?.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0L, 0f, this)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                locationManager?.requestLocationUpdates(LocationManager.FUSED_PROVIDER, 0L, 0f, this)
-            }
-            NavLogger.d(this, "[GPS] LocationManager 실시간 구독 시작(KNSDK GPS 매니저로 전달용)")
+            NavLogger.d(this, "[GPS] LocationManager GPS_PROVIDER 실시간 구독 시작(KNSDK GPS 매니저로 전달용)")
         } catch (e: SecurityException) {
             NavLogger.e(this, "[GPS] 위치 권한 없음: ${e.message}")
         } catch (e: Exception) {
@@ -428,6 +427,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     override fun onLocationChanged(location: Location) {
         try {
+            if (location.provider != LocationManager.GPS_PROVIDER) {
+                NavLogger.d(this, "[GPS] provider=${location.provider} 무시(GPS_PROVIDER만 사용)")
+                return
+            }
+            if (location.hasAccuracy() && location.accuracy > 50f) {
+                NavLogger.d(this, "[GPS] 정확도 낮아 무시: accuracy=${location.accuracy}m")
+                return
+            }
             val gpsManager = KNSDK.sharedGpsManager()
             if (gpsManager != null) {
                 val m = gpsManager.javaClass.getMethod("onLocationChanged", Location::class.java)
@@ -435,7 +442,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 NavLogger.d(
                     this,
                     "[GPS] KNSDK로 전달됨: lat=${location.latitude} lon=${location.longitude} " +
-                        "speed=${location.speed} bearing=${location.bearing}"
+                        "speed=${location.speed} bearing=${location.bearing} accuracy=${location.accuracy}"
                 )
             }
         } catch (e: Exception) {
