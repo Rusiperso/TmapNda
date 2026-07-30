@@ -1,6 +1,10 @@
 package com.tmap.nda
 
 import android.content.Context
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
@@ -27,14 +31,21 @@ import com.tmapmobility.tmap.tmapsdk.ui.util.TmapUISDK
  * MapActivity → (검색 성공) → startActivity(이 Activity, dest_name/lat/lon 담아서)
  * 이 Activity: KNSDK 초기화(이미 됐으면 스킵) → 현재위치 확보 → makeTripWithStart →
  * naviView.initWithGuidance() → 안내 종료/도착/사용자 종료 버튼 시 finish()로 복귀.
+ *
+ * v1.0.90: KNSDK.sharedGpsManager()는 안드로이드 실시간 GPS를 자동으로 받는 게 아니라,
+ * 앱이 LocationManager로 직접 구독해서 매번 gpsManager.onLocationChanged(location)을
+ * 리플렉션으로 수동으로 찔러줘야 갱신됨(CarrotNavi 실제 코드에서 확인). 이걸 안 해줘서
+ * 경로요청 시점 스냅샷 위치에 계속 멈춰있던 것 - 이 Activity도 LocationListener로
+ * 실시간 GPS를 구독해서 매번 KNSDK GPS 매니저에 전달하도록 함.
  */
-class KakaoNaviActivity : AppCompatActivity() {
+class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     private lateinit var binding: ActivityKakaoNaviBinding
     private lateinit var naviView: KNNaviView
     private var kakaoGuidanceDelegate: KakaoGuidanceDelegate? = null
     private var exitHookAttached = false
     private var wasTmapMuted = false
+    private var locationManager: LocationManager? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -110,6 +121,8 @@ class KakaoNaviActivity : AppCompatActivity() {
         } catch (e: Exception) {
             NavLogger.e(this, "KNSDK 라이프사이클 전달 예외: ${e.message}")
         }
+
+        startRealtimeGpsForwarding()
 
         // CarrotNavi 실제 동작 코드에서 확인된 핵심 패턴: naviView를 목적지가 확정된
         // 시점에 initWithGuidance(trip=실제경로)로 처음 초기화하는 게 아니라,
@@ -394,8 +407,49 @@ class KakaoNaviActivity : AppCompatActivity() {
         finishGuidance()
     }
 
+    // v1.0.90: KNSDK.sharedGpsManager()는 안드로이드 실시간 GPS를 자동으로 받지 않음 -
+    // 앱이 LocationManager로 직접 구독해서 매번 gpsManager.onLocationChanged(location)을
+    // 리플렉션으로 찔러줘야 갱신됨(CarrotNavi 실제 코드에서 확인된 패턴). #문제시 원복
+    private fun startRealtimeGpsForwarding() {
+        try {
+            locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0L, 0f, this)
+            locationManager?.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0L, 0f, this)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                locationManager?.requestLocationUpdates(LocationManager.FUSED_PROVIDER, 0L, 0f, this)
+            }
+            NavLogger.d(this, "[GPS] LocationManager 실시간 구독 시작(KNSDK GPS 매니저로 전달용)")
+        } catch (e: SecurityException) {
+            NavLogger.e(this, "[GPS] 위치 권한 없음: ${e.message}")
+        } catch (e: Exception) {
+            NavLogger.e(this, "[GPS] LocationManager 구독 시작 예외: ${e.message}")
+        }
+    }
+
+    override fun onLocationChanged(location: Location) {
+        try {
+            val gpsManager = KNSDK.sharedGpsManager()
+            if (gpsManager != null) {
+                val m = gpsManager.javaClass.getMethod("onLocationChanged", Location::class.java)
+                m.invoke(gpsManager, location)
+                NavLogger.d(
+                    this,
+                    "[GPS] KNSDK로 전달됨: lat=${location.latitude} lon=${location.longitude} " +
+                        "speed=${location.speed} bearing=${location.bearing}"
+                )
+            }
+        } catch (e: Exception) {
+            NavLogger.e(this, "[GPS] KNSDK GPS 매니저 전달 예외: ${e.message}")
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        try {
+            locationManager?.removeUpdates(this)
+        } catch (e: Exception) {
+            NavLogger.e(this, "[GPS] LocationManager 구독 해제 예외: ${e.message}")
+        }
         try {
             if (!wasTmapMuted) {
                 TmapUISDK.setVolume(this, 100)
