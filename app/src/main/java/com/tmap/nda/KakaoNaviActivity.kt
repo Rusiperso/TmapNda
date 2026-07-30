@@ -252,15 +252,31 @@ class KakaoNaviActivity : AppCompatActivity() {
                     m?.invoke(g)
                 }
             } catch (e: Exception) { "조회실패(${e.message})" }
+            val gps = try {
+                KNSDK.sharedGpsManager()?.recentGpsData?.let { "pos=(${it.pos.x},${it.pos.y}) speed=${it.speed} angle=${it.angle}" }
+            } catch (e: Exception) { "조회실패(${e.message})" }
+            val childTree = try {
+                dumpChildTree(naviView, 0)
+            } catch (e: Exception) { "덤프실패(${e.message})" }
             NavLogger.d(
                 this,
                 "[naviView 진단:$tag] width=${naviView.width} height=${naviView.height} " +
                     "visibility=${naviView.visibility} isAttachedToWindow=${naviView.isAttachedToWindow} " +
-                    "isShown=${naviView.isShown} curTrip=$curTrip"
+                    "isShown=${naviView.isShown} curTrip=$curTrip gps=$gps childTree=$childTree"
             )
         } catch (e: Exception) {
             NavLogger.e(this, "logNaviViewDiagnostics 예외($tag): ${e.message}")
         }
+    }
+
+    // naviView 내부에 실제로 어떤 자식 뷰들이 붙어있는지(경로선/방향안내 바 등 가이드 UI
+    // 구성요소가 실제로 attach됐는지) 확인하기 위한 트리 덤프. #문제시 원복
+    private fun dumpChildTree(view: View, depth: Int): String {
+        if (depth > 4) return ""
+        val self = "${view.javaClass.simpleName}(${view.width}x${view.height},vis=${view.visibility})"
+        if (view !is android.view.ViewGroup || view.childCount == 0) return self
+        val children = (0 until view.childCount).joinToString(",") { dumpChildTree(view.getChildAt(it), depth + 1) }
+        return "$self[$children]"
     }
 
     // 서페이스가 실제로 surfaceCreated/surfaceChanged까지 도달하는지 순수 진단용으로 로그만 남김.
@@ -336,6 +352,32 @@ class KakaoNaviActivity : AppCompatActivity() {
             NavLogger.e(this, "카카오 안내 중지 예외: ${e.message}")
         }
         if (!isFinishing) finish()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        NavLogger.d(this, "[lifecycle] onStart")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        NavLogger.d(this, "[lifecycle] onResume")
+    }
+
+    override fun onPause() {
+        super.onPause()
+        NavLogger.d(this, "[lifecycle] onPause")
+    }
+
+    override fun onStop() {
+        super.onStop()
+        NavLogger.d(this, "[lifecycle] onStop")
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        NavLogger.d(this, "[lifecycle] onWindowFocusChanged hasFocus=$hasFocus")
+        if (::naviView.isInitialized) logNaviViewDiagnostics("onWindowFocusChanged(hasFocus=$hasFocus)")
     }
 
     override fun onBackPressed() {
