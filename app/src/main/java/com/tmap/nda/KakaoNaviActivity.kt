@@ -162,6 +162,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         guidance.citsGuideDelegate = delegate
         guidance.locationGuideDelegate = delegate
 
+        NavLogger.d(
+            this,
+            "[진단] naviView 인터페이스 구현 확인: " +
+                "LocationGuideDelegate=${naviView is com.kakaomobility.knsdk.guidance.knguidance.KNGuidance_LocationGuideDelegate} " +
+                "RouteGuideDelegate=${naviView is com.kakaomobility.knsdk.guidance.knguidance.KNGuidance_RouteGuideDelegate} " +
+                "GuideStateDelegate=${naviView is com.kakaomobility.knsdk.guidance.knguidance.KNGuidance_GuideStateDelegate}"
+        )
+
         NavLogger.d(this, "setupContentAndStart: initWithGuidance(trip=null) idle map 선초기화")
         naviView.initWithGuidance(
             guidance,
@@ -260,6 +268,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     return
                 }
                 logNaviViewDiagnostics("주기 진단(3초)")
+                // v1.0.93: 스크린샷 비교 결과 1분이 지나도 지도 화면이 1픽셀도 안 바뀜(카메라/
+                // 마커가 GPS 갱신을 받아도 다시 안 그려지는 것으로 보임) - naviView가 SurfaceView
+                // 기반 렌더러라 데이터만 갱신되고 실제 화면 갱신 신호(invalidate)가 안 걸리는
+                // 것인지 확인하기 위해 3초마다 강제로 다시 그리기를 걸어봄. #문제시 원복
+                if (::naviView.isInitialized) {
+                    naviView.requestLayout()
+                    naviView.invalidate()
+                }
                 diagnosticHandler.postDelayed(this, 3000)
             }
         }
