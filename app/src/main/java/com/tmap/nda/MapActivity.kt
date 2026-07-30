@@ -1812,6 +1812,21 @@ class MapActivity : AppCompatActivity() {
                 NavLogger.e(this, "KNSDK 라이프사이클(resume) 전달 예외: ${e.message}")
             }
         }
+        // KakaoNaviActivity에서 검색/최근목적지 탭 -> finish() 하면서 남겨둔 요청 처리. #문제시 원복
+        val autoQuery = PendingMapAction.autoSearchQuery
+        if (autoQuery != null) {
+            PendingMapAction.autoSearchQuery = null
+            binding.etDestination?.setText(autoQuery)
+            performDestinationSearch(autoQuery)
+        } else if (PendingMapAction.openSearchPanel) {
+            PendingMapAction.openSearchPanel = false
+            binding.llSearchPanel?.visibility = View.VISIBLE
+        }
+        if (PendingMapAction.openFullHistoryDialog) {
+            PendingMapAction.openFullHistoryDialog = false
+            binding.llSearchPanel?.visibility = View.VISIBLE
+            showFullSearchHistoryDialog()
+        }
     }
 
     override fun onStart() {

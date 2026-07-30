@@ -309,6 +309,94 @@
 
         <View android:layout_width="0dp" android:layout_height="0dp" android:layout_weight="1" />
 
+        <!-- 티맵음량 | 카카오음량 | 검색 | 로그전송 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:layout_marginBottom="8dp">
+
+            <ImageButton
+                android:id="@+id/btnMuteToggle"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="3dp"
+                android:src="@android:drawable/ic_lock_silent_mode_off"
+                android:background="@drawable/shape_circle_green"
+                android:scaleType="center" />
+
+            <ImageButton
+                android:id="@+id/btnKakaoMuteToggle"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="3dp"
+                android:src="@android:drawable/ic_lock_silent_mode_off"
+                android:background="@drawable/shape_circle_green"
+                android:scaleType="center" />
+
+            <ImageButton
+                android:id="@+id/btnOpenSearch"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="3dp"
+                android:src="@android:drawable/ic_menu_search"
+                android:background="@drawable/shape_circle_gray"
+                android:scaleType="center" />
+
+            <ImageButton
+                android:id="@+id/btnShareLog"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_marginStart="3dp"
+                android:src="@android:drawable/ic_menu_send"
+                android:background="@drawable/shape_circle_gray"
+                android:scaleType="center" />
+        </LinearLayout>
+
+        <!-- 최근 목적지 5개 + 더보기 (Tmap과 동일한 저장소를 그대로 읽음) -->
+        <LinearLayout
+            android:id="@+id/llRecentSearchPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="최근 목적지"
+                android:textColor="#666666"
+                android:textSize="9sp"
+                android:letterSpacing="0.1"
+                android:layout_marginBottom="4dp" />
+
+            <LinearLayout
+                android:id="@+id/llRecentSearchRows"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="#141414" />
+
+            <Button
+                android:id="@+id/btnMoreHistory"
+                android:layout_width="match_parent"
+                android:layout_height="30dp"
+                android:layout_marginTop="4dp"
+                android:text="+ 더보기"
+                android:textSize="11sp"
+                android:textColor="#888888"
+                android:background="@drawable/shape_circle_gray"
+                android:minHeight="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp" />
+        </LinearLayout>
+
         <TextView
             android:id="@+id/tvAppVersion"
             android:layout_width="wrap_content"
