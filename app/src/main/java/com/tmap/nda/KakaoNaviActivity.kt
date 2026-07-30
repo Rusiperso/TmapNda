@@ -44,7 +44,19 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private var kakaoGuidanceDelegate: KakaoGuidanceDelegate? = null
     private var exitHookAttached = false
     private var wasTmapMuted = false
+    private var kakaoMuted = false
     private var locationManager: LocationManager? = null
+
+    private fun applyTmapMute(muted: Boolean) {
+        try {
+            val vol = if (muted) 0 else 100
+            TmapUISDK.setVolume(this, vol)
+            KakaoSdkState.lastAppliedTmapVolume = vol
+            NavLogger.d(this, "[음소거] 티맵 볼륨 적용: muted=$muted vol=$vol")
+        } catch (e: Exception) {
+            NavLogger.e(this, "티맵 볼륨 적용 예외: ${e.message}")
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,17 +74,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             return
         }
 
-        // 안내 중엔 티맵 음성을 낮춰서 카카오 음성과 겹치지 않게 함. 사용자가 저장한
-        // isTmapMuted 값 자체는 안 건드리고, 여기서 나갈 때(onDestroy) 원복함. #문제시 원복
+        // v1.0.97: 예전엔 카카오 화면에 들어오면 무조건 티맵 볼륨을 0으로 강제해서, 재억이
+        // 원하는 "티맵 안내음량 버튼"이 있어도 의미가 없었음(항상 0으로 덮어써지니까).
+        // 이제 MapActivity와 동일하게 사용자가 저장해둔 tmap_muted 값을 그대로 반영하고,
+        // 아래 버튼으로 라이브 토글 가능하게 함. #문제시 원복
         val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         wasTmapMuted = sharedPref.getBoolean("tmap_muted", false)
-        try {
-            TmapUISDK.setVolume(this, 0)
-            KakaoSdkState.lastAppliedTmapVolume = 0
-            NavLogger.d(this, "[음소거] KakaoNaviActivity 진입 - TmapUISDK.setVolume(0) 적용")
-        } catch (e: Exception) {
-            NavLogger.e(this, "티맵 볼륨 낮추기 예외: ${e.message}")
-        }
+        applyTmapMute(wasTmapMuted)
+        kakaoMuted = sharedPref.getBoolean("kakao_muted", false)
 
         if (KakaoSdkState.initialized) {
             setupContentAndStart(destName, destLat, destLon)
@@ -123,6 +132,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
         startRealtimeGpsForwarding()
         startMiniHudBinding()
+        setupHudActionButtons()
 
         // CarrotNavi 실제 동작 코드에서 확인된 핵심 패턴: naviView를 목적지가 확정된
         // 시점에 initWithGuidance(trip=실제경로)로 처음 초기화하는 게 아니라,
@@ -153,7 +163,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             this,
             onGuideEnded = { finishGuidance() },
             onGuideStarted = {},
-            isRouteGuideActive = { true }
+            isRouteGuideActive = { !kakaoMuted }
         ).also { kakaoGuidanceDelegate = it }
         delegate.naviView = naviView
         guidance.guideStateDelegate = delegate
@@ -397,7 +407,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 binding.tvActiveStatus?.text = "OP OFF"
                 binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#555555"))
             }
-            val connected = state.ip.isNotEmpty()
+            val connected = state.ip.isNotEmpty() && state.ip != "-"
             if (connected) {
                 binding.tvConnectionStatus?.text = "연결됨"
                 binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
@@ -465,6 +475,108 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             binding.tvAppVersion?.text = "v$vn"
         } catch (e: Exception) { /* 무시 */ }
         binding.btnGpsStatus?.text = "GPS 확인 중"
+    }
+
+    // v1.0.97: MapActivity와 동일한 스타일의 티맵음소거/카카오음소거/검색/로그전송 버튼과
+    // 최근 목적지 패널(5개+더보기)을 KakaoNaviActivity에도 추가. 검색/더보기는 자체 검색
+    // UI를 새로 만들지 않고, MapActivity가 finish() 이후 백스택에서 그대로 재개될 때
+    // PendingMapAction 신호로 처리하도록 함(중복 구현 회피). #문제시 원복
+    private fun updateMuteButtonStyle() {
+        val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        val tmapMuted = sharedPref.getBoolean("tmap_muted", false)
+        binding.btnMuteToggle?.setImageResource(
+            if (tmapMuted) android.R.drawable.ic_lock_silent_mode else android.R.drawable.ic_lock_silent_mode_off
+        )
+        binding.btnMuteToggle?.setBackgroundResource(
+            if (tmapMuted) R.drawable.shape_circle_gray else R.drawable.shape_circle_green
+        )
+        binding.btnKakaoMuteToggle?.setImageResource(
+            if (kakaoMuted) android.R.drawable.ic_lock_silent_mode else android.R.drawable.ic_lock_silent_mode_off
+        )
+        binding.btnKakaoMuteToggle?.setBackgroundResource(
+            if (kakaoMuted) R.drawable.shape_circle_gray else R.drawable.shape_circle_green
+        )
+    }
+
+    private fun setupHudActionButtons() {
+        updateMuteButtonStyle()
+
+        binding.btnMuteToggle?.setOnClickListener {
+            val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            val newMuted = !sharedPref.getBoolean("tmap_muted", false)
+            sharedPref.edit().putBoolean("tmap_muted", newMuted).apply()
+            applyTmapMute(newMuted)
+            updateMuteButtonStyle()
+            Toast.makeText(this, if (newMuted) "티맵 안내음성 음소거" else "티맵 안내음성 켜짐", Toast.LENGTH_SHORT).show()
+        }
+
+        binding.btnKakaoMuteToggle?.setOnClickListener {
+            kakaoMuted = !kakaoMuted
+            getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).edit()
+                .putBoolean("kakao_muted", kakaoMuted).apply()
+            updateMuteButtonStyle()
+            Toast.makeText(this, if (kakaoMuted) "카카오 안내음성 음소거" else "카카오 안내음성 켜짐", Toast.LENGTH_SHORT).show()
+        }
+
+        binding.btnOpenSearch?.setOnClickListener {
+            PendingMapAction.openSearchPanel = true
+            finishGuidance()
+        }
+
+        binding.btnShareLog?.setOnClickListener {
+            val result = NavLogger.buildShareIntent(this)
+            if (result == null) {
+                Toast.makeText(this, "저장된 로그가 없어.", Toast.LENGTH_SHORT).show()
+            } else {
+                val (shareIntent, paths) = result
+                startActivity(android.content.Intent.createChooser(shareIntent, "로그 공유 (${paths.size}개 파일)"))
+            }
+        }
+
+        renderRecentDestinationsPanel()
+    }
+
+    // MapActivity가 쓰는 것과 동일한 SharedPreferences 키("search_history_json")를 그대로
+    // 읽어서 최근 목적지 최대 5개를 직접 표시. 나머지는 "+더보기"로 MapActivity의 전체
+    // 이력 다이얼로그를 열도록 신호만 넘김. #문제시 원복
+    private fun renderRecentDestinationsPanel() {
+        val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        val raw = sharedPref.getString("search_history_json", "[]") ?: "[]"
+        val history = try {
+            val arr = org.json.JSONArray(raw)
+            (0 until arr.length()).map { arr.getString(it) }
+        } catch (e: Exception) {
+            emptyList()
+        }
+
+        if (history.isEmpty()) {
+            binding.llRecentSearchPanel?.visibility = View.GONE
+            return
+        }
+        binding.llRecentSearchPanel?.visibility = View.VISIBLE
+        val rowsContainer = binding.llRecentSearchRows ?: return
+        rowsContainer.removeAllViews()
+        history.take(5).forEach { destText ->
+            val tv = android.widget.TextView(this).apply {
+                text = destText
+                setTextColor(android.graphics.Color.parseColor("#DDDDDD"))
+                textSize = 12f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(24, 20, 24, 20)
+                setOnClickListener {
+                    isEnabled = false
+                    alpha = 0.5f
+                    PendingMapAction.autoSearchQuery = destText
+                    finishGuidance()
+                }
+            }
+            rowsContainer.addView(tv)
+        }
+        binding.btnMoreHistory?.setOnClickListener {
+            PendingMapAction.openFullHistoryDialog = true
+            finishGuidance()
+        }
     }
 
     private fun finishGuidance() {
@@ -563,11 +675,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             NavLogger.e(this, "[GPS] LocationManager 구독 해제 예외: ${e.message}")
         }
         try {
-            if (!wasTmapMuted) {
-                TmapUISDK.setVolume(this, 100)
-                KakaoSdkState.lastAppliedTmapVolume = 100
-                NavLogger.d(this, "[음소거] KakaoNaviActivity 종료 - TmapUISDK.setVolume(100) 복원")
-            }
+            val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            val muted = sharedPref.getBoolean("tmap_muted", false)
+            TmapUISDK.setVolume(this, if (muted) 0 else 100)
+            KakaoSdkState.lastAppliedTmapVolume = if (muted) 0 else 100
+            NavLogger.d(this, "[음소거] KakaoNaviActivity 종료 - 티맵 볼륨 복원(muted=$muted)")
         } catch (e: Exception) {
             NavLogger.e(this, "티맵 볼륨 복원 예외: ${e.message}")
         }
