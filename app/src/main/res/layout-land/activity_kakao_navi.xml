@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- v1.0.94: 별도 Activity라 MapActivity의 실제 HUD가 구조적으로 안 비치는 문제를
-     CarrotNavi처럼 자체 미니 HUD를 복제해서 해결. MapActivity의 llLeftHudPanel과
-     동일한 id 이름을 그대로 써서(tvCurrentSpeed 등) 필요하면 나중에 공용 바인딩
-     헬퍼로 합치기 쉽게 함. #문제시 원복 -->
+<!-- v1.0.96: MapActivity(activity_map.xml)의 llLeftHudPanel과 시각적으로 동일하게 맞춤.
+     검색/음소거/전송, 설정/업데이트/앱종료, 최근검색 등 Tmap 전용 조작 버튼은
+     여기선 의미가 없어서 제외하고, 정보 표시 영역만 그대로 복제함. #문제시 원복 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="#080808">
 
     <com.kakaomobility.knsdk.ui.view.KNNaviView
         android:id="@+id/naviView"
@@ -19,6 +18,7 @@
         android:layout_width="220dp"
         android:layout_height="match_parent"
         android:layout_gravity="start"
+        android:elevation="20dp"
         android:orientation="vertical"
         android:background="#080808"
         android:paddingHorizontal="12dp">
@@ -56,14 +56,48 @@
                     android:textStyle="bold"
                     android:letterSpacing="-0.05" />
 
-                <TextView
+                <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="km/h"
-                    android:textColor="#444444"
-                    android:textSize="9sp"
+                    android:orientation="vertical"
                     android:layout_marginStart="4dp"
-                    android:layout_marginBottom="10dp" />
+                    android:layout_marginBottom="6dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="km/h"
+                        android:textColor="#444444"
+                        android:textSize="9sp" />
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="4dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="제한"
+                            android:textColor="#555555"
+                            android:textSize="8sp"
+                            android:layout_marginEnd="3dp" />
+
+                        <TextView
+                            android:id="@+id/tvRoadSpeedLimit"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="--"
+                            android:textColor="#FF5252"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:background="@drawable/bg_speed_limit_hud"
+                            android:paddingHorizontal="5dp"
+                            android:paddingVertical="1dp" />
+                    </LinearLayout>
+                </LinearLayout>
             </LinearLayout>
         </LinearLayout>
 
@@ -122,6 +156,7 @@
 
         <!-- 3. 카메라/방지턱 이벤트 -->
         <LinearLayout
+            android:id="@+id/llSdiInfo"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
@@ -145,15 +180,143 @@
                 android:textSize="11sp"
                 android:layout_marginBottom="2dp" />
 
-            <TextView
-                android:id="@+id/tvSdiDist"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="--"
-                android:textColor="#FFFFFF"
-                android:textSize="20sp"
-                android:textStyle="bold" />
+                android:orientation="horizontal"
+                android:gravity="bottom">
+
+                <TextView
+                    android:id="@+id/tvSdiDist"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="--"
+                    android:textColor="#FFFFFF"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:ellipsize="none" />
+
+                <TextView
+                    android:id="@+id/tvSdiSpeedLimit"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=""
+                    android:textColor="#FF5252"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:layout_marginStart="6dp"
+                    android:layout_marginBottom="4dp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/llBlockInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="4dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/tvBlockAvgSpeed"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=""
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvBlockDist"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=""
+                    android:textColor="#AAAAAA"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/tvBlockTime"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=""
+                    android:textColor="#AAAAAA"
+                    android:textSize="12sp" />
+            </LinearLayout>
         </LinearLayout>
+
+        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#1A1A1A" android:layout_marginBottom="8dp" />
+
+        <!-- 4. 신호등/carrot 버전 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="8dp">
+
+            <View
+                android:id="@+id/vTrafficLight"
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:background="@drawable/shape_circle_gray"
+                android:layout_marginEnd="8dp" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="SIGNAL"
+                    android:textColor="#333333"
+                    android:textSize="8sp" />
+
+                <TextView
+                    android:id="@+id/tvCarrotVersion"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=""
+                    android:textColor="#555555"
+                    android:textSize="9sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 5. GPS 상태 -->
+        <TextView
+            android:id="@+id/btnGpsStatus"
+            android:layout_width="match_parent"
+            android:layout_height="30dp"
+            android:gravity="center"
+            android:text="GPS 확인 중"
+            android:textSize="9sp"
+            android:background="#111111"
+            android:textColor="#FFFFFF"
+            android:layout_marginBottom="4dp" />
+
+        <!-- 6. OP IP -->
+        <TextView
+            android:id="@+id/tvCarrotIp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="IP: -"
+            android:textColor="#333333"
+            android:textSize="9sp"
+            android:layout_marginBottom="4dp" />
+
+        <View android:layout_width="0dp" android:layout_height="0dp" android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/tvAppVersion"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textColor="#222222"
+            android:textSize="9sp"
+            android:layout_marginBottom="10dp" />
 
     </LinearLayout>
 

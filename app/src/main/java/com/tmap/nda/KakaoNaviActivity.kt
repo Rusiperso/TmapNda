@@ -407,22 +407,64 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#555555"))
                 binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_gray)
             }
+            binding.tvCarrotVersion?.text = state.carrot2
+            binding.tvCarrotIp?.text = if (state.ip.isNotEmpty() && state.ip != "-") "IP: ${state.ip}" else "IP: -"
+            when (state.trafficState) {
+                1 -> binding.vTrafficLight?.setBackgroundResource(R.drawable.shape_circle_red)
+                2 -> binding.vTrafficLight?.setBackgroundResource(R.drawable.shape_circle_green)
+                else -> binding.vTrafficLight?.setBackgroundResource(R.drawable.shape_circle_gray)
+            }
         }
 
+        // MapActivity의 extractAndDisplaySdiInfo()가 SdiDataRepository에 실제 값을 채워주도록
+        // 고쳐놨음(예전엔 아무데서도 안 채워서 "300m 고정" 문제가 있었음) - 여기선 그 값을
+        // 그대로 폴링해서 MapActivity HUD와 동일한 규칙으로 표시. #문제시 원복
         val sdiRunnable = object : Runnable {
             override fun run() {
                 if (isFinishing || isDestroyed) return
-                if (SdiDataRepository.sdiDistance in 1..2000) {
-                    binding.tvSdiDescr?.text = "전방 단속"
-                    binding.tvSdiDist?.text = "${SdiDataRepository.sdiDistance}m"
+                binding.tvRoadSpeedLimit?.text = if (SdiDataRepository.roadLimitSpeed >= 30) SdiDataRepository.roadLimitSpeed.toString() else "--"
+
+                if (SdiDataRepository.isBlockSection && SdiDataRepository.sdiBlockDist > 0) {
+                    binding.llBlockInfo?.visibility = View.VISIBLE
+                    binding.tvBlockAvgSpeed?.text = "평균: ${SdiDataRepository.sdiBlockSpeed}km/h"
+                    binding.tvBlockDist?.text = "거리: ${SdiDataRepository.sdiBlockDist}m"
+                    val bt = SdiDataRepository.sdiBlockTime
+                    binding.tvBlockTime?.text = String.format("시간: %d:%02d", bt / 60, bt % 60)
                 } else {
-                    binding.tvSdiDescr?.text = "--"
+                    binding.llBlockInfo?.visibility = View.GONE
+                }
+
+                val sdiType = SdiDataRepository.sdiType
+                val sdiSpeedLimit = SdiDataRepository.sdiSpeedLimit
+                val sdiDist = SdiDataRepository.sdiDistance
+                if (sdiType > 0 || (sdiSpeedLimit > 0 && sdiDist > 0)) {
+                    binding.tvSdiSpeedLimit?.text = if (sdiSpeedLimit > 0) "${sdiSpeedLimit}km" else "-"
+                    binding.tvSdiDist?.text = if (sdiDist >= 1000) String.format("%.1fkm", sdiDist / 1000.0) else "${sdiDist}m"
+                    binding.tvSdiDescr?.text = when (sdiType) {
+                        1 -> "과속 단속"
+                        2 -> "구간단속 시작"
+                        3 -> "구간단속 종료"
+                        4 -> "구간단속 중"
+                        7 -> "이동식 단속"
+                        22 -> "과속방지턱"
+                        33 -> "어린이보호구역"
+                        else -> if (sdiSpeedLimit > 0) "단속 카메라" else "주의 구간"
+                    }
+                } else {
+                    binding.tvSdiSpeedLimit?.text = ""
                     binding.tvSdiDist?.text = "--"
+                    binding.tvSdiDescr?.text = "--"
                 }
                 hudPollHandler.postDelayed(this, 1000)
             }
         }
         hudPollHandler.postDelayed(sdiRunnable, 1000)
+
+        try {
+            val vn = packageManager.getPackageInfo(packageName, 0).versionName
+            binding.tvAppVersion?.text = "v$vn"
+        } catch (e: Exception) { /* 무시 */ }
+        binding.btnGpsStatus?.text = "GPS 확인 중"
     }
 
     private fun finishGuidance() {
@@ -495,6 +537,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
             val speedKph = (location.speed * 3.6).toInt()
             binding.tvCurrentSpeed?.text = speedKph.toString()
+            binding.btnGpsStatus?.text = "GOOD (정확도 ${location.accuracy.toInt()}m)"
+            binding.btnGpsStatus?.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
             val gpsManager = KNSDK.sharedGpsManager()
             if (gpsManager != null) {
                 val m = gpsManager.javaClass.getMethod("onLocationChanged", Location::class.java)

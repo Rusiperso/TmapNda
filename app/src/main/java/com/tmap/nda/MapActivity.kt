@@ -1695,6 +1695,7 @@ class MapActivity : AppCompatActivity() {
                     runOnUiThread {
                         if (lastValidRoadLimit >= 30) {
                             binding.tvRoadSpeedLimit?.text = lastValidRoadLimit.toString()
+                            SdiDataRepository.roadLimitSpeed = lastValidRoadLimit
                         }
                     }
 
@@ -1912,6 +1913,20 @@ class MapActivity : AppCompatActivity() {
                         binding.tvSdiDist?.text = "--"
                         binding.tvSdiDescr?.text = "--"
                     }
+
+                    // KakaoNaviActivity의 미니 HUD가 읽을 수 있도록 실제 값 반영 (기존엔 아무데서도
+                    // 호출을 안 해서 죽은 코드였음 - 이게 "300m 고정" 원인). #문제시 원복
+                    SdiDataRepository.updateCurrentSdiState(
+                        limitSpeed = SdiDataRepository.roadLimitSpeed,
+                        type = sdiType,
+                        speedLimit = sdiSpeedLimit,
+                        distance = sdiDist,
+                        blockType = if (isBlockSection) 1 else 0,
+                        blockSpeed = blockAvgSpeed,
+                        blockDist = blockDist,
+                        blockTime = blockTime,
+                        blockSection = isBlockSection && blockDist > 0
+                    )
                 }
             } else {
                 runOnUiThread {
@@ -1920,6 +1935,11 @@ class MapActivity : AppCompatActivity() {
                     binding.tvSdiSpeedLimit?.text = ""
                     binding.tvSdiDist?.text = "--"
                     binding.tvSdiDescr?.text = "--"
+                    SdiDataRepository.updateCurrentSdiState(
+                        limitSpeed = SdiDataRepository.roadLimitSpeed,
+                        type = 0, speedLimit = 0, distance = 0,
+                        blockType = 0, blockSpeed = 0, blockDist = 0
+                    )
                 }
             }
         } catch (e: Exception) {
