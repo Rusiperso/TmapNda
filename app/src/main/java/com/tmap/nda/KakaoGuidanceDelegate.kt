@@ -146,7 +146,14 @@ class KakaoGuidanceDelegate(
 
     // ===== RouteGuideDelegate =====
     override fun guidanceDidUpdateRouteGuide(guidance: KNGuidance, routeGuide: KNGuide_Route) {
-        NavLogger.d(context, "guidanceDidUpdateRouteGuide 호출됨")
+        val fieldDump = try {
+            routeGuide.javaClass.methods
+                .filter { it.parameterTypes.isEmpty() && it.name.startsWith("get") }
+                .joinToString(", ") { m ->
+                    try { "${m.name}=${m.invoke(routeGuide)}" } catch (e: Exception) { "${m.name}=<실패>" }
+                }
+        } catch (e: Exception) { "덤프 실패: ${e.message}" }
+        NavLogger.d(context, "guidanceDidUpdateRouteGuide 호출됨: $routeGuide | $fieldDump")
         (naviView as? KNGuidance_RouteGuideDelegate)?.guidanceDidUpdateRouteGuide(guidance, routeGuide)
     }
 
