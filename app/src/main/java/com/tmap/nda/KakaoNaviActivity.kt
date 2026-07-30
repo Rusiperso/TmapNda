@@ -147,6 +147,7 @@ class KakaoNaviActivity : AppCompatActivity() {
             KNRoutePriority.KNRoutePriority_Recommand,
             KNRouteAvoidOption.KNRouteAvoidOption_None.value
         )
+        naviView.post { logNaviViewDiagnostics("idle map 초기화 직후") }
 
         resolveCurrentPositionThenRequestRoute(destName, destLat, destLon)
     }
@@ -196,12 +197,69 @@ class KakaoNaviActivity : AppCompatActivity() {
                 // 초기화돼있는 상태(idle map) - 여기서 또 initWithGuidance()를 부르면 안 되고
                 // guideNewDestinations()로 이미 떠있는 세션에 실제 목적지만 갈아끼움.
                 // (CarrotNavi 실제 동작 코드에서 확인된 패턴) #문제시 원복
+                //
+                // v1.0.86: guideNewDestinations()가 내부적으로 성공해도 KNNaviView가
+                // 화면을 다시 그리라는 신호를 못 받아 idle map 그대로 멈춰있을 수 있다는
+                // 의심(사용자 지적: GPS/위치 로그는 idle 상태에서도 계속 찍히므로 화면전환
+                // 증거가 안 됨) - requestLayout()/invalidate()를 명시적으로 강제하고,
+                // naviView의 실제 화면 상태(width/height/visibility/트립 식별자)를
+                // 별도로 로그에 남겨서 "idle로 멈춘 건지 실제 경로가 붙은 건지"를
+                // 로그만으로 구분할 수 있게 함. #문제시 원복
                 naviView.guideNewDestinations(
                     trip,
                     KNRoutePriority.KNRoutePriority_Recommand,
                     KNRouteAvoidOption.KNRouteAvoidOption_None.value
                 )
+                naviView.requestLayout()
+                naviView.invalidate()
+                logNaviViewDiagnostics("guideNewDestinations 직후")
+                naviView.postDelayed({
+                    naviView.requestLayout()
+                    naviView.invalidate()
+                    logNaviViewDiagnostics("guideNewDestinations 300ms 후")
+                }, 300)
+                startNaviStateDiagnosticLoop()
             }
+        }
+    }
+
+    // naviView가 idle map(경로 없음)에 멈춰있는지, 실제 trip이 붙은 상태인지를 로그만으로
+    // 구분할 수 있도록 3초마다 상태를 남김. GPS 위치 로그는 idle 상태에서도 계속 찍히므로
+    // 그것만으로는 화면전환 여부를 판단할 수 없다는 점(사용자 지적)을 반영. #문제시 원복
+    private val diagnosticHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var diagnosticLoopRunning = false
+    private fun startNaviStateDiagnosticLoop() {
+        if (diagnosticLoopRunning) return
+        diagnosticLoopRunning = true
+        val runnable = object : Runnable {
+            override fun run() {
+                if (isFinishing || isDestroyed) {
+                    diagnosticLoopRunning = false
+                    return
+                }
+                logNaviViewDiagnostics("주기 진단(3초)")
+                diagnosticHandler.postDelayed(this, 3000)
+            }
+        }
+        diagnosticHandler.postDelayed(runnable, 3000)
+    }
+
+    private fun logNaviViewDiagnostics(tag: String) {
+        try {
+            val curTrip = try {
+                KNSDK.sharedGuidance()?.let { g ->
+                    val m = g.javaClass.methods.firstOrNull { it.name.equals("getCurTrip", true) || it.name.equals("getTrip", true) }
+                    m?.invoke(g)
+                }
+            } catch (e: Exception) { "조회실패(${e.message})" }
+            NavLogger.d(
+                this,
+                "[naviView 진단:$tag] width=${naviView.width} height=${naviView.height} " +
+                    "visibility=${naviView.visibility} isAttachedToWindow=${naviView.isAttachedToWindow} " +
+                    "isShown=${naviView.isShown} curTrip=$curTrip"
+            )
+        } catch (e: Exception) {
+            NavLogger.e(this, "logNaviViewDiagnostics 예외($tag): ${e.message}")
         }
     }
 
