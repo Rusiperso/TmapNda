@@ -54,34 +54,34 @@ class KakaoGuidanceDelegate(
     // ===== GuideStateDelegate =====
     override fun guidanceGuideStarted(guidance: KNGuidance) {
         NavLogger.d(context, "[카카오안내] 시작됨")
-        (naviView as? KNGuidance_GuideStateDelegate)?.guidanceGuideStarted(guidance)
+        naviView?.guidanceGuideStarted(guidance)
         onGuideStarted()
     }
 
     override fun guidanceGuideEnded(guidance: KNGuidance) {
         NavLogger.d(context, "[카카오안내] 종료됨(도착) - Tmap으로 복귀")
-        (naviView as? KNGuidance_GuideStateDelegate)?.guidanceGuideEnded(guidance)
+        naviView?.guidanceGuideEnded(guidance)
         onGuideEnded()
     }
 
     override fun guidanceOutOfRoute(guidance: KNGuidance) {
         NavLogger.d(context, "[카카오안내] 경로이탈 감지, 재탐색 위임")
-        (naviView as? KNGuidance_GuideStateDelegate)?.guidanceOutOfRoute(guidance)
+        naviView?.guidanceOutOfRoute(guidance)
     }
 
     override fun guidanceCheckingRouteChange(guidance: KNGuidance) {
         NavLogger.d(context, "[카카오안내] 경로변경 확인 중")
-        (naviView as? KNGuidance_GuideStateDelegate)?.guidanceCheckingRouteChange(guidance)
+        naviView?.guidanceCheckingRouteChange(guidance)
     }
 
     override fun guidanceRouteUnchanged(guidance: KNGuidance) {
         NavLogger.d(context, "[카카오안내] 경로 변경 없음")
-        (naviView as? KNGuidance_GuideStateDelegate)?.guidanceRouteUnchanged(guidance)
+        naviView?.guidanceRouteUnchanged(guidance)
     }
 
     override fun guidanceRouteUnchangedWithError(guidance: KNGuidance, error: KNError) {
         NavLogger.e(context, "[카카오안내] 경로 재탐색 실패: ${error.msg}")
-        (naviView as? KNGuidance_GuideStateDelegate)?.guidanceRouteUnchangedWithError(guidance, error)
+        naviView?.guidanceRouteUnchangedWithError(guidance, error)
     }
 
     override fun guidanceRouteChanged(
@@ -93,9 +93,7 @@ class KakaoGuidanceDelegate(
         changeReason: KNGuideRouteChangeReason
     ) {
         NavLogger.d(context, "[카카오안내] 경로 변경됨: 사유=$changeReason")
-        (naviView as? KNGuidance_GuideStateDelegate)?.guidanceRouteChanged(
-            guidance, fromRoute, fromLocation, toRoute, toLocation, changeReason
-        )
+        naviView?.guidanceRouteChanged(guidance)
     }
 
     override fun guidanceDidUpdateRoutes(
@@ -103,11 +101,20 @@ class KakaoGuidanceDelegate(
         routes: List<KNRoute>,
         multiRouteInfo: KNMultiRouteInfo?
     ) {
-        (naviView as? KNGuidance_GuideStateDelegate)?.guidanceDidUpdateRoutes(guidance, routes, multiRouteInfo)
+        naviView?.guidanceDidUpdateRoutes(guidance, routes, multiRouteInfo)
     }
 
     override fun guidanceDidUpdateIndoorRoute(guidance: KNGuidance, route: KNRoute?) {
-        (naviView as? KNGuidance_GuideStateDelegate)?.guidanceDidUpdateIndoorRoute(guidance, route)
+        // CarrotNavi 실제 코드에서 naviView.guidanceDidUpdateIndoorRoute() 직접호출이
+        // 확인 안 돼서(존재 여부 불확실), 컴파일 안전하게 리플렉션으로만 시도. #문제시 원복
+        try {
+            naviView?.let { nv ->
+                val m = nv.javaClass.methods.firstOrNull {
+                    it.name == "guidanceDidUpdateIndoorRoute" && it.parameterTypes.size == 2
+                }
+                m?.invoke(nv, guidance, route)
+            }
+        } catch (e: Exception) { /* 메서드 없으면 무시 */ }
     }
 
     // ===== LocationGuideDelegate =====
@@ -141,7 +148,7 @@ class KakaoGuidanceDelegate(
             } catch (e: Exception) { "[경로추적] 요약 실패: ${e.message}" }
             NavLogger.d(context, summary)
         }
-        (naviView as? KNGuidance_LocationGuideDelegate)?.guidanceDidUpdateLocation(guidance, locationGuide)
+        naviView?.guidanceDidUpdateLocation(guidance, locationGuide)
     }
 
     // ===== RouteGuideDelegate =====
@@ -154,16 +161,16 @@ class KakaoGuidanceDelegate(
                 }
         } catch (e: Exception) { "덤프 실패: ${e.message}" }
         NavLogger.d(context, "guidanceDidUpdateRouteGuide 호출됨: $routeGuide | $fieldDump")
-        (naviView as? KNGuidance_RouteGuideDelegate)?.guidanceDidUpdateRouteGuide(guidance, routeGuide)
+        naviView?.guidanceDidUpdateRouteGuide(guidance, routeGuide)
     }
 
     // ===== SafetyGuideDelegate =====
     override fun guidanceDidUpdateSafetyGuide(guidance: KNGuidance, safetyGuide: KNGuide_Safety?) {
-        (naviView as? KNGuidance_SafetyGuideDelegate)?.guidanceDidUpdateSafetyGuide(guidance, safetyGuide)
+        naviView?.guidanceDidUpdateSafetyGuide(guidance, safetyGuide)
     }
 
     override fun guidanceDidUpdateAroundSafeties(guidance: KNGuidance, safeties: List<KNSafety>?) {
-        (naviView as? KNGuidance_SafetyGuideDelegate)?.guidanceDidUpdateAroundSafeties(guidance, safeties)
+        naviView?.guidanceDidUpdateAroundSafeties(guidance, safeties)
     }
 
     // ===== VoiceGuideDelegate =====
@@ -177,18 +184,24 @@ class KakaoGuidanceDelegate(
     ): Boolean {
         val allow = isRouteGuideActive()
         NavLogger.d(context, "[음성] shouldPlayVoiceGuide 호출됨 allow=$allow ${tmapMuteStateSnapshot()}")
-        (naviView as? KNGuidance_VoiceGuideDelegate)?.shouldPlayVoiceGuide(guidance, voiceGuide, newData)
+        // CarrotNavi도 이 메서드는 naviView로 직접 relay 안 함(존재 여부 불확실) - 리플렉션으로만. #문제시 원복
+        try {
+            naviView?.let { nv ->
+                val m = nv.javaClass.methods.firstOrNull { it.name == "shouldPlayVoiceGuide" }
+                m?.invoke(nv, guidance, voiceGuide, newData)
+            }
+        } catch (e: Exception) { /* 메서드 없으면 무시 */ }
         return allow
     }
 
     override fun willPlayVoiceGuide(guidance: KNGuidance, voiceGuide: KNGuide_Voice) {
         NavLogger.d(context, "[음성] willPlayVoiceGuide(카카오 음성 재생 시작) ${tmapMuteStateSnapshot()}")
-        (naviView as? KNGuidance_VoiceGuideDelegate)?.willPlayVoiceGuide(guidance, voiceGuide)
+        naviView?.willPlayVoiceGuide(guidance, voiceGuide)
     }
 
     override fun didFinishPlayVoiceGuide(guidance: KNGuidance, voiceGuide: KNGuide_Voice) {
         NavLogger.d(context, "[음성] didFinishPlayVoiceGuide(카카오 음성 재생 끝) ${tmapMuteStateSnapshot()}")
-        (naviView as? KNGuidance_VoiceGuideDelegate)?.didFinishPlayVoiceGuide(guidance, voiceGuide)
+        naviView?.didFinishPlayVoiceGuide(guidance, voiceGuide)
     }
 
     private fun tmapMuteStateSnapshot(): String {
@@ -197,6 +210,6 @@ class KakaoGuidanceDelegate(
 
     // ===== CitsGuideDelegate =====
     override fun didUpdateCitsGuide(guidance: KNGuidance, citsGuide: KNGuide_Cits) {
-        (naviView as? KNGuidance_CitsGuideDelegate)?.didUpdateCitsGuide(guidance, citsGuide)
+        naviView?.didUpdateCitsGuide(guidance, citsGuide)
     }
 }
