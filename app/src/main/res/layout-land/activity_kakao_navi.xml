@@ -1,17 +1,161 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- v1.0.94: 별도 Activity라 MapActivity의 실제 HUD가 구조적으로 안 비치는 문제를
+     CarrotNavi처럼 자체 미니 HUD를 복제해서 해결. MapActivity의 llLeftHudPanel과
+     동일한 id 이름을 그대로 써서(tvCurrentSpeed 등) 필요하면 나중에 공용 바인딩
+     헬퍼로 합치기 쉽게 함. #문제시 원복 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- v1.0.90: marginStart=220dp로 좌측을 비워뒀었는데, 실제로는 그 자리에
-         MapActivity의 진짜 HUD가 비치는 게 아니라 그냥 검은 여백만 보였음
-         (별도 Activity/윈도우라 뒤에 있는 MapActivity 뷰가 보일 수 없음).
-         의미 없는 검은 여백이라 제거하고 전체 화면 사용. #문제시 원복 -->
     <com.kakaomobility.knsdk.ui.view.KNNaviView
         android:id="@+id/naviView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:layout_marginStart="220dp" />
+
+    <LinearLayout
+        android:id="@+id/llLeftHudPanel"
+        android:layout_width="220dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:orientation="vertical"
+        android:background="#080808"
+        android:paddingHorizontal="12dp">
+
+        <!-- 1. 속도계 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="14dp"
+            android:layout_marginBottom="6dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="SPEED"
+                android:textColor="#333333"
+                android:textSize="9sp"
+                android:letterSpacing="0.15"
+                android:layout_marginBottom="2dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="bottom">
+
+                <TextView
+                    android:id="@+id/tvCurrentSpeed"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0"
+                    android:textColor="#FFFFFF"
+                    android:textSize="60sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="-0.05" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="km/h"
+                    android:textColor="#444444"
+                    android:textSize="9sp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginBottom="10dp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#1A1A1A" android:layout_marginBottom="8dp" />
+
+        <!-- 2. OP 상태 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="STATUS"
+                android:textColor="#333333"
+                android:textSize="9sp"
+                android:letterSpacing="0.15"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:id="@+id/tvActiveStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="OP OFF"
+                android:textColor="#555555"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="4dp">
+
+                <View
+                    android:id="@+id/vConnectionDot"
+                    android:layout_width="7dp"
+                    android:layout_height="7dp"
+                    android:background="@drawable/shape_circle_gray"
+                    android:layout_marginEnd="5dp" />
+
+                <TextView
+                    android:id="@+id/tvConnectionStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="연결 대기"
+                    android:textColor="#555555"
+                    android:textSize="10sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#1A1A1A" android:layout_marginBottom="8dp" />
+
+        <!-- 3. 카메라/방지턱 이벤트 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="EVENT"
+                android:textColor="#333333"
+                android:textSize="9sp"
+                android:letterSpacing="0.15"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:id="@+id/tvSdiDescr"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="--"
+                android:textColor="#FFC107"
+                android:textSize="11sp"
+                android:layout_marginBottom="2dp" />
+
+            <TextView
+                android:id="@+id/tvSdiDist"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="--"
+                android:textColor="#FFFFFF"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+    </LinearLayout>
 
     <Button
         android:id="@+id/btnStopKakaoGuidance"

@@ -122,6 +122,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
 
         startRealtimeGpsForwarding()
+        startMiniHudBinding()
 
         // CarrotNavi 실제 동작 코드에서 확인된 핵심 패턴: naviView를 목적지가 확정된
         // 시점에 initWithGuidance(trip=실제경로)로 처음 초기화하는 게 아니라,
@@ -383,6 +384,47 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
+    // v1.0.94: 별도 Activity라 MapActivity 좌측 HUD가 구조적으로 안 비치는 문제를,
+    // MapActivity와 동일한 앱 전역 싱글턴(OpenpilotStateRepository/SdiDataRepository)을
+    // 그대로 관찰해서 자체 미니 HUD로 복제하는 방식으로 해결. #문제시 원복
+    private val hudPollHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private fun startMiniHudBinding() {
+        OpenpilotStateRepository.state.observe(this) { state ->
+            if (state.active) {
+                binding.tvActiveStatus?.text = "OP ON"
+                binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#4FC3F7"))
+            } else {
+                binding.tvActiveStatus?.text = "OP OFF"
+                binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#555555"))
+            }
+            val connected = state.ip.isNotEmpty()
+            if (connected) {
+                binding.tvConnectionStatus?.text = "연결됨"
+                binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
+                binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_green)
+            } else {
+                binding.tvConnectionStatus?.text = "연결 대기"
+                binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#555555"))
+                binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_gray)
+            }
+        }
+
+        val sdiRunnable = object : Runnable {
+            override fun run() {
+                if (isFinishing || isDestroyed) return
+                if (SdiDataRepository.sdiDistance in 1..2000) {
+                    binding.tvSdiDescr?.text = "전방 단속"
+                    binding.tvSdiDist?.text = "${SdiDataRepository.sdiDistance}m"
+                } else {
+                    binding.tvSdiDescr?.text = "--"
+                    binding.tvSdiDist?.text = "--"
+                }
+                hudPollHandler.postDelayed(this, 1000)
+            }
+        }
+        hudPollHandler.postDelayed(sdiRunnable, 1000)
+    }
+
     private fun finishGuidance() {
         try {
             KNSDK.sharedGuidance()?.stop()
@@ -451,6 +493,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 NavLogger.d(this, "[GPS] 정확도 낮아 무시: accuracy=${location.accuracy}m")
                 return
             }
+            val speedKph = (location.speed * 3.6).toInt()
+            binding.tvCurrentSpeed?.text = speedKph.toString()
             val gpsManager = KNSDK.sharedGpsManager()
             if (gpsManager != null) {
                 val m = gpsManager.javaClass.getMethod("onLocationChanged", Location::class.java)
@@ -468,6 +512,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     override fun onDestroy() {
         super.onDestroy()
+        hudPollHandler.removeCallbacksAndMessages(null)
         try {
             locationManager?.removeUpdates(this)
         } catch (e: Exception) {
