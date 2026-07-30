@@ -1801,6 +1801,7 @@ class MapActivity : AppCompatActivity() {
     // knsdkInitialized 가드. #문제시 원복
     override fun onResume() {
         super.onResume()
+        NavLogger.d(this, "[MapActivity lifecycle] onResume")
         if (knsdkInitialized) {
             try {
                 KNSDK.handleWillEnterForeground()
@@ -1812,8 +1813,19 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        NavLogger.d(this, "[MapActivity lifecycle] onStart")
+    }
+
+    override fun onStop() {
+        super.onStop()
+        NavLogger.d(this, "[MapActivity lifecycle] onStop (KakaoNaviActivity가 위에 떴을 가능성)")
+    }
+
     override fun onPause() {
         super.onPause()
+        NavLogger.d(this, "[MapActivity lifecycle] onPause (KakaoNaviActivity가 위에 뜨는 중일 수 있음 - handleWillResignActive가 이 타이밍에 KNSDK로 전달됨)")
         if (knsdkInitialized) {
             try {
                 KNSDK.handleWillResignActive()
