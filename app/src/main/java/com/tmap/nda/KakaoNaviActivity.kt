@@ -127,7 +127,15 @@ class KakaoNaviActivity : AppCompatActivity() {
             return
         }
         hookSurfaceViewLifecycle(naviView)
-        attachExitHook(naviView)
+        // v1.0.89: attachExitHook()이 naviView.setStateDelegate/setGuideStateDelegate/
+        // setMapEventDelegate/setScaleDelegate 전부를 리플렉션으로 찾아 "로그만 찍고 아무
+        // 실제 동작도 안 하는" 더미 Proxy로 덮어쓰고 있었음. CarrotNavi 실제 코드를 보면
+        // naviView.stateDelegate = this@KakaoMapActivity 처럼 진짜 구현체를 등록해서 내부
+        // UI 컴포넌트(속도판/방향안내/표지판 등)를 갱신하는 데 씀 - 우리 더미 Proxy가 이
+        // 델리게이트 체인을 깨뜨려서 지도 타일은 뜨는데 안내 UI 컴포넌트들이 전부 숨김
+        // 상태(vis=8)로 멈춰있던 것으로 추정됨. 지금은 전용 "안내 종료" 버튼이 이미 있어서
+        // 리플렉션 exit-hook 자체가 필요 없음 - 완전히 제거. #문제시 원복
+        // attachExitHook(naviView)
         val delegate = KakaoGuidanceDelegate(
             this,
             onGuideEnded = { finishGuidance() },
