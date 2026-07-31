@@ -482,14 +482,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // UI를 새로 만들지 않고, MapActivity가 finish() 이후 백스택에서 그대로 재개될 때
     // PendingMapAction 신호로 처리하도록 함(중복 구현 회피). #문제시 원복
     private fun updateMuteButtonStyle() {
-        val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-        val tmapMuted = sharedPref.getBoolean("tmap_muted", false)
-        binding.btnMuteToggle?.setImageResource(
-            if (tmapMuted) android.R.drawable.ic_lock_silent_mode else android.R.drawable.ic_lock_silent_mode_off
-        )
-        binding.btnMuteToggle?.setBackgroundResource(
-            if (tmapMuted) R.drawable.shape_circle_gray else R.drawable.shape_circle_green
-        )
         binding.btnKakaoMuteToggle?.setImageResource(
             if (kakaoMuted) android.R.drawable.ic_lock_silent_mode else android.R.drawable.ic_lock_silent_mode_off
         )
@@ -500,15 +492,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     private fun setupHudActionButtons() {
         updateMuteButtonStyle()
-
-        binding.btnMuteToggle?.setOnClickListener {
-            val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-            val newMuted = !sharedPref.getBoolean("tmap_muted", false)
-            sharedPref.edit().putBoolean("tmap_muted", newMuted).apply()
-            applyTmapMute(newMuted)
-            updateMuteButtonStyle()
-            Toast.makeText(this, if (newMuted) "티맵 안내음성 음소거" else "티맵 안내음성 켜짐", Toast.LENGTH_SHORT).show()
-        }
 
         binding.btnKakaoMuteToggle?.setOnClickListener {
             kakaoMuted = !kakaoMuted
