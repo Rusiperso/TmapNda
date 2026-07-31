@@ -184,18 +184,21 @@ class KakaoGuidanceDelegate(
     ): Boolean {
         val allow = isRouteGuideActive()
         NavLogger.d(context, "[음성] shouldPlayVoiceGuide 호출됨 allow=$allow ${tmapMuteStateSnapshot()}")
-        // CarrotNavi도 이 메서드는 naviView로 직접 relay 안 함(존재 여부 불확실) - 리플렉션으로만. #문제시 원복
-        try {
-            naviView?.let { nv ->
-                val m = nv.javaClass.methods.firstOrNull { it.name == "shouldPlayVoiceGuide" }
-                m?.invoke(nv, guidance, voiceGuide, newData)
-            }
-        } catch (e: Exception) { /* 메서드 없으면 무시 */ }
+        // v1.0.99: naviView.shouldPlayVoiceGuide()를 relay하면 naviView가 재생 여부를
+        // 자체적으로 다시 판단해서(우리 kakaoMuted 값과 무관하게) 소리가 계속 나던 것으로
+        // 의심됨 - CarrotNavi도 이 메서드는 naviView로 relay 안 함. 우리 델리게이트가
+        // guidance에 직접 리턴하는 allow 값만으로 음소거를 제어하도록 relay 제거.
+        // newData가 mutable list라, boolean 리턴만으로 재생이 안 막힐 경우를 대비해
+        // 음소거 상태면 오디오 바이트 자체도 비워버림(이중 방어). #문제시 원복
+        if (!allow) {
+            newData.clear()
+        }
         return allow
     }
 
     override fun willPlayVoiceGuide(guidance: KNGuidance, voiceGuide: KNGuide_Voice) {
         NavLogger.d(context, "[음성] willPlayVoiceGuide(카카오 음성 재생 시작) ${tmapMuteStateSnapshot()}")
+        if (!isRouteGuideActive()) return
         naviView?.willPlayVoiceGuide(guidance, voiceGuide)
     }
 
