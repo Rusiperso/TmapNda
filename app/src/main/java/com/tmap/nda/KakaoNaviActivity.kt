@@ -563,6 +563,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     }
 
     private fun finishGuidance() {
+        KakaoRouteDataRepository.reset()
         try {
             KNSDK.sharedGuidance()?.stop()
         } catch (e: Exception) {

@@ -336,6 +336,36 @@ class UdpSenderService : Service() {
                         NavLogger.e(this@UdpSenderService, "SdiDataRepository 갱신 예외: ${e.message}")
                     }
 
+                    // v1.1.00: 카카오 지도로 길안내 중이면(KakaoRouteDataRepository가 최근
+                    // 5초 이내 갱신된 상태), 위에서 만든 티맵 기반 TBT 값들을 카카오의 실제
+                    // 안내 데이터로 덮어씀. 어떤 openpilot fork가 이 UDP를 받든 값 자체는
+                    // 항상 나가게 해두고, 실제로 화면에 그려지는지는 그 fork의 UI 코드에
+                    // 달려있음(사용자 확인 예정). #문제시 원복
+                    if (KakaoRouteDataRepository.isFresh()) {
+                        val kr = KakaoRouteDataRepository
+                        if (kr.remainDist > 0 && kr.remainTime > 0) {
+                            json.put("nGoPosDist", kr.remainDist)
+                            json.put("nGoPosTime", kr.remainTime)
+                        }
+                        val kakaoTbtDist = if (kr.tbtDist > 0) kr.tbtDist else 9999
+                        json.put("nTBTDist", kakaoTbtDist)
+                        json.put("nTBTTurnType", kr.tbtTurnType)
+                        val kakaoPrefix = when {
+                            kr.safetyType in intArrayOf(1, 2, 3, 4, 7) -> "단속구간"
+                            kr.safetyType == 22 -> "방지턱"
+                            kr.safetyType == 33 -> "스쿨존"
+                            kr.roadName.isNotEmpty() -> kr.roadName
+                            else -> "카카오안내"
+                        }
+                        json.put("szTBTMainText", "$kakaoPrefix | GPS: $currentGpsStatusText")
+                        if (kr.safetySpeedLimit > 0 && kr.safetyDist > 0) {
+                            json.put("nSdiType", kr.safetyType)
+                            json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
+                            json.put("nSdiDist", kr.safetyDist)
+                        }
+                        NavLogger.d(this@UdpSenderService, "[카카오->openpilot] UDP 페이로드 카카오 데이터로 덮어씀: nGoPosDist=${kr.remainDist} nTBTDist=$kakaoTbtDist turnType=${kr.tbtTurnType}")
+                    }
+
                     latestPayload = json.toString()
                 } catch (e: Exception) {
                     e.printStackTrace()
