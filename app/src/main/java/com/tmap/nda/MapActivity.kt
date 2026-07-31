@@ -1739,17 +1739,19 @@ class MapActivity : AppCompatActivity() {
                             binding.tvCurrentSpeed?.text = speedKph.toString()
                         }
                     }
-                    // 카카오 화면(KakaoNaviActivity)의 왼쪽 패널처럼 GPS 오차범위도 같이 표시. #문제시 원복
+                    // 카카오 화면(KakaoNaviActivity)과 완전히 동일한 형식으로 통일:
+                    // 위성개수 기반 표시랑 오차범위 기반 표시를 따로 뒀더니 좁은 패널에서
+                    // 겹쳐 보인다는 지적 - 정확도(accuracy) 기준 하나로만 표시. #문제시 원복
                     if (location.hasAccuracy()) {
                         runOnUiThread {
-                            binding.tvGpsAccuracy?.text = "±${location.accuracy.toInt()}m"
-                            binding.tvGpsAccuracy?.setTextColor(
-                                when {
-                                    location.accuracy <= 10f -> android.graphics.Color.parseColor("#4CAF50")
-                                    location.accuracy <= 30f -> android.graphics.Color.parseColor("#FFC107")
-                                    else -> android.graphics.Color.parseColor("#FF5252")
-                                }
-                            )
+                            val acc = location.accuracy.toInt()
+                            if (acc <= 15) {
+                                binding.btnGpsStatus.text = "GOOD (정확도 ${acc}m)"
+                                binding.btnGpsStatus.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
+                            } else {
+                                binding.btnGpsStatus.text = "BAD (정확도 ${acc}m)"
+                                binding.btnGpsStatus.setTextColor(android.graphics.Color.parseColor("#FF5252"))
+                            }
                         }
                     }
                 }
@@ -1789,17 +1791,9 @@ class MapActivity : AppCompatActivity() {
                         binding.btnGpsStatus.setTextColor(android.graphics.Color.GREEN)
                     }
                     override fun onSatelliteStatusChanged(status: android.location.GnssStatus) {
-                        var usedInFix = 0
-                        for (i in 0 until status.satelliteCount) {
-                            if (status.usedInFix(i)) usedInFix++
-                        }
-                        if (usedInFix >= 4) {
-                            binding.btnGpsStatus.text = "GOOD ($usedInFix)"
-                            binding.btnGpsStatus.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
-                        } else {
-                            binding.btnGpsStatus.text = "BAD ($usedInFix)"
-                            binding.btnGpsStatus.setTextColor(android.graphics.Color.RED)
-                        }
+                        // v1.5: 정확도(accuracy) 기준 단일 표시로 통일했으므로 위성개수 기반
+                        // GOOD/BAD 텍스트 덮어쓰기는 제거(locationListener의 accuracy 표시와
+                        // 겹쳐서 패널이 좁아 잘려 보였음). #문제시 원복
                     }
                 }, android.os.Handler(android.os.Looper.getMainLooper()))
             } catch (e: SecurityException) {

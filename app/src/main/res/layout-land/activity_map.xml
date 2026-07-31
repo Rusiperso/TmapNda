@@ -309,35 +309,16 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- 5. GPS 상태 버튼 + 오차범위 (카카오 화면처럼 같은 줄에 나란히) #문제시 원복 -->
-        <LinearLayout
+        <!-- 5. GPS 상태 버튼 (정확도 기준 단일 표시, 카카오 화면과 동일한 형식) #문제시 원복 -->
+        <Button
+            android:id="@+id/btnGpsStatus"
             android:layout_width="match_parent"
             android:layout_height="30dp"
-            android:orientation="horizontal"
-            android:layout_marginBottom="4dp">
-
-            <Button
-                android:id="@+id/btnGpsStatus"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:text="GPS 확인 중"
-                android:textSize="9sp"
-                android:padding="0dp"
-                android:backgroundTint="#111111" />
-
-            <TextView
-                android:id="@+id/tvGpsAccuracy"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:text="--"
-                android:textColor="#555555"
-                android:textSize="9sp"
-                android:paddingHorizontal="6dp"
-                android:background="#111111"
-                android:layout_marginStart="2dp" />
-        </LinearLayout>
+            android:text="GPS 확인 중"
+            android:textSize="9sp"
+            android:padding="0dp"
+            android:backgroundTint="#111111"
+            android:layout_marginBottom="4dp" />
 
         <!-- 6. OP IP -->
         <TextView
