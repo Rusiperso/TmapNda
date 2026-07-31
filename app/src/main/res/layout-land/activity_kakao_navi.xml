@@ -309,7 +309,8 @@
 
         <View android:layout_width="0dp" android:layout_height="0dp" android:layout_weight="1" />
 
-        <!-- 티맵음량 | 카카오음량 | 검색 | 로그전송 -->
+        <!-- 카카오음량 | 검색 | 로그전송 (티맵 음소거 버튼은 MapActivity/티맵 HUD 전용이라
+             여기선 제외 - 카카오 화면엔 카카오 자체 음소거 버튼만 노출) #문제시 원복 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -318,21 +319,11 @@
             android:layout_marginBottom="8dp">
 
             <ImageButton
-                android:id="@+id/btnMuteToggle"
-                android:layout_width="0dp"
-                android:layout_height="40dp"
-                android:layout_weight="1"
-                android:layout_marginEnd="3dp"
-                android:src="@android:drawable/ic_lock_silent_mode_off"
-                android:background="@drawable/shape_circle_green"
-                android:scaleType="center" />
-
-            <ImageButton
                 android:id="@+id/btnKakaoMuteToggle"
                 android:layout_width="0dp"
                 android:layout_height="40dp"
                 android:layout_weight="1"
-                android:layout_marginHorizontal="3dp"
+                android:layout_marginEnd="3dp"
                 android:src="@android:drawable/ic_lock_silent_mode_off"
                 android:background="@drawable/shape_circle_green"
                 android:scaleType="center" />

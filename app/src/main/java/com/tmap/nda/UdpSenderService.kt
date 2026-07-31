@@ -306,6 +306,36 @@ class UdpSenderService : Service() {
                     json.put("nTBTTurnType", 51)    // Notification 타입 (직진/알림)
                     json.put("szTBTMainText", "$prefix | GPS: $currentGpsStatusText")
 
+                    // v1.0.98: 이 edcObserver는 observeForever라 Activity 생명주기와 무관하게
+                    // 항상 최신 데이터를 받음. MapActivity.extractAndDisplaySdiInfo()는
+                    // observe(this@MapActivity, ...)라서 MapActivity가 onStop되면(카카오
+                    // 화면이 위에 뜨면) 멈춰버림 - 그래서 여기서 직접 SdiDataRepository를
+                    // 갱신해두면 KakaoNaviActivity 미니 HUD도 화면 전환과 무관하게 항상
+                    // 최신값을 읽을 수 있음(사용자 요청: "카카오 화면에서도 티맵 정보 그대로").
+                    // #문제시 원복
+                    try {
+                        val sdiType = json.optInt("nSdiType", 0)
+                        val sdiSpeedLimit = json.optInt("nSdiSpeedLimit", 0)
+                        val sdiDist = json.optInt("nSdiDist", 0)
+                        val blockDist = json.optInt("nSdiBlockDist", 0)
+                        val blockTime = json.optInt("nSdiBlockTime", 0)
+                        val blockAvgSpeed = json.optInt("nSdiBlockAverageSpeed", 0)
+                        val isBlockSection = sdiType == 2 || sdiType == 3 || sdiType == 4 || json.optBoolean("bSdiBlockSection", false)
+                        SdiDataRepository.updateCurrentSdiState(
+                            limitSpeed = roadLimitSpeed,
+                            type = sdiType,
+                            speedLimit = sdiSpeedLimit,
+                            distance = sdiDist,
+                            blockType = if (isBlockSection) 1 else 0,
+                            blockSpeed = blockAvgSpeed,
+                            blockDist = blockDist,
+                            blockTime = blockTime,
+                            blockSection = isBlockSection && blockDist > 0
+                        )
+                    } catch (e: Exception) {
+                        NavLogger.e(this@UdpSenderService, "SdiDataRepository 갱신 예외: ${e.message}")
+                    }
+
                     latestPayload = json.toString()
                 } catch (e: Exception) {
                     e.printStackTrace()
