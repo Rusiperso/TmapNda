@@ -1720,6 +1720,19 @@ class MapActivity : AppCompatActivity() {
                             binding.tvCurrentSpeed?.text = speedKph.toString()
                         }
                     }
+                    // 카카오 화면(KakaoNaviActivity)의 왼쪽 패널처럼 GPS 오차범위도 같이 표시. #문제시 원복
+                    if (location.hasAccuracy()) {
+                        runOnUiThread {
+                            binding.tvGpsAccuracy?.text = "오차 ±${location.accuracy.toInt()}m"
+                            binding.tvGpsAccuracy?.setTextColor(
+                                when {
+                                    location.accuracy <= 10f -> android.graphics.Color.parseColor("#4CAF50")
+                                    location.accuracy <= 30f -> android.graphics.Color.parseColor("#FFC107")
+                                    else -> android.graphics.Color.parseColor("#FF5252")
+                                }
+                            )
+                        }
+                    }
                 }
                 try {
                     locationManager.requestLocationUpdates(

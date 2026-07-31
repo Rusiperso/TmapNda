@@ -320,6 +320,15 @@
             android:backgroundTint="#111111"
             android:layout_marginBottom="4dp"/>
 
+        <TextView
+            android:id="@+id/tvGpsAccuracy"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="오차 --"
+            android:textColor="#555555"
+            android:textSize="9sp"
+            android:layout_marginBottom="4dp" />
+
         <!-- 6. OP IP -->
         <TextView
             android:id="@+id/tvCarrotIp"
