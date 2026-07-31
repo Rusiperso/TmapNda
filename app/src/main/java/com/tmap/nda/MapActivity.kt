@@ -51,6 +51,7 @@ class MapActivity : AppCompatActivity() {
     private var isEditMode = false
     private var lastValidRoadLimit = 0  // 3번: 도로 규정속도 깜빡임 방지 - 마지막 유효값 저장
     private var lastEdcAnomalyState = false  // observableEDCData 이상징후 로깅용 (상태 변화시에만 기록)
+    private var loggedEdcKeySetOnce = false  // 차선/신호등 진단용 전체 키 목록은 한 번만 로그
     private var tbtDistErrorLogged = false   // nTBTDist 리플렉션 실패는 최초 1회만 로깅
     private var isTmapMuted = false  // 티맵 안내음성 음소거 여부 (기본값: 소리 켜짐. 카카오는 실제 경로안내 중에만 말하므로 기본상태에선 티맵 음성이 나와야 함)
 
@@ -1657,6 +1658,21 @@ class MapActivity : AppCompatActivity() {
                             lastEdcAnomalyState = isAnomaly
                             NavLogger.e(this@MapActivity, "observableEDCData 상태변화: anomaly=$isAnomaly ($it)")
                         }
+
+                        // v1.3: 차선정보/신호등 잔여시간 관련 키가 Tmap 번들에 있는지 확인.
+                        // 전체 키 목록은 한 번만 찍고(스팸 방지), 이후엔 매칭되는 키의 값만
+                        // 로그로 남김. #문제시 원복
+                        if (!loggedEdcKeySetOnce) {
+                            loggedEdcKeySetOnce = true
+                            NavLogger.d(this@MapActivity, "[차선/신호등? Tmap 전체키] ${it.keySet().sorted()}")
+                        }
+                        val laneOrSignalKeys = it.keySet().filter { k ->
+                            k.contains("lane", true) || k.contains("signal", true) || k.contains("traffic", true)
+                        }
+                        if (laneOrSignalKeys.isNotEmpty()) {
+                            val dump = laneOrSignalKeys.joinToString(", ") { k -> "$k=${it.get(k)}" }
+                            NavLogger.d(this@MapActivity, "[차선/신호등? Tmap 매칭] $dump")
+                        }
                     }
 
                     // 음소거 옵션 켜져 있을 때만 강제 0. 꺼져 있으면 매 갱신마다 볼륨을 되돌리지 않도록 스킵.
@@ -1701,6 +1717,9 @@ class MapActivity : AppCompatActivity() {
 
                     if (it is android.os.Bundle) {
                         extractAndDisplaySdiInfo(it)
+                    }
+                    runOnUiThread {
+                        renderLaneSignalBar(this@MapActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown)
                     }
                 }
             })
