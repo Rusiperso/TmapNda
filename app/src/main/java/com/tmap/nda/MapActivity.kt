@@ -1723,7 +1723,7 @@ class MapActivity : AppCompatActivity() {
                     // 카카오 화면(KakaoNaviActivity)의 왼쪽 패널처럼 GPS 오차범위도 같이 표시. #문제시 원복
                     if (location.hasAccuracy()) {
                         runOnUiThread {
-                            binding.tvGpsAccuracy?.text = "오차 ±${location.accuracy.toInt()}m"
+                            binding.tvGpsAccuracy?.text = "±${location.accuracy.toInt()}m"
                             binding.tvGpsAccuracy?.setTextColor(
                                 when {
                                     location.accuracy <= 10f -> android.graphics.Color.parseColor("#4CAF50")
