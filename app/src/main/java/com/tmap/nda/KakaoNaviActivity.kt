@@ -466,6 +466,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     binding.tvSdiDescr?.text = "--"
                 }
                 hudPollHandler.postDelayed(this, 1000)
+                renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown)
             }
         }
         hudPollHandler.postDelayed(sdiRunnable, 1000)
