@@ -60,6 +60,7 @@ class KakaoGuidanceDelegate(
 
     override fun guidanceGuideEnded(guidance: KNGuidance) {
         NavLogger.d(context, "[카카오안내] 종료됨(도착) - Tmap으로 복귀")
+        KakaoRouteDataRepository.reset()
         naviView?.guidanceGuideEnded(guidance)
         onGuideEnded()
     }
@@ -161,11 +162,95 @@ class KakaoGuidanceDelegate(
                 }
         } catch (e: Exception) { "덤프 실패: ${e.message}" }
         NavLogger.d(context, "guidanceDidUpdateRouteGuide 호출됨: $routeGuide | $fieldDump")
+
+        // v1.1.00: 카카오 안내 실제 데이터를 openpilot road_limit UDP로 내보내기 위해
+        // KakaoRouteDataRepository에 반영. 정확한 getter 이름을 컴파일 타임에 확정할 수
+        // 없어서(SDK 문서/AAR 소스가 없음) 이름 패턴 매칭 리플렉션으로 최대한 안전하게
+        // 추출함 - 실제 값이 맞게 들어오는지는 로그(KakaoRouteDataRepository 갱신 로그)로
+        // 확인 필요. #문제시 원복
+        try {
+            val curDirection = findGetter(routeGuide, "getCurDirection")
+            val nextTbtDist = curDirection?.let { findGetterInt(it, "Dist") } ?: 0
+            val turnTypeRaw = curDirection?.let { findGetter(it, null, "TurnType") }
+            val roadNameNow = curDirection?.let { findGetterString(it, "RoadName") }
+                ?: findGetterString(routeGuide, "RoadName")
+
+            val multiRouteInfo = findGetter(routeGuide, "getMultiRouteInfo")
+            val remainDistNow = multiRouteInfo?.let { findGetterInt(it, "RemainDist") }
+                ?: multiRouteInfo?.let { findGetterInt(it, "Distance") } ?: 0
+            val remainTimeNow = multiRouteInfo?.let { findGetterInt(it, "RemainTime") }
+                ?: multiRouteInfo?.let { findGetterInt(it, "Time") } ?: 0
+
+            KakaoRouteDataRepository.isActive = true
+            KakaoRouteDataRepository.lastUpdateTime = System.currentTimeMillis()
+            KakaoRouteDataRepository.tbtDist = nextTbtDist
+            KakaoRouteDataRepository.tbtTurnType = mapKakaoTurnTypeToOpenpilot(turnTypeRaw)
+            KakaoRouteDataRepository.tbtMainText = roadNameNow ?: ""
+            KakaoRouteDataRepository.remainDist = remainDistNow
+            KakaoRouteDataRepository.remainTime = remainTimeNow
+            KakaoRouteDataRepository.roadName = roadNameNow ?: ""
+
+            NavLogger.d(
+                context,
+                "[카카오->openpilot] tbtDist=$nextTbtDist turnTypeRaw=$turnTypeRaw(->${KakaoRouteDataRepository.tbtTurnType}) " +
+                    "road=$roadNameNow remainDist=$remainDistNow remainTime=$remainTimeNow"
+            )
+        } catch (e: Exception) {
+            NavLogger.e(context, "KakaoRouteDataRepository 갱신 예외: ${e.message}")
+        }
+
         naviView?.guidanceDidUpdateRouteGuide(guidance, routeGuide)
+    }
+
+    // 카카오의 회전타입 코드(enum/정수, 정확한 값 체계 미확인)를 openpilot이 기대하는
+    // nTBTTurnType 코드(51=직진/알림 기본값)로 매핑. 지금은 안전하게 기본값(51, 알림)만
+    // 리턴 - 실제 로그로 카카오 turnType 원본값들을 수집한 뒤 표를 채워야 정확해짐. #문제시 원복
+    private fun mapKakaoTurnTypeToOpenpilot(kakaoTurnType: Any?): Int {
+        return 51
+    }
+
+    private fun findGetter(obj: Any, exactName: String? = null, nameContains: String? = null): Any? {
+        return try {
+            val m = obj.javaClass.methods.firstOrNull {
+                it.parameterTypes.isEmpty() && (
+                    (exactName != null && it.name == exactName) ||
+                        (nameContains != null && it.name.startsWith("get") && it.name.contains(nameContains))
+                    )
+            }
+            m?.invoke(obj)
+        } catch (e: Exception) { null }
+    }
+
+    private fun findGetterInt(obj: Any, nameContains: String): Int {
+        return try {
+            (findGetter(obj, null, nameContains) as? Number)?.toInt() ?: 0
+        } catch (e: Exception) { 0 }
+    }
+
+    private fun findGetterString(obj: Any, nameContains: String): String? {
+        return try {
+            findGetter(obj, null, nameContains)?.toString()
+        } catch (e: Exception) { null }
     }
 
     // ===== SafetyGuideDelegate =====
     override fun guidanceDidUpdateSafetyGuide(guidance: KNGuidance, safetyGuide: KNGuide_Safety?) {
+        try {
+            if (safetyGuide != null) {
+                val typeRaw = findGetterInt(safetyGuide, "Type")
+                val speedLimitRaw = findGetterInt(safetyGuide, "SpeedLimit")
+                val distRaw = findGetterInt(safetyGuide, "Dist")
+                KakaoRouteDataRepository.safetyType = typeRaw
+                KakaoRouteDataRepository.safetySpeedLimit = speedLimitRaw
+                KakaoRouteDataRepository.safetyDist = distRaw
+                NavLogger.d(context, "[카카오->openpilot] 안전정보: type=$typeRaw speedLimit=$speedLimitRaw dist=$distRaw")
+            } else {
+                KakaoRouteDataRepository.safetyType = 0
+                KakaoRouteDataRepository.safetyDist = 0
+            }
+        } catch (e: Exception) {
+            NavLogger.e(context, "안전정보 반영 예외: ${e.message}")
+        }
         naviView?.guidanceDidUpdateSafetyGuide(guidance, safetyGuide)
     }
 
