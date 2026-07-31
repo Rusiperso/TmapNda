@@ -163,6 +163,29 @@ class KakaoGuidanceDelegate(
         } catch (e: Exception) { "덤프 실패: ${e.message}" }
         NavLogger.d(context, "guidanceDidUpdateRouteGuide 호출됨: $routeGuide | $fieldDump")
 
+        // v1.3: 차선 정보(직진/좌회전 등 몇 차선인지) 관련 getter가 있는지 별도로 찾아서
+        // 눈에 띄게 로그로 남김 - curDirection/nextDirection 안에 중첩돼 있을 수도 있어서
+        // 그쪽도 같이 훑어봄. #문제시 원복
+        try {
+            val laneGetters = routeGuide.javaClass.methods.filter {
+                it.parameterTypes.isEmpty() && (it.name.contains("Lane", true))
+            }
+            val curDirectionForLane = findGetter(routeGuide, "getCurDirection")
+            val laneGettersInDirection = curDirectionForLane?.javaClass?.methods?.filter {
+                it.parameterTypes.isEmpty() && it.name.contains("Lane", true)
+            } ?: emptyList()
+            if (laneGetters.isNotEmpty() || laneGettersInDirection.isNotEmpty()) {
+                val laneDump = (laneGetters.map { "routeGuide.${it.name}=${try { it.invoke(routeGuide) } catch (e: Exception) { "<실패>" }}" } +
+                    laneGettersInDirection.map { "curDirection.${it.name}=${try { it.invoke(curDirectionForLane) } catch (e: Exception) { "<실패>" }}" })
+                    .joinToString(", ")
+                NavLogger.d(context, "[차선정보?] Lane 관련 getter 발견: $laneDump")
+            } else {
+                NavLogger.d(context, "[차선정보?] Lane 관련 getter 없음(routeGuide/curDirection 기준)")
+            }
+        } catch (e: Exception) {
+            NavLogger.e(context, "차선정보 탐색 예외: ${e.message}")
+        }
+
         // v1.1.00: 카카오 안내 실제 데이터를 openpilot road_limit UDP로 내보내기 위해
         // KakaoRouteDataRepository에 반영. 정확한 getter 이름을 컴파일 타임에 확정할 수
         // 없어서(SDK 문서/AAR 소스가 없음) 이름 패턴 매칭 리플렉션으로 최대한 안전하게
@@ -298,6 +321,17 @@ class KakaoGuidanceDelegate(
 
     // ===== CitsGuideDelegate =====
     override fun didUpdateCitsGuide(guidance: KNGuidance, citsGuide: KNGuide_Cits) {
+        // v1.3: Cits = C-ITS(협력 지능형 교통체계) - 한국에서 신호등 잔여시간(SPaT) 정보를
+        // 이 프로토콜로 주고받는 경우가 많아서, 실제로 그런 필드가 있는지 확인하려고
+        // 전체 getter를 덤프함. #문제시 원복
+        val fieldDump = try {
+            citsGuide.javaClass.methods
+                .filter { it.parameterTypes.isEmpty() && it.name.startsWith("get") }
+                .joinToString(", ") { m ->
+                    try { "${m.name}=${m.invoke(citsGuide)}" } catch (e: Exception) { "${m.name}=<실패>" }
+                }
+        } catch (e: Exception) { "덤프 실패: ${e.message}" }
+        NavLogger.d(context, "[신호등?] didUpdateCitsGuide 호출됨: $citsGuide | $fieldDump")
         naviView?.didUpdateCitsGuide(guidance, citsGuide)
     }
 }
