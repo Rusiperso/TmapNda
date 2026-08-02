@@ -695,6 +695,7 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
+    private fun getUserKakaoKey(): String {
         return getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             .getString("kakao_rest_api_key", "") ?: ""
     }
