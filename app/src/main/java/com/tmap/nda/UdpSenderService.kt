@@ -438,6 +438,10 @@ class UdpSenderService : Service() {
 
                         if (lastActive != active) {
                             NavLogger.d(this@UdpSenderService, "openpilot 연결 상태 변경: active=$active, ip=${packet.address?.hostAddress}, carrot2=$carrot2")
+                            // v1.6: '크루즈 작동 중인데 OP OFF로 뜬다'는 재억 지적 진단용 - active
+                            // 필드 외에 다른 키가 있는지 원본 JSON을 그대로 로그에 남김
+                            // (상태 변화 시에만, 스팸 방지). #문제시 원복
+                            NavLogger.d(this@UdpSenderService, "[OP상태? 원본] $data")
                             lastActive = active
                         }
 
@@ -655,7 +659,24 @@ class UdpSenderService : Service() {
                 NavLogger.d(this@UdpSenderService, "[NDA] nSdiType=$sdiType (openpilot cam_type으로 그대로 전달됨) speedLimit=$sdiSpeedLimit dist=$sdiDist")
             }
 
-            roadLimit.put("road_limit_speed", src.optInt("nRoadLimitSpeed", 0))
+            var effectiveRoadLimit = src.optInt("nRoadLimitSpeed", 0)
+
+            // v1.6: 8번 - 당근파일럿 외 다른 fork는 이동식카메라 전용 감속 로직이 없을 수
+            // 있어서, TmapNda 자체 옵션(mobile_cam_slowdown_enabled)으로 이동식카메라
+            // (sdiType=7) 근처에서 road_limit_speed 자체를 낮춰 보냄 - road_limit_speed를
+            // 그냥 따라가는 일반적인 fork라면 별도 카메라 감지 로직 없이도 ACC가 자연히
+            // 느려짐. #문제시 원복
+            val mobileCamSlowdownEnabled = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .getBoolean("mobile_cam_slowdown_enabled", false)
+            if (mobileCamSlowdownEnabled && sdiType == 7 && sdiSpeedLimit > 0 && sdiDist in 1..300) {
+                val reduced = minOf(effectiveRoadLimit, sdiSpeedLimit)
+                if (reduced > 0 && reduced < effectiveRoadLimit) {
+                    NavLogger.d(this@UdpSenderService, "[NDA] 이동식카메라 감속옵션 적용: $effectiveRoadLimit -> $reduced")
+                    effectiveRoadLimit = reduced
+                }
+            }
+
+            roadLimit.put("road_limit_speed", effectiveRoadLimit)
             roadLimit.put("is_highway", false)
             roadLimit.put("cam_type", sdiType)
             roadLimit.put("cam_limit_speed", sdiSpeedLimit)

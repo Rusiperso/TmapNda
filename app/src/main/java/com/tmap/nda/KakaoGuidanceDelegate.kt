@@ -163,27 +163,25 @@ class KakaoGuidanceDelegate(
         } catch (e: Exception) { "덤프 실패: ${e.message}" }
         NavLogger.d(context, "guidanceDidUpdateRouteGuide 호출됨: $routeGuide | $fieldDump")
 
-        // v1.3: 차선 정보(직진/좌회전 등 몇 차선인지) 관련 getter가 있는지 별도로 찾아서
-        // 눈에 띄게 로그로 남김 - curDirection/nextDirection 안에 중첩돼 있을 수도 있어서
-        // 그쪽도 같이 훑어봄. #문제시 원복
+        // v1.6: 이전엔 curDirection 안에서 "TurnType"/"RemainDist" 같은 좁은 이름으로만 찾아서
+        // 실패했음(실제 로그에서 turnTypeRaw=null, remainDist=0으로 계속 찍힘) - curDirection과
+        // KNLane 객체 전체를 리플렉션으로 통으로 덤프해서 진짜 필드명을 확인. #문제시 원복
         try {
-            val laneGetters = routeGuide.javaClass.methods.filter {
-                it.parameterTypes.isEmpty() && (it.name.contains("Lane", true))
+            val curDirectionDump = findGetter(routeGuide, "getCurDirection")
+            val curDirectionFieldDump = curDirectionDump?.let { obj ->
+                obj.javaClass.methods.filter { it.parameterTypes.isEmpty() && it.name.startsWith("get") }
+                    .joinToString(", ") { m -> try { "${m.name}=${m.invoke(obj)}" } catch (e: Exception) { "${m.name}=<실패>" } }
             }
-            val curDirectionForLane = findGetter(routeGuide, "getCurDirection")
-            val laneGettersInDirection = curDirectionForLane?.javaClass?.methods?.filter {
-                it.parameterTypes.isEmpty() && it.name.contains("Lane", true)
-            } ?: emptyList()
-            if (laneGetters.isNotEmpty() || laneGettersInDirection.isNotEmpty()) {
-                val laneDump = (laneGetters.map { "routeGuide.${it.name}=${try { it.invoke(routeGuide) } catch (e: Exception) { "<실패>" }}" } +
-                    laneGettersInDirection.map { "curDirection.${it.name}=${try { it.invoke(curDirectionForLane) } catch (e: Exception) { "<실패>" }}" })
-                    .joinToString(", ")
-                NavLogger.d(context, "[차선정보?] Lane 관련 getter 발견: $laneDump")
-            } else {
-                NavLogger.d(context, "[차선정보?] Lane 관련 getter 없음(routeGuide/curDirection 기준)")
+            NavLogger.d(context, "[차선정보?/신호등?] curDirection 전체덤프: $curDirectionFieldDump")
+
+            val laneObj = findGetter(routeGuide, "getLane")
+            val laneFieldDump = laneObj?.let { obj ->
+                obj.javaClass.methods.filter { it.parameterTypes.isEmpty() && it.name.startsWith("get") }
+                    .joinToString(", ") { m -> try { "${m.name}=${m.invoke(obj)}" } catch (e: Exception) { "${m.name}=<실패>" } }
             }
+            NavLogger.d(context, "[차선정보?] KNLane 전체덤프: $laneFieldDump")
         } catch (e: Exception) {
-            NavLogger.e(context, "차선정보 탐색 예외: ${e.message}")
+            NavLogger.e(context, "curDirection/Lane 전체덤프 예외: ${e.message}")
         }
 
         // v1.1.00: 카카오 안내 실제 데이터를 openpilot road_limit UDP로 내보내기 위해
@@ -194,15 +192,28 @@ class KakaoGuidanceDelegate(
         try {
             val curDirection = findGetter(routeGuide, "getCurDirection")
             val nextTbtDist = curDirection?.let { findGetterInt(it, "Dist") } ?: 0
-            val turnTypeRaw = curDirection?.let { findGetter(it, null, "TurnType") }
-            val roadNameNow = curDirection?.let { findGetterString(it, "RoadName") }
-                ?: findGetterString(routeGuide, "RoadName")
+            val turnTypeRaw = curDirection?.let { findGetter(it, null, "Type") }
+            val roadNameNow = curDirection?.let { findGetterString(it, "Name") }
+                ?: findGetterString(routeGuide, "Name")
 
             val multiRouteInfo = findGetter(routeGuide, "getMultiRouteInfo")
-            val remainDistNow = multiRouteInfo?.let { findGetterInt(it, "RemainDist") }
-                ?: multiRouteInfo?.let { findGetterInt(it, "Distance") } ?: 0
-            val remainTimeNow = multiRouteInfo?.let { findGetterInt(it, "RemainTime") }
-                ?: multiRouteInfo?.let { findGetterInt(it, "Time") } ?: 0
+            var remainDistNow = multiRouteInfo?.let { findGetterInt(it, "Dist") } ?: 0
+            var remainTimeNow = multiRouteInfo?.let { findGetterInt(it, "Time") } ?: 0
+
+            // multiRouteInfo가 null인 경우가 많아서(로그로 확인됨), guidance의 curTrip에서
+            // 남은거리/시간을 폴백으로 시도. #문제시 원복
+            if (remainDistNow == 0) {
+                try {
+                    val curTrip = guidance.javaClass.methods.firstOrNull {
+                        it.name.equals("getCurTrip", true) || it.name.equals("getTrip", true)
+                    }?.invoke(guidance)
+                    if (curTrip != null) {
+                        remainDistNow = findGetterInt(curTrip, "Dist")
+                        remainTimeNow = findGetterInt(curTrip, "Time")
+                        NavLogger.d(context, "[카카오->openpilot] curTrip 폴백 시도: remainDist=$remainDistNow remainTime=$remainTimeNow")
+                    }
+                } catch (e: Exception) { /* 무시 */ }
+            }
 
             KakaoRouteDataRepository.isActive = true
             KakaoRouteDataRepository.lastUpdateTime = System.currentTimeMillis()
