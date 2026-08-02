@@ -16,6 +16,12 @@ import com.kakaomobility.knsdk.common.objects.KNPOI
 import com.kakaomobility.knsdk.ui.view.KNNaviView
 import com.tmap.nda.databinding.ActivityKakaoNaviBinding
 import com.tmapmobility.tmap.tmapsdk.ui.util.TmapUISDK
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
+import java.io.IOException
 
 /**
  * v1.0.83: TmapNda 안에서 flKakaoOverlay(FrameLayout)를 visibility/bringToFront/재적용
@@ -49,12 +55,26 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     private fun applyTmapMute(muted: Boolean) {
         try {
-            val vol = if (muted) 0 else 100
-            TmapUISDK.setVolume(this, vol)
-            KakaoSdkState.lastAppliedTmapVolume = vol
-            NavLogger.d(this, "[음소거] 티맵 볼륨 적용: muted=$muted vol=$vol")
+            if (muted) {
+                VolumeHelper.captureCurrentVolumePercent(this)
+                TmapUISDK.setVolume(this, 0)
+                KakaoSdkState.lastAppliedTmapVolume = 0
+            }
+            // MapActivity와 동일한 철학: 음소거 해제 상태에선 볼륨을 아예 안 건드림(사용자가
+            // 하드웨어 버튼 등으로 맞춰둔 값을 그대로 둠). 명시적 해제 액션은
+            // unmuteTmapVolume()에서 처리. #문제시 원복
+            NavLogger.d(this, "[음소거] 티맵 볼륨 적용: muted=$muted")
         } catch (e: Exception) {
             NavLogger.e(this, "티맵 볼륨 적용 예외: ${e.message}")
+        }
+    }
+
+    private fun unmuteTmapVolume() {
+        try {
+            TmapUISDK.setVolume(this, VolumeHelper.savedVolumePercent(this))
+            KakaoSdkState.lastAppliedTmapVolume = VolumeHelper.savedVolumePercent(this)
+        } catch (e: Exception) {
+            NavLogger.e(this, "티맵 볼륨 복원 예외: ${e.message}")
         }
     }
 
@@ -195,7 +215,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     // requestKakaoRoute()에서 검증된 순서 그대로 재사용: lastKnown GPS 캐시 없이도
     // KNSDK 자체 GPS/시스템 캐시 순으로 폴백하고, 그래도 없으면 1초 뒤 재시도. #문제시 원복
-    private fun resolveCurrentPositionThenRequestRoute(destName: String, destLat: Double, destLon: Double) {
+    private fun resolveCurrentPositionThenRequestRoute(destName: String, destLat: Double, destLon: Double, finishOnFailure: Boolean = true) {
         var startPoi: KNPOI? = null
         val currentGps = KNSDK.sharedGpsManager()?.recentGpsData
         if (currentGps != null && currentGps.pos.x > 0 && currentGps.pos.y > 0) {
@@ -217,7 +237,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         if (startPoi == null) {
             Toast.makeText(this, "GPS 확인 중입니다...", Toast.LENGTH_SHORT).show()
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                if (!isFinishing) resolveCurrentPositionThenRequestRoute(destName, destLat, destLon)
+                if (!isFinishing) resolveCurrentPositionThenRequestRoute(destName, destLat, destLon, finishOnFailure)
             }, 1000)
             return
         }
@@ -230,7 +250,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 if (error != null || trip == null) {
                     NavLogger.e(this, "카카오 경로요청 실패: ${error?.msg ?: "알 수 없는 오류"}")
                     Toast.makeText(this, "경로 탐색 실패: ${error?.msg ?: "알 수 없는 오류"}", Toast.LENGTH_SHORT).show()
-                    finish()
+                    if (finishOnFailure) finish()
                     return@runOnUiThread
                 }
                 NavLogger.d(this, "카카오 경로요청 성공, 안내 시작: $destName")
@@ -503,8 +523,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
 
         binding.btnOpenSearch?.setOnClickListener {
-            PendingMapAction.openSearchPanel = true
-            finishGuidance()
+            showInPlaceSearchDialog()
         }
 
         binding.btnShareLog?.setOnClickListener {
@@ -549,10 +568,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 setPadding(24, 20, 24, 20)
                 setOnClickListener {
-                    isEnabled = false
-                    alpha = 0.5f
-                    PendingMapAction.autoSearchQuery = destText
-                    finishGuidance()
+                    performInPlaceSearch(destText)
                 }
             }
             rowsContainer.addView(tv)
@@ -561,6 +577,80 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             PendingMapAction.openFullHistoryDialog = true
             finishGuidance()
         }
+    }
+
+    // v1.6: 검색 버튼 누르면 화면이 티맵으로 나갔다 다시 들어오던 문제 - 굳이 MapActivity로
+    // 안 돌아가고 이 화면 안에서 그대로 재검색하도록 함(Kakao 로컬 검색 API를 MapActivity와
+    // 동일한 방식으로 여기서도 직접 호출). #문제시 원복
+    private val searchHttpClient by lazy { OkHttpClient() }
+
+    private fun showInPlaceSearchDialog() {
+        val input = android.widget.EditText(this).apply {
+            hint = "목적지를 입력하세요 (예: 서울역)"
+            setTextColor(android.graphics.Color.WHITE)
+            setHintTextColor(android.graphics.Color.parseColor("#888888"))
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("목적지 재검색")
+            .setView(input)
+            .setPositiveButton("검색") { _, _ ->
+                val q = input.text.toString().trim()
+                if (q.isNotEmpty()) performInPlaceSearch(q)
+            }
+            .setNegativeButton("취소", null)
+            .show()
+    }
+
+    private fun performInPlaceSearch(query: String) {
+        val restKey = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .getString("kakao_rest_api_key", "") ?: ""
+        if (restKey.isBlank()) {
+            Toast.makeText(this, "카카오 REST API 키가 없어 - 티맵 화면에서 검색을 한 번 먼저 설정해줘.", Toast.LENGTH_LONG).show()
+            return
+        }
+        Toast.makeText(this, "검색 중: $query", Toast.LENGTH_SHORT).show()
+        val url = "https://dapi.kakao.com/v2/local/search/keyword.json?query=" +
+            java.net.URLEncoder.encode(query, "UTF-8")
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", "KakaoAK $restKey")
+            .build()
+        searchHttpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                NavLogger.e(this@KakaoNaviActivity, "인라인 재검색 실패: ${e.message}")
+                runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 실패: ${e.message}", Toast.LENGTH_SHORT).show() }
+            }
+
+            override fun onResponse(call: Call, response: okhttp3.Response) {
+                response.use {
+                    if (!it.isSuccessful) {
+                        runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 실패(${it.code})", Toast.LENGTH_SHORT).show() }
+                        return@use
+                    }
+                    val json = JSONObject(it.body?.string() ?: "{}")
+                    val documents = json.optJSONArray("documents")
+                    if (documents == null || documents.length() == 0) {
+                        runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
+                        return@use
+                    }
+                    val first = documents.getJSONObject(0)
+                    val placeName = first.optString("place_name", query)
+                    val lon = first.optDouble("x")
+                    val lat = first.optDouble("y")
+                    NavLogger.d(this@KakaoNaviActivity, "인라인 재검색 결과: $placeName lat=$lat lon=$lon")
+                    getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).apply {
+                        val arr = try { org.json.JSONArray(getString("search_history_json", "[]") ?: "[]") } catch (e: Exception) { org.json.JSONArray() }
+                        arr.put(0, query)
+                        edit().putString("search_history_json", arr.toString()).apply()
+                    }
+                    runOnUiThread {
+                        KakaoRouteDataRepository.reset()
+                        resolveCurrentPositionThenRequestRoute(placeName, lat, lon, finishOnFailure = false)
+                        renderRecentDestinationsPanel()
+                    }
+                }
+            }
+        })
     }
 
     private fun finishGuidance() {
@@ -610,6 +700,25 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 반복돼서(예: 매초 완전히 동일한 좌표) GPS_PROVIDER의 정확한 실시간 값과 번갈아
     // KNSDK로 들어가는 바람에 위치가 오락가락했음(사용자 - "평택인데 용인으로 잡힘").
     // GPS_PROVIDER만 반영하고, 정확도가 너무 나쁜 픽스(accuracy > 50m)는 무시함. #문제시 원복
+    private var lastOverSpeedWarningTime = 0L
+    private fun checkOverSpeedWarning(speedKph: Int) {
+        val pref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        if (!pref.getBoolean("over_speed_warning_enabled", false)) return
+        val limit = SdiDataRepository.roadLimitSpeed
+        if (limit < 30 || speedKph <= 0) return
+        val now = System.currentTimeMillis()
+        if (speedKph > limit * 1.1 && now - lastOverSpeedWarningTime > 8000L) {
+            lastOverSpeedWarningTime = now
+            try {
+                val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 100)
+                tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ tone.release() }, 500)
+            } catch (e: Exception) {
+                NavLogger.e(this, "속도경고음 재생 예외: ${e.message}")
+            }
+        }
+    }
+
     private fun startRealtimeGpsForwarding() {
         try {
             locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -634,6 +743,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
             val speedKph = (location.speed * 3.6).toInt()
             binding.tvCurrentSpeed?.text = speedKph.toString()
+            checkOverSpeedWarning(speedKph)
             binding.btnGpsStatus?.text = "GOOD (정확도 ${location.accuracy.toInt()}m)"
             binding.btnGpsStatus?.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
             val gpsManager = KNSDK.sharedGpsManager()
@@ -662,9 +772,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         try {
             val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             val muted = sharedPref.getBoolean("tmap_muted", false)
-            TmapUISDK.setVolume(this, if (muted) 0 else 100)
-            KakaoSdkState.lastAppliedTmapVolume = if (muted) 0 else 100
-            NavLogger.d(this, "[음소거] KakaoNaviActivity 종료 - 티맵 볼륨 복원(muted=$muted)")
+            val vol = if (muted) 0 else VolumeHelper.savedVolumePercent(this)
+            TmapUISDK.setVolume(this, vol)
+            KakaoSdkState.lastAppliedTmapVolume = vol
+            NavLogger.d(this, "[음소거] KakaoNaviActivity 종료 - 티맵 볼륨 복원(muted=$muted, vol=$vol)")
         } catch (e: Exception) {
             NavLogger.e(this, "티맵 볼륨 복원 예외: ${e.message}")
         }

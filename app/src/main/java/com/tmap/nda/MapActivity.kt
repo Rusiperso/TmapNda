@@ -107,9 +107,24 @@ class MapActivity : AppCompatActivity() {
         binding.btnMuteToggle?.setBackgroundResource(
             if (isTmapMuted) R.drawable.shape_circle_gray else R.drawable.shape_circle_green
         )
-        if (!isTmapMuted) {
-            // 음소거 해제 시 실제 볼륨 적용. observableEDCData 콜백에서도 이 값을 참조해 매 갱신마다 재적용함.
-            TmapUISDK.setVolume(this, 100)
+        // v1.6: 예전엔 음소거 '해제' 상태에서도 매번 setVolume(100)을 강제 호출해서, 사용자가
+        // 하드웨어 버튼 등으로 50 같은 값으로 맞춰도 앱 재시작/토글 때마다 100으로 되돌아갔음
+        // (사용자 지적 - "볼륨 50으로 했는데 다음에 실행하면 다시 100이 됨"). 이제 음소거 상태일
+        // 때만 실제로 볼륨을 만지고(0으로), 해제 상태에선 아예 건드리지 않음 - 사용자가 맞춰둔
+        // 값을 그대로 둠. #문제시 원복
+        if (isTmapMuted) {
+            VolumeHelper.captureCurrentVolumePercent(this)
+            TmapUISDK.setVolume(this, 0)
+        }
+        // 해제(!isTmapMuted) 상태에서 "복원"이 필요한 경우는 버튼 토글 핸들러에서 명시적으로
+        // unmuteTmapVolume()을 호출하도록 분리함 - 여기(수동적 상태 갱신)에서는 손대지 않음.
+    }
+
+    private fun unmuteTmapVolume() {
+        try {
+            TmapUISDK.setVolume(this, VolumeHelper.savedVolumePercent(this))
+        } catch (e: Exception) {
+            NavLogger.e(this, "티맵 볼륨 복원 예외: ${e.message}")
         }
     }
 
@@ -180,6 +195,7 @@ class MapActivity : AppCompatActivity() {
             isTmapMuted = !isTmapMuted
             sharedPref.edit().putBoolean("tmap_muted", isTmapMuted).apply()
             applyMuteState()
+            if (!isTmapMuted) unmuteTmapVolume()
             Toast.makeText(this, if (isTmapMuted) "티맵 안내음성 음소거" else "티맵 안내음성 켜짐", Toast.LENGTH_SHORT).show()
         }
 
@@ -193,6 +209,12 @@ class MapActivity : AppCompatActivity() {
             intent.putExtra("auto_start", false)
             startActivity(intent)
             finish()
+        }
+        // v1.6: '설정' 버튼은 원래 카카오키 재입력용이었는데, 길게 누르면 진짜 앱 설정
+        // (속도초과 경고음 등)이 뜨게 함 - 기존 짧게 누르기 동작은 그대로 유지. #문제시 원복
+        binding.btnEditKey.setOnLongClickListener {
+            showAppSettingsDialog()
+            true
         }
 
         binding.btnExitApp.setOnClickListener {
@@ -620,7 +642,59 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    private fun getUserKakaoKey(): String {
+    // v1.6: 속도가 도로 제한속도의 110%를 넘으면 경고음 - 기본 꺼짐, 이 다이얼로그에서 토글. #문제시 원복
+    private fun showAppSettingsDialog() {
+        val pref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        val checkBox = android.widget.CheckBox(this).apply {
+            text = "속도 10% 초과 시 경고음"
+            isChecked = pref.getBoolean("over_speed_warning_enabled", false)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 30, 40, 30)
+        }
+        val camCheckBox = android.widget.CheckBox(this).apply {
+            text = "이동식카메라 근처 자동 감속 (당근파일럿 외 fork용)"
+            isChecked = pref.getBoolean("mobile_cam_slowdown_enabled", false)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            addView(checkBox)
+            addView(camCheckBox)
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("앱 설정")
+            .setView(container)
+            .setPositiveButton("저장") { _, _ ->
+                pref.edit()
+                    .putBoolean("over_speed_warning_enabled", checkBox.isChecked)
+                    .putBoolean("mobile_cam_slowdown_enabled", camCheckBox.isChecked)
+                    .apply()
+                Toast.makeText(this, "저장됨", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("취소", null)
+            .show()
+    }
+
+    private var lastOverSpeedWarningTime = 0L
+    private fun checkOverSpeedWarning(speedKph: Int) {
+        val pref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        if (!pref.getBoolean("over_speed_warning_enabled", false)) return
+        val limit = SdiDataRepository.roadLimitSpeed
+        if (limit < 30 || speedKph <= 0) return
+        val now = System.currentTimeMillis()
+        if (speedKph > limit * 1.1 && now - lastOverSpeedWarningTime > 8000L) {
+            lastOverSpeedWarningTime = now
+            try {
+                val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 100)
+                tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ tone.release() }, 500)
+            } catch (e: Exception) {
+                NavLogger.e(this, "속도경고음 재생 예외: ${e.message}")
+            }
+        }
+    }
+
         return getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             .getString("kakao_rest_api_key", "") ?: ""
     }
@@ -1739,6 +1813,7 @@ class MapActivity : AppCompatActivity() {
                             binding.tvCurrentSpeed?.text = speedKph.toString()
                         }
                     }
+                    checkOverSpeedWarning(speedKph)
                     // 카카오 화면(KakaoNaviActivity)과 완전히 동일한 형식으로 통일:
                     // 위성개수 기반 표시랑 오차범위 기반 표시를 따로 뒀더니 좁은 패널에서
                     // 겹쳐 보인다는 지적 - 정확도(accuracy) 기준 하나로만 표시. #문제시 원복
