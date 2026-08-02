@@ -8,6 +8,8 @@ import android.os.Bundle
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import com.kakaomobility.knsdk.KNLanguageType
 import com.kakaomobility.knsdk.KNRouteAvoidOption
 import com.kakaomobility.knsdk.KNRoutePriority
@@ -153,6 +155,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         startRealtimeGpsForwarding()
         startMiniHudBinding()
         setupHudActionButtons()
+
+        ensureNavNotificationChannel()
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            androidx.core.app.ActivityCompat.requestPermissions(
+                this, arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 8420
+            )
+        }
 
         // CarrotNavi 실제 동작 코드에서 확인된 핵심 패턴: naviView를 목적지가 확정된
         // 시점에 initWithGuidance(trip=실제경로)로 처음 초기화하는 게 아니라,
@@ -487,6 +499,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 }
                 hudPollHandler.postDelayed(this, 1000)
                 renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown)
+                updateNavNotification()
             }
         }
         hudPollHandler.postDelayed(sdiRunnable, 1000)
@@ -502,6 +515,61 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 최근 목적지 패널(5개+더보기)을 KakaoNaviActivity에도 추가. 검색/더보기는 자체 검색
     // UI를 새로 만들지 않고, MapActivity가 finish() 이후 백스택에서 그대로 재개될 때
     // PendingMapAction 신호로 처리하도록 함(중복 구현 회피). #문제시 원복
+    // v1.7: nMirror(안드로이드오토 미러링 앱) 분석 결과, BIND_NOTIFICATION_LISTENER_SERVICE +
+    // androidx.car.app.NAVIGATION_TEMPLATES 권한을 갖고 있어서, 표준 안드로이드 내비게이션
+    // 알림(NotificationCompat.CarExtender + CATEGORY_NAVIGATION)을 감지해 실제 차량
+    // 클러스터/HUD로 전달해주는 것으로 추정됨(Tmap/카카오내비 원본 앱이 이 방식으로 이미
+    // 뜨고 있었을 가능성). 루트 권한이나 nMirror 전용 프로토콜 없이, 표준 알림만 올려서
+    // 시도해봄 - 안 잡히면 그냥 일반 알림 하나 뜨는 것 외엔 부작용 없음. #문제시 원복
+    private val NAV_NOTIFICATION_CHANNEL_ID = "kakao_nav_channel"
+    private val NAV_NOTIFICATION_ID = 8420
+
+    private fun ensureNavNotificationChannel() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = android.app.NotificationChannel(
+                NAV_NOTIFICATION_CHANNEL_ID,
+                "카카오 길안내",
+                android.app.NotificationManager.IMPORTANCE_LOW
+            )
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            nm.createNotificationChannel(channel)
+        }
+    }
+
+    private fun updateNavNotification() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        try {
+            val kr = KakaoRouteDataRepository
+            val distText = if (kr.tbtDist in 1..9998) "${kr.tbtDist}m 앞" else "안내 중"
+            val mainText = kr.tbtMainText.ifEmpty { kr.roadName.ifEmpty { "카카오 안내" } }
+
+            val builder = NotificationCompat.Builder(this, NAV_NOTIFICATION_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_menu_directions)
+                .setContentTitle(distText)
+                .setContentText(mainText)
+                .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .extend(NotificationCompat.CarExtender())
+
+            NotificationManagerCompat.from(this).notify(NAV_NOTIFICATION_ID, builder.build())
+        } catch (e: Exception) {
+            NavLogger.e(this, "[HUD?] 내비게이션 알림 갱신 예외: ${e.message}")
+        }
+    }
+
+    private fun cancelNavNotification() {
+        try {
+            NotificationManagerCompat.from(this).cancel(NAV_NOTIFICATION_ID)
+        } catch (e: Exception) { /* 무시 */ }
+    }
+
     private fun updateMuteButtonStyle() {
         binding.btnKakaoMuteToggle?.setImageResource(
             if (kakaoMuted) android.R.drawable.ic_lock_silent_mode else android.R.drawable.ic_lock_silent_mode_off
@@ -655,6 +723,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     private fun finishGuidance() {
         KakaoRouteDataRepository.reset()
+        cancelNavNotification()
         try {
             KNSDK.sharedGuidance()?.stop()
         } catch (e: Exception) {
@@ -763,6 +832,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     override fun onDestroy() {
         super.onDestroy()
+        cancelNavNotification()
         hudPollHandler.removeCallbacksAndMessages(null)
         try {
             locationManager?.removeUpdates(this)
