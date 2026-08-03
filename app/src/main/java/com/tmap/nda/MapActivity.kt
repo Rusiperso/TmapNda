@@ -682,14 +682,14 @@ class MapActivity : AppCompatActivity() {
                     setBackgroundColor(android.graphics.Color.parseColor("#181818"))
                     setPadding(24, 24, 12, 24)
                 }
-                val text = android.widget.TextView(this@MapActivity).apply {
+                val nameText = android.widget.TextView(this@MapActivity).apply {
                     text = if (entry.addr.isNotBlank()) "${entry.name}\n${entry.addr}" else entry.name
                     setTextColor(android.graphics.Color.WHITE)
                     layoutParams = android.widget.LinearLayout.LayoutParams(
                         0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
                     )
                 }
-                val delete = android.widget.TextView(this@MapActivity).apply {
+                val deleteText = android.widget.TextView(this@MapActivity).apply {
                     text = "✕"
                     setTextColor(android.graphics.Color.parseColor("#AAAAAA"))
                     setPadding(24, 0, 24, 0)
@@ -703,8 +703,8 @@ class MapActivity : AppCompatActivity() {
                         }
                     }
                 }
-                row.addView(text)
-                row.addView(delete)
+                row.addView(nameText)
+                row.addView(deleteText)
                 return row
             }
         }
