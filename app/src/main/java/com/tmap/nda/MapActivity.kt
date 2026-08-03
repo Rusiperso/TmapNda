@@ -139,6 +139,15 @@ class MapActivity : AppCompatActivity() {
         binding = ActivityMapBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // v1.9: 좌측 HUD 패널의 고정 220dp를 화면 실측 폭 비율로 대체 - 이전에 시도했던
+        // UiAutoScaler(전체 뷰트리 일괄 스케일링, 아래 참고)는 태블릿에서 과확대로 겹침을
+        // 유발해서 롤백했었는데, 이번엔 "패널 폭 + 그에 맞춰야 하는 marginStart들"만 좁게
+        // 타겟해서 계산하므로 그 문제가 재발하지 않음. #문제시 원복
+        HudScale.applyPanelWidth(
+            binding.llLeftHudPanel,
+            listOf(binding.llSearchPanel, binding.llGuidanceBar, binding.flKakaoOverlay, binding.llLaneSignalBar)
+        )
+
         // UiAutoScaler(전체 뷰트리 padding/margin/고정크기 일괄 스케일링)는
         // 태블릿(sw~940dp)에서 1.8배가 그대로 곱해지며 좌측 패널 폭을 넘어
         // 아이콘 겹침/텍스트 잘림을 유발함이 확인되어 즉시 롤백함.

@@ -178,6 +178,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         binding = ActivityKakaoNaviBinding.inflate(layoutInflater)
         setContentView(binding.root)
         naviView = binding.naviView
+
+        // v1.9: MapActivity와 동일하게 고정 220dp 대신 화면 실측 폭 비율로 적용. #문제시 원복
+        HudScale.applyPanelWidth(
+            binding.llLeftHudPanel,
+            listOf(binding.naviView, binding.llLaneSignalBar)
+        )
+
         binding.btnStopKakaoGuidance.setOnClickListener { finishGuidance() }
 
         try {
