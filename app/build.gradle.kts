@@ -12,8 +12,8 @@ android {
         applicationId = "com.tmap.nda"
         minSdk = 26
         targetSdk = 36
-        versionCode = 108
-        versionName = "1.9"
+        versionCode = 109
+        versionName = "2.0"
     }
 
     signingConfigs {
@@ -106,6 +106,9 @@ dependencies {
   implementation("com.tmapmobility.tmap:tmap-ui-sdk:1.0.0.0146")
   // 카카오내비 SDK - 검색/경로계산/실시간안내를 카카오로 우회 (Tmap 화면 위에 오버레이로 얹음)
   implementation("com.kakaomobility.knsdk:knsdk_ui:1.12.8-hotfix02")
+
+  // v2.0: Android Auto 차량 클러스터/HUD로 회전·거리·ETA Trip 정보 전송
+  implementation("androidx.car.app:app:1.7.0")
 
   // for vsm sdk
   implementation("com.google.flatbuffers:flatbuffers-java:1.11.0")
