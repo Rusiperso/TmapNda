@@ -1,11 +1,31 @@
 package com.tmap.nda
 
+import java.util.concurrent.CopyOnWriteArraySet
+
+data class KakaoRouteSnapshot(
+    val isActive: Boolean,
+    val lastUpdateTime: Long,
+    val tbtDist: Int,
+    val tbtTurnType: Int,
+    val tbtMainText: String,
+    val remainDist: Int,
+    val remainTime: Int,
+    val roadName: String,
+    val rgCodeName: String,
+    val directionAngle: Int,
+    val destinationName: String
+)
+
 /**
  * KakaoGuidanceDelegate가 실제 카카오 안내 데이터(방향/거리/ETA/안전정보)를 채워두면,
  * UdpSenderService가 화면(Tmap/Kakao)과 무관하게 이 값을 읽어 road_limit UDP 스키마로
  * openpilot에 보낼 수 있게 하는 다리 역할. 특정 fork(당근파일럿 등)에 종속되지 않고,
  * 어떤 openpilot fork든 UDP를 받기만 하면 값 자체는 항상 나가도록 하는 게 목적 -
  * 실제로 화면에 표시되는지는 그 fork의 UI 코드에 달려있음. #문제시 원복
+ *
+ * v2.0: Android Auto HUD(TmapNdaCarAppService)도 같은 데이터를 구독할 수 있도록
+ * addListener/removeListener 리스너 패턴 추가. 기존 필드는 그대로 유지해서
+ * UdpSenderService의 직접 필드 접근과 호환됨. #문제시 원복
  */
 object KakaoRouteDataRepository {
     @Volatile var isActive: Boolean = false
@@ -22,26 +42,72 @@ object KakaoRouteDataRepository {
 
     @Volatile var roadName: String = ""
 
+    // Android Auto Maneuver 변환에 필요한 Kakao 원본값 (v2.0, 아직 채워주는 쪽 없음 - #TODO)
+    @Volatile var rgCodeName: String = ""
+    @Volatile var directionAngle: Int = 0
+    @Volatile var destinationName: String = "목적지"
+
     // 안전정보(스쿨존/구간단속 등) - openpilot cam_type 체계와 최대한 맞춤(추정치, 검증 필요)
     @Volatile var safetyType: Int = 0
     @Volatile var safetySpeedLimit: Int = 0
     @Volatile var safetyDist: Int = 0
 
+    private val listeners = CopyOnWriteArraySet<(KakaoRouteSnapshot) -> Unit>()
+
     fun reset() {
         isActive = false
+        lastUpdateTime = 0
         tbtDist = 0
         tbtTurnType = 0
         tbtMainText = ""
         remainDist = 0
         remainTime = 0
         roadName = ""
+        rgCodeName = ""
+        directionAngle = 0
+        destinationName = "목적지"
         safetyType = 0
         safetySpeedLimit = 0
         safetyDist = 0
+        notifyListeners(snapshot())
     }
 
     /** 마지막 갱신이 너무 오래됐으면(연결 끊김/화면 전환 중) 신뢰 안 함 */
     fun isFresh(maxAgeMs: Long = 5000L): Boolean {
         return isActive && (System.currentTimeMillis() - lastUpdateTime) < maxAgeMs
+    }
+
+    fun snapshot(): KakaoRouteSnapshot = KakaoRouteSnapshot(
+        isActive = isActive,
+        lastUpdateTime = lastUpdateTime,
+        tbtDist = tbtDist,
+        tbtTurnType = tbtTurnType,
+        tbtMainText = tbtMainText,
+        remainDist = remainDist,
+        remainTime = remainTime,
+        roadName = roadName,
+        rgCodeName = rgCodeName,
+        directionAngle = directionAngle,
+        destinationName = destinationName
+    )
+
+    /** v2.0: KakaoGuidanceDelegate가 필드를 갱신한 뒤 이 함수를 호출해주면 HUD 등 구독자에게 알림 */
+    fun publishUpdated() {
+        notifyListeners(snapshot())
+    }
+
+    fun addListener(listener: (KakaoRouteSnapshot) -> Unit) {
+        listeners.add(listener)
+        runCatching { listener(snapshot()) }
+    }
+
+    fun removeListener(listener: (KakaoRouteSnapshot) -> Unit) {
+        listeners.remove(listener)
+    }
+
+    private fun notifyListeners(value: KakaoRouteSnapshot) {
+        listeners.forEach { listener ->
+            runCatching { listener(value) }
+        }
     }
 }
