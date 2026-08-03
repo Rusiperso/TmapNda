@@ -740,8 +740,13 @@ class MapActivity : AppCompatActivity() {
     }
 
     private fun promptForKakaoKeyThenSearch(query: String) {
-        val input = android.widget.EditText(this)
-        input.hint = "카카오 REST API 키 (카카오 디벨로퍼스 > 내 앱 > REST API 키)"
+        // v1.9: 여기만 setTextColor를 안 넣어놔서 검은 배경에 검은 글씨로 남아있던
+        // 진짜 원인 - 다른 다이얼로그처럼 흰 글씨로 명시. #문제시 원복
+        val input = android.widget.EditText(this).apply {
+            setTextColor(android.graphics.Color.WHITE)
+            setHintTextColor(android.graphics.Color.parseColor("#AAAAAA"))
+            hint = "카카오 REST API 키 (카카오 디벨로퍼스 > 내 앱 > REST API 키)"
+        }
         android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("카카오 로컬 검색 API 키 입력")
             .setMessage("목적지 검색을 쓰려면 본인의 카카오 REST API 키가 필요해.\n각자 본인 키를 써야 검색 할당량을 나눠 쓰지 않아.\n(https://developers.kakao.com 에서 무료 발급)")
