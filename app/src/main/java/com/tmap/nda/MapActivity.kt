@@ -542,30 +542,76 @@ class MapActivity : AppCompatActivity() {
     // 옵션 A: 카카오 REST API 키를 사용자별로 입력받아 SharedPreferences에 저장.
     // (앱에 고정 키를 박아넣으면 모든 설치자가 같은 키/같은 할당량을 공유하게 되는 문제 방지)
     // ===== 목적지 검색 이력 =====
+    // v2.1: 이력 클릭 시 "재검색"이 아니라 "그 장소로 바로 길안내"가 되려면 좌표까지
+    // 저장해야 함. 그래서 검색어(String)가 아니라 실제 선택된 장소(HistoryEntry)를 저장.
+    // 기존엔 검색 시도 시점(performDestinationSearch 진입 시)에 저장했는데, 이제는
+    // "사용자가 실제로 어떤 결과를 골랐을 때"만 저장함(재검색 방지 목적과도 맞음). #문제시 원복
     private val SEARCH_HISTORY_KEY = "search_history_json"
     private val SEARCH_HISTORY_MAX = 15
 
-    private fun getSearchHistory(): List<String> {
+    data class HistoryEntry(val name: String, val addr: String, val lat: Double, val lon: Double)
+
+    private fun getSearchHistory(): List<HistoryEntry> {
         val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         val raw = sharedPref.getString(SEARCH_HISTORY_KEY, "[]") ?: "[]"
         return try {
             val arr = org.json.JSONArray(raw)
-            (0 until arr.length()).map { arr.getString(it) }
+            (0 until arr.length()).mapNotNull { i ->
+                val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                HistoryEntry(
+                    o.optString("name"),
+                    o.optString("addr"),
+                    o.optDouble("lat"),
+                    o.optDouble("lon")
+                )
+            }
         } catch (e: Exception) {
             emptyList()
         }
     }
 
-    private fun saveSearchHistory(query: String) {
-        if (query.isBlank()) return
+    private fun saveSearchHistory(entry: HistoryEntry) {
+        if (entry.name.isBlank()) return
         val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         val current = getSearchHistory().toMutableList()
-        current.remove(query) // 중복 있으면 지우고 맨 앞으로
-        current.add(0, query)
+        current.removeAll { it.name == entry.name && it.lat == entry.lat && it.lon == entry.lon }
+        current.add(0, entry)
         while (current.size > SEARCH_HISTORY_MAX) current.removeAt(current.size - 1)
         val arr = org.json.JSONArray()
-        current.forEach { arr.put(it) }
+        current.forEach {
+            arr.put(
+                org.json.JSONObject()
+                    .put("name", it.name)
+                    .put("addr", it.addr)
+                    .put("lat", it.lat)
+                    .put("lon", it.lon)
+            )
+        }
         sharedPref.edit().putString(SEARCH_HISTORY_KEY, arr.toString()).apply()
+        updateRecentSearchPanel()
+    }
+
+    private fun deleteSearchHistoryEntry(entry: HistoryEntry) {
+        val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        val current = getSearchHistory().toMutableList()
+        current.removeAll { it.name == entry.name && it.lat == entry.lat && it.lon == entry.lon }
+        val arr = org.json.JSONArray()
+        current.forEach {
+            arr.put(
+                org.json.JSONObject()
+                    .put("name", it.name)
+                    .put("addr", it.addr)
+                    .put("lat", it.lat)
+                    .put("lon", it.lon)
+            )
+        }
+        sharedPref.edit().putString(SEARCH_HISTORY_KEY, arr.toString()).apply()
+        updateRecentSearchPanel()
+    }
+
+    private fun clearSearchHistory() {
+        val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        sharedPref.edit().putString(SEARCH_HISTORY_KEY, "[]").apply()
         updateRecentSearchPanel()
     }
 
@@ -586,21 +632,21 @@ class MapActivity : AppCompatActivity() {
         }
         panel.visibility = View.VISIBLE
         rows.forEachIndexed { i, tv ->
-            val text = history.getOrNull(i)
+            val entry = history.getOrNull(i)
             if (tv == null) return@forEachIndexed
-            if (text == null) {
+            if (entry == null) {
                 tv.visibility = View.GONE
             } else {
                 tv.visibility = View.VISIBLE
-                tv.text = text
+                tv.text = entry.name
                 tv.setOnClickListener {
                     // 예전엔 클릭해도 화면상 반응이 전혀 안 보여서 사용자가 연타 -> 로그에서
                     // 같은 검색이 2초 안에 12번씩 중복 호출되는 게 확인됨(requestRoute NPE와 별개 문제).
                     // 탭 즉시 시각적 피드백 + 짧은 시간 재클릭 방지.
                     tv.isEnabled = false
                     tv.alpha = 0.5f
-                    binding.etDestination?.setText(text)
-                    performDestinationSearch(text)
+                    // v2.1: 재검색이 아니라 저장된 좌표로 바로 길안내 시작 (4번)
+                    startKakaoOverlayGuidance(entry.name, entry.lat, entry.lon)
                     tv.postDelayed({
                         tv.isEnabled = true
                         tv.alpha = 1.0f
@@ -613,63 +659,114 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    // "+ 더보기" 클릭 시 전체 이력을 중앙 다이얼로그로 표시
+    // "+ 더보기" 클릭 시 전체 이력을 중앙 다이얼로그로 표시.
+    // v2.1: 전체삭제 버튼 + 항목별 개별삭제(✕) 추가, 클릭 시 재검색 대신 바로 길안내. #문제시 원복
     private fun showFullSearchHistoryDialog() {
-        val history = getSearchHistory()
-        if (history.isEmpty()) return
-        // 이전엔 플랫폼 android.app.AlertDialog + Theme.MaterialComponents 테마 조합이라
-        // 텍스트/배경 색상이 제대로 안 먹어서 다이얼로그가 까맣게(또는 텍스트가 안 보이게) 뜨는
-        // 문제가 있었음. 배경/텍스트 색을 아이템 레벨에서 명시적으로 강제해서 테마에 안 흔들리게 함.
-        val adapter = object : android.widget.ArrayAdapter<String>(
-            this, android.R.layout.simple_list_item_1, history
-        ) {
+        var history = getSearchHistory()
+        if (history.isEmpty()) {
+            Toast.makeText(this, "검색 이력이 없습니다", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        lateinit var dialog: android.app.AlertDialog
+        lateinit var listView: android.widget.ListView
+
+        fun buildAdapter() = object : android.widget.BaseAdapter() {
+            override fun getCount() = history.size
+            override fun getItem(position: Int) = history[position]
+            override fun getItemId(position: Int) = position.toLong()
             override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
-                val view = super.getView(position, convertView, parent)
-                (view as? android.widget.TextView)?.apply {
-                    setTextColor(android.graphics.Color.WHITE)
+                val entry = history[position]
+                val row = android.widget.LinearLayout(this@MapActivity).apply {
+                    orientation = android.widget.LinearLayout.HORIZONTAL
                     setBackgroundColor(android.graphics.Color.parseColor("#181818"))
-                    setPadding(24, 24, 24, 24)
+                    setPadding(24, 24, 12, 24)
                 }
-                return view
+                val text = android.widget.TextView(this@MapActivity).apply {
+                    text = if (entry.addr.isNotBlank()) "${entry.name}\n${entry.addr}" else entry.name
+                    setTextColor(android.graphics.Color.WHITE)
+                    layoutParams = android.widget.LinearLayout.LayoutParams(
+                        0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                    )
+                }
+                val delete = android.widget.TextView(this@MapActivity).apply {
+                    text = "✕"
+                    setTextColor(android.graphics.Color.parseColor("#AAAAAA"))
+                    setPadding(24, 0, 24, 0)
+                    setOnClickListener {
+                        deleteSearchHistoryEntry(entry)
+                        history = getSearchHistory()
+                        if (history.isEmpty()) {
+                            dialog.dismiss()
+                        } else {
+                            listView.adapter = buildAdapter()
+                        }
+                    }
+                }
+                row.addView(text)
+                row.addView(delete)
+                return row
             }
         }
-        val listView = android.widget.ListView(this)
-        listView.adapter = adapter
+
+        listView = android.widget.ListView(this)
+        listView.adapter = buildAdapter()
         listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
-        val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+
+        dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("검색 이력 전체")
             .setView(listView)
+            .setPositiveButton("전체 삭제") { _, _ ->
+                android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("검색 이력 전체 삭제")
+                    .setMessage("검색 이력을 전부 삭제할까요?")
+                    .setPositiveButton("삭제") { _, _ -> clearSearchHistory() }
+                    .setNegativeButton("취소", null)
+                    .show()
+            }
             .setNegativeButton("닫기", null)
             .create()
+
         listView.setOnItemClickListener { _, _, position, _ ->
             val picked = history[position]
-            binding.etDestination?.setText(picked)
             dialog.dismiss()
-            performDestinationSearch(picked)
+            // v2.1: 재검색이 아니라 저장된 좌표로 바로 길안내 시작 (4번)
+            startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon)
         }
         dialog.show()
         // 다이얼로그 창 배경 자체도 명시적으로 지정 (테마 상속으로 까맣게 뜨는 것 방지)
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
     }
 
+    // v2.1: 인라인 리스트(lvSearchResults) 대신 카카오 화면과 동일한 팝업 다이얼로그 방식으로
+    // 변경 - 인라인 리스트가 지도 화면 절반 가까이 가리던 문제(6번) 해결. 클릭 시 재검색 대신
+    // 바로 길안내 시작(4번). #문제시 원복
     private fun showSearchHistory() {
         val history = getSearchHistory()
-        val listView = binding.lvSearchResults ?: return
-        if (history.isEmpty()) {
-            listView.visibility = View.GONE
-            return
-        }
-        listView.adapter = darkTextAdapter(history)
-        listView.visibility = View.VISIBLE
+        binding.lvSearchResults?.visibility = View.GONE
+        if (history.isEmpty()) return
+
+        val listView = android.widget.ListView(this)
+        listView.adapter = darkTextAdapter(history.map { if (it.addr.isNotBlank()) "${it.name}\n${it.addr}" else it.name })
+        listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
+        listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
+        listView.dividerHeight = 1
+
+        val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("최근 검색")
+            .setView(listView)
+            .setNegativeButton("닫기", null)
+            .create()
         listView.setOnItemClickListener { _, _, position, _ ->
             val picked = history[position]
-            binding.etDestination?.setText(picked)
-            binding.etDestination?.setSelection(picked.length)
-            listView.visibility = View.GONE
-            performDestinationSearch(picked)
+            dialog.dismiss()
+            startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon)
         }
+        dialog.setOnDismissListener { binding.etDestination?.clearFocus() }
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
     }
 
     // v1.7: 검색결과/이력 목록에 android.R.layout.simple_list_item_1을 그대로 쓰면 앱 기본
@@ -809,7 +906,7 @@ class MapActivity : AppCompatActivity() {
         binding.tvSearchStatus?.text = "검색 중: $query"
         NavLogger.d(this, "performDestinationSearch query=$query")
         binding.lvSearchResults?.visibility = View.GONE
-        saveSearchHistory(query)
+        // v2.1: 이력은 "검색 시도"가 아니라 "실제로 고른 결과"에만 저장(아래 다이얼로그 클릭 시). #문제시 원복
 
         val restKey = getUserKakaoKey()
         if (restKey.isBlank()) {
@@ -850,10 +947,9 @@ class MapActivity : AppCompatActivity() {
                     // v1.7: "S Oil 검색하면 평택시 지산동 Soil 00점, 000점처럼 여러개 나와야 하는데
                     // 첫번째 결과로 바로 꽂힘" 지적 - 항상 documents[0]으로 바로 길안내를 시작하던
                     // 걸 없애고, 결과 목록을 보여준 뒤 사용자가 직접 골라서 시작하도록 변경. #문제시 원복
-                    data class Hit(val name: String, val addr: String, val lat: Double, val lon: Double)
                     val hits = (0 until documents.length()).map { idx ->
                         val d = documents.getJSONObject(idx)
-                        Hit(
+                        HistoryEntry(
                             d.optString("place_name", query),
                             d.optString("road_address_name", d.optString("address_name", "")),
                             d.optDouble("y"),
@@ -865,16 +961,28 @@ class MapActivity : AppCompatActivity() {
                     runOnUiThread {
                         binding.llSearchPanel?.visibility = View.VISIBLE
                         binding.tvSearchStatus?.text = "검색 결과 ${hits.size}건 - 목적지를 선택하세요"
-                        val listView = binding.lvSearchResults ?: return@runOnUiThread
+                        // v2.1: 카카오 화면과 동일하게 결과 목록을 인라인 대신 팝업 다이얼로그로
+                        // 표시 - 인라인 리스트가 지도 화면을 가리던 문제(1·6번) 해결. #문제시 원복
+                        val listView = android.widget.ListView(this@MapActivity)
                         val labels = hits.map { h -> if (h.addr.isNotBlank()) "${h.name}\n${h.addr}" else h.name }
                         listView.adapter = darkTextAdapter(labels)
-                        listView.visibility = View.VISIBLE
+                        listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
+                        listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
+                        listView.dividerHeight = 1
+                        val dialog = android.app.AlertDialog.Builder(this@MapActivity, android.R.style.Theme_Material_Dialog_Alert)
+                            .setTitle("검색 결과 ${hits.size}건")
+                            .setView(listView)
+                            .setNegativeButton("취소", null)
+                            .create()
                         listView.setOnItemClickListener { _, _, position, _ ->
                             val picked = hits[position]
-                            listView.visibility = View.GONE
+                            dialog.dismiss()
                             binding.tvSearchStatus?.text = "찾음: ${picked.name} (${picked.lat}, ${picked.lon}) - 경로요청 시도"
+                            saveSearchHistory(picked)
                             startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon)
                         }
+                        dialog.show()
+                        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
                     }
                 }
             }
