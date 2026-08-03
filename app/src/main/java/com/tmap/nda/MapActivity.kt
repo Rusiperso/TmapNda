@@ -810,10 +810,21 @@ class MapActivity : AppCompatActivity() {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
+        // v2.1: "이동식카메라는 감속을 안 했으면 좋겠다" - 위 옵션(다른 fork에 감속을
+        // 추가해주는 옵션)과는 정반대 성격. 이건 fork 종류와 무관하게 이동식카메라
+        // 감속 자체를 원천 차단하는 옵션 - cam_type을 openpilot에 아예 안 보내버리면
+        // 당근파일럿이든 다른 fork든 이동식카메라로 인식을 못 해서 감속이 안 걸림. #문제시 원복
+        val disableMobileCamCheckBox = android.widget.CheckBox(this).apply {
+            text = "이동식카메라 감속 끄기 (모든 openpilot fork 공통)"
+            isChecked = pref.getBoolean("mobile_cam_slowdown_disabled", false)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
         val container = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             addView(checkBox)
             addView(camCheckBox)
+            addView(disableMobileCamCheckBox)
             addView(unlockMapTouchCheckBox)
         }
         android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
@@ -823,6 +834,7 @@ class MapActivity : AppCompatActivity() {
                 pref.edit()
                     .putBoolean("over_speed_warning_enabled", checkBox.isChecked)
                     .putBoolean("mobile_cam_slowdown_enabled", camCheckBox.isChecked)
+                    .putBoolean("mobile_cam_slowdown_disabled", disableMobileCamCheckBox.isChecked)
                     .putBoolean("map_touch_unlocked", unlockMapTouchCheckBox.isChecked)
                     .apply()
                 applyMapTouchLockState(unlockMapTouchCheckBox.isChecked)
