@@ -104,7 +104,17 @@ object NavLogger {
             type = "text/plain"
             putExtra(Intent.EXTRA_EMAIL, arrayOf("jaeeok.cho@icloud.com"))
             putExtra(Intent.EXTRA_SUBJECT, "TmapNda 로그 (${files.size}개 파일)")
-            putExtra(Intent.EXTRA_TEXT, "TmapNda 앱에서 자동 첨부된 로그입니다. (회전분 포함 총 ${files.size}개)")
+            putExtra(
+            Intent.EXTRA_TEXT,
+            """
+            1. 오픈 카톡 닉네임:
+            2. 브렌치명:
+            3. 브렌치 주소:
+            4. 로그 보낸 메일 주소:
+
+            첨부 로그: 총 ${files.size}개
+            """.trimIndent()
+        )
             putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
