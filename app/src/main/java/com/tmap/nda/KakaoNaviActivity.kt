@@ -13,6 +13,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import com.kakaomobility.knsdk.KNLanguageType
 import com.kakaomobility.knsdk.KNRouteAvoidOption
 import com.kakaomobility.knsdk.KNRoutePriority
@@ -119,6 +122,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         super.onCreate(savedInstanceState)
         NavLogger.appContext = applicationContext
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
 
         val destName = intent.getStringExtra("dest_name")
         val destLat = intent.getDoubleExtra("dest_lat", Double.NaN)
@@ -179,11 +183,24 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         setContentView(binding.root)
         naviView = binding.naviView
 
-        // v1.9: MapActivity와 동일하게 고정 220dp 대신 화면 실측 폭 비율로 적용. #문제시 원복
-        HudScale.applyPanelWidth(
+        // 카카오 지도도 Tmap 화면과 같은 실제 window 기준 자동 폭을 사용한다.
+        // 세로 레이아웃에서는 panelView가 null이므로 지도에 잘못된 왼쪽 여백을 넣지 않는다.
+        HudScale.install(
+            binding.root,
             binding.llLeftHudPanel,
             listOf(binding.naviView, binding.llLaneSignalBar)
         )
+
+        // 차량 내비의 시스템 바/노치/커브드 가장자리 안전영역을 SDK 지도와 HUD 모두에 반영.
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+            val safeArea = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or
+                    WindowInsetsCompat.Type.displayCutout()
+            )
+            view.setPadding(safeArea.left, safeArea.top, safeArea.right, safeArea.bottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(binding.root)
 
         binding.btnStopKakaoGuidance.setOnClickListener { finishGuidance() }
 

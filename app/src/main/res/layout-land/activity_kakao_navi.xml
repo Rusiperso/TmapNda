@@ -13,15 +13,29 @@
         android:layout_height="match_parent"
         android:layout_marginStart="220dp" />
 
-    <LinearLayout
+    <FrameLayout
         android:id="@+id/llLeftHudPanel"
         android:layout_width="220dp"
         android:layout_height="match_parent"
         android:layout_gravity="start"
         android:elevation="20dp"
-        android:orientation="vertical"
-        android:background="#080808"
-        android:paddingHorizontal="12dp">
+        android:background="#080808">
+
+        <!-- 낮은 차량용 화면에서도 정보/조작 버튼이 잘리지 않도록 패널만 스크롤 허용 -->
+        <ScrollView
+            android:id="@+id/svLeftHudContent"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:overScrollMode="never"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/llLeftHudContent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="12dp">
 
         <!-- 1. 속도계 -->
         <LinearLayout
@@ -48,13 +62,19 @@
 
                 <TextView
                     android:id="@+id/tvCurrentSpeed"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
+                    android:layout_weight="1"
                     android:text="0"
                     android:textColor="#FFFFFF"
                     android:textSize="60sp"
                     android:textStyle="bold"
-                    android:letterSpacing="-0.05" />
+                    android:letterSpacing="-0.05"
+                    android:maxLines="1"
+                    android:autoSizeTextType="uniform"
+                    android:autoSizeMinTextSize="36sp"
+                    android:autoSizeMaxTextSize="60sp"
+                    android:autoSizeStepGranularity="2sp" />
 
                 <LinearLayout
                     android:layout_width="wrap_content"
@@ -144,11 +164,14 @@
 
                 <TextView
                     android:id="@+id/tvConnectionStatus"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
+                    android:layout_weight="1"
                     android:text="연결 대기"
                     android:textColor="#555555"
-                    android:textSize="10sp" />
+                    android:textSize="10sp"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
             </LinearLayout>
         </LinearLayout>
 
@@ -197,7 +220,11 @@
                     android:textStyle="bold"
                     android:maxLines="1"
                     android:singleLine="true"
-                    android:ellipsize="none" />
+                    android:ellipsize="none"
+                    android:autoSizeTextType="uniform"
+                    android:autoSizeMinTextSize="14sp"
+                    android:autoSizeMaxTextSize="22sp"
+                    android:autoSizeStepGranularity="1sp" />
 
                 <TextView
                     android:id="@+id/tvSdiSpeedLimit"
@@ -305,6 +332,8 @@
             android:text="IP: -"
             android:textColor="#333333"
             android:textSize="9sp"
+            android:maxLines="1"
+            android:ellipsize="middle"
             android:layout_marginBottom="4dp" />
 
         <View android:layout_width="0dp" android:layout_height="0dp" android:layout_weight="1" />
@@ -397,7 +426,9 @@
             android:textSize="9sp"
             android:layout_marginBottom="10dp" />
 
-    </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+    </FrameLayout>
 
     <Button
         android:id="@+id/btnStopKakaoGuidance"
