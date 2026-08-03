@@ -139,11 +139,10 @@ class MapActivity : AppCompatActivity() {
         binding = ActivityMapBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // v1.9: 좌측 HUD 패널의 고정 220dp를 화면 실측 폭 비율로 대체 - 이전에 시도했던
-        // UiAutoScaler(전체 뷰트리 일괄 스케일링, 아래 참고)는 태블릿에서 과확대로 겹침을
-        // 유발해서 롤백했었는데, 이번엔 "패널 폭 + 그에 맞춰야 하는 marginStart들"만 좁게
-        // 타겟해서 계산하므로 그 문제가 재발하지 않음. #문제시 원복
-        HudScale.applyPanelWidth(
+        // 현재 window의 실사용 영역(dp), density, 화면비를 기준으로 가로 HUD 폭을 계산한다.
+        // 세로 화면에는 llLeftHudPanel이 없으므로 검색창/지도 margin을 건드리지 않는다.
+        HudScale.install(
+            binding.root,
             binding.llLeftHudPanel,
             listOf(binding.llSearchPanel, binding.llGuidanceBar, binding.flKakaoOverlay, binding.llLaneSignalBar)
         )
@@ -165,7 +164,10 @@ class MapActivity : AppCompatActivity() {
         val minBottomSafeAreaPx = (36 * resources.displayMetrics.density).toInt()
 
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { v, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val systemBars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or
+                    WindowInsetsCompat.Type.displayCutout()
+            )
             // 지도(root)는 좌/상/우만 인셋 적용, 하단은 지도가 풀스크린으로 남도록 0 유지
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, 0)
 
@@ -2418,4 +2420,3 @@ class MapActivity : AppCompatActivity() {
         }
     }
 }
-
