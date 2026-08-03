@@ -149,6 +149,35 @@ class KakaoGuidanceDelegate(
             } catch (e: Exception) { "[경로추적] 요약 실패: ${e.message}" }
             NavLogger.d(context, summary)
         }
+
+        // 현재 카카오 경로와 현재 위치를 기준으로 목적지까지 남은 거리/시간 계산
+        try {
+            val currentRoute = guidance.routesOnGuide?.firstOrNull()
+            val currentLocation = locationGuide.location
+
+            if (currentRoute != null && currentLocation != null) {
+                val remainDist = currentRoute.remainDistFromLocation(currentLocation)
+                val remainTime = currentRoute.remainTimeFromLocation(currentLocation)
+
+                if (remainDist > 0 && remainTime > 0) {
+                    KakaoRouteDataRepository.isActive = true
+                    KakaoRouteDataRepository.lastUpdateTime = System.currentTimeMillis()
+                    KakaoRouteDataRepository.remainDist = remainDist
+                    KakaoRouteDataRepository.remainTime = remainTime
+
+                    NavLogger.d(
+                        context,
+                        "[카카오 ETA] remainDist=${remainDist}m remainTime=${remainTime}s"
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            NavLogger.e(
+                context,
+                "[카카오 ETA] 남은 거리/시간 계산 실패: ${e.message}"
+            )
+        }
+
         naviView?.guidanceDidUpdateLocation(guidance, locationGuide)
     }
 
@@ -220,8 +249,12 @@ class KakaoGuidanceDelegate(
             KakaoRouteDataRepository.tbtDist = nextTbtDist
             KakaoRouteDataRepository.tbtTurnType = mapKakaoTurnTypeToOpenpilot(turnTypeRaw)
             KakaoRouteDataRepository.tbtMainText = roadNameNow ?: ""
-            KakaoRouteDataRepository.remainDist = remainDistNow
-            KakaoRouteDataRepository.remainTime = remainTimeNow
+            // 리플렉션으로 값을 찾지 못해 0이 나온 경우,
+            // guidanceDidUpdateLocation()에서 계산한 정상값을 덮어쓰지 않음
+            if (remainDistNow > 0 && remainTimeNow > 0) {
+                KakaoRouteDataRepository.remainDist = remainDistNow
+                KakaoRouteDataRepository.remainTime = remainTimeNow
+            }
             KakaoRouteDataRepository.roadName = roadNameNow ?: ""
 
             NavLogger.d(
