@@ -266,17 +266,27 @@ class UdpSenderService : Service() {
                         if (plusJson.has("nSdiBlockDist")) json.put("nSdiPlusBlockDist", plusJson.get("nSdiBlockDist"))
                     }
 
-                    // 목적지 남은 거리 및 소요 시간 처리 (안심주행 모드 대응을 위해 값이 없거나 0이면 더미 값 주입)
-                    val nGoPosDist = bundle.getInt("nGoPosDist", bundle.getInt("remainDistanceToGoPositionInMeter", 0))
-                    val nGoPosTime = bundle.getInt("nGoPosTime", bundle.getInt("remainTimeToGoPositionInSec", 0))
-                    if (nGoPosDist > 0 && nGoPosTime > 0) {
-                        json.put("nGoPosDist", nGoPosDist)
-                        json.put("nGoPosTime", nGoPosTime)
-                    } else {
-                        // 오픈파일럿 HUD TBT 패널을 항상 띄우기 위해 최소 dummy 값 주입
-                        json.put("nGoPosDist", 1)
-                        json.put("nGoPosTime", 1)
-                    }
+                    // 목적지까지 남은 거리(m)와 남은 시간(초)
+                    // 실제 경로값이 없으면 0을 보내 콤마의 도착정보 창이 숨겨지도록 함
+                    val nGoPosDist = bundle.getInt(
+                        "nGoPosDist",
+                        bundle.getInt("remainDistanceToGoPositionInMeter", 0)
+                    )
+
+                    val nGoPosTime = bundle.getInt(
+                        "nGoPosTime",
+                        bundle.getInt("remainTimeToGoPositionInSec", 0)
+                    )
+
+                    json.put(
+                        "nGoPosDist",
+                        if (nGoPosDist > 0 && nGoPosTime > 0) nGoPosDist else 0
+                    )
+
+                    json.put(
+                        "nGoPosTime",
+                        if (nGoPosDist > 0 && nGoPosTime > 0) nGoPosTime else 0
+                    )
 
                     // 상시 안내 텍스트 표시를 위한 필수 TBT 더미 값 주입
                     var tbtDist = json.optInt("nSdiDist", 0)
@@ -604,9 +614,28 @@ class UdpSenderService : Service() {
                     val json = buildNdaRoadLimitJson()
                     val bytes = json.toString().toByteArray(Charsets.UTF_8)
 
+                    // request_gps가 포함된 패킷은 일부 carrot 수신부에서
+                    // 일반 apilot 데이터 처리를 건너뛰므로 별도 패킷으로 분리
+                    val gpsRequestBytes = JSONObject()
+                        .put("request_gps", 1)
+                        .toString()
+                        .toByteArray(Charsets.UTF_8)
+
                     for ((idx, port) in NDA_SEND_PORTS.withIndex()) {
                         try {
+                            // 1. 길안내·안전운전 데이터 전송
                             ndaSendSocket?.send(DatagramPacket(bytes, bytes.size, addr, port))
+
+                            // 2. GPS 요청은 별도 패킷으로 전송
+                            ndaSendSocket?.send(
+                                DatagramPacket(
+                                    gpsRequestBytes,
+                                    gpsRequestBytes.size,
+                                    addr,
+                                    port
+                                )
+                            )
+
                             successCount[idx]++
                         } catch (e: Exception) {
                             failCount[idx]++
@@ -643,7 +672,6 @@ class UdpSenderService : Service() {
     private fun buildNdaRoadLimitJson(): JSONObject {
         val out = JSONObject()
         out.put("active", 1)
-        out.put("request_gps", 1) // 오파 GPS를 역으로 받고 싶으면 계속 요청 유지
 
         try {
             val src = JSONObject(latestPayload)
@@ -693,8 +721,10 @@ class UdpSenderService : Service() {
             roadLimit.put("cam_speed_factor", 1.05)
 
             out.put("road_limit", roadLimit)
+            // 목적지 남은 거리/시간과 TBT 데이터를 콤마에 전달
+            out.put("apilot", src)
         } catch (e: Exception) {
-            // latestPayload가 아직 비어있으면(= "{}") road_limit 없이 active/request_gps만 전송
+            // latestPayload가 아직 비어있으면(= "{}") road_limit 없이 active만 전송
         }
 
         return out
