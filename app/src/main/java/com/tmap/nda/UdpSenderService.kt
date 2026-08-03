@@ -688,16 +688,30 @@ class UdpSenderService : Service() {
             }
 
             var effectiveRoadLimit = src.optInt("nRoadLimitSpeed", 0)
+            var effectiveSdiType = sdiType
+            var effectiveSdiSpeedLimit = sdiSpeedLimit
+
+            // v2.1: "이동식카메라는 감속을 안 했으면 좋겠다" - fork 종류(당근파일럿/그 외)와
+            // 무관하게 이동식카메라 감속 자체를 원천 차단. cam_type을 0으로 보내면 어떤
+            // openpilot fork든 이동식카메라로 인식을 못 해서 그쪽 네이티브 감속 로직이
+            // 아예 안 걸림. #문제시 원복
+            val mobileCamSlowdownDisabled = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .getBoolean("mobile_cam_slowdown_disabled", false)
+            if (mobileCamSlowdownDisabled && sdiType == 7) {
+                effectiveSdiType = 0
+                effectiveSdiSpeedLimit = 0
+            }
 
             // v1.6: 8번 - 당근파일럿 외 다른 fork는 이동식카메라 전용 감속 로직이 없을 수
             // 있어서, TmapNda 자체 옵션(mobile_cam_slowdown_enabled)으로 이동식카메라
             // (sdiType=7) 근처에서 road_limit_speed 자체를 낮춰 보냄 - road_limit_speed를
             // 그냥 따라가는 일반적인 fork라면 별도 카메라 감지 로직 없이도 ACC가 자연히
-            // 느려짐. #문제시 원복
+            // 느려짐. 위의 "감속 끄기" 옵션이 켜져 있으면 이건 자동으로 건너뜀
+            // (effectiveSdiType이 이미 0이라 sdiType==7 조건 자체가 안 맞음). #문제시 원복
             val mobileCamSlowdownEnabled = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 .getBoolean("mobile_cam_slowdown_enabled", false)
-            if (mobileCamSlowdownEnabled && sdiType == 7 && sdiSpeedLimit > 0 && sdiDist in 1..300) {
-                val reduced = minOf(effectiveRoadLimit, sdiSpeedLimit)
+            if (mobileCamSlowdownEnabled && effectiveSdiType == 7 && effectiveSdiSpeedLimit > 0 && sdiDist in 1..300) {
+                val reduced = minOf(effectiveRoadLimit, effectiveSdiSpeedLimit)
                 if (reduced > 0 && reduced < effectiveRoadLimit) {
                     NavLogger.d(this@UdpSenderService, "[NDA] 이동식카메라 감속옵션 적용: $effectiveRoadLimit -> $reduced")
                     effectiveRoadLimit = reduced
@@ -706,8 +720,8 @@ class UdpSenderService : Service() {
 
             roadLimit.put("road_limit_speed", effectiveRoadLimit)
             roadLimit.put("is_highway", false)
-            roadLimit.put("cam_type", sdiType)
-            roadLimit.put("cam_limit_speed", sdiSpeedLimit)
+            roadLimit.put("cam_type", effectiveSdiType)
+            roadLimit.put("cam_limit_speed", effectiveSdiSpeedLimit)
             roadLimit.put("cam_limit_speed_left_dist", sdiDist)
 
             // 구간단속(secondSDIInfo/블록 정보)이 있으면 section_* 로 매핑
