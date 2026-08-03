@@ -245,8 +245,11 @@ class MapActivity : AppCompatActivity() {
         }
 
         // Tmap 지도 터치 무력화: 화면/정보 표시는 그대로, 지도(NavigationFragment)로 가는
-        // 터치 입력만 항상 차단. 해제 수단 없음(의도적).
-        binding.vTouchLockOverlay?.setOnTouchListener { _, _ -> true }
+        // 터치 입력만 차단(기본값). v2.0: 설정에서 "잠금 해제"를 켰으면 통과시킴. #문제시 원복
+        applyMapTouchLockState(
+            getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .getBoolean("map_touch_unlocked", false)
+        )
 
         OpenpilotStateRepository.state.observe(this) { state ->
             binding.tvCarrotVersion.text = state.carrot2
@@ -702,10 +705,19 @@ class MapActivity : AppCompatActivity() {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
+        // v2.0: 지도 핀치줌/드래그를 원하는 사용자를 위한 터치 잠금 해제 옵션.
+        // 기본값은 계속 잠금(false=잠금 유지)이고, 체크하면 지도 터치가 풀림. #문제시 원복
+        val unlockMapTouchCheckBox = android.widget.CheckBox(this).apply {
+            text = "지도 터치 잠금 해제 (핀치줌/드래그 허용)"
+            isChecked = pref.getBoolean("map_touch_unlocked", false)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
         val container = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             addView(checkBox)
             addView(camCheckBox)
+            addView(unlockMapTouchCheckBox)
         }
         android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("앱 설정")
@@ -714,11 +726,23 @@ class MapActivity : AppCompatActivity() {
                 pref.edit()
                     .putBoolean("over_speed_warning_enabled", checkBox.isChecked)
                     .putBoolean("mobile_cam_slowdown_enabled", camCheckBox.isChecked)
+                    .putBoolean("map_touch_unlocked", unlockMapTouchCheckBox.isChecked)
                     .apply()
+                applyMapTouchLockState(unlockMapTouchCheckBox.isChecked)
                 Toast.makeText(this, "저장됨", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("취소", null)
             .show()
+    }
+
+    // v2.0: 잠금 해제 상태면 오버레이가 터치를 그냥 통과시켜서(false 리턴) 지도가 핀치줌/드래그를 받게 함.
+    // 잠금 상태(기본값)면 오버레이가 계속 터치를 소비(true)해서 지도 조작을 차단. #문제시 원복
+    private fun applyMapTouchLockState(unlocked: Boolean) {
+        if (unlocked) {
+            binding.vTouchLockOverlay?.setOnTouchListener { _, _ -> false }
+        } else {
+            binding.vTouchLockOverlay?.setOnTouchListener { _, _ -> true }
+        }
     }
 
     private var lastOverSpeedWarningTime = 0L
