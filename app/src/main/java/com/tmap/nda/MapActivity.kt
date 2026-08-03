@@ -204,16 +204,18 @@ class MapActivity : AppCompatActivity() {
             AutoUpdater.checkForUpdates(this)
         }
 
+        // v1.7: 짧게 누르기가 카카오키 재입력 화면으로 가버려서, 정작 자주 쓸 앱 설정
+        // (속도초과 경고음/이동식카메라 감속 토글)은 길게 눌러야만 보였음 - 아무도
+        // 그걸 몰라서 "설정 창에 그 기능이 안 보인다"는 문의로 이어짐. 우선순위를
+        // 뒤집음: 짧게 누르기 = 앱 설정(토글들), 길게 누르기 = 카카오키 재입력(드묾). #문제시 원복
         binding.btnEditKey.setOnClickListener {
+            showAppSettingsDialog()
+        }
+        binding.btnEditKey.setOnLongClickListener {
             val intent = Intent(this, MainActivity::class.java)
             intent.putExtra("auto_start", false)
             startActivity(intent)
             finish()
-        }
-        // v1.6: '설정' 버튼은 원래 카카오키 재입력용이었는데, 길게 누르면 진짜 앱 설정
-        // (속도초과 경고음 등)이 뜨게 함 - 기존 짧게 누르기 동작은 그대로 유지. #문제시 원복
-        binding.btnEditKey.setOnLongClickListener {
-            showAppSettingsDialog()
             true
         }
 
@@ -404,14 +406,15 @@ class MapActivity : AppCompatActivity() {
         binding.btnOpenSearch?.setOnClickListener {
             // 좌측 HUD 패널에 최근 검색 이력이 항상 보이도록 바뀌어서, 팝업 이력을
             // 따로 볼 필요가 없어짐. 원래 요청대로 1탭 = 바로 음성인식으로 복귀.
+            // v1.8: 음성검색 진입 시 이전에 남아있던 검색이력 목록이 뜨는 문제 방지. #문제시 원복
+            binding.lvSearchResults?.visibility = View.GONE
             binding.llSearchPanel?.visibility = View.VISIBLE
             startVoiceSearch()
         }
         binding.btnOpenSearch?.setOnLongClickListener {
-            // 텍스트로 직접 치고 싶을 때: 길게 누르면 키보드 포커스로 전환.
-            binding.llSearchPanel?.visibility = View.VISIBLE
-            binding.etDestination?.requestFocus()
-            showSearchHistory()
+            // v1.8: "티맵 화면 텍스트검색도 카카오 화면처럼 팝업으로 띄워달라"(8번) - 인라인
+            // 하단바 대신 다이얼로그 방식으로 통일. #문제시 원복
+            showTmapTextSearchDialog()
             true
         }
         binding.etDestination?.setOnFocusChangeListener { _, hasFocus ->
@@ -449,6 +452,24 @@ class MapActivity : AppCompatActivity() {
         binding.btnShareLog?.setOnClickListener {
             shareNavLog()
         }
+    }
+
+    // v1.8: 카카오 화면(showInPlaceSearchDialog)과 동일한 스타일의 팝업. #문제시 원복
+    private fun showTmapTextSearchDialog() {
+        val input = android.widget.EditText(this).apply {
+            hint = "목적지를 입력하세요 (예: 서울역)"
+            setTextColor(android.graphics.Color.WHITE)
+            setHintTextColor(android.graphics.Color.parseColor("#AAAAAA"))
+        }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("목적지 재검색")
+            .setView(input)
+            .setPositiveButton("검색") { _, _ ->
+                val q = input.text.toString().trim()
+                if (q.isNotEmpty()) performDestinationSearch(q)
+            }
+            .setNegativeButton("취소", null)
+            .show()
     }
 
     // 로그 파일을 이메일(jaeeok.cho@icloud.com)로 공유 - 회전되어 쌓여있던 로그까지 전부 한번에 보냄.
@@ -603,7 +624,7 @@ class MapActivity : AppCompatActivity() {
         listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
-        val dialog = android.app.AlertDialog.Builder(this)
+        val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("검색 이력 전체")
             .setView(listView)
             .setNegativeButton("닫기", null)
@@ -626,12 +647,7 @@ class MapActivity : AppCompatActivity() {
             listView.visibility = View.GONE
             return
         }
-        val adapter = android.widget.ArrayAdapter(
-            this,
-            android.R.layout.simple_list_item_1,
-            history
-        )
-        listView.adapter = adapter
+        listView.adapter = darkTextAdapter(history)
         listView.visibility = View.VISIBLE
         listView.setOnItemClickListener { _, _, position, _ ->
             val picked = history[position]
@@ -639,6 +655,24 @@ class MapActivity : AppCompatActivity() {
             binding.etDestination?.setSelection(picked.length)
             listView.visibility = View.GONE
             performDestinationSearch(picked)
+        }
+    }
+
+    // v1.7: 검색결과/이력 목록에 android.R.layout.simple_list_item_1을 그대로 쓰면 앱 기본
+    // 테마(Light)의 글자색(검정)이 어두운 패널 배경(#EE111111 등) 위에서 안 보이는 문제가
+    // 있었음(사용자 지적: "텍스트 검색 시 뒷 배경색과 동일해서 텍스트 안보임"). 글자색을
+    // 명시적으로 흰색으로 지정하는 어댑터로 교체. #문제시 원복
+    private fun darkTextAdapter(items: List<String>): android.widget.ArrayAdapter<String> {
+        return object : android.widget.ArrayAdapter<String>(
+            this, android.R.layout.simple_list_item_1, android.R.id.text1, items
+        ) {
+            override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
+                val view = super.getView(position, convertView, parent)
+                val tv = view.findViewById<android.widget.TextView>(android.R.id.text1)
+                tv.setTextColor(android.graphics.Color.WHITE)
+                tv.setPadding(24, 20, 24, 20)
+                return view
+            }
         }
     }
 
@@ -662,7 +696,7 @@ class MapActivity : AppCompatActivity() {
             addView(checkBox)
             addView(camCheckBox)
         }
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("앱 설정")
             .setView(container)
             .setPositiveButton("저장") { _, _ ->
@@ -708,7 +742,7 @@ class MapActivity : AppCompatActivity() {
     private fun promptForKakaoKeyThenSearch(query: String) {
         val input = android.widget.EditText(this)
         input.hint = "카카오 REST API 키 (카카오 디벨로퍼스 > 내 앱 > REST API 키)"
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("카카오 로컬 검색 API 키 입력")
             .setMessage("목적지 검색을 쓰려면 본인의 카카오 REST API 키가 필요해.\n각자 본인 키를 써야 검색 할당량을 나눠 쓰지 않아.\n(https://developers.kakao.com 에서 무료 발급)")
             .setView(input)
@@ -773,16 +807,34 @@ class MapActivity : AppCompatActivity() {
                         runOnUiThread { binding.tvSearchStatus?.text = "검색 결과 없음: $query" }
                         return@use
                     }
-                    val first = documents.getJSONObject(0)
-                    val placeName = first.optString("place_name", query)
-                    // 카카오 로컬 API 기본 좌표계는 WGS84 (x=경도, y=위도)
-                    val lon = first.optDouble("x")
-                    val lat = first.optDouble("y")
-                    NavLogger.d(this@MapActivity, "카카오 검색 결과: $placeName lat=$lat lon=$lon")
+                    // v1.7: "S Oil 검색하면 평택시 지산동 Soil 00점, 000점처럼 여러개 나와야 하는데
+                    // 첫번째 결과로 바로 꽂힘" 지적 - 항상 documents[0]으로 바로 길안내를 시작하던
+                    // 걸 없애고, 결과 목록을 보여준 뒤 사용자가 직접 골라서 시작하도록 변경. #문제시 원복
+                    data class Hit(val name: String, val addr: String, val lat: Double, val lon: Double)
+                    val hits = (0 until documents.length()).map { idx ->
+                        val d = documents.getJSONObject(idx)
+                        Hit(
+                            d.optString("place_name", query),
+                            d.optString("road_address_name", d.optString("address_name", "")),
+                            d.optDouble("y"),
+                            d.optDouble("x")
+                        )
+                    }
+                    NavLogger.d(this@MapActivity, "카카오 검색 결과 ${hits.size}건: query=$query")
 
                     runOnUiThread {
-                        binding.tvSearchStatus?.text = "찾음: $placeName ($lat, $lon) - 경로요청 시도"
-                        startKakaoOverlayGuidance(placeName, lat, lon)
+                        binding.llSearchPanel?.visibility = View.VISIBLE
+                        binding.tvSearchStatus?.text = "검색 결과 ${hits.size}건 - 목적지를 선택하세요"
+                        val listView = binding.lvSearchResults ?: return@runOnUiThread
+                        val labels = hits.map { h -> if (h.addr.isNotBlank()) "${h.name}\n${h.addr}" else h.name }
+                        listView.adapter = darkTextAdapter(labels)
+                        listView.visibility = View.VISIBLE
+                        listView.setOnItemClickListener { _, _, position, _ ->
+                            val picked = hits[position]
+                            listView.visibility = View.GONE
+                            binding.tvSearchStatus?.text = "찾음: ${picked.name} (${picked.lat}, ${picked.lon}) - 경로요청 시도"
+                            startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon)
+                        }
                     }
                 }
             }
@@ -923,7 +975,9 @@ class MapActivity : AppCompatActivity() {
                                 if (isTmapMuted) {
                                     TmapUISDK.setVolume(this@MapActivity, 0)
                                 } else {
-                                    TmapUISDK.setVolume(this@MapActivity, 100)
+                                    // v1.7: 여기 하드코딩된 100이 "안내종료 후 다시 100%로 튐" 버그의
+                                    // 진짜 원인이었음. 사용자가 맞춰둔 값(unmuteTmapVolume)으로 복원. #문제시 원복
+                                    unmuteTmapVolume()
                                 }
                                 hideKakaoOverlay()
                             }
@@ -1006,7 +1060,8 @@ class MapActivity : AppCompatActivity() {
         if (isTmapMuted) {
             TmapUISDK.setVolume(this@MapActivity, 0)
         } else {
-            TmapUISDK.setVolume(this@MapActivity, 100)
+            // v1.7: 여기도 하드코딩된 100이 원인 - 저장된 사용자 볼륨으로 복원. #문제시 원복
+            unmuteTmapVolume()
         }
         hideKakaoOverlay()
     }
@@ -2004,9 +2059,11 @@ class MapActivity : AppCompatActivity() {
 
                     if (isBlockSection && blockDist > 0) {
                         binding.llBlockInfo?.visibility = android.view.View.VISIBLE
-                        binding.tvBlockAvgSpeed?.text = "평균: ${blockAvgSpeed}km/h"
-                        binding.tvBlockDist?.text = "거리: ${formatDistance(blockDist)}"
-                        binding.tvBlockTime?.text = String.format("시간: %d:%02d", blockTime / 60, blockTime % 60)
+                        // v1.8: 평균속도/시간은 티맵/카카오 화면 자체에도 이미 나와서 중복된다는
+                        // 지적(5번) - 왼쪽 HUD 패널은 "구간단속 00km" 거리만 간소하게 표시. #문제시 원복
+                        binding.tvBlockAvgSpeed?.visibility = android.view.View.GONE
+                        binding.tvBlockTime?.visibility = android.view.View.GONE
+                        binding.tvBlockDist?.text = "구간단속 ${formatDistance(blockDist)}"
                     } else {
                         binding.llBlockInfo?.visibility = android.view.View.GONE
                     }
