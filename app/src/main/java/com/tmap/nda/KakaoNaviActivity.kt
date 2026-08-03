@@ -1,12 +1,15 @@
 package com.tmap.nda
 
 import android.content.Context
+import android.content.Intent
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
+import android.speech.RecognizerIntent
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -54,6 +57,38 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private var wasTmapMuted = false
     private var kakaoMuted = false
     private var locationManager: LocationManager? = null
+
+    // v1.7: 검색 버튼 짧게=음성, 길게=텍스트 - Tmap 화면과 동일하게 맞춤(재억 지적 1번). #문제시 원복
+    private val voiceSearchLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val spokenText = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+                ?.trim()
+            if (!spokenText.isNullOrEmpty()) {
+                NavLogger.d(this, "음성검색 결과: $spokenText")
+                performInPlaceSearch(spokenText)
+            } else {
+                Toast.makeText(this, "음성 인식 결과가 없습니다.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun startVoiceSearch() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR")
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "목적지를 말씀하세요")
+        }
+        try {
+            voiceSearchLauncher.launch(intent)
+        } catch (e: Exception) {
+            NavLogger.e(this, "음성인식 실행 실패: ${e.message}")
+            Toast.makeText(this, "이 기기에서 음성 인식을 사용할 수 없습니다.", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     private fun applyTmapMute(muted: Boolean) {
         try {
@@ -591,7 +626,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
 
         binding.btnOpenSearch?.setOnClickListener {
+            startVoiceSearch()
+        }
+        binding.btnOpenSearch?.setOnLongClickListener {
             showInPlaceSearchDialog()
+            true
         }
 
         binding.btnShareLog?.setOnClickListener {
@@ -642,9 +681,38 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             rowsContainer.addView(tv)
         }
         binding.btnMoreHistory?.setOnClickListener {
-            PendingMapAction.openFullHistoryDialog = true
-            finishGuidance()
+            // v1.8: 여기서 finishGuidance()를 불러서 MapActivity로 돌아가 다이얼로그를 띄웠는데,
+            // 그러면 진행 중이던 카카오 안내 자체가 끝나버림(재억 지적 2번: "더보기 누르면
+            // 안내 중 뒤로 나옴"). 안내를 끊지 않고 이 화면 안에서 그대로 전체 이력을 보여줌. #문제시 원복
+            showFullSearchHistoryDialog()
         }
+    }
+
+    private fun showFullSearchHistoryDialog() {
+        val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        val raw = sharedPref.getString("search_history_json", "[]") ?: "[]"
+        val history = try {
+            val arr = org.json.JSONArray(raw)
+            (0 until arr.length()).map { arr.getString(it) }
+        } catch (e: Exception) {
+            emptyList()
+        }
+        if (history.isEmpty()) return
+        val listView = android.widget.ListView(this)
+        listView.adapter = darkTextAdapter(history)
+        listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
+        listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
+        listView.dividerHeight = 1
+        val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("검색 이력 전체")
+            .setView(listView)
+            .setNegativeButton("닫기", null)
+            .create()
+        listView.setOnItemClickListener { _, _, position, _ ->
+            dialog.dismiss()
+            performInPlaceSearch(history[position])
+        }
+        dialog.show()
     }
 
     // v1.6: 검색 버튼 누르면 화면이 티맵으로 나갔다 다시 들어오던 문제 - 굳이 MapActivity로
@@ -653,12 +721,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private val searchHttpClient by lazy { OkHttpClient() }
 
     private fun showInPlaceSearchDialog() {
+        // v1.7: 기본 AlertDialog.Builder(this)는 앱 라이트 테마를 상속해서 다이얼로그
+        // 배경이 밝은데 입력창 글자색은 흰색으로 박아놔서 "흰 배경에 흰 글씨"로 안 보이던
+        // 문제였음(재억 지적 7번). Theme_Material_Dialog_Alert(다크)로 통일해서 해결. #문제시 원복
         val input = android.widget.EditText(this).apply {
             hint = "목적지를 입력하세요 (예: 서울역)"
             setTextColor(android.graphics.Color.WHITE)
-            setHintTextColor(android.graphics.Color.parseColor("#888888"))
+            setHintTextColor(android.graphics.Color.parseColor("#AAAAAA"))
         }
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("목적지 재검색")
             .setView(input)
             .setPositiveButton("검색") { _, _ ->
@@ -667,6 +738,21 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
             .setNegativeButton("취소", null)
             .show()
+    }
+
+    // v1.7: 검색결과 목록을 다크 테마 다이얼로그로 보여주고 사용자가 직접 고르게 함. #문제시 원복
+    private fun darkTextAdapter(items: List<String>): android.widget.ArrayAdapter<String> {
+        return object : android.widget.ArrayAdapter<String>(
+            this, android.R.layout.simple_list_item_1, android.R.id.text1, items
+        ) {
+            override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
+                val view = super.getView(position, convertView, parent)
+                val tv = view.findViewById<android.widget.TextView>(android.R.id.text1)
+                tv.setTextColor(android.graphics.Color.WHITE)
+                tv.setPadding(24, 20, 24, 20)
+                return view
+            }
+        }
     }
 
     private fun performInPlaceSearch(query: String) {
@@ -701,20 +787,45 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
                         return@use
                     }
-                    val first = documents.getJSONObject(0)
-                    val placeName = first.optString("place_name", query)
-                    val lon = first.optDouble("x")
-                    val lat = first.optDouble("y")
-                    NavLogger.d(this@KakaoNaviActivity, "인라인 재검색 결과: $placeName lat=$lat lon=$lon")
                     getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).apply {
                         val arr = try { org.json.JSONArray(getString("search_history_json", "[]") ?: "[]") } catch (e: Exception) { org.json.JSONArray() }
                         arr.put(0, query)
                         edit().putString("search_history_json", arr.toString()).apply()
                     }
+                    // v1.8: "성심당 검색하면 성심당 본점/대전역점/케익부띠끄/롯데백화점점 처럼
+                    // 여러 지점이 나와야 하는데 documents[0]으로 바로 안내가 시작됨" 지적(3번) -
+                    // 결과 목록을 다이얼로그로 보여주고 사용자가 직접 골라서 시작하도록 변경. #문제시 원복
+                    data class Hit(val name: String, val addr: String, val lat: Double, val lon: Double)
+                    val hits = (0 until documents.length()).map { idx ->
+                        val d = documents.getJSONObject(idx)
+                        Hit(
+                            d.optString("place_name", query),
+                            d.optString("road_address_name", d.optString("address_name", "")),
+                            d.optDouble("y"),
+                            d.optDouble("x")
+                        )
+                    }
+                    NavLogger.d(this@KakaoNaviActivity, "인라인 재검색 결과 ${hits.size}건: query=$query")
                     runOnUiThread {
-                        KakaoRouteDataRepository.reset()
-                        resolveCurrentPositionThenRequestRoute(placeName, lat, lon, finishOnFailure = false)
                         renderRecentDestinationsPanel()
+                        val labels = hits.map { h -> if (h.addr.isNotBlank()) "${h.name}\n${h.addr}" else h.name }
+                        val listView = android.widget.ListView(this@KakaoNaviActivity)
+                        listView.adapter = darkTextAdapter(labels)
+                        listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
+                        listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
+                        listView.dividerHeight = 1
+                        val pickDialog = android.app.AlertDialog.Builder(this@KakaoNaviActivity, android.R.style.Theme_Material_Dialog_Alert)
+                            .setTitle("검색 결과 ${hits.size}건 - 목적지를 선택하세요")
+                            .setView(listView)
+                            .setNegativeButton("취소", null)
+                            .create()
+                        listView.setOnItemClickListener { _, _, position, _ ->
+                            val picked = hits[position]
+                            pickDialog.dismiss()
+                            KakaoRouteDataRepository.reset()
+                            resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
+                        }
+                        pickDialog.show()
                     }
                 }
             }
