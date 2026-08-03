@@ -13,17 +13,30 @@
     android:background="#080808">
 
     <!-- ===== 좌측 HUD 패널 (지도 위 오버레이, 불투명 배경으로 그 아래 겹치는 SDK 위젯을 가림) ===== -->
-    <LinearLayout
+    <FrameLayout
         android:id="@+id/llLeftHudPanel"
         android:layout_width="220dp"
         android:layout_height="match_parent"
         android:layout_gravity="start"
         android:elevation="20dp"
-        android:orientation="vertical"
-        android:background="#080808"
-        android:paddingTop="0dp"
-        android:paddingBottom="0dp"
-        android:paddingHorizontal="12dp">
+        android:background="#080808">
+
+        <!-- 세로 해상도가 낮은 6~7인치 기기에서도 하단 설정/종료 버튼이 잘리지 않도록
+             정보 패널만 스크롤 가능하게 한다. 지도와 주행정보 기능은 그대로 유지된다. -->
+        <ScrollView
+            android:id="@+id/svLeftHudContent"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:overScrollMode="never"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/llLeftHudContent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="12dp">
 
         <!-- 1. 속도계 -->
         <LinearLayout
@@ -48,15 +61,21 @@
                 android:orientation="horizontal"
                 android:gravity="bottom">
 
-                <TextView
-                    android:id="@+id/tvCurrentSpeed"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="0"
-                    android:textColor="#FFFFFF"
-                    android:textSize="60sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="-0.05"/>
+            <TextView
+                android:id="@+id/tvCurrentSpeed"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="0"
+                android:textColor="#FFFFFF"
+                android:textSize="60sp"
+                android:textStyle="bold"
+                android:letterSpacing="-0.05"
+                android:maxLines="1"
+                android:autoSizeTextType="uniform"
+                android:autoSizeMinTextSize="36sp"
+                android:autoSizeMaxTextSize="60sp"
+                android:autoSizeStepGranularity="2sp"/>
 
                 <LinearLayout
                     android:layout_width="wrap_content"
@@ -146,11 +165,14 @@
 
                 <TextView
                     android:id="@+id/tvConnectionStatus"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
+                    android:layout_weight="1"
                     android:text="연결 대기"
                     android:textColor="#555555"
-                    android:textSize="10sp"/>
+                    android:textSize="10sp"
+                    android:maxLines="1"
+                    android:ellipsize="end"/>
             </LinearLayout>
 
             <TextView
@@ -210,7 +232,11 @@
                     android:textStyle="bold"
                     android:maxLines="1"
                     android:singleLine="true"
-                    android:ellipsize="none"/>
+                    android:ellipsize="none"
+                    android:autoSizeTextType="uniform"
+                    android:autoSizeMinTextSize="14sp"
+                    android:autoSizeMaxTextSize="22sp"
+                    android:autoSizeStepGranularity="1sp"/>
 
                 <TextView
                     android:id="@+id/tvSdiSpeedLimit"
@@ -328,6 +354,8 @@
             android:text="IP: -"
             android:textColor="#333333"
             android:textSize="9sp"
+            android:maxLines="1"
+            android:ellipsize="middle"
             android:layout_marginBottom="4dp"/>
 
         <!-- spacer -->
@@ -468,7 +496,9 @@
             android:layout_marginTop="4dp"
             android:layout_marginBottom="10dp"/>
 
-    </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+    </FrameLayout>
 
     <!-- ===== 지도 영역: 실제로는 전체 화면 폭 (SDK 내부 절대좌표 위젯과 좌표계를 맞추기 위함) ===== -->
     <FrameLayout
