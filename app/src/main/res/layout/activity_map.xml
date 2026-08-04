@@ -381,57 +381,80 @@
             android:orientation="vertical"
                 android:padding="14dp">
 
-                <ImageButton
+                <!-- v3.3: 아이콘+짧은 라벨 한 줄 스타일로 축소 -->
+                <Button
                     android:id="@+id/btnShareLog"
                     android:layout_width="match_parent"
-                    android:layout_height="40dp"
-                    android:src="@android:drawable/ic_menu_send"
-                    android:background="@drawable/shape_circle_gray"
-                    android:scaleType="center"
-                    android:layout_marginBottom="10dp"/>
+                    android:layout_height="38dp"
+                    android:text="로그 전송"
+                    android:textSize="12sp"
+                    android:textColor="#CCCCCC"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="10dp"
+                    android:drawableStart="@android:drawable/ic_menu_send"
+                    android:drawableTint="#CCCCCC"
+                    android:drawablePadding="10dp"
+                    android:backgroundTint="#111111"
+                    android:layout_marginBottom="4dp"/>
 
                 <Button
                     android:id="@+id/btnEditPanelPosition"
                     android:layout_width="match_parent"
-                    android:layout_height="44dp"
-                    android:text="패널 위치 편집"
-                    android:textSize="13sp"
-                    android:padding="0dp"
+                    android:layout_height="38dp"
+                    android:text="UI 편집"
+                    android:textSize="12sp"
+                    android:textColor="#CCCCCC"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="10dp"
+                    android:drawableStart="@android:drawable/ic_menu_edit"
+                    android:drawableTint="#CCCCCC"
+                    android:drawablePadding="10dp"
                     android:backgroundTint="#111111"
-                    android:textColor="#888888"
-                    android:layout_marginBottom="6dp"/>
+                    android:layout_marginBottom="4dp"/>
 
                 <Button
                     android:id="@+id/btnEditKey"
                     android:layout_width="match_parent"
-                    android:layout_height="44dp"
+                    android:layout_height="38dp"
                     android:text="설정"
-                    android:textSize="13sp"
-                    android:padding="0dp"
+                    android:textSize="12sp"
+                    android:textColor="#CCCCCC"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="10dp"
+                    android:drawableStart="@android:drawable/ic_menu_preferences"
+                    android:drawableTint="#CCCCCC"
+                    android:drawablePadding="10dp"
                     android:backgroundTint="#111111"
-                    android:textColor="#888888"
-                    android:layout_marginBottom="6dp"/>
+                    android:layout_marginBottom="4dp"/>
 
                 <Button
                     android:id="@+id/btnCheckUpdate"
                     android:layout_width="match_parent"
-                    android:layout_height="44dp"
+                    android:layout_height="38dp"
                     android:text="업데이트 확인"
-                    android:textSize="13sp"
-                    android:padding="0dp"
+                    android:textSize="12sp"
+                    android:textColor="#CCCCCC"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="10dp"
+                    android:drawableStart="@android:drawable/ic_popup_sync"
+                    android:drawableTint="#CCCCCC"
+                    android:drawablePadding="10dp"
                     android:backgroundTint="#111111"
-                    android:textColor="#888888"
-                    android:layout_marginBottom="6dp"/>
+                    android:layout_marginBottom="4dp"/>
 
                 <Button
                     android:id="@+id/btnExitApp"
                     android:layout_width="match_parent"
-                    android:layout_height="44dp"
+                    android:layout_height="38dp"
                     android:text="앱 종료"
-                    android:textSize="13sp"
-                    android:padding="0dp"
-                    android:backgroundTint="#1A0000"
-                    android:textColor="#EF5350"/>
+                    android:textSize="12sp"
+                    android:textColor="#EF5350"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="10dp"
+                    android:drawableStart="@android:drawable/ic_lock_power_off"
+                    android:drawableTint="#EF5350"
+                    android:drawablePadding="10dp"
+                    android:backgroundTint="#1A0000"/>
 
                 <TextView
                     android:id="@+id/tvAppVersion"
