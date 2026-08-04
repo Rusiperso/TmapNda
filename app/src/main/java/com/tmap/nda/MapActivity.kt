@@ -33,6 +33,7 @@ import androidx.lifecycle.Observer
 import android.content.res.Configuration
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -53,6 +54,47 @@ class MapActivity : AppCompatActivity() {
     private var loggedEdcKeySetOnce = false  // 차선/신호등 진단용 전체 키 목록은 한 번만 로그
     private var tbtDistErrorLogged = false   // nTBTDist 리플렉션 실패는 최초 1회만 로깅
     private var isTmapMuted = false  // 티맵 안내음성 음소거 여부 (기본값: 소리 켜짐. 카카오는 실제 경로안내 중에만 말하므로 기본상태에선 티맵 음성이 나와야 함)
+    private val originalBottomMargins = mutableMapOf<Int, Int>()
+    private val originalTopMargins = mutableMapOf<Int, Int>()
+    private var lastAppliedBottomInset = -1
+
+    /**
+     * 시스템 내비게이션 바/제스처 영역만큼 하단 고정 UI를 위로 올린다.
+     * XML에 기존 bottomMargin이 생겨도 보존하도록 최초 값을 기준으로 합산한다.
+     */
+    private fun applyBottomSafeInset(view: View?, bottomInset: Int) {
+        if (view == null) return
+        val params = view.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+        val originalMargin = originalBottomMargins.getOrPut(view.id) { params.bottomMargin }
+        val targetMargin = originalMargin + bottomInset
+        if (params.bottomMargin == targetMargin) return
+
+        params.bottomMargin = targetMargin
+        view.layoutParams = params
+    }
+
+    /** 상단 HUD가 글자 크기/해상도에 따라 커지면 아래 오버레이도 같은 만큼 내린다. */
+    private fun applyTopPanelExpansion(view: View?, expandedHeight: Int) {
+        if (view == null) return
+        val params = view.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+        val originalMargin = originalTopMargins.getOrPut(view.id) { params.topMargin }
+        val targetMargin = originalMargin + expandedHeight
+        if (params.topMargin == targetMargin) return
+
+        params.topMargin = targetMargin
+        view.layoutParams = params
+    }
+
+    private fun installTopPanelAutoOffset() {
+        binding.llLeftHudPanel.addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
+            val panelHeight = bottom - top
+            val baseHeight = binding.llTopBarRow.minimumHeight
+            val expandedHeight = (panelHeight - baseHeight).coerceAtLeast(0)
+
+            applyTopPanelExpansion(binding.llOffset, expandedHeight)
+            applyTopPanelExpansion(binding.svSecondaryPanel, expandedHeight)
+        }
+    }
 
     // v2.4: "50으로 줄여도 다음에 100으로 복귀" 버그의 진짜 원인 - VolumeHelper가 mute
     // 되는 "그 순간"에만 볼륨을 캡처했음. 그래서 mute 없이 볼륨만 바꾸면 그 변경은 저장이
@@ -175,12 +217,23 @@ class MapActivity : AppCompatActivity() {
         logKakaoKeyHashOnce()
 
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { v, insets ->
-            val systemBars = insets.getInsets(
+            val safeArea = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or
-                    WindowInsetsCompat.Type.displayCutout()
+                    WindowInsetsCompat.Type.displayCutout() or
+                    WindowInsetsCompat.Type.mandatorySystemGestures()
             )
             // 지도(root)는 좌/상/우만 인셋 적용, 하단은 지도가 풀스크린으로 남도록 0 유지
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, 0)
+            v.setPadding(safeArea.left, safeArea.top, safeArea.right, 0)
+
+            // v3.8: 티맵 SDK 내부 하단 메뉴(주행종료/현재위치/메뉴)는 tmapUILayout의
+            // 맨 아래에 그려진다. 기존에는 root 하단 인셋을 0으로 둔 채 보조패널에만
+            // 여백을 줘서, 세로 휴대폰의 3버튼/제스처 내비게이션 바 뒤에 버튼이 가려졌다.
+            // 실제 시스템 인셋을 컨테이너와 모든 하단 고정 패널의 bottomMargin으로 적용해
+            // 휴대폰/태블릿/엔미러의 해상도·회전·내비게이션 방식에 자동 대응한다.
+            applyBottomSafeInset(binding.tmapUILayout, safeArea.bottom)
+            applyBottomSafeInset(binding.llSearchPanel, safeArea.bottom)
+            applyBottomSafeInset(binding.llGuidanceBar, safeArea.bottom)
+            applyBottomSafeInset(binding.flKakaoOverlay, safeArea.bottom)
 
             // v3.0: svSecondaryPanel(≡ 메뉴로 열리는 보조패널)이 스크롤뷰라 화면 하단까지
             // 늘어날 수 있는데, 모바일폰(제스처 네비게이션 바 있는)에서는 마지막 버튼(앱종료 등)이
@@ -188,11 +241,22 @@ class MapActivity : AppCompatActivity() {
             // 스크롤 가능 영역 맨 아래에 안전여백만큼 패딩 추가. #문제시 원복
             binding.svSecondaryPanel?.let { panel ->
                 panel.clipToPadding = false
-                panel.setPadding(panel.paddingLeft, panel.paddingTop, panel.paddingRight, systemBars.bottom)
+                panel.setPadding(panel.paddingLeft, panel.paddingTop, panel.paddingRight, safeArea.bottom)
+            }
+
+            if (lastAppliedBottomInset != safeArea.bottom) {
+                lastAppliedBottomInset = safeArea.bottom
+                NavLogger.d(
+                    this,
+                    "[UI_INSETS] left=${safeArea.left} top=${safeArea.top} " +
+                        "right=${safeArea.right} bottom=${safeArea.bottom}"
+                )
             }
 
             insets
         }
+        ViewCompat.requestApplyInsets(binding.root)
+        installTopPanelAutoOffset()
 
         val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         val appKey = sharedPref.getString("APP_KEY", "") ?: ""

@@ -178,9 +178,11 @@
         <LinearLayout
             android:id="@+id/llTopBarRow"
             android:layout_width="match_parent"
-            android:layout_height="72dp"
+            android:layout_height="wrap_content"
+            android:minHeight="72dp"
             android:orientation="horizontal"
             android:gravity="center_vertical"
+            android:paddingVertical="4dp"
             android:paddingHorizontal="14dp">
 
             <!-- 속도 -->
@@ -387,7 +389,7 @@
     <!-- v3.0: 보조 패널을 llLeftHudPanel 밖으로 분리해서 지도 위에 뜨는 독립 오버레이로
          만듦 - 예전엔 llLeftHudPanel 안에 있어서 펼쳐지면 상단바 전체 높이가 커져서
          드래그 편집 가능 범위가 줄어드는 문제가 있었음(사용자 지적 2번). 이제 llLeftHudPanel은
-         항상 72dp 고정이라 편집모드에서도 화면 어디든 자유롭게 옮길 수 있음. #문제시 원복 -->
+         내용에 맞춰 독립적으로 측정되고 보조 패널 위치도 코드에서 자동 보정함. #문제시 원복 -->
     <ScrollView
         android:id="@+id/svSecondaryPanel"
         android:layout_width="wrap_content"

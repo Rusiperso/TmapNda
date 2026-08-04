@@ -8,6 +8,7 @@ import android.location.LocationManager
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -59,6 +60,31 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private var wasTmapMuted = false
     private var kakaoMuted = false
     private var locationManager: LocationManager? = null
+    private val originalTopMargins = mutableMapOf<Int, Int>()
+
+    private fun applyTopPanelExpansion(view: View?, expandedHeight: Int) {
+        if (view == null) return
+        val params = view.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+        val originalMargin = originalTopMargins.getOrPut(view.id) { params.topMargin }
+        val targetMargin = originalMargin + expandedHeight
+        if (params.topMargin == targetMargin) return
+
+        params.topMargin = targetMargin
+        view.layoutParams = params
+    }
+
+    /** 상단 HUD 자동 확장 시 카카오 지도·플로팅 UI도 같은 만큼 아래로 이동한다. */
+    private fun installTopPanelAutoOffset() {
+        binding.llLeftHudPanel.addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
+            val panelHeight = bottom - top
+            val baseHeight = binding.llTopBarRow.minimumHeight
+            val expandedHeight = (panelHeight - baseHeight).coerceAtLeast(0)
+
+            applyTopPanelExpansion(binding.naviView, expandedHeight)
+            applyTopPanelExpansion(binding.llOffset, expandedHeight)
+            applyTopPanelExpansion(binding.svSecondaryPanel, expandedHeight)
+        }
+    }
 
     // v1.7: 검색 버튼 짧게=음성, 길게=텍스트 - Tmap 화면과 동일하게 맞춤(사용자 지적 1번). #문제시 원복
     private val voiceSearchLauncher = registerForActivityResult(
@@ -211,7 +237,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val safeArea = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or
-                    WindowInsetsCompat.Type.displayCutout()
+                    WindowInsetsCompat.Type.displayCutout() or
+                    WindowInsetsCompat.Type.mandatorySystemGestures()
             )
             view.setPadding(safeArea.left, safeArea.top, safeArea.right, safeArea.bottom)
             // v3.0: Tmap 화면과 동일하게 보조패널 스크롤 하단에도 안전여백 추가 (사용자 지적 5번)
@@ -222,6 +249,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             insets
         }
         ViewCompat.requestApplyInsets(binding.root)
+        installTopPanelAutoOffset()
 
         binding.btnStopKakaoGuidance.setOnClickListener { finishGuidance() }
 
