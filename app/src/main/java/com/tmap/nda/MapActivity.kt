@@ -554,76 +554,22 @@ class MapActivity : AppCompatActivity() {
     // 옵션 A: 카카오 REST API 키를 사용자별로 입력받아 SharedPreferences에 저장.
     // (앱에 고정 키를 박아넣으면 모든 설치자가 같은 키/같은 할당량을 공유하게 되는 문제 방지)
     // ===== 목적지 검색 이력 =====
-    // v2.1: 이력 클릭 시 "재검색"이 아니라 "그 장소로 바로 길안내"가 되려면 좌표까지
-    // 저장해야 함. 그래서 검색어(String)가 아니라 실제 선택된 장소(HistoryEntry)를 저장.
-    // 기존엔 검색 시도 시점(performDestinationSearch 진입 시)에 저장했는데, 이제는
-    // "사용자가 실제로 어떤 결과를 골랐을 때"만 저장함(재검색 방지 목적과도 맞음). #문제시 원복
-    private val SEARCH_HISTORY_KEY = "search_history_json"
-    private val SEARCH_HISTORY_MAX = 15
-
-    data class HistoryEntry(val name: String, val addr: String, val lat: Double, val lon: Double)
-
-    private fun getSearchHistory(): List<HistoryEntry> {
-        val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-        val raw = sharedPref.getString(SEARCH_HISTORY_KEY, "[]") ?: "[]"
-        return try {
-            val arr = org.json.JSONArray(raw)
-            (0 until arr.length()).mapNotNull { i ->
-                val o = arr.optJSONObject(i) ?: return@mapNotNull null
-                HistoryEntry(
-                    o.optString("name"),
-                    o.optString("addr"),
-                    o.optDouble("lat"),
-                    o.optDouble("lon")
-                )
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
+    // v2.5: MapActivity/KakaoNaviActivity가 각자 이력 코드를 따로 갖고 있다가 서로 어긋나서
+    // 생긴 버그(카카오 화면에 원본 JSON 노출) 이후로, SearchHistoryStore.kt 공용 저장소로 통합. #문제시 원복
+    private fun getSearchHistory(): List<HistoryEntry> = SearchHistoryStore.get(this)
 
     private fun saveSearchHistory(entry: HistoryEntry) {
-        if (entry.name.isBlank()) return
-        val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-        val current = getSearchHistory().toMutableList()
-        current.removeAll { it.name == entry.name && it.lat == entry.lat && it.lon == entry.lon }
-        current.add(0, entry)
-        while (current.size > SEARCH_HISTORY_MAX) current.removeAt(current.size - 1)
-        val arr = org.json.JSONArray()
-        current.forEach {
-            arr.put(
-                org.json.JSONObject()
-                    .put("name", it.name)
-                    .put("addr", it.addr)
-                    .put("lat", it.lat)
-                    .put("lon", it.lon)
-            )
-        }
-        sharedPref.edit().putString(SEARCH_HISTORY_KEY, arr.toString()).apply()
+        SearchHistoryStore.save(this, entry)
         updateRecentSearchPanel()
     }
 
     private fun deleteSearchHistoryEntry(entry: HistoryEntry) {
-        val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-        val current = getSearchHistory().toMutableList()
-        current.removeAll { it.name == entry.name && it.lat == entry.lat && it.lon == entry.lon }
-        val arr = org.json.JSONArray()
-        current.forEach {
-            arr.put(
-                org.json.JSONObject()
-                    .put("name", it.name)
-                    .put("addr", it.addr)
-                    .put("lat", it.lat)
-                    .put("lon", it.lon)
-            )
-        }
-        sharedPref.edit().putString(SEARCH_HISTORY_KEY, arr.toString()).apply()
+        SearchHistoryStore.delete(this, entry)
         updateRecentSearchPanel()
     }
 
     private fun clearSearchHistory() {
-        val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-        sharedPref.edit().putString(SEARCH_HISTORY_KEY, "[]").apply()
+        SearchHistoryStore.clear(this)
         updateRecentSearchPanel()
     }
 

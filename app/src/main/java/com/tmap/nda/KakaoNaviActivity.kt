@@ -674,14 +674,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 읽어서 최근 목적지 최대 5개를 직접 표시. 나머지는 "+더보기"로 MapActivity의 전체
     // 이력 다이얼로그를 열도록 신호만 넘김. #문제시 원복
     private fun renderRecentDestinationsPanel() {
-        val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-        val raw = sharedPref.getString("search_history_json", "[]") ?: "[]"
-        val history = try {
-            val arr = org.json.JSONArray(raw)
-            (0 until arr.length()).map { arr.getString(it) }
-        } catch (e: Exception) {
-            emptyList()
-        }
+        val history = SearchHistoryStore.get(this)
 
         if (history.isEmpty()) {
             binding.llRecentSearchPanel?.visibility = View.GONE
@@ -690,16 +683,18 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         binding.llRecentSearchPanel?.visibility = View.VISIBLE
         val rowsContainer = binding.llRecentSearchRows ?: return
         rowsContainer.removeAllViews()
-        history.take(5).forEach { destText ->
+        history.take(5).forEach { entry ->
             val tv = android.widget.TextView(this).apply {
-                text = destText
+                text = entry.name
                 setTextColor(android.graphics.Color.parseColor("#DDDDDD"))
                 textSize = 12f
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 setPadding(24, 20, 24, 20)
                 setOnClickListener {
-                    performInPlaceSearch(destText)
+                    // v2.5: 재검색이 아니라 저장된 좌표로 바로 길안내 시작
+                    KakaoRouteDataRepository.reset()
+                    resolveCurrentPositionThenRequestRoute(entry.name, entry.lat, entry.lon, finishOnFailure = false)
                 }
             }
             rowsContainer.addView(tv)
@@ -713,30 +708,86 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     }
 
     private fun showFullSearchHistoryDialog() {
-        val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-        val raw = sharedPref.getString("search_history_json", "[]") ?: "[]"
-        val history = try {
-            val arr = org.json.JSONArray(raw)
-            (0 until arr.length()).map { arr.getString(it) }
-        } catch (e: Exception) {
-            emptyList()
+        var history = SearchHistoryStore.get(this)
+        if (history.isEmpty()) {
+            Toast.makeText(this, "검색 이력이 없습니다", Toast.LENGTH_SHORT).show()
+            return
         }
-        if (history.isEmpty()) return
-        val listView = android.widget.ListView(this)
-        listView.adapter = darkTextAdapter(history)
+
+        lateinit var dialog: android.app.AlertDialog
+        lateinit var listView: android.widget.ListView
+
+        fun buildAdapter(): android.widget.BaseAdapter = object : android.widget.BaseAdapter() {
+            override fun getCount() = history.size
+            override fun getItem(position: Int) = history[position]
+            override fun getItemId(position: Int) = position.toLong()
+            override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
+                val entry = history[position]
+                val row = android.widget.LinearLayout(this@KakaoNaviActivity).apply {
+                    orientation = android.widget.LinearLayout.HORIZONTAL
+                    setBackgroundColor(android.graphics.Color.parseColor("#181818"))
+                    setPadding(24, 24, 12, 24)
+                }
+                val nameText = android.widget.TextView(this@KakaoNaviActivity).apply {
+                    text = if (entry.addr.isNotBlank()) "${entry.name}\n${entry.addr}" else entry.name
+                    setTextColor(android.graphics.Color.WHITE)
+                    layoutParams = android.widget.LinearLayout.LayoutParams(
+                        0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                    )
+                }
+                val deleteText = android.widget.TextView(this@KakaoNaviActivity).apply {
+                    text = "✕"
+                    setTextColor(android.graphics.Color.parseColor("#AAAAAA"))
+                    setPadding(24, 0, 24, 0)
+                    setOnClickListener {
+                        SearchHistoryStore.delete(this@KakaoNaviActivity, entry)
+                        renderRecentDestinationsPanel()
+                        history = SearchHistoryStore.get(this@KakaoNaviActivity)
+                        if (history.isEmpty()) {
+                            dialog.dismiss()
+                        } else {
+                            listView.adapter = buildAdapter()
+                        }
+                    }
+                }
+                row.addView(nameText)
+                row.addView(deleteText)
+                return row
+            }
+        }
+
+        listView = android.widget.ListView(this)
+        listView.adapter = buildAdapter()
         listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
-        val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+
+        dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("검색 이력 전체")
             .setView(listView)
+            .setPositiveButton("전체 삭제") { _, _ ->
+                android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("검색 이력 전체 삭제")
+                    .setMessage("검색 이력을 전부 삭제할까요?")
+                    .setPositiveButton("삭제") { _, _ ->
+                        SearchHistoryStore.clear(this)
+                        renderRecentDestinationsPanel()
+                    }
+                    .setNegativeButton("취소", null)
+                    .show()
+            }
             .setNegativeButton("닫기", null)
             .create()
+
         listView.setOnItemClickListener { _, _, position, _ ->
+            val picked = history[position]
             dialog.dismiss()
-            performInPlaceSearch(history[position])
+            // v2.5: 재검색이 아니라 저장된 좌표로 바로 길안내 시작
+            KakaoRouteDataRepository.reset()
+            resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
         }
         dialog.show()
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
     }
 
     // v1.6: 검색 버튼 누르면 화면이 티맵으로 나갔다 다시 들어오던 문제 - 굳이 MapActivity로
@@ -811,18 +862,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
                         return@use
                     }
-                    getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).apply {
-                        val arr = try { org.json.JSONArray(getString("search_history_json", "[]") ?: "[]") } catch (e: Exception) { org.json.JSONArray() }
-                        arr.put(0, query)
-                        edit().putString("search_history_json", arr.toString()).apply()
-                    }
+                    // v2.5: 이력은 검색 시도가 아니라 실제로 고른 결과에만 저장(아래 클릭 시). #문제시 원복
                     // v1.8: "성심당 검색하면 성심당 본점/대전역점/케익부띠끄/롯데백화점점 처럼
                     // 여러 지점이 나와야 하는데 documents[0]으로 바로 안내가 시작됨" 지적(3번) -
                     // 결과 목록을 다이얼로그로 보여주고 사용자가 직접 골라서 시작하도록 변경. #문제시 원복
-                    data class Hit(val name: String, val addr: String, val lat: Double, val lon: Double)
                     val hits = (0 until documents.length()).map { idx ->
                         val d = documents.getJSONObject(idx)
-                        Hit(
+                        HistoryEntry(
                             d.optString("place_name", query),
                             d.optString("road_address_name", d.optString("address_name", "")),
                             d.optDouble("y"),
@@ -831,7 +877,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     }
                     NavLogger.d(this@KakaoNaviActivity, "인라인 재검색 결과 ${hits.size}건: query=$query")
                     runOnUiThread {
-                        renderRecentDestinationsPanel()
                         val labels = hits.map { h -> if (h.addr.isNotBlank()) "${h.name}\n${h.addr}" else h.name }
                         val listView = android.widget.ListView(this@KakaoNaviActivity)
                         listView.adapter = darkTextAdapter(labels)
@@ -846,6 +891,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         listView.setOnItemClickListener { _, _, position, _ ->
                             val picked = hits[position]
                             pickDialog.dismiss()
+                            SearchHistoryStore.save(this@KakaoNaviActivity, picked)
+                            renderRecentDestinationsPanel()
                             KakaoRouteDataRepository.reset()
                             resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
                         }
