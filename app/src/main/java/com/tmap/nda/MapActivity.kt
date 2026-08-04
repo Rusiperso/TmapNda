@@ -272,10 +272,10 @@ class MapActivity : AppCompatActivity() {
             binding.btnMoreMenu?.isEnabled = !isEditMode
             binding.btnMoreMenu?.alpha = if (isEditMode) 0.4f else 1.0f
             if (isEditMode) {
-                btn.text = "위치 편집 종료"
+                btn.text = "UI 편집 종료"
                 Toast.makeText(this, "패널을 드래그해서 원하는 위치로 옮기세요", Toast.LENGTH_LONG).show()
             } else {
-                btn.text = "패널 위치 편집"
+                btn.text = "UI 편집"
                 Toast.makeText(this, "위치가 저장됐습니다", Toast.LENGTH_SHORT).show()
             }
         }

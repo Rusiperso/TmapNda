@@ -196,13 +196,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         setContentView(binding.root)
         naviView = binding.naviView
 
-        // 카카오 지도도 Tmap 화면과 같은 실제 window 기준 자동 폭을 사용한다.
-        // 세로 레이아웃에서는 panelView가 null이므로 지도에 잘못된 왼쪽 여백을 넣지 않는다.
-        HudScale.install(
-            binding.root,
-            binding.llLeftHudPanel,
-            listOf(binding.naviView, binding.llLaneSignalBar)
-        )
+        // v3.3: 이 HudScale.install()이 llLeftHudPanel(이제 상단 가로바)을 예전
+        // "좌측 세로 패널" 기준 폭으로 강제 리사이즈하고 있었음 - MapActivity에서는
+        // v2.6에서 이미 비활성화했는데 KakaoNaviActivity에서는 빼먹어서, 카카오 길안내
+        // 화면만 계속 구버전처럼 왼쪽 좁은 패널로 보였던 진짜 원인이었음
+        // (사용자 지적: "패널창이 위가 아니라 왼쪽에 있는데??"). #문제시 원복
+        // HudScale.install(
+        //     binding.root,
+        //     binding.llLeftHudPanel,
+        //     listOf(binding.naviView, binding.llLaneSignalBar)
+        // )
 
         // 차량 내비의 시스템 바/노치/커브드 가장자리 안전영역을 SDK 지도와 HUD 모두에 반영.
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
