@@ -695,6 +695,28 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             panel.visibility = if (panel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
         }
 
+        // v3.8: 티맵 화면과 동일한 동작 - 업데이트확인/도움말은 화면과 무관한 앱 전체
+        // 기능이라 그대로 재사용, 앱종료는 이 화면부터 전체 태스크 종료. #문제시 원복
+        binding.btnCheckUpdate?.setOnClickListener {
+            Toast.makeText(this, "업데이트 확인 중...", Toast.LENGTH_SHORT).show()
+            AutoUpdater.checkForUpdates(this)
+        }
+        binding.btnHelp?.setOnClickListener {
+            try {
+                startActivity(
+                    Intent(
+                        Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://github.com/Rusiperso/TmapNda/releases/latest")
+                    )
+                )
+            } catch (e: Exception) {
+                Toast.makeText(this, "도움말을 열 수 없습니다: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+        binding.btnExitApp?.setOnClickListener {
+            finishAffinity()
+        }
+
         binding.btnKakaoMuteToggle?.setOnClickListener {
             kakaoMuted = !kakaoMuted
             getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).edit()
