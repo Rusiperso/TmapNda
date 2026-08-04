@@ -174,8 +174,6 @@ class MapActivity : AppCompatActivity() {
         // 확인 후 이 블록은 지워도 됨(진단 전용). #문제시 원복
         logKakaoKeyHashOnce()
 
-        val minBottomSafeAreaPx = (36 * resources.displayMetrics.density).toInt()
-
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { v, insets ->
             val systemBars = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or
@@ -184,19 +182,11 @@ class MapActivity : AppCompatActivity() {
             // 지도(root)는 좌/상/우만 인셋 적용, 하단은 지도가 풀스크린으로 남도록 0 유지
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, 0)
 
-            // 세로모드 하단 상태바: 실제 시스템 바 높이와 최소 안전 여백 중 큰 값을 패딩으로 적용
-            val detailPanel = v.findViewById<View>(R.id.llDetailPanel)
-            detailPanel?.setPadding(
-                detailPanel.paddingLeft, detailPanel.paddingTop, detailPanel.paddingRight,
-                maxOf(systemBars.bottom, minBottomSafeAreaPx)
-            )
-
-            // 가로모드 좌측 HUD 패널(하단 버튼들이 여기 있음): 동일하게 하단 안전 여백 확보
-            val leftHudPanel = v.findViewById<View>(R.id.llLeftHudPanel)
-            leftHudPanel?.setPadding(
-                leftHudPanel.paddingLeft, leftHudPanel.paddingTop, leftHudPanel.paddingRight,
-                maxOf(systemBars.bottom, minBottomSafeAreaPx)
-            )
+            // v2.9: llDetailPanel(세로모드 하단바)/좌측패널 모두 이제 존재하지 않거나
+            // 상단바 구조로 바뀌어서, 하단 안전여백을 적용해줄 대상이 없음. 예전엔 여기서
+            // 하단에 있던 앱종료 등 버튼이 시스템 네비게이션 바에 가리지 않게 패딩을
+            // 줬는데, 그 버튼들은 이제 상단 ≡ 메뉴 안 svSecondaryPanel로 옮겨져서
+            // 화면 하단 끝에 붙어있지 않음. #문제시 원복
 
             insets
         }
@@ -255,6 +245,26 @@ class MapActivity : AppCompatActivity() {
         // 스타일 D(HUD): 좌측 패널은 고정, llOffset 플로팅만 드래그 유지
         binding.llOffset?.let {
             makeDraggable(it, "llOffset", isLandscape, emptyList())
+        }
+
+        // v2.9: 상단 HUD 바(llLeftHudPanel)도 드래그로 위치 옮길 수 있게 - 단, 예전처럼
+        // 상시로 드래그되면 실수로 밀릴 수 있어서 "패널 위치 편집" 버튼으로 편집모드를
+        // 켜야만 움직임(isEditMode). 앱 재시작해도 저장된 위치로 복원됨. #문제시 원복
+        binding.llLeftHudPanel?.let { panel ->
+            makeDraggable(panel, "llLeftHudPanel", isLandscape, emptyList())
+            restorePosition(panel, "llLeftHudPanel", isLandscape, emptyList())
+        }
+        binding.btnEditPanelPosition?.setOnClickListener { view ->
+            isEditMode = !isEditMode
+            val btn = view as android.widget.Button
+            if (isEditMode) {
+                btn.text = "위치 편집 종료"
+                Toast.makeText(this, "패널을 드래그해서 원하는 위치로 옮기세요", Toast.LENGTH_LONG).show()
+            } else {
+                btn.text = "패널 위치 편집"
+                Toast.makeText(this, "위치가 저장됐습니다", Toast.LENGTH_SHORT).show()
+                binding.svSecondaryPanel?.visibility = View.GONE
+            }
         }
 
         // Tmap 지도 터치 무력화: 화면/정보 표시는 그대로, 지도(NavigationFragment)로 가는
