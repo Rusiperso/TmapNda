@@ -458,13 +458,12 @@ class MapActivity : AppCompatActivity() {
             binding.etDestination?.requestFocus()
             true
         }
-        binding.btnSearchClose?.setOnClickListener {
-            binding.llSearchPanel?.visibility = View.GONE
-        }
-        binding.btnSearchGo?.setOnClickListener {
+        // v2.9: 검색 실행 로직을 공용 함수로 - btnSearchGo(세로모드)와 IME 검색 액션(가로모드
+        // 상단바 인라인 검색창) 둘 다 여기로. #문제시 원복
+        fun executeSearchFromField() {
             val now = System.currentTimeMillis()
             if (now - lastSearchClickAt < SEARCH_CLICK_DEBOUNCE_MS) {
-                return@setOnClickListener // 연타 방지 (로그에서 같은 쿼리 수십회 중복 호출되던 문제)
+                return // 연타 방지 (로그에서 같은 쿼리 수십회 중복 호출되던 문제)
             }
             lastSearchClickAt = now
             val query = binding.etDestination?.text?.toString()?.trim().orEmpty()
@@ -472,6 +471,18 @@ class MapActivity : AppCompatActivity() {
                 performDestinationSearch(query)
             }
         }
+        binding.etDestination?.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
+                executeSearchFromField()
+                true
+            } else {
+                false
+            }
+        }
+        binding.btnSearchClose?.setOnClickListener {
+            binding.llSearchPanel?.visibility = View.GONE
+        }
+        binding.btnSearchGo?.setOnClickListener { executeSearchFromField() }
         binding.btnSearchGo?.setOnLongClickListener {
             promptForKakaoKeyThenSearch("") // 빈 쿼리로 열면 저장만 하고 검색은 안 함(취소 눌러도 됨)
             true
