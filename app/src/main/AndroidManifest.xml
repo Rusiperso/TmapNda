@@ -39,7 +39,23 @@
             </intent-filter>
         </activity>
         
-        <activity android:name=".MapActivity" />
+        <activity
+            android:name=".MapActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <!-- v3.4: 스티어링휠 마이크 버튼을 헤드유닛이 "기본 음성 비서 실행" 인텐트로
+                 처리하는 경우 대비 - 정확히 어떤 방식을 쓰는 헤드유닛인지 몰라서
+                 여러 경로를 동시에 걸어둠(#문제시 원복). 실차에서 버튼 눌러보고
+                 로그(VOICE_BTN)에 뭐가 찍히는지 확인 필요. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
         <activity
             android:name=".KakaoNaviActivity"
             android:exported="false"

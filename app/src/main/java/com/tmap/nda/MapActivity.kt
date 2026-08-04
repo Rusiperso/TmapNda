@@ -2048,6 +2048,10 @@ class MapActivity : AppCompatActivity() {
         updateRecentSearchPanel()
         dumpNavigationApiCandidates()
 
+        // v3.4: 스티어링휠 마이크 버튼 대응 - 헤드유닛이 음성비서 인텐트로 앱을 띄운
+        // 경우, UI가 다 셋업된 뒤에 처리
+        handleVoiceCommandIntent(intent)
+
         navigationFragment?.let { frag ->
             // 프래그먼트가 완전히 뷰에 등록된 후 안전운행 모드를 시작하도록 약간의 딜레이를 줍니다.
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
@@ -2247,6 +2251,38 @@ class MapActivity : AppCompatActivity() {
     // 일시정지 상태가 해제됨"이라고 명시돼 있어서, 위치 갱신에 따른 지도/안내 상태 갱신도
     // 이 신호에 연동돼 있을 가능성이 높음. KNSDK 초기화 전에는 호출하면 안 되므로
     // knsdkInitialized 가드. #문제시 원복
+    // v3.4: 헤드유닛 스티어링휠 마이크 버튼 대응. 정확히 어떤 방식(인텐트로 앱을 새로
+    // 띄우는지, 이미 떠있는 앱에 키 이벤트만 보내는지)을 쓰는 기기인지 몰라서 두 경로
+    // 다 걸어둠. 실제로 버튼 눌렀을 때 로그에 "[VOICE_BTN]"이 찍히는지로 확인 가능. #문제시 원복
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleVoiceCommandIntent(intent)
+    }
+
+    private fun handleVoiceCommandIntent(intent: Intent?) {
+        val action = intent?.action ?: return
+        if (action == Intent.ACTION_VOICE_COMMAND || action == Intent.ACTION_ASSIST) {
+            NavLogger.d(this, "[VOICE_BTN] 음성명령 인텐트로 진입: action=$action")
+            startVoiceSearch()
+        }
+    }
+
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        // KEYCODE_VOICE_ASSIST(231): 안드로이드 표준 음성비서 키. 일부 헤드유닛은
+        // 스티어링휠 마이크 버튼을 KEYCODE_SEARCH(84)나 KEYCODE_HEADSETHOOK(79)로
+        // 매핑하기도 해서 같이 잡아둠.
+        if (keyCode == 231 /* KEYCODE_VOICE_ASSIST */ ||
+            keyCode == android.view.KeyEvent.KEYCODE_SEARCH ||
+            keyCode == android.view.KeyEvent.KEYCODE_HEADSETHOOK
+        ) {
+            NavLogger.d(this, "[VOICE_BTN] 키 이벤트로 진입: keyCode=$keyCode")
+            startVoiceSearch()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
     override fun onResume() {
         super.onResume()
         NavLogger.d(this, "[MapActivity lifecycle] onResume")
