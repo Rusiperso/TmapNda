@@ -226,11 +226,19 @@
         android:elevation="20dp"
         android:background="#FF080808">
 
-        <LinearLayout
+        <!-- v3.11: 화면 좁을 때 대비 가로 스크롤 가능하게 감쌈. #문제시 원복 -->
+        <HorizontalScrollView
             android:id="@+id/llTopBarRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:minHeight="52dp"
+            android:scrollbars="none"
+            android:overScrollMode="never"
+            android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:paddingVertical="4dp"
@@ -311,7 +319,7 @@
                     android:layout_marginTop="1dp"/>
             </LinearLayout>
 
-            <View android:layout_width="0dp" android:layout_height="0dp" android:layout_weight="1"/>
+            <View android:layout_width="16dp" android:layout_height="0dp"/>
 
             <Button
                 android:id="@+id/btnGpsStatus"
@@ -354,6 +362,7 @@
                 android:background="@drawable/shape_circle_gray"
                 android:scaleType="center"/>
         </LinearLayout>
+        </HorizontalScrollView>
 
         <TextView
             android:id="@+id/tvTopBarEta"
