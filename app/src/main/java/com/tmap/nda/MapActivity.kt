@@ -671,7 +671,7 @@ class MapActivity : AppCompatActivity() {
         lateinit var dialog: android.app.AlertDialog
         lateinit var listView: android.widget.ListView
 
-        fun buildAdapter() = object : android.widget.BaseAdapter() {
+        fun buildAdapter(): android.widget.BaseAdapter = object : android.widget.BaseAdapter() {
             override fun getCount() = history.size
             override fun getItem(position: Int) = history[position]
             override fun getItemId(position: Int) = position.toLong()
