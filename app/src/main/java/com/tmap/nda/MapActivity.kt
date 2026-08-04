@@ -281,24 +281,16 @@ class MapActivity : AppCompatActivity() {
         }
 
         binding.btnCheckUpdate.setOnClickListener {
+            binding.svSecondaryPanel?.visibility = View.GONE
             Toast.makeText(this, "업데이트 확인 중...", Toast.LENGTH_SHORT).show()
             AutoUpdater.checkForUpdates(this)
         }
 
-        // v3.5: 앱 안에 정적 도움말을 박아두면 업데이트할 때마다 그 페이지도 같이
-        // 고쳐야 해서 항상 최신 상태 유지가 안 됨(재억 지적 10번) - 대신 GitHub 릴리즈
-        // 페이지(항상 최신 커밋 로그 기반)를 웹으로 열어서 "항상 갱신"을 보장. #문제시 원복
+        // v3.10: GitHub 브라우저로 여는 대신 앱 안 팝업으로 바로 보여줌
+        // (재억 지적 2번: "인터넷 페이지로 보내지 말고 팝업창으로"). #문제시 원복
         binding.btnHelp?.setOnClickListener {
-            try {
-                startActivity(
-                    Intent(
-                        Intent.ACTION_VIEW,
-                        android.net.Uri.parse("https://github.com/Rusiperso/TmapNda/releases/latest")
-                    )
-                )
-            } catch (e: Exception) {
-                Toast.makeText(this, "업데이트 내역을 열 수 없습니다: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
+            binding.svSecondaryPanel?.visibility = View.GONE
+            AutoUpdater.showChangelogDialog(this)
         }
 
         // v1.7: 짧게 누르기가 카카오키 재입력 화면으로 가버려서, 정작 자주 쓸 앱 설정
@@ -306,6 +298,7 @@ class MapActivity : AppCompatActivity() {
         // 그걸 몰라서 "설정 창에 그 기능이 안 보인다"는 문의로 이어짐. 우선순위를
         // 뒤집음: 짧게 누르기 = 앱 설정(토글들), 길게 누르기 = 카카오키 재입력(드묾). #문제시 원복
         binding.btnEditKey.setOnClickListener {
+            binding.svSecondaryPanel?.visibility = View.GONE
             showAppSettingsDialog()
         }
         binding.btnEditKey.setOnLongClickListener {
@@ -585,6 +578,7 @@ class MapActivity : AppCompatActivity() {
             stopGuidance()
         }
         binding.btnShareLog?.setOnClickListener {
+            binding.svSecondaryPanel?.visibility = View.GONE
             shareNavLog()
         }
     }
@@ -722,6 +716,7 @@ class MapActivity : AppCompatActivity() {
             }
         }
         findViewById<View?>(resources.getIdentifier("btnMoreHistory", "id", packageName))?.setOnClickListener {
+            binding.svSecondaryPanel?.visibility = View.GONE
             showFullSearchHistoryDialog()
         }
     }

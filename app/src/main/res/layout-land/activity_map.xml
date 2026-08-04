@@ -183,7 +183,7 @@
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:paddingVertical="4dp"
-            android:paddingHorizontal="14dp">
+            android:paddingHorizontal="10dp">
 
             <!-- 속도 -->
             <LinearLayout
@@ -225,7 +225,7 @@
                     android:layout_marginBottom="4dp"/>
             </LinearLayout>
 
-            <View android:layout_width="1dp" android:layout_height="28dp" android:background="#1A1A1A" android:layout_marginHorizontal="14dp"/>
+            <View android:layout_width="1dp" android:layout_height="28dp" android:background="#1A1A1A" android:layout_marginHorizontal="8dp"/>
 
             <!-- 상태 -->
             <LinearLayout
@@ -285,7 +285,7 @@
                     android:visibility="gone"/>
             </LinearLayout>
 
-            <View android:layout_width="1dp" android:layout_height="28dp" android:background="#1A1A1A" android:layout_marginHorizontal="14dp"/>
+            <View android:layout_width="1dp" android:layout_height="28dp" android:background="#1A1A1A" android:layout_marginHorizontal="8dp"/>
 
             <!-- GPS 상태 -->
             <Button
@@ -302,7 +302,7 @@
                 android:paddingHorizontal="10dp"
                 android:backgroundTint="#111111" />
 
-            <View android:layout_width="1dp" android:layout_height="28dp" android:background="#1A1A1A" android:layout_marginHorizontal="14dp"/>
+            <View android:layout_width="1dp" android:layout_height="28dp" android:background="#1A1A1A" android:layout_marginHorizontal="8dp"/>
 
             <!-- 음소거 / 검색 -->
             <ImageButton
@@ -332,7 +332,7 @@
                  (재억: "목적지를 입력하세요를 목적지 검색으로 줄이라는게 아니라
                  그 칸 자체를 줄이자는 거") #문제시 원복 -->
             <LinearLayout
-                android:layout_width="260dp"
+                android:layout_width="220dp"
                 android:layout_height="38dp"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"

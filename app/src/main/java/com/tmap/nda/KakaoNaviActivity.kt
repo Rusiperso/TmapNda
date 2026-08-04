@@ -709,20 +709,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // v3.8: 티맵 화면과 동일한 동작 - 업데이트확인/도움말은 화면과 무관한 앱 전체
         // 기능이라 그대로 재사용, 앱종료는 이 화면부터 전체 태스크 종료. #문제시 원복
         binding.btnCheckUpdate?.setOnClickListener {
+            binding.svSecondaryPanel?.visibility = View.GONE
             Toast.makeText(this, "업데이트 확인 중...", Toast.LENGTH_SHORT).show()
             AutoUpdater.checkForUpdates(this)
         }
+        // v3.10: GitHub 브라우저 대신 앱 안 팝업으로 (재억 지적 2번). #문제시 원복
         binding.btnHelp?.setOnClickListener {
-            try {
-                startActivity(
-                    Intent(
-                        Intent.ACTION_VIEW,
-                        android.net.Uri.parse("https://github.com/Rusiperso/TmapNda/releases/latest")
-                    )
-                )
-            } catch (e: Exception) {
-                Toast.makeText(this, "업데이트 내역을 열 수 없습니다: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
+            binding.svSecondaryPanel?.visibility = View.GONE
+            AutoUpdater.showChangelogDialog(this)
         }
         binding.btnExitApp?.setOnClickListener {
             finishAffinity()
@@ -731,6 +725,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             PanelDragHelper.wireEditToggleButton(this, it, binding.svSecondaryPanel, binding.btnMoreMenu, binding.btnConfirmEditPosition)
         }
         binding.btnEditKey?.setOnClickListener {
+            binding.svSecondaryPanel?.visibility = View.GONE
             PanelDragHelper.showAppSettingsDialog(this, null)
         }
 
@@ -751,6 +746,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
 
         binding.btnShareLog?.setOnClickListener {
+            binding.svSecondaryPanel?.visibility = View.GONE
             val result = NavLogger.buildShareIntent(this)
             if (result == null) {
                 Toast.makeText(this, "저장된 로그가 없어.", Toast.LENGTH_SHORT).show()
