@@ -296,7 +296,20 @@ class KakaoGuidanceDelegate(
 
     private fun findGetterString(obj: Any, nameContains: String): String? {
         return try {
-            findGetter(obj, null, nameContains)?.toString()
+            // "get$nameContains" 정확히 일치하는 getter 우선 시도(예: getName()).
+            // 정확 일치가 없거나 String이 아니면(enum 등) 이름에 nameContains가 포함된
+            // getter들을 전부 순회해서 그중 실제 String을 반환하는 것만 채택 - 예전엔
+            // 이름에 nameContains만 포함되면 무조건 첫 번째 getter를 잡아서 .toString()을
+            // 불러버려서, getDirNameType()(enum) 같은 엉뚱한 getter가 먼저 걸리면
+            // "KNDirNameType_DirName"처럼 enum을 통째로 문자열화한 쓰레기 값이
+            // 도로명/방향명 자리에 들어가는 버그가 있었음. #문제시 원복
+            val exact = findGetter(obj, "get$nameContains", null)
+            if (exact is String) return exact
+            obj.javaClass.methods.filter {
+                it.parameterTypes.isEmpty() && it.name.startsWith("get") && it.name.contains(nameContains)
+            }.firstNotNullOfOrNull { m ->
+                (runCatching { m.invoke(obj) }.getOrNull()) as? String
+            }
         } catch (e: Exception) { null }
     }
 
