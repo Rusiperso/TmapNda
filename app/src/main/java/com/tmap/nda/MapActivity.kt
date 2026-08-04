@@ -892,6 +892,41 @@ class MapActivity : AppCompatActivity() {
     // 첫 실행 시 로그(NavLogger)에 시도한 생성자/실패 사유가 다 남게 해뒀음.
     // 실패하면 로그 캡처해서 다시 보내주면 정확한 시그니처로 고칠 수 있음.
     private fun performDestinationSearch(query: String) {
+        val nativeAppKey = getKakaoNativeAppKey()
+
+        // 앱 시작 직후에는 KNSDK가 REST/네이티브 입력값을 판별하고 자동 정렬하는 중일 수 있다.
+        // 그 전에 기존 REST 값을 헤더에 넣으면 첫 검색만 401이 나므로, SDK 키 확인이
+        // 끝난 뒤 저장된 REST 값을 다시 읽어 실제 검색 요청을 보낸다.
+        if (nativeAppKey.isNotBlank()) {
+            binding.tvSearchStatus?.text = "카카오 키 확인 중..."
+
+            KakaoSdkState.ensureInitialized(
+                application,
+                nativeAppKey
+            ) { success, message ->
+                if (isFinishing || isDestroyed) {
+                    return@ensureInitialized
+                }
+
+                if (!success) {
+                    NavLogger.e(
+                        this,
+                        "검색 전 KNSDK 키 확인 실패: $message"
+                    )
+                    binding.tvSearchStatus?.text =
+                        "카카오 SDK 키 확인 실패: ${message ?: "알 수 없는 오류"}"
+                    return@ensureInitialized
+                }
+
+                performDestinationSearchAfterKakaoKeyReady(query)
+            }
+            return
+        }
+
+        performDestinationSearchAfterKakaoKeyReady(query)
+    }
+
+    private fun performDestinationSearchAfterKakaoKeyReady(query: String) {
         binding.tvSearchStatus?.text = "검색 중: $query"
         NavLogger.d(this, "performDestinationSearch query=$query")
         binding.lvSearchResults?.visibility = View.GONE
@@ -904,6 +939,18 @@ class MapActivity : AppCompatActivity() {
             return
         }
 
+        performDestinationSearchWithRestKey(
+            query = query,
+            restKey = restKey,
+            allowNativeFieldFallback = true
+        )
+    }
+
+    private fun performDestinationSearchWithRestKey(
+        query: String,
+        restKey: String,
+        allowNativeFieldFallback: Boolean
+    ) {
         val url = "https://dapi.kakao.com/v2/local/search/keyword.json?query=" +
             java.net.URLEncoder.encode(query, "UTF-8")
         val request = Request.Builder()
@@ -921,11 +968,53 @@ class MapActivity : AppCompatActivity() {
                 response.use {
                     if (!it.isSuccessful) {
                         val body = it.body?.string()
+                        val keyTypeFailure =
+                            (it.code == 401 || it.code == 403) &&
+                                body.orEmpty().contains(
+                                    "KA Header is required",
+                                    ignoreCase = true
+                                )
+
+                        val alternateRestKey = if (allowNativeFieldFallback) {
+                            getKakaoNativeAppKey()
+                                .trim()
+                                .takeIf { candidate ->
+                                    candidate.isNotEmpty() && candidate != restKey
+                                }
+                        } else {
+                            null
+                        }
+
+                        if (keyTypeFailure && alternateRestKey != null) {
+                            NavLogger.d(
+                                this@MapActivity,
+                                "저장된 REST 키가 Native 키로 판정됨 - 다른 입력값으로 REST 검색 재시도"
+                            )
+                            runOnUiThread {
+                                binding.tvSearchStatus?.text =
+                                    "REST 키 자동 확인 후 재검색 중..."
+                            }
+                            performDestinationSearchWithRestKey(
+                                query = query,
+                                restKey = alternateRestKey,
+                                allowNativeFieldFallback = false
+                            )
+                            return@use
+                        }
+
                         // 401/403이면 키 종류/헤더 형식 문제일 확률이 매우 높음.
                         NavLogger.e(this@MapActivity, "카카오 검색 실패 code=${it.code} body=$body")
                         runOnUiThread { binding.tvSearchStatus?.text = "검색 실패(${it.code}) - REST 키/헤더 확인" }
                         return@use
                     }
+
+                    if (!allowNativeFieldFallback) {
+                        KakaoSdkState.persistValidatedKeyRoles(
+                            application,
+                            restKey
+                        )
+                    }
+
                     val json = JSONObject(it.body?.string() ?: "{}")
                     val documents = json.optJSONArray("documents")
                     if (documents == null || documents.length() == 0) {
