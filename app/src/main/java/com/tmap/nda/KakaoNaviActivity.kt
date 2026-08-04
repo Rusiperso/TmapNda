@@ -745,6 +745,21 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             true
         }
 
+        // v3.11: 티맵 화면과 완전히 동일하게 - 상단바 인라인 검색창(키보드 검색 액션)과
+        // 최근검색 아이콘 연결 (재억: "티맵꺼 그대로 카카오에 마춰"). #문제시 원복
+        binding.etDestination?.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
+                val query = binding.etDestination?.text?.toString()?.trim().orEmpty()
+                if (query.isNotEmpty()) performInPlaceSearch(query)
+                true
+            } else {
+                false
+            }
+        }
+        binding.btnVoiceSearch?.setOnClickListener {
+            showFullSearchHistoryDialog()
+        }
+
         binding.btnShareLog?.setOnClickListener {
             binding.svSecondaryPanel?.visibility = View.GONE
             val result = NavLogger.buildShareIntent(this)
