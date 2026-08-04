@@ -139,7 +139,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|center_horizontal"
-        android:layout_marginTop="76dp"
+        android:layout_marginTop="60dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:background="#CC000000"
@@ -179,7 +179,7 @@
             android:id="@+id/llTopBarRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:minHeight="72dp"
+            android:minHeight="56dp"
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:paddingVertical="4dp"
@@ -198,7 +198,7 @@
                     android:layout_height="wrap_content"
                     android:text="0"
                     android:textColor="#FFFFFF"
-                    android:textSize="34sp"
+                    android:textSize="28sp"
                     android:textStyle="bold"/>
 
                 <TextView
@@ -225,7 +225,7 @@
                     android:layout_marginBottom="4dp"/>
             </LinearLayout>
 
-            <View android:layout_width="1dp" android:layout_height="34dp" android:background="#1A1A1A" android:layout_marginHorizontal="14dp"/>
+            <View android:layout_width="1dp" android:layout_height="28dp" android:background="#1A1A1A" android:layout_marginHorizontal="14dp"/>
 
             <!-- 상태 -->
             <LinearLayout
@@ -285,7 +285,7 @@
                     android:visibility="gone"/>
             </LinearLayout>
 
-            <View android:layout_width="1dp" android:layout_height="34dp" android:background="#1A1A1A" android:layout_marginHorizontal="14dp"/>
+            <View android:layout_width="1dp" android:layout_height="28dp" android:background="#1A1A1A" android:layout_marginHorizontal="14dp"/>
 
             <!-- GPS 상태 -->
             <Button
@@ -302,13 +302,13 @@
                 android:paddingHorizontal="10dp"
                 android:backgroundTint="#111111" />
 
-            <View android:layout_width="1dp" android:layout_height="34dp" android:background="#1A1A1A" android:layout_marginHorizontal="14dp"/>
+            <View android:layout_width="1dp" android:layout_height="28dp" android:background="#1A1A1A" android:layout_marginHorizontal="14dp"/>
 
             <!-- 음소거 / 검색 -->
             <ImageButton
                 android:id="@+id/btnMuteToggle"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
                 android:layout_marginEnd="8dp"
                 android:src="@android:drawable/ic_lock_silent_mode"
                 android:background="@drawable/shape_circle_gray"
@@ -319,8 +319,8 @@
                  필드 안 아이콘은 최근검색으로 바꿈. #문제시 원복 -->
             <ImageButton
                 android:id="@+id/btnOpenSearch"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
                 android:layout_marginEnd="8dp"
                 android:src="@drawable/ic_mic"
                 android:tint="#FFFFFF"
@@ -342,7 +342,7 @@
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_weight="1"
-                    android:hint="목적지를 입력하세요"
+                    android:hint="목적지 검색"
                     android:textColor="#FFFFFF"
                     android:textColorHint="#666666"
                     android:textSize="12sp"
@@ -378,8 +378,8 @@
             <!-- 메뉴 (나머지 항목: 이벤트/신호등/최근검색/설정 등) -->
             <ImageButton
                 android:id="@+id/btnMoreMenu"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
                 android:src="@drawable/ic_hamburger"
                 android:background="@drawable/shape_circle_gray"
                 android:scaleType="center"/>
@@ -395,7 +395,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|end"
-        android:layout_marginTop="76dp"
+        android:layout_marginTop="60dp"
         android:layout_marginEnd="4dp"
         android:visibility="gone"
         android:background="#0D0D0D"
