@@ -12,8 +12,7 @@
     <com.kakaomobility.knsdk.ui.view.KNNaviView
         android:id="@+id/naviView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_marginTop="76dp" />
+        android:layout_height="match_parent"/>
 
     <!-- v3.4: 예전엔 지도 자체를 옆으로 밀어냈는데, 지금 상단바는 지도 위에 얹는
          방식이라 안내종료 버튼이 상단바 영역과 겹쳐서 안 보이던 문제(재억 지적 3번).
