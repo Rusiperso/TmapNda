@@ -218,7 +218,7 @@
 
     <!-- ===== 상단 HUD 바 (가로모드와 동일한 패턴) ===== -->
     <LinearLayout
-        android:id="@+id/llTopHudBar"
+        android:id="@+id/llLeftHudPanel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="top"
@@ -358,21 +358,27 @@
             android:paddingHorizontal="12dp"
             android:paddingBottom="8dp"
             android:visibility="gone"/>
+    </LinearLayout>
 
-        <!-- 보조 패널: btnMoreMenu 탭하면 열림/닫힘 -->
-        <ScrollView
-            android:id="@+id/svSecondaryPanel"
+    <!-- v3.0: 보조 패널을 llLeftHudPanel 밖으로 분리해서 화면 위에 뜨는 독립 오버레이로
+         만듦 - 펼쳐져도 상단바 높이에 영향 안 줘서 편집모드 드래그 범위가 안 줄어듦
+         (재억 지적 1·2번 근본 해결). #문제시 원복 -->
+    <ScrollView
+        android:id="@+id/svSecondaryPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:layout_marginTop="64dp"
+        android:visibility="gone"
+        android:background="#0D0D0D"
+        android:elevation="22dp"
+        android:overScrollMode="never"
+        android:maxHeight="420dp">
+
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_gravity="top"
-            android:visibility="gone"
-            android:background="#0D0D0D"
-            android:overScrollMode="never">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
+            android:orientation="vertical"
                 android:padding="14dp">
 
                 <LinearLayout
@@ -602,6 +608,5 @@
 
             </LinearLayout>
         </ScrollView>
-    </LinearLayout>
 
 </FrameLayout>

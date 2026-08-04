@@ -182,11 +182,14 @@ class MapActivity : AppCompatActivity() {
             // 지도(root)는 좌/상/우만 인셋 적용, 하단은 지도가 풀스크린으로 남도록 0 유지
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, 0)
 
-            // v2.9: llDetailPanel(세로모드 하단바)/좌측패널 모두 이제 존재하지 않거나
-            // 상단바 구조로 바뀌어서, 하단 안전여백을 적용해줄 대상이 없음. 예전엔 여기서
-            // 하단에 있던 앱종료 등 버튼이 시스템 네비게이션 바에 가리지 않게 패딩을
-            // 줬는데, 그 버튼들은 이제 상단 ≡ 메뉴 안 svSecondaryPanel로 옮겨져서
-            // 화면 하단 끝에 붙어있지 않음. #문제시 원복
+            // v3.0: svSecondaryPanel(≡ 메뉴로 열리는 보조패널)이 스크롤뷰라 화면 하단까지
+            // 늘어날 수 있는데, 모바일폰(제스처 네비게이션 바 있는)에서는 마지막 버튼(앱종료 등)이
+            // 시스템 바에 가려지던 문제(재억 지적 5번: "모바일 폰 기준 UI가 하단 침범").
+            // 스크롤 가능 영역 맨 아래에 안전여백만큼 패딩 추가. #문제시 원복
+            binding.svSecondaryPanel?.let { panel ->
+                panel.clipToPadding = false
+                panel.setPadding(panel.paddingLeft, panel.paddingTop, panel.paddingRight, systemBars.bottom)
+            }
 
             insets
         }
@@ -257,13 +260,18 @@ class MapActivity : AppCompatActivity() {
         binding.btnEditPanelPosition?.setOnClickListener { view ->
             isEditMode = !isEditMode
             val btn = view as android.widget.Button
+            // v3.0: 편집모드일 때 보조패널이 열려있으면 패널 전체 높이가 커져서 드래그
+            // 가능 범위가 화면 위쪽 극히 일부로 줄어드는 문제(재억 지적 2번: "위치 편집
+            // 사용 시 아래로 더 내려가질 못함") - 편집모드 켤 때도 강제로 접음. #문제시 원복
+            binding.svSecondaryPanel?.visibility = View.GONE
+            binding.btnMoreMenu?.isEnabled = !isEditMode
+            binding.btnMoreMenu?.alpha = if (isEditMode) 0.4f else 1.0f
             if (isEditMode) {
                 btn.text = "위치 편집 종료"
                 Toast.makeText(this, "패널을 드래그해서 원하는 위치로 옮기세요", Toast.LENGTH_LONG).show()
             } else {
                 btn.text = "패널 위치 편집"
                 Toast.makeText(this, "위치가 저장됐습니다", Toast.LENGTH_SHORT).show()
-                binding.svSecondaryPanel?.visibility = View.GONE
             }
         }
 
