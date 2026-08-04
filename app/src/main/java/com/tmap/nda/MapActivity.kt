@@ -55,6 +55,18 @@ class MapActivity : AppCompatActivity() {
     private var tbtDistErrorLogged = false   // nTBTDist 리플렉션 실패는 최초 1회만 로깅
     private var isTmapMuted = false  // 티맵 안내음성 음소거 여부 (기본값: 소리 켜짐. 카카오는 실제 경로안내 중에만 말하므로 기본상태에선 티맵 음성이 나와야 함)
 
+    // v2.4: "50으로 줄여도 다음에 100으로 복귀" 버그의 진짜 원인 - VolumeHelper가 mute
+    // 되는 "그 순간"에만 볼륨을 캡처했음. 그래서 mute 없이 볼륨만 바꾸면 그 변경은 저장이
+    // 안 되고, 다음 mute/unmute 때 예전 값(또는 기본 100)으로 복원돼버림. 시스템 볼륨이
+    // 바뀔 때마다(안 켜져 있을 때만) 실시간으로 캡처해서 이 구조적 문제를 없앰. #문제시 원복
+    private val volumeChangeReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (!isTmapMuted) {
+                VolumeHelper.captureCurrentVolumePercent(this@MapActivity)
+            }
+        }
+    }
+
     // 음성 검색 결과 수신용 런처. 안드로이드 표준 음성인식 액티비티(RecognizerIntent)를 위임 호출하는 방식이라
     // 별도의 RECORD_AUDIO 런타임 권한 요청 없이 동작함 (인식은 시스템 음성입력 앱이 수행).
     // 로그 공유 화면(이메일 앱 등)에서 돌아왔을 때, 방금 보낸 로그 파일들을 삭제하기 위한 목록.
@@ -796,12 +808,6 @@ class MapActivity : AppCompatActivity() {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 30, 40, 30)
         }
-        val camCheckBox = android.widget.CheckBox(this).apply {
-            text = "이동식카메라 근처 자동 감속 (당근파일럿 외 fork용)"
-            isChecked = pref.getBoolean("mobile_cam_slowdown_enabled", false)
-            setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
-        }
         // v2.0: 지도 핀치줌/드래그를 원하는 사용자를 위한 터치 잠금 해제 옵션.
         // 기본값은 계속 잠금(false=잠금 유지)이고, 체크하면 지도 터치가 풀림. #문제시 원복
         val unlockMapTouchCheckBox = android.widget.CheckBox(this).apply {
@@ -810,12 +816,12 @@ class MapActivity : AppCompatActivity() {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
-        // v2.1: "이동식카메라는 감속을 안 했으면 좋겠다" - 위 옵션(다른 fork에 감속을
-        // 추가해주는 옵션)과는 정반대 성격. 이건 fork 종류와 무관하게 이동식카메라
-        // 감속 자체를 원천 차단하는 옵션 - cam_type을 openpilot에 아예 안 보내버리면
-        // 당근파일럿이든 다른 fork든 이동식카메라로 인식을 못 해서 감속이 안 걸림. #문제시 원복
+        // v2.1: fork 종류와 무관하게 이동식카메라 감속 자체를 원천 차단하는 옵션 - cam_type을
+        // openpilot에 아예 안 보내버리면 당근파일럿이든 다른 fork든 이동식카메라로 인식을
+        // 못 해서 감속이 안 걸림. v2.4: "다른 fork에 감속을 추가해주는" 반대 성격의 옵션
+        // (mobile_cam_slowdown_enabled)은 헷갈려서 삭제하고 이것만 남김. #문제시 원복
         val disableMobileCamCheckBox = android.widget.CheckBox(this).apply {
-            text = "이동식카메라 감속 끄기 (모든 openpilot fork 공통)"
+            text = "이동식카메라 감속 끄기"
             isChecked = pref.getBoolean("mobile_cam_slowdown_disabled", false)
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
@@ -823,7 +829,6 @@ class MapActivity : AppCompatActivity() {
         val container = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             addView(checkBox)
-            addView(camCheckBox)
             addView(disableMobileCamCheckBox)
             addView(unlockMapTouchCheckBox)
         }
@@ -833,7 +838,6 @@ class MapActivity : AppCompatActivity() {
             .setPositiveButton("저장") { _, _ ->
                 pref.edit()
                     .putBoolean("over_speed_warning_enabled", checkBox.isChecked)
-                    .putBoolean("mobile_cam_slowdown_enabled", camCheckBox.isChecked)
                     .putBoolean("mobile_cam_slowdown_disabled", disableMobileCamCheckBox.isChecked)
                     .putBoolean("map_touch_unlocked", unlockMapTouchCheckBox.isChecked)
                     .apply()
@@ -2120,6 +2124,15 @@ class MapActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         NavLogger.d(this, "[MapActivity lifecycle] onResume")
+        // v2.4: 볼륨 실시간 캡처 리시버 등록 (onPause에서 해제)
+        try {
+            registerReceiver(
+                volumeChangeReceiver,
+                android.content.IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+            )
+        } catch (e: Exception) {
+            NavLogger.e(this, "볼륨 리시버 등록 예외: ${e.message}")
+        }
         if (knsdkInitialized) {
             try {
                 KNSDK.handleWillEnterForeground()
@@ -2159,6 +2172,12 @@ class MapActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         NavLogger.d(this, "[MapActivity lifecycle] onPause (KakaoNaviActivity가 위에 뜨는 중일 수 있음 - handleWillResignActive가 이 타이밍에 KNSDK로 전달됨)")
+        // v2.4: 볼륨 리시버 해제 (onResume에서 등록)
+        try {
+            unregisterReceiver(volumeChangeReceiver)
+        } catch (e: Exception) {
+            // 등록 안 된 상태에서 해제 시도하면 예외 - 무시해도 안전
+        }
         if (knsdkInitialized) {
             try {
                 KNSDK.handleWillResignActive()

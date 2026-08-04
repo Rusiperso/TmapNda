@@ -872,14 +872,40 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         NavLogger.d(this, "[lifecycle] onStart")
     }
 
+    // v2.4: MapActivity와 동일한 이유 - mute 순간에만 볼륨을 캡처하던 구조라 사용자가
+    // mute 없이 볼륨만 바꾸면 저장이 안 되고 예전 값으로 복원되던 문제. 실제 주행 중엔
+    // 이 화면(카카오 안내)이 주로 떠있으므로 여기서도 실시간 캡처가 특히 중요함. #문제시 원복
+    private val volumeChangeReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val muted = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .getBoolean("tmap_muted", false)
+            if (!muted) {
+                VolumeHelper.captureCurrentVolumePercent(this@KakaoNaviActivity)
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         NavLogger.d(this, "[lifecycle] onResume")
+        try {
+            registerReceiver(
+                volumeChangeReceiver,
+                android.content.IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+            )
+        } catch (e: Exception) {
+            NavLogger.e(this, "볼륨 리시버 등록 예외: ${e.message}")
+        }
     }
 
     override fun onPause() {
         super.onPause()
         NavLogger.d(this, "[lifecycle] onPause")
+        try {
+            unregisterReceiver(volumeChangeReceiver)
+        } catch (e: Exception) {
+            // 등록 안 된 상태에서 해제 시도하면 예외 - 무시해도 안전
+        }
     }
 
     override fun onStop() {
