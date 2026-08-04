@@ -714,14 +714,23 @@ class MapActivity : AppCompatActivity() {
         val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("최근 검색")
             .setView(listView)
-            .setNegativeButton("닫기", null)
+            .setNegativeButton("닫기") { _, _ ->
+                // v2.6: clearFocus()가 소프트키보드까지 같이 닫아버려서, 다이얼로그를 닫은
+                // 뒤 텍스트를 입력하려 해도 키보드가 안 뜨는 버그가 있었음(재억 제보: 음성검색
+                // 취소 후 텍스트 입력하려는데 이 다이얼로그가 막고, 닫으면 키보드까지 닫혀서
+                // 입력 불가). 포커스는 유지하고 오히려 키보드를 명시적으로 다시 띄워줌. #문제시 원복
+                binding.etDestination?.requestFocus()
+                binding.etDestination?.post {
+                    val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                    imm.showSoftInput(binding.etDestination, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+                }
+            }
             .create()
         listView.setOnItemClickListener { _, _, position, _ ->
             val picked = history[position]
             dialog.dismiss()
             startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon)
         }
-        dialog.setOnDismissListener { binding.etDestination?.clearFocus() }
         dialog.show()
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
     }
