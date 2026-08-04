@@ -315,7 +315,7 @@
                 android:layout_width="40dp"
                 android:layout_height="40dp"
                 android:layout_marginEnd="8dp"
-                android:src="@android:drawable/ic_btn_speak_now"
+                android:src="@drawable/ic_mic"
                 android:tint="#FFFFFF"
                 android:background="@drawable/shape_circle_gray"
                 android:scaleType="center"/>
@@ -350,7 +350,7 @@
                     android:layout_width="26dp"
                     android:layout_height="26dp"
                     android:layout_marginStart="4dp"
-                    android:src="@android:drawable/ic_menu_recent_history"
+                    android:src="@drawable/ic_history"
                     android:background="@android:color/transparent"
                     android:scaleType="center" />
             </LinearLayout>
@@ -373,7 +373,7 @@
                 android:id="@+id/btnMoreMenu"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:src="@android:drawable/ic_menu_more"
+                android:src="@drawable/ic_hamburger"
                 android:background="@drawable/shape_circle_gray"
                 android:scaleType="center"/>
         </LinearLayout>
@@ -412,7 +412,7 @@
                 android:textColor="#CCCCCC"
                 android:gravity="center_vertical|start"
                 android:paddingStart="10dp"
-                android:drawableStart="@android:drawable/ic_menu_send"
+                android:drawableStart="@drawable/ic_send_paperplane"
                 android:drawableTint="#CCCCCC"
                 android:drawablePadding="10dp"
                 android:backgroundTint="#111111"
@@ -427,7 +427,7 @@
                 android:textColor="#CCCCCC"
                 android:gravity="center_vertical|start"
                 android:paddingStart="10dp"
-                android:drawableStart="@android:drawable/ic_menu_edit"
+                android:drawableStart="@drawable/ic_edit_pencil"
                 android:drawableTint="#CCCCCC"
                 android:drawablePadding="10dp"
                 android:backgroundTint="#111111"
@@ -442,7 +442,7 @@
                 android:textColor="#CCCCCC"
                 android:gravity="center_vertical|start"
                 android:paddingStart="10dp"
-                android:drawableStart="@android:drawable/ic_menu_preferences"
+                android:drawableStart="@drawable/ic_settings_gear"
                 android:drawableTint="#CCCCCC"
                 android:drawablePadding="10dp"
                 android:backgroundTint="#111111"
@@ -457,7 +457,7 @@
                 android:textColor="#CCCCCC"
                 android:gravity="center_vertical|start"
                 android:paddingStart="10dp"
-                android:drawableStart="@android:drawable/ic_popup_sync"
+                android:drawableStart="@drawable/ic_refresh"
                 android:drawableTint="#CCCCCC"
                 android:drawablePadding="10dp"
                 android:backgroundTint="#111111"
@@ -472,7 +472,7 @@
                 android:textColor="#EF5350"
                 android:gravity="center_vertical|start"
                 android:paddingStart="10dp"
-                android:drawableStart="@android:drawable/ic_lock_power_off"
+                android:drawableStart="@drawable/ic_power_off"
                 android:drawableTint="#EF5350"
                 android:drawablePadding="10dp"
                 android:backgroundTint="#1A0000"/>
