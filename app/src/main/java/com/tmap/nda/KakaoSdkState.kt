@@ -37,6 +37,24 @@ object KakaoSdkState {
     @Volatile
     private var initializedAppKey: String? = null
 
+    /**
+     * 대체 키로 초기화했을 때 최초로 요청받았던 설정상의 네이티브 키.
+     *
+     * 설정값을 자동으로 바꾸지 않아도 같은 실행 중 MapActivity와
+     * KakaoNaviActivity가 현재 검증된 SDK 상태를 재사용할 수 있게 한다.
+     */
+    @Volatile
+    private var initializedRequestedAppKey: String? = null
+
+    /**
+     * KNSDK가 실제로 승인한 REST 입력칸의 대체 키.
+     *
+     * 사용자가 설정에서 REST 키를 변경하면 이전 대체 인증 상태를 재사용하지
+     * 않도록 현재 SharedPreferences 값과 비교하는 용도다.
+     */
+    @Volatile
+    private var initializedFallbackAppKey: String? = null
+
     @Volatile
     private var initializingAppKey: String? = null
 
@@ -69,22 +87,26 @@ object KakaoSdkState {
 
         synchronized(stateLock) {
             if (initialized) {
-                val sameKey = initializedAppKey == normalizedKey
+                val sameInitializedKey = initializedAppKey == normalizedKey
+                val sameFallbackRequest =
+                    initializedRequestedAppKey == normalizedKey &&
+                        initializedFallbackAppKey != null &&
+                        initializedFallbackAppKey == restKeyFallback
 
-                if (sameKey) {
+                if (sameInitializedKey || sameFallbackRequest) {
                     mainHandler.post {
                         callback(true, null)
                     }
                     return
                 }
 
-                // 설정에서 REST/네이티브 키를 잘못 넣었다가 정상 키로 되돌린 경우에도
-                // 프로세스에 남은 이전 인증 상태 때문에 새 키를 영구 차단하지 않도록 한다.
-                // 동시에 초기화하는 것은 계속 막되, 완료된 초기화 뒤의 키 변경은
-                // install부터 순차적으로 다시 수행한다.
+                // 사용자가 설정에서 키를 실제로 변경한 경우에는 이전 실행 중 인증
+                // 상태를 재사용하지 않고 install부터 새 후보로 다시 확인한다.
                 initialized = false
                 installed = false
                 initializedAppKey = null
+                initializedRequestedAppKey = null
+                initializedFallbackAppKey = null
             }
 
             if (initializing) {
@@ -157,18 +179,10 @@ object KakaoSdkState {
                 KNLanguageType.KNLanguageType_KOREAN
             ) { error ->
                 if (error == null) {
-                    if (isFallbackAttempt) {
-                        persistCorrectedKeyOrder(
-                            application = application,
-                            previousNativeAppKey = originalNativeAppKey,
-                            workingNativeAppKey = appKey
-                        )
-                    }
-
                     NavLogger.d(
                         application,
                         if (isFallbackAttempt) {
-                            "KNSDK 대체 키 초기화 성공 - REST/네이티브 입력값 자동 정렬 완료"
+                            "KNSDK 대체 키 초기화 성공 - 현재 실행에만 적용(설정값 유지)"
                         } else {
                             "KNSDK 단일 초기화 성공"
                         }
@@ -177,7 +191,9 @@ object KakaoSdkState {
                     finishInitialization(
                         success = true,
                         appKey = appKey,
-                        message = null
+                        message = null,
+                        requestedAppKey = originalNativeAppKey,
+                        fallbackSourceKey = if (isFallbackAttempt) appKey else null
                     )
                 } else {
                     val message = "${error.code} / ${error.msg}"
@@ -240,67 +256,31 @@ object KakaoSdkState {
         }
     }
 
-    private fun persistCorrectedKeyOrder(
-        application: Application,
-        previousNativeAppKey: String,
-        workingNativeAppKey: String
-    ) {
-        val prefs = application.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-        val savedRestKey = prefs.getString("kakao_rest_api_key", "").orEmpty().trim()
-        val savedNativeKey = prefs.getString("kakao_native_app_key", "").orEmpty().trim()
-
-        // 초기화 도중 사용자가 설정을 다시 바꾼 경우에는 새 값을 덮어쓰지 않는다.
-        if (savedNativeKey != previousNativeAppKey || savedRestKey != workingNativeAppKey) {
-            return
-        }
-
-        prefs.edit()
-            .putString("kakao_rest_api_key", previousNativeAppKey)
-            .putString("kakao_native_app_key", workingNativeAppKey)
-            .apply()
-    }
-
     /**
-     * 카카오 로컬 REST API가 실제로 승인한 키와 KNSDK가 승인한 네이티브 키를
-     * 최종 역할에 맞게 저장한다. 키 값 자체는 로그에 남기지 않는다.
+     * REST 재시도 성공 결과는 현재 요청에만 사용한다.
+     *
+     * 예전 구현은 REST/네이티브 후보를 자동으로 SharedPreferences에 다시 저장해
+     * 두 입력칸이 같은 값으로 덮이는 문제가 있었다. 설정값은 사용자가
+     * '안전운행 시작하기'에서 명시적으로 저장할 때만 변경한다.
      */
     fun persistValidatedKeyRoles(
         application: Application,
         workingRestApiKey: String
     ) {
-        val normalizedRestKey = workingRestApiKey.trim()
-        if (normalizedRestKey.isEmpty()) return
+        if (workingRestApiKey.isBlank()) return
 
-        val workingNativeAppKey = synchronized(stateLock) {
-            initializedAppKey.takeIf { initialized && !it.isNullOrBlank() }
-        }
-
-        val editor = application
-            .getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-            .edit()
-            .putString("kakao_rest_api_key", normalizedRestKey)
-
-        if (!workingNativeAppKey.isNullOrBlank() && workingNativeAppKey != normalizedRestKey) {
-            editor.putString("kakao_native_app_key", workingNativeAppKey)
-        }
-
-        if (editor.commit()) {
-            NavLogger.d(
-                application,
-                "카카오 REST/KNSDK 검증 결과로 키 역할 확정 저장 완료"
-            )
-        } else {
-            NavLogger.e(
-                application,
-                "카카오 REST/KNSDK 검증 결과 저장 실패"
-            )
-        }
+        NavLogger.d(
+            application,
+            "카카오 REST 대체 키 검증 성공 - 현재 요청에만 적용(설정값 유지)"
+        )
     }
 
     private fun finishInitialization(
         success: Boolean,
         appKey: String?,
-        message: String?
+        message: String?,
+        requestedAppKey: String? = appKey,
+        fallbackSourceKey: String? = null
     ) {
         val callbacks = synchronized(stateLock) {
             initialized = success
@@ -311,6 +291,8 @@ object KakaoSdkState {
                 installed = false
             }
             initializedAppKey = if (success) appKey else null
+            initializedRequestedAppKey = if (success) requestedAppKey else null
+            initializedFallbackAppKey = if (success) fallbackSourceKey else null
             initializingAppKey = null
             initializingFallbackAppKey = null
 
@@ -326,3 +308,4 @@ object KakaoSdkState {
         }
     }
 }
+
