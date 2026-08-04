@@ -255,7 +255,12 @@ class MapActivity : AppCompatActivity() {
         // 켜야만 움직임(isEditMode). 앱 재시작해도 저장된 위치로 복원됨. #문제시 원복
         binding.llLeftHudPanel?.let { panel ->
             makeDraggable(panel, "llLeftHudPanel", isLandscape, emptyList())
-            restorePosition(panel, "llLeftHudPanel", isLandscape, emptyList())
+            // v3.2: onCreate 시점엔 panel.width/height가 아직 0이라 clampAndPreventOverlap이
+            // 저장된 위치를 무조건 (0,0)으로 눌러버리는 버그가 있었음(사용자 지적 3번: "편집으로
+            // 내려도 재실행하면 다시 위로 올라감"). 레이아웃이 끝난 뒤(post)에 복원하도록 변경. #문제시 원복
+            panel.post {
+                restorePosition(panel, "llLeftHudPanel", isLandscape, emptyList())
+            }
         }
         binding.btnEditPanelPosition?.setOnClickListener { view ->
             isEditMode = !isEditMode

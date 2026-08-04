@@ -12,8 +12,8 @@ android {
         applicationId = "com.tmap.nda"
         minSdk = 26
         targetSdk = 36
-        versionCode = 120
-        versionName = "3.1"
+        versionCode = 121
+        versionName = "3.2"
     }
 
     signingConfigs {
