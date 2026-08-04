@@ -70,7 +70,11 @@
         android:elevation="20dp"
         android:background="#080808">
 
-        <!-- v3.11: 화면 좁을 때 대비 가로 스크롤 가능하게 감쌈. #문제시 원복 -->
+        <!-- 상시 노출 줄: 속도 / 제한 / 상태 / GPS / 음소거 / 검색 / 메뉴.
+             v3.11: 화면이 좁아서 내용이 잘리는 경우(사용자 지적: "겔럭시 Fe23 6.4인치에서
+             우측 짤림") 대비 가로 스크롤 가능하게 HorizontalScrollView로 감쌈. minHeight는
+             여기(ScrollView)에 유지해서 기존 자동 높이보정 로직(llTopBarRow.minimumHeight
+             참조)이 그대로 맞게 동작함. #문제시 원복 -->
         <HorizontalScrollView
             android:id="@+id/llTopBarRow"
             android:layout_width="match_parent"
@@ -88,6 +92,7 @@
             android:paddingVertical="4dp"
             android:paddingHorizontal="10dp">
 
+            <!-- 속도 -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -100,7 +105,7 @@
                     android:layout_height="wrap_content"
                     android:text="0"
                     android:textColor="#FFFFFF"
-                    android:textSize="34sp"
+                    android:textSize="28sp"
                     android:textStyle="bold"/>
 
                 <TextView
@@ -127,51 +132,69 @@
                     android:layout_marginBottom="4dp"/>
             </LinearLayout>
 
-            <View android:layout_width="1dp" android:layout_height="34dp" android:background="#1A1A1A" android:layout_marginHorizontal="8dp"/>
+            <View android:layout_width="1dp" android:layout_height="28dp" android:background="#1A1A1A" android:layout_marginHorizontal="8dp"/>
 
+            <!-- 상태 -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="start">
+                android:orientation="vertical">
 
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical">
+                    android:orientation="vertical"
+                    android:gravity="start">
 
-                    <View
-                        android:id="@+id/vConnectionDot"
-                        android:layout_width="6dp"
-                        android:layout_height="6dp"
-                        android:background="@drawable/shape_circle_gray"
-                        android:layout_marginEnd="6dp"/>
-
-                    <TextView
-                        android:id="@+id/tvActiveStatus"
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="OP OFF"
-                        android:textColor="#CCCCCC"
-                        android:textSize="13sp"
-                        android:textStyle="bold"/>
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <View
+                            android:id="@+id/vConnectionDot"
+                            android:layout_width="6dp"
+                            android:layout_height="6dp"
+                            android:background="@drawable/shape_circle_gray"
+                            android:layout_marginEnd="6dp"/>
+
+                        <TextView
+                            android:id="@+id/tvActiveStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="OP OFF"
+                            android:textColor="#CCCCCC"
+                            android:textSize="13sp"
+                            android:textStyle="bold"/>
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvConnectionStatus"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="연결 대기"
+                        android:textColor="#777777"
+                        android:textSize="9sp"
+                        android:maxLines="1"
+                        android:ellipsize="end"
+                        android:layout_marginTop="1dp"/>
                 </LinearLayout>
 
                 <TextView
-                    android:id="@+id/tvConnectionStatus"
+                    android:id="@+id/tvXStateBadge"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="연결 대기"
-                    android:textColor="#777777"
+                    android:text=""
+                    android:textColor="#4FC3F7"
                     android:textSize="9sp"
-                    android:maxLines="1"
-                    android:ellipsize="end"
-                    android:layout_marginTop="1dp"/>
+                    android:textStyle="bold"
+                    android:visibility="gone"/>
             </LinearLayout>
 
-            <View android:layout_width="1dp" android:layout_height="34dp" android:background="#1A1A1A" android:layout_marginHorizontal="8dp"/>
+            <View android:layout_width="1dp" android:layout_height="28dp" android:background="#1A1A1A" android:layout_marginHorizontal="8dp"/>
 
+            <!-- GPS 상태 -->
             <Button
                 android:id="@+id/btnGpsStatus"
                 android:layout_width="wrap_content"
@@ -186,32 +209,89 @@
                 android:paddingHorizontal="10dp"
                 android:backgroundTint="#111111" />
 
-            <View android:layout_width="1dp" android:layout_height="34dp" android:background="#1A1A1A" android:layout_marginHorizontal="8dp"/>
+            <View android:layout_width="1dp" android:layout_height="28dp" android:background="#1A1A1A" android:layout_marginHorizontal="8dp"/>
 
+            <!-- 음소거 / 검색 -->
             <ImageButton
                 android:id="@+id/btnKakaoMuteToggle"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
                 android:layout_marginEnd="8dp"
                 android:src="@android:drawable/ic_lock_silent_mode_off"
                 android:background="@drawable/shape_circle_green"
                 android:scaleType="center"/>
 
+            <!-- v3.1: 예전엔 이 버튼도 음성검색, 필드 안 마이크도 음성검색이라 완전히
+                 중복이었음. 이 버튼을 음성검색 전용(아이콘도 마이크로)으로 통일하고,
+                 필드 안 아이콘은 최근검색으로 바꿈. #문제시 원복 -->
             <ImageButton
                 android:id="@+id/btnOpenSearch"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:src="@android:drawable/ic_menu_search"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:layout_marginEnd="8dp"
+                android:src="@drawable/ic_mic"
+                android:tint="#FFFFFF"
                 android:background="@drawable/shape_circle_gray"
                 android:scaleType="center"/>
 
-            <!-- spacer -->
+            <!-- v2.9: 검색 팝업을 거치지 않고 상단바에서 바로 입력 가능하도록.
+                 v3.9: 남은 공간을 다 차지하던 걸(weight=1) 고정폭으로 줄임
+                 (사용자: "목적지를 입력하세요를 목적지 검색으로 줄이라는게 아니라
+                 그 칸 자체를 줄이자는 거") #문제시 원복 -->
+            <LinearLayout
+                android:layout_width="220dp"
+                android:layout_height="38dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/bg_sdi_panel"
+                android:paddingHorizontal="10dp">
+
+                <EditText
+                    android:id="@+id/etDestination"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:hint="목적지 검색"
+                    android:textColor="#FFFFFF"
+                    android:textColorHint="#666666"
+                    android:textSize="12sp"
+                    android:background="@android:color/transparent"
+                    android:singleLine="true"
+                    android:imeOptions="actionSearch"
+                    android:inputType="text" />
+
+                <!-- v3.1: 마이크(음성검색, 왼쪽 버튼과 중복)에서 최근검색으로 변경 -->
+                <ImageButton
+                    android:id="@+id/btnVoiceSearch"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:layout_marginStart="4dp"
+                    android:src="@drawable/ic_history"
+                    android:background="@android:color/transparent"
+                    android:scaleType="center" />
+            </LinearLayout>
+
+            <!-- 검색창을 고정폭으로 줄인 만큼, 오른쪽(도착정보/메뉴)을 끝까지 밀어내는 spacer -->
             <View android:layout_width="20dp" android:layout_height="0dp"/>
 
+            <!-- 도착정보 (안내 중일 때만) -->
+            <TextView
+                android:id="@+id/tvTopBarEta"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="#CCCCCC"
+                android:textSize="11sp"
+                android:gravity="end"
+                android:layout_marginStart="10dp"
+                android:layout_marginEnd="10dp"
+                android:visibility="gone"/>
+
+            <!-- 메뉴 (나머지 항목: 이벤트/신호등/최근검색/설정 등) -->
             <ImageButton
                 android:id="@+id/btnMoreMenu"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
                 android:src="@drawable/ic_hamburger"
                 android:background="@drawable/shape_circle_gray"
                 android:scaleType="center"/>
