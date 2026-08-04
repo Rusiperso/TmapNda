@@ -150,13 +150,15 @@ class MapActivity : AppCompatActivity() {
         binding = ActivityMapBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // 현재 window의 실사용 영역(dp), density, 화면비를 기준으로 가로 HUD 폭을 계산한다.
-        // 세로 화면에는 llLeftHudPanel이 없으므로 검색창/지도 margin을 건드리지 않는다.
-        HudScale.install(
-            binding.root,
-            binding.llLeftHudPanel,
-            listOf(binding.llSearchPanel, binding.llGuidanceBar, binding.flKakaoOverlay, binding.llLaneSignalBar)
-        )
+        // v2.6: 좌측 세로 패널 -> 상단 가로 바로 구조를 바꾸면서, 예전 HudScale(패널 "폭"을
+        // 화면 크기에 맞춰 계산하던 로직)은 더 이상 안 맞음(이제 패널은 match_parent 폭의
+        // 가로 바라서, HudScale이 폭을 줄이면 오히려 레이아웃이 깨짐). 높이 기준 버전으로
+        // 다시 만들기 전까지 임시 비활성화. #TODO #문제시 원복
+        // HudScale.install(
+        //     binding.root,
+        //     binding.llLeftHudPanel,
+        //     listOf(binding.llSearchPanel, binding.llGuidanceBar, binding.flKakaoOverlay, binding.llLaneSignalBar)
+        // )
 
         // UiAutoScaler(전체 뷰트리 padding/margin/고정크기 일괄 스케일링)는
         // 태블릿(sw~940dp)에서 1.8배가 그대로 곱해지며 좌측 패널 폭을 넘어
@@ -428,6 +430,12 @@ class MapActivity : AppCompatActivity() {
 
     // ===== 길안내(목적지 검색) UI =====
     private fun setupDestinationSearchUi() {
+        // v2.6: 상단바 개편 - 자주 안 쓰는 항목(이벤트/신호등/최근검색/설정류)을
+        // ≡ 버튼으로 열고 닫는 보조 패널로 뺌. #문제시 원복
+        binding.btnMoreMenu?.setOnClickListener {
+            val panel = binding.svSecondaryPanel ?: return@setOnClickListener
+            panel.visibility = if (panel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        }
         binding.btnOpenSearch?.setOnClickListener {
             // 좌측 HUD 패널에 최근 검색 이력이 항상 보이도록 바뀌어서, 팝업 이력을
             // 따로 볼 필요가 없어짐. 원래 요청대로 1탭 = 바로 음성인식으로 복귀.
