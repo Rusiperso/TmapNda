@@ -78,7 +78,7 @@
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:paddingVertical="4dp"
-            android:paddingHorizontal="14dp">
+            android:paddingHorizontal="10dp">
 
             <LinearLayout
                 android:layout_width="wrap_content"
@@ -119,7 +119,7 @@
                     android:layout_marginBottom="4dp"/>
             </LinearLayout>
 
-            <View android:layout_width="1dp" android:layout_height="34dp" android:background="#1A1A1A" android:layout_marginHorizontal="14dp"/>
+            <View android:layout_width="1dp" android:layout_height="34dp" android:background="#1A1A1A" android:layout_marginHorizontal="8dp"/>
 
             <LinearLayout
                 android:layout_width="wrap_content"
@@ -162,7 +162,7 @@
                     android:layout_marginTop="1dp"/>
             </LinearLayout>
 
-            <View android:layout_width="1dp" android:layout_height="34dp" android:background="#1A1A1A" android:layout_marginHorizontal="14dp"/>
+            <View android:layout_width="1dp" android:layout_height="34dp" android:background="#1A1A1A" android:layout_marginHorizontal="8dp"/>
 
             <Button
                 android:id="@+id/btnGpsStatus"
@@ -178,7 +178,7 @@
                 android:paddingHorizontal="10dp"
                 android:backgroundTint="#111111" />
 
-            <View android:layout_width="1dp" android:layout_height="34dp" android:background="#1A1A1A" android:layout_marginHorizontal="14dp"/>
+            <View android:layout_width="1dp" android:layout_height="34dp" android:background="#1A1A1A" android:layout_marginHorizontal="8dp"/>
 
             <ImageButton
                 android:id="@+id/btnKakaoMuteToggle"

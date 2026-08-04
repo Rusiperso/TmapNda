@@ -181,4 +181,48 @@ object AutoUpdater {
             NavLogger.e(context, "Install Failed: ${e.message}")
         }
     }
+
+    // v3.10: "업데이트 내역"을 브라우저로 여는 대신 앱 안에서 간단한 팝업으로 바로
+    // 보여줌 (사용자 지적: "인터넷 페이지로 보내지 말고 팝업창으로 간단하게"). GitHub
+    // 릴리즈 body를 그대로 가져와서 스크롤 가능한 다이얼로그에 표시. #문제시 원복
+    fun showChangelogDialog(context: android.app.Activity) {
+        Toast.makeText(context, "업데이트 내역 불러오는 중...", Toast.LENGTH_SHORT).show()
+        CoroutineScope(Dispatchers.IO).launch {
+            var body = ""
+            var tag = ""
+            try {
+                val url = URL(GITHUB_LATEST_RELEASE_URL)
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
+                if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    val json = JSONObject(response)
+                    tag = json.optString("tag_name", "")
+                    body = json.optString("body", "").ifBlank { "(업데이트 내역이 없습니다)" }
+                } else {
+                    body = "불러오기 실패 (HTTP ${connection.responseCode})"
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Changelog fetch failed", e)
+                body = "불러오기 실패: ${e.message}"
+            }
+            withContext(Dispatchers.Main) {
+                if (context.isFinishing || context.isDestroyed) return@withContext
+                val scrollView = android.widget.ScrollView(context)
+                val textView = android.widget.TextView(context).apply {
+                    text = body
+                    setTextColor(android.graphics.Color.parseColor("#DDDDDD"))
+                    setPadding(40, 20, 40, 20)
+                    textSize = 13f
+                }
+                scrollView.addView(textView)
+                AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle(if (tag.isNotBlank()) "업데이트 내역 ($tag)" else "업데이트 내역")
+                    .setView(scrollView)
+                    .setPositiveButton("닫기", null)
+                    .show()
+            }
+        }
+    }
 }
