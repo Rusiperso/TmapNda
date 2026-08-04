@@ -314,9 +314,14 @@
             <Button
                 android:id="@+id/btnGpsStatus"
                 android:layout_width="wrap_content"
-                android:layout_height="28dp"
+                android:layout_height="34dp"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
                 android:text="GPS"
                 android:textSize="9sp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
                 android:paddingHorizontal="8dp"
                 android:backgroundTint="#111111"
                 android:layout_marginEnd="8dp"/>
