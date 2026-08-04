@@ -221,6 +221,17 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         setContentView(binding.root)
         naviView = binding.naviView
 
+        // v3.9: Tmap 화면과 동일하게 상단바 드래그 편집 기능 연결 (재억: "기본 UI는
+        // 티맵/카카오맵 차등을 주지 말고 동일하게 적용해야돼") - PanelDragHelper 공용
+        // 코드라 편집모드 상태(PanelDragHelper.isEditMode)도 두 화면이 공유함. #문제시 원복
+        val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        binding.llLeftHudPanel?.let { panel ->
+            PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList())
+            panel.post {
+                PanelDragHelper.restorePosition(this, panel, "llLeftHudPanel", isLandscape, emptyList())
+            }
+        }
+
         // v3.3: 이 HudScale.install()이 llLeftHudPanel(이제 상단 가로바)을 예전
         // "좌측 세로 패널" 기준 폭으로 강제 리사이즈하고 있었음 - MapActivity에서는
         // v2.6에서 이미 비활성화했는데 KakaoNaviActivity에서는 빼먹어서, 카카오 길안내
@@ -710,11 +721,17 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     )
                 )
             } catch (e: Exception) {
-                Toast.makeText(this, "도움말을 열 수 없습니다: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "업데이트 내역을 열 수 없습니다: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
         binding.btnExitApp?.setOnClickListener {
             finishAffinity()
+        }
+        binding.btnEditPanelPosition?.let {
+            PanelDragHelper.wireEditToggleButton(this, it, binding.svSecondaryPanel, binding.btnMoreMenu)
+        }
+        binding.btnEditKey?.setOnClickListener {
+            PanelDragHelper.showAppSettingsDialog(this, null)
         }
 
         binding.btnKakaoMuteToggle?.setOnClickListener {

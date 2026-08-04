@@ -48,7 +48,7 @@ class MapActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMapBinding
     private var navigationFragment: NavigationFragment? = null
-    private var isEditMode = false
+    // v3.9: PanelDragHelper.isEditMode로 이전 - Tmap/카카오 화면이 같은 편집모드 상태 공유
     private var lastValidRoadLimit = 0  // 3번: 도로 규정속도 깜빡임 방지 - 마지막 유효값 저장
     private var lastEdcAnomalyState = false  // observableEDCData 이상징후 로깅용 (상태 변화시에만 기록)
     private var loggedEdcKeySetOnce = false  // 차선/신호등 진단용 전체 키 목록은 한 번만 로그
@@ -297,7 +297,7 @@ class MapActivity : AppCompatActivity() {
                     )
                 )
             } catch (e: Exception) {
-                Toast.makeText(this, "도움말을 열 수 없습니다: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "업데이트 내역을 열 수 없습니다: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -327,37 +327,24 @@ class MapActivity : AppCompatActivity() {
 
         // 스타일 D(HUD): 좌측 패널은 고정, llOffset 플로팅만 드래그 유지
         binding.llOffset?.let {
-            makeDraggable(it, "llOffset", isLandscape, emptyList())
+            PanelDragHelper.makeDraggable(this, it, "llOffset", isLandscape, emptyList())
         }
 
         // v2.9: 상단 HUD 바(llLeftHudPanel)도 드래그로 위치 옮길 수 있게 - 단, 예전처럼
-        // 상시로 드래그되면 실수로 밀릴 수 있어서 "패널 위치 편집" 버튼으로 편집모드를
-        // 켜야만 움직임(isEditMode). 앱 재시작해도 저장된 위치로 복원됨. #문제시 원복
+        // 상시로 드래그되면 실수로 밀릴 수 있어서 "UI 편집" 버튼으로 편집모드를
+        // 켜야만 움직임. 앱 재시작해도 저장된 위치로 복원됨. #문제시 원복
         binding.llLeftHudPanel?.let { panel ->
-            makeDraggable(panel, "llLeftHudPanel", isLandscape, emptyList())
+            PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList())
             // v3.2: onCreate 시점엔 panel.width/height가 아직 0이라 clampAndPreventOverlap이
             // 저장된 위치를 무조건 (0,0)으로 눌러버리는 버그가 있었음(재억 지적 3번: "편집으로
             // 내려도 재실행하면 다시 위로 올라감"). 레이아웃이 끝난 뒤(post)에 복원하도록 변경. #문제시 원복
             panel.post {
-                restorePosition(panel, "llLeftHudPanel", isLandscape, emptyList())
+                PanelDragHelper.restorePosition(this, panel, "llLeftHudPanel", isLandscape, emptyList())
             }
         }
-        binding.btnEditPanelPosition?.setOnClickListener { view ->
-            isEditMode = !isEditMode
-            val btn = view as android.widget.Button
-            // v3.0: 편집모드일 때 보조패널이 열려있으면 패널 전체 높이가 커져서 드래그
-            // 가능 범위가 화면 위쪽 극히 일부로 줄어드는 문제(재억 지적 2번: "위치 편집
-            // 사용 시 아래로 더 내려가질 못함") - 편집모드 켤 때도 강제로 접음. #문제시 원복
-            binding.svSecondaryPanel?.visibility = View.GONE
-            binding.btnMoreMenu?.isEnabled = !isEditMode
-            binding.btnMoreMenu?.alpha = if (isEditMode) 0.4f else 1.0f
-            if (isEditMode) {
-                btn.text = "UI 편집 종료"
-                Toast.makeText(this, "패널을 드래그해서 원하는 위치로 옮기세요", Toast.LENGTH_LONG).show()
-            } else {
-                btn.text = "UI 편집"
-                Toast.makeText(this, "위치가 저장됐습니다", Toast.LENGTH_SHORT).show()
-            }
+        // v3.9: Tmap/카카오 화면 동일 동작을 위해 공용 함수로 교체 (재억: "기본 UI는 차등 두지 말 것")
+        binding.btnEditPanelPosition?.let {
+            PanelDragHelper.wireEditToggleButton(this, it, binding.svSecondaryPanel, binding.btnMoreMenu)
         }
 
         // Tmap 지도 터치 무력화: 화면/정보 표시는 그대로, 지도(NavigationFragment)로 가는
@@ -878,51 +865,7 @@ class MapActivity : AppCompatActivity() {
 
     // v1.6: 속도가 도로 제한속도의 110%를 넘으면 경고음 - 기본 꺼짐, 이 다이얼로그에서 토글. #문제시 원복
     private fun showAppSettingsDialog() {
-        val pref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-        val checkBox = android.widget.CheckBox(this).apply {
-            text = "속도 10% 초과 시 경고음"
-            isChecked = pref.getBoolean("over_speed_warning_enabled", false)
-            setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 30, 40, 30)
-        }
-        // v2.0: 지도 핀치줌/드래그를 원하는 사용자를 위한 터치 잠금 해제 옵션.
-        // 기본값은 계속 잠금(false=잠금 유지)이고, 체크하면 지도 터치가 풀림. #문제시 원복
-        val unlockMapTouchCheckBox = android.widget.CheckBox(this).apply {
-            text = "지도 터치 잠금 해제 (핀치줌/드래그 허용)"
-            isChecked = pref.getBoolean("map_touch_unlocked", false)
-            setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
-        }
-        // v2.1: fork 종류와 무관하게 이동식카메라 감속 자체를 원천 차단하는 옵션 - cam_type을
-        // openpilot에 아예 안 보내버리면 당근파일럿이든 다른 fork든 이동식카메라로 인식을
-        // 못 해서 감속이 안 걸림. v2.4: "다른 fork에 감속을 추가해주는" 반대 성격의 옵션
-        // (mobile_cam_slowdown_enabled)은 헷갈려서 삭제하고 이것만 남김. #문제시 원복
-        val disableMobileCamCheckBox = android.widget.CheckBox(this).apply {
-            text = "이동식카메라 감속 끄기"
-            isChecked = pref.getBoolean("mobile_cam_slowdown_disabled", false)
-            setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
-        }
-        val container = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            addView(checkBox)
-            addView(disableMobileCamCheckBox)
-            addView(unlockMapTouchCheckBox)
-        }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("앱 설정")
-            .setView(container)
-            .setPositiveButton("저장") { _, _ ->
-                pref.edit()
-                    .putBoolean("over_speed_warning_enabled", checkBox.isChecked)
-                    .putBoolean("mobile_cam_slowdown_disabled", disableMobileCamCheckBox.isChecked)
-                    .putBoolean("map_touch_unlocked", unlockMapTouchCheckBox.isChecked)
-                    .apply()
-                applyMapTouchLockState(unlockMapTouchCheckBox.isChecked)
-                Toast.makeText(this, "저장됨", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("취소", null)
-            .show()
+        PanelDragHelper.showAppSettingsDialog(this, binding.vTouchLockOverlay)
     }
 
     // v2.0: 잠금 해제 상태면 오버레이가 터치를 그냥 통과시켜서(false 리턴) 지도가 핀치줌/드래그를 받게 함.
@@ -2725,100 +2668,6 @@ class MapActivity : AppCompatActivity() {
                 }
                 else -> false
             }
-        }
-    }
-    private fun clampAndPreventOverlap(v: View, targetX: Float, targetY: Float, otherViews: List<View>): Pair<Float, Float> {
-        var x = targetX
-        var y = targetY
-
-        // 1. Clamp to parent boundaries
-        val parent = v.parent as? View
-        if (parent != null) {
-            val maxX = (parent.width - v.width).toFloat().coerceAtLeast(0f)
-            val maxY = (parent.height - v.height).toFloat().coerceAtLeast(0f)
-            x = x.coerceIn(0f, maxX)
-            y = y.coerceIn(0f, maxY)
-        }
-
-        // 2. Prevent overlap with other views
-        val targetRect = android.graphics.RectF(x, y, x + v.width, y + v.height)
-        for (other in otherViews) {
-            if (other.visibility == View.VISIBLE) {
-                val otherRect = android.graphics.RectF(other.x, other.y, other.x + other.width, other.y + other.height)
-                if (android.graphics.RectF.intersects(targetRect, otherRect)) {
-                    // Try moving only X
-                    val rectX = android.graphics.RectF(x, v.y, x + v.width, v.y + v.height)
-                    // Try moving only Y
-                    val rectY = android.graphics.RectF(v.x, y, v.x + v.width, y + v.height)
-
-                    val canMoveX = !android.graphics.RectF.intersects(rectX, otherRect)
-                    val canMoveY = !android.graphics.RectF.intersects(rectY, otherRect)
-
-                    if (canMoveX && !canMoveY) {
-                        y = v.y
-                    } else if (!canMoveX && canMoveY) {
-                        x = v.x
-                    } else {
-                        // Cannot move independently without collision, stop movement
-                        x = v.x
-                        y = v.y
-                    }
-                    targetRect.set(x, y, x + v.width, y + v.height)
-                }
-            }
-        }
-        return Pair(x, y)
-    }
-
-    private fun makeDraggable(view: View, keyPrefix: String, isLandscape: Boolean, otherViews: List<View> = emptyList()) {
-        var dX = 0f
-        var dY = 0f
-
-        view.setOnTouchListener { v, event ->
-            if (!isEditMode) return@setOnTouchListener false
-
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    dX = v.x - event.rawX
-                    dY = v.y - event.rawY
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val rawX = event.rawX + dX
-                    val rawY = event.rawY + dY
-                    val (clampedX, clampedY) = clampAndPreventOverlap(v, rawX, rawY, otherViews)
-
-                    v.animate()
-                        .x(clampedX)
-                        .y(clampedY)
-                        .setDuration(0)
-                        .start()
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-                    val suffix = if (isLandscape) "land" else "port"
-                    sharedPref.edit()
-                        .putFloat("${keyPrefix}_x_${suffix}", v.x)
-                        .putFloat("${keyPrefix}_y_${suffix}", v.y)
-                        .apply()
-                    true
-                }
-                else -> false
-            }
-        }
-    }
-
-    private fun restorePosition(view: View, keyPrefix: String, isLandscape: Boolean, otherViews: List<View> = emptyList()) {
-        val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-        val suffix = if (isLandscape) "land" else "port"
-        val x = sharedPref.getFloat("${keyPrefix}_x_${suffix}", -1f)
-        val y = sharedPref.getFloat("${keyPrefix}_y_${suffix}", -1f)
-
-        if (x != -1f && y != -1f) {
-            val (clampedX, clampedY) = clampAndPreventOverlap(view, x, y, otherViews)
-            view.x = clampedX
-            view.y = clampedY
         }
     }
 }
