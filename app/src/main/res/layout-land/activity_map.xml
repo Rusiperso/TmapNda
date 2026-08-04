@@ -327,11 +327,13 @@
                 android:background="@drawable/shape_circle_gray"
                 android:scaleType="center"/>
 
-            <!-- v2.9: 검색 팝업을 거치지 않고 상단바에서 바로 입력 가능하도록 -->
+            <!-- v2.9: 검색 팝업을 거치지 않고 상단바에서 바로 입력 가능하도록.
+                 v3.9: 남은 공간을 다 차지하던 걸(weight=1) 고정폭으로 줄임
+                 (사용자: "목적지를 입력하세요를 목적지 검색으로 줄이라는게 아니라
+                 그 칸 자체를 줄이자는 거") #문제시 원복 -->
             <LinearLayout
-                android:layout_width="0dp"
+                android:layout_width="260dp"
                 android:layout_height="38dp"
-                android:layout_weight="1"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
                 android:background="@drawable/bg_sdi_panel"
@@ -361,6 +363,9 @@
                     android:background="@android:color/transparent"
                     android:scaleType="center" />
             </LinearLayout>
+
+            <!-- 검색창을 고정폭으로 줄인 만큼, 오른쪽(도착정보/메뉴)을 끝까지 밀어내는 spacer -->
+            <View android:layout_width="0dp" android:layout_height="0dp" android:layout_weight="1"/>
 
             <!-- 도착정보 (안내 중일 때만) -->
             <TextView
@@ -476,7 +481,7 @@
                 android:id="@+id/btnHelp"
                 android:layout_width="match_parent"
                 android:layout_height="38dp"
-                android:text="도움말"
+                android:text="업데이트 내역"
                 android:textSize="12sp"
                 android:textColor="#CCCCCC"
                 android:gravity="center_vertical|start"

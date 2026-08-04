@@ -268,7 +268,7 @@
                     android:id="@+id/btnHelp"
                     android:layout_width="match_parent"
                     android:layout_height="38dp"
-                    android:text="도움말"
+                    android:text="업데이트 내역"
                     android:textSize="12sp"
                     android:textColor="#CCCCCC"
                     android:gravity="center_vertical|start"

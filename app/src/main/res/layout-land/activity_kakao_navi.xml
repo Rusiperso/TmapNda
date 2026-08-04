@@ -245,10 +245,41 @@
                     android:backgroundTint="#111111"
                     android:layout_marginBottom="4dp"/>
 
+                <!-- v3.9: UI편집/설정도 티맵과 동일하게 추가 (사용자: "기본 UI는 차등 두지
+                     말고 동일하게 적용" - PanelDragHelper 공용 코드로 두 화면이 완전히
+                     같이 동작함) -->
+                <Button
+                    android:id="@+id/btnEditPanelPosition"
+                    android:layout_width="match_parent"
+                    android:layout_height="38dp"
+                    android:text="UI 편집"
+                    android:textSize="12sp"
+                    android:textColor="#CCCCCC"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="10dp"
+                    android:drawableStart="@drawable/ic_edit_pencil"
+                    android:drawableTint="#CCCCCC"
+                    android:drawablePadding="10dp"
+                    android:backgroundTint="#111111"
+                    android:layout_marginBottom="4dp"/>
+
+                <Button
+                    android:id="@+id/btnEditKey"
+                    android:layout_width="match_parent"
+                    android:layout_height="38dp"
+                    android:text="설정"
+                    android:textSize="12sp"
+                    android:textColor="#CCCCCC"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="10dp"
+                    android:drawableStart="@drawable/ic_settings_gear"
+                    android:drawableTint="#CCCCCC"
+                    android:drawablePadding="10dp"
+                    android:backgroundTint="#111111"
+                    android:layout_marginBottom="4dp"/>
+
                 <!-- v3.8: 티맵 화면과 동일하게 업데이트확인/도움말/앱종료 추가
-                     (사용자 지적 2·3번: "카카오 화면 더보기가 티맵보다 항목이 적음").
-                     UI편집/설정은 티맵 화면 전용 상태(드래그 위치·체크박스)와 얽혀있어
-                     이번엔 보류 - Tmap 화면에서 이용 가능. #문제시 원복 -->
+                     (사용자 지적 2·3번: "카카오 화면 더보기가 티맵보다 항목이 적음"). #문제시 원복 -->
                 <Button
                     android:id="@+id/btnCheckUpdate"
                     android:layout_width="match_parent"
@@ -268,7 +299,7 @@
                     android:id="@+id/btnHelp"
                     android:layout_width="match_parent"
                     android:layout_height="38dp"
-                    android:text="도움말"
+                    android:text="업데이트 내역"
                     android:textSize="12sp"
                     android:textColor="#CCCCCC"
                     android:gravity="center_vertical|start"
