@@ -174,12 +174,23 @@
         android:elevation="20dp"
         android:background="#080808">
 
-        <!-- 상시 노출 줄: 속도 / 제한 / 상태 / GPS / 음소거 / 검색 / 메뉴 -->
-        <LinearLayout
+        <!-- 상시 노출 줄: 속도 / 제한 / 상태 / GPS / 음소거 / 검색 / 메뉴.
+             v3.11: 화면이 좁아서 내용이 잘리는 경우(재억 지적: "겔럭시 Fe23 6.4인치에서
+             우측 짤림") 대비 가로 스크롤 가능하게 HorizontalScrollView로 감쌈. minHeight는
+             여기(ScrollView)에 유지해서 기존 자동 높이보정 로직(llTopBarRow.minimumHeight
+             참조)이 그대로 맞게 동작함. #문제시 원복 -->
+        <HorizontalScrollView
             android:id="@+id/llTopBarRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:minHeight="56dp"
+            android:scrollbars="none"
+            android:overScrollMode="never"
+            android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:paddingVertical="4dp"
@@ -365,7 +376,7 @@
             </LinearLayout>
 
             <!-- 검색창을 고정폭으로 줄인 만큼, 오른쪽(도착정보/메뉴)을 끝까지 밀어내는 spacer -->
-            <View android:layout_width="0dp" android:layout_height="0dp" android:layout_weight="1"/>
+            <View android:layout_width="20dp" android:layout_height="0dp"/>
 
             <!-- 도착정보 (안내 중일 때만) -->
             <TextView
@@ -389,6 +400,7 @@
                 android:background="@drawable/shape_circle_gray"
                 android:scaleType="center"/>
         </LinearLayout>
+        </HorizontalScrollView>
     </LinearLayout>
 
     <!-- v3.0: 보조 패널을 llLeftHudPanel 밖으로 분리해서 지도 위에 뜨는 독립 오버레이로
