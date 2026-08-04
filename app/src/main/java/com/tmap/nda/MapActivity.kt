@@ -505,8 +505,9 @@ class MapActivity : AppCompatActivity() {
             promptForKakaoKeyThenSearch("") // 빈 쿼리로 열면 저장만 하고 검색은 안 함(취소 눌러도 됨)
             true
         }
+        // v3.1: 필드 안 아이콘을 음성검색(왼쪽 버튼과 중복)에서 최근검색으로 변경
         binding.btnVoiceSearch?.setOnClickListener {
-            startVoiceSearch()
+            showSearchHistory()
         }
         binding.btnStopGuidance?.setOnClickListener {
             stopGuidance()

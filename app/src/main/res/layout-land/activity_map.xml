@@ -307,12 +307,15 @@
                 android:background="@drawable/shape_circle_gray"
                 android:scaleType="center"/>
 
+            <!-- v3.1: 예전엔 이 버튼도 음성검색, 필드 안 마이크도 음성검색이라 완전히
+                 중복이었음. 이 버튼을 음성검색 전용(아이콘도 마이크로)으로 통일하고,
+                 필드 안 아이콘은 최근검색으로 바꿈. #문제시 원복 -->
             <ImageButton
                 android:id="@+id/btnOpenSearch"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
                 android:layout_marginEnd="8dp"
-                android:src="@android:drawable/ic_menu_search"
+                android:src="@android:drawable/ic_btn_speak_now"
                 android:background="@drawable/shape_circle_gray"
                 android:scaleType="center"/>
 
@@ -340,12 +343,13 @@
                     android:imeOptions="actionSearch"
                     android:inputType="text" />
 
+                <!-- v3.1: 마이크(음성검색, 왼쪽 버튼과 중복)에서 최근검색으로 변경 -->
                 <ImageButton
                     android:id="@+id/btnVoiceSearch"
                     android:layout_width="26dp"
                     android:layout_height="26dp"
                     android:layout_marginStart="4dp"
-                    android:src="@android:drawable/ic_btn_speak_now"
+                    android:src="@android:drawable/ic_menu_recent_history"
                     android:background="@android:color/transparent"
                     android:scaleType="center" />
             </LinearLayout>
@@ -397,155 +401,6 @@
             android:orientation="vertical"
             android:padding="14dp">
 
-            <!-- 카메라/방지턱 이벤트 -->
-            <LinearLayout
-                android:id="@+id/llSdiInfo"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginBottom="10dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="EVENT"
-                    android:textColor="#444444"
-                    android:textSize="9sp"
-                    android:letterSpacing="0.15"
-                    android:layout_marginBottom="4dp"/>
-
-                <TextView
-                    android:id="@+id/tvSdiDescr"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="--"
-                    android:textColor="#FFC107"
-                    android:textSize="11sp"
-                    android:layout_marginBottom="2dp"/>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="bottom">
-
-                    <TextView
-                        android:id="@+id/tvSdiDist"
-                        android:layout_width="0dp"
-                        android:layout_weight="1"
-                        android:layout_height="wrap_content"
-                        android:text="--"
-                        android:textColor="#FFFFFF"
-                        android:textSize="18sp"
-                        android:textStyle="bold"
-                        android:maxLines="1"/>
-
-                    <TextView
-                        android:id="@+id/tvSdiSpeedLimit"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text=""
-                        android:textColor="#FF5252"
-                        android:textSize="11sp"
-                        android:textStyle="bold"
-                        android:layout_marginStart="6dp"
-                        android:layout_marginBottom="4dp"/>
-                </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/llBlockInfo"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:layout_marginTop="4dp"
-                    android:visibility="gone">
-
-                    <TextView
-                        android:id="@+id/tvOffsetTitle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="구간단속"
-                        android:textColor="#FFC107"
-                        android:textSize="10sp"
-                        android:visibility="gone"/>
-
-                    <TextView
-                        android:id="@+id/tvBlockAvgSpeed"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text=""
-                        android:textColor="#FFFFFF"
-                        android:textSize="13sp"
-                        android:textStyle="bold"/>
-
-                    <TextView
-                        android:id="@+id/tvBlockDist"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text=""
-                        android:textColor="#AAAAAA"
-                        android:textSize="12sp"/>
-
-                    <TextView
-                        android:id="@+id/tvBlockTime"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text=""
-                        android:textColor="#AAAAAA"
-                        android:textSize="12sp"/>
-                </LinearLayout>
-            </LinearLayout>
-
-            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#1A1A1A" android:layout_marginBottom="10dp"/>
-
-            <!-- 신호등 / 카로트버전 -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginBottom="10dp">
-
-                <View
-                    android:id="@+id/vTrafficLight"
-                    android:layout_width="12dp"
-                    android:layout_height="12dp"
-                    android:background="@drawable/shape_circle_gray"
-                    android:layout_marginEnd="8dp"/>
-
-                <LinearLayout
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="SIGNAL"
-                        android:textColor="#444444"
-                        android:textSize="8sp"/>
-
-                    <TextView
-                        android:id="@+id/tvCarrotVersion"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text=""
-                        android:textColor="#666666"
-                        android:textSize="9sp"/>
-                </LinearLayout>
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/tvCarrotIp"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="IP: -"
-                android:textColor="#444444"
-                android:textSize="9sp"
-                android:maxLines="1"
-                android:ellipsize="middle"
-                android:layout_marginBottom="10dp"/>
-
             <ImageButton
                 android:id="@+id/btnShareLog"
                 android:layout_width="match_parent"
@@ -554,56 +409,6 @@
                 android:background="@drawable/shape_circle_gray"
                 android:scaleType="center"
                 android:layout_marginBottom="10dp"/>
-
-            <!-- 최근 검색 이력 -->
-            <LinearLayout
-                android:id="@+id/llRecentSearchPanel"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginBottom="10dp"
-                android:visibility="gone">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="최근 검색"
-                    android:textColor="#666666"
-                    android:textSize="9sp"
-                    android:letterSpacing="0.1"
-                    android:layout_marginBottom="4dp"/>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:background="#141414">
-
-                    <TextView
-                        android:id="@+id/tvRecentSearch1"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:padding="9dp"
-                        android:textColor="#DDDDDD"
-                        android:textSize="12sp"
-                        android:maxLines="1"
-                        android:ellipsize="end"
-                        android:visibility="gone"/>
-                </LinearLayout>
-
-                <Button
-                    android:id="@+id/btnMoreHistory"
-                    android:layout_width="match_parent"
-                    android:layout_height="32dp"
-                    android:layout_marginTop="4dp"
-                    android:text="+ 더보기"
-                    android:textSize="11sp"
-                    android:textColor="#888888"
-                    android:background="@drawable/shape_circle_gray"
-                    android:minHeight="0dp"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"/>
-            </LinearLayout>
 
             <Button
                 android:id="@+id/btnEditPanelPosition"
@@ -659,5 +464,115 @@
 
         </LinearLayout>
     </ScrollView>
+
+    <!-- v3.1: 사용자 요청 - EVENT/SIGNAL/최근검색을 더보기 목록에서 제거. 이 뷰들을 갱신하는
+         내부 로직(카메라 감지, 신호등 상태, 구간단속, 검색이력 저장)은 다른 기능(UDP 전송 등)과
+         얽혀있어서 코드까지 들어내면 위험 부담이 커, 화면에 영원히 안 보이는 숨김 컨테이너로
+         옮기기만 함 - 기능은 그대로 동작하되 사용자에게는 노출 안 됨. #문제시 원복 -->
+    <LinearLayout
+        android:id="@+id/llHiddenLegacyPanel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:id="@+id/llSdiInfo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvSdiDescr"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="--"/>
+
+            <TextView
+                android:id="@+id/tvSdiDist"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="--"/>
+
+            <TextView
+                android:id="@+id/tvSdiSpeedLimit"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""/>
+
+            <LinearLayout
+                android:id="@+id/llBlockInfo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvOffsetTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="구간단속"/>
+
+                <TextView
+                    android:id="@+id/tvBlockAvgSpeed"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=""/>
+
+                <TextView
+                    android:id="@+id/tvBlockDist"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=""/>
+
+                <TextView
+                    android:id="@+id/tvBlockTime"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=""/>
+            </LinearLayout>
+        </LinearLayout>
+
+        <View
+            android:id="@+id/vTrafficLight"
+            android:layout_width="12dp"
+            android:layout_height="12dp"/>
+
+        <TextView
+            android:id="@+id/tvCarrotVersion"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""/>
+
+        <TextView
+            android:id="@+id/tvCarrotIp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="IP: -"/>
+
+        <LinearLayout
+            android:id="@+id/llRecentSearchPanel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:id="@+id/llRecentSearchRows"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"/>
+
+            <TextView
+                android:id="@+id/tvRecentSearch1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""/>
+
+            <Button
+                android:id="@+id/btnMoreHistory"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="+ 더보기"/>
+        </LinearLayout>
+    </LinearLayout>
 
 </FrameLayout>
