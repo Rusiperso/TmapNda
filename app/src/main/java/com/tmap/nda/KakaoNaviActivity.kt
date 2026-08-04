@@ -81,7 +81,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             val expandedHeight = (panelHeight - baseHeight).coerceAtLeast(0)
 
             applyTopPanelExpansion(binding.naviView, expandedHeight)
-            applyTopPanelExpansion(binding.llOffset, expandedHeight)
             applyTopPanelExpansion(binding.svSecondaryPanel, expandedHeight)
         }
     }
