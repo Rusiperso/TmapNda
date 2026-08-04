@@ -728,7 +728,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             finishAffinity()
         }
         binding.btnEditPanelPosition?.let {
-            PanelDragHelper.wireEditToggleButton(this, it, binding.svSecondaryPanel, binding.btnMoreMenu)
+            PanelDragHelper.wireEditToggleButton(this, it, binding.svSecondaryPanel, binding.btnMoreMenu, binding.btnConfirmEditPosition)
         }
         binding.btnEditKey?.setOnClickListener {
             PanelDragHelper.showAppSettingsDialog(this, null)

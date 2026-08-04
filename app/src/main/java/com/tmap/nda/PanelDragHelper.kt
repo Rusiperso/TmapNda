@@ -104,28 +104,37 @@ object PanelDragHelper {
         }
     }
 
-    // v3.9: "UI 편집" 버튼 클릭 처리를 공용화 - Tmap/카카오 화면이 완전히 동일하게 동작. #문제시 원복
+    // v3.9: "UI 편집" 버튼 클릭 처리를 공용화 - Tmap/카카오 화면이 완전히 동일하게 동작.
+    // v3.10: confirmButton(항상 화면에 떠있는 체크 버튼) 추가 - 편집모드 켜지면 더보기
+    // 패널이 닫히고 ≡ 버튼도 비활성화돼서 "편집 끝내기"를 누를 방법이 아예 없어지는
+    // 버그가 있었음(재억 지적). 이 체크 버튼은 항상 최상단에 떠서 언제든 편집을 끝낼
+    // 수 있게 함 - toggleButton과 confirmButton 둘 다 같은 종료 로직을 공유. #문제시 원복
     fun wireEditToggleButton(
         context: android.content.Context,
         button: android.widget.Button,
         secondaryPanel: View?,
-        moreMenuButton: View?
+        moreMenuButton: View?,
+        confirmButton: View? = null
     ) {
-        button.setOnClickListener {
-            isEditMode = !isEditMode
+        fun setEditMode(enabled: Boolean) {
+            isEditMode = enabled
             // 편집모드일 때 보조패널이 열려있으면 패널 전체 높이가 커져서 드래그 가능
             // 범위가 줄어드는 문제 방지 - 편집모드 켤 때도 강제로 접음
             secondaryPanel?.visibility = View.GONE
             moreMenuButton?.isEnabled = !isEditMode
             moreMenuButton?.alpha = if (isEditMode) 0.4f else 1.0f
+            confirmButton?.visibility = if (isEditMode) View.VISIBLE else View.GONE
             if (isEditMode) {
                 button.text = "UI 편집 종료"
-                android.widget.Toast.makeText(context, "패널을 드래그해서 원하는 위치로 옮기세요", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(context, "패널을 드래그해서 원하는 위치로 옮기고, 우측 상단 체크(✓)를 눌러 확정하세요", android.widget.Toast.LENGTH_LONG).show()
             } else {
                 button.text = "UI 편집"
                 android.widget.Toast.makeText(context, "위치가 저장됐습니다", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
+
+        button.setOnClickListener { setEditMode(!isEditMode) }
+        confirmButton?.setOnClickListener { setEditMode(false) }
     }
 
     // v3.9: 앱 설정 다이얼로그도 공용화. touchLockOverlay는 Tmap 화면에만 있는
