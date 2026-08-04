@@ -91,6 +91,33 @@ object KakaoRouteDataRepository {
         destinationName = destinationName
     )
 
+    /** v2.2: KakaoHudBridge(공식 KNSDK API 기반)가 값을 한 번에 반영하고 구독자에게 알림.
+     *  UdpSenderService가 읽는 개별 필드도 같이 갱신되므로 콤마 UDP 쪽도 자동으로 정확해짐. */
+    fun publishGuidance(
+        tbtDist: Int,
+        tbtMainText: String,
+        remainDist: Int,
+        remainTime: Int,
+        roadName: String,
+        rgCodeName: String,
+        directionAngle: Int,
+        destinationName: String
+    ) {
+        isActive = true
+        lastUpdateTime = System.currentTimeMillis()
+
+        this.tbtDist = tbtDist.coerceAtLeast(0)
+        this.tbtMainText = tbtMainText
+        this.remainDist = remainDist.coerceAtLeast(0)
+        this.remainTime = remainTime.coerceAtLeast(0)
+        this.roadName = roadName
+        this.rgCodeName = rgCodeName
+        this.directionAngle = directionAngle
+        this.destinationName = destinationName.ifBlank { "목적지" }
+
+        notifyListeners(snapshot())
+    }
+
     /** v2.0: KakaoGuidanceDelegate가 필드를 갱신한 뒤 이 함수를 호출해주면 HUD 등 구독자에게 알림 */
     fun publishUpdated() {
         notifyListeners(snapshot())

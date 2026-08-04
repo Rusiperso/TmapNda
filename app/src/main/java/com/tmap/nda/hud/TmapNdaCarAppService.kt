@@ -157,9 +157,14 @@ private class TmapNdaCarSession : Session() {
             0
         }
 
-        // TODO: mapKakaoTurnTypeToOpenpilot()이 실제 카카오 turnType 표를 채우기 전까지는
-        // 항상 TYPE_STRAIGHT로 표시됨(방향 구분 불가). #문제시 원복
-        val maneuver = Maneuver.Builder(Maneuver.TYPE_STRAIGHT).build()
+        // v2.2: rgCodeName/directionAngle이 이제 KakaoHudBridge(공식 API)로 실제 채워지므로,
+        // 전체 방향 매핑 테이블 적용 - 더 이상 항상 TYPE_STRAIGHT가 아님. #문제시 원복
+        val maneuverType = maneuverType(value.rgCodeName, value.directionAngle)
+        val maneuverBuilder = Maneuver.Builder(maneuverType)
+        if (maneuverType == Maneuver.TYPE_ROUNDABOUT_ENTER_AND_EXIT_CCW_WITH_ANGLE) {
+            maneuverBuilder.setRoundaboutExitAngle(roundaboutAngle(value))
+        }
+        val maneuver = maneuverBuilder.build()
 
         val cue = value.tbtMainText.ifBlank { "경로 안내" }
         val stepBuilder = Step.Builder(cue).setManeuver(maneuver)
@@ -191,6 +196,57 @@ private class TmapNdaCarSession : Session() {
         )
             .setRemainingTimeSeconds(seconds.coerceAtLeast(0).toLong())
             .build()
+    }
+
+    private fun maneuverType(code: String, angle: Int): Int {
+        if (code.startsWith("KNRGCode_RotaryDirection_") || code.startsWith("KNRGCode_RoundaboutDirection_")) {
+            return Maneuver.TYPE_ROUNDABOUT_ENTER_AND_EXIT_CCW_WITH_ANGLE
+        }
+        if (code.startsWith("KNRGCode_Direction_")) {
+            return maneuverFromAngle(angle)
+        }
+        return when (code) {
+            "KNRGCode_Start" -> Maneuver.TYPE_DEPART
+            "KNRGCode_Goal" -> Maneuver.TYPE_DESTINATION
+            "KNRGCode_LeftTurn", "KNRGCode_UnprotectedLeftTurn" -> Maneuver.TYPE_TURN_NORMAL_LEFT
+            "KNRGCode_RightTurn" -> Maneuver.TYPE_TURN_NORMAL_RIGHT
+            "KNRGCode_UTurn" -> Maneuver.TYPE_U_TURN_LEFT
+            "KNRGCode_LeftDirection", "KNRGCode_LeftStraight", "KNRGCode_ChangeLeftHighway",
+            "KNRGCode_LeftTunnel", "KNRGCode_LeftTunnelSide", "KNRGCode_LeftOverPath",
+            "KNRGCode_LeftOverPathSide", "KNRGCode_LeftUnderPath", "KNRGCode_LeftUnderPathSide" ->
+                Maneuver.TYPE_KEEP_LEFT
+            "KNRGCode_RightDirection", "KNRGCode_RightStraight", "KNRGCode_ChangeRightHighway",
+            "KNRGCode_RightTunnel", "KNRGCode_RightTunnelSide", "KNRGCode_RightOverPath",
+            "KNRGCode_RightOverPathSide", "KNRGCode_RightUnderPath", "KNRGCode_RightUnderPathSide" ->
+                Maneuver.TYPE_KEEP_RIGHT
+            "KNRGCode_LeftInHighway", "KNRGCode_LeftInCityway" -> Maneuver.TYPE_ON_RAMP_SLIGHT_LEFT
+            "KNRGCode_RightInHighway", "KNRGCode_RightInCityway" -> Maneuver.TYPE_ON_RAMP_SLIGHT_RIGHT
+            "KNRGCode_LeftOutHighway", "KNRGCode_LeftOutCityway" -> Maneuver.TYPE_OFF_RAMP_SLIGHT_LEFT
+            "KNRGCode_RightOutHighway", "KNRGCode_RightOutCityway" -> Maneuver.TYPE_OFF_RAMP_SLIGHT_RIGHT
+            "KNRGCode_InFerry", "KNRGCode_OutFerry" -> Maneuver.TYPE_FERRY_BOAT
+            else -> Maneuver.TYPE_STRAIGHT
+        }
+    }
+
+    private fun maneuverFromAngle(rawAngle: Int): Int {
+        val angle = ((rawAngle % 360) + 360) % 360
+        return when (angle) {
+            in 0..20, in 340..359 -> Maneuver.TYPE_STRAIGHT
+            in 21..60 -> Maneuver.TYPE_TURN_SLIGHT_RIGHT
+            in 61..120 -> Maneuver.TYPE_TURN_NORMAL_RIGHT
+            in 121..179 -> Maneuver.TYPE_TURN_SHARP_RIGHT
+            180 -> Maneuver.TYPE_U_TURN_LEFT
+            in 181..239 -> Maneuver.TYPE_TURN_SHARP_LEFT
+            in 240..299 -> Maneuver.TYPE_TURN_NORMAL_LEFT
+            else -> Maneuver.TYPE_TURN_SLIGHT_LEFT
+        }
+    }
+
+    private fun roundaboutAngle(value: KakaoRouteSnapshot): Int {
+        val normalized = ((value.directionAngle % 360) + 360) % 360
+        if (normalized in 1..359) return normalized
+        val clock = value.rgCodeName.substringAfterLast('_').toIntOrNull() ?: 6
+        return (clock * 30).coerceIn(1, 360)
     }
 
     companion object {
