@@ -246,7 +246,7 @@
         <Button
             android:id="@+id/btnGpsStatus"
             android:layout_width="wrap_content"
-            android:layout_height="@dimen/bottom_gps_button_height"
+            android:layout_height="@dimen/bottom_update_button_height"
             android:minWidth="0dp"
             android:text="GPS"
             android:textSize="@dimen/bottom_gps_text_size"
