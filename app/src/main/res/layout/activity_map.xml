@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 세로모드: 가로모드(Style D)와 톤 통일 - 지도 풀스크린 + 슬림 오버레이 HUD -->
+<!-- v2.7: 세로모드도 가로모드와 같은 패턴으로 통일. 상시 노출(속도/제한/상태/GPS/음소거/
+     검색/메뉴)은 상단 바에, 나머지(이벤트 상세/신호등/최근검색/설정류)는 btnMoreMenu(≡)로
+     열고 닫는 svSecondaryPanel로. 뷰 ID는 가로모드와 동일하게 맞춰서 코드 공용 사용. #문제시 원복 -->
 <FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -7,286 +9,18 @@
     android:layout_height="match_parent"
     android:background="#080808">
 
-    <!-- 지도: 풀스크린 (기존엔 상단 패널이 이 영역을 밀어내렸음) -->
     <FrameLayout
         android:id="@+id/tmapUILayout"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- 지도 터치 무력화 (기존 중복 오버레이 1개로 통합) -->
     <View
         android:id="@+id/vTouchLockOverlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="#00000000" />
 
-    <!-- ===== 상단 슬림 HUD 바 (가로모드 좌측 패널과 동일한 톤) ===== -->
-    <LinearLayout
-        android:id="@+id/llTopHudBar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:background="#FF080808"
-        android:paddingHorizontal="@dimen/hud_top_bar_padding_h"
-        android:paddingVertical="@dimen/hud_top_bar_padding_v"
-        android:gravity="center_vertical"
-        android:elevation="8dp">
-
-        <!-- 현재/제한 속도 -->
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="bottom">
-
-            <TextView
-                android:id="@+id/tvCurrentSpeed"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="0"
-                android:textColor="#FFFFFF"
-                android:textSize="@dimen/hud_speed_text_size"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="km/h"
-                android:textColor="#555555"
-                android:textSize="@dimen/hud_speed_unit_text_size"
-                android:layout_marginStart="3dp"
-                android:layout_marginBottom="6dp"/>
-
-            <TextView
-                android:id="@+id/tvRoadSpeedLimit"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="--"
-                android:textColor="#FF5252"
-                android:textSize="@dimen/hud_road_limit_text_size"
-                android:textStyle="bold"
-                android:background="@drawable/bg_speed_limit_hud"
-                android:paddingHorizontal="@dimen/hud_road_limit_padding_h"
-                android:paddingVertical="@dimen/hud_road_limit_padding_v"
-                android:layout_marginStart="@dimen/hud_road_limit_margin_start"
-                android:layout_marginBottom="6dp"/>
-        </LinearLayout>
-
-        <View
-            android:layout_width="@dimen/hud_divider_width"
-            android:layout_height="@dimen/hud_divider_height"
-            android:background="#222222"
-            android:layout_marginHorizontal="@dimen/hud_divider_margin_h"/>
-
-        <!-- 카메라/이벤트 (간결화: 아이콘 없이 텍스트만, 없으면 자동 숨김) -->
-        <LinearLayout
-            android:id="@+id/llSdiInfo"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/tvSdiDescr"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="--"
-                android:textColor="#FFC107"
-                android:textSize="@dimen/hud_sdi_descr_text_size"/>
-
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="bottom">
-
-                <TextView
-                    android:id="@+id/tvSdiDist"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="--"
-                    android:textColor="#FFFFFF"
-                    android:textSize="@dimen/hud_sdi_dist_text_size"
-                    android:textStyle="bold"
-                    android:maxLines="1"
-                    android:singleLine="true"/>
-
-                <TextView
-                    android:id="@+id/tvSdiSpeedLimit"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text=""
-                    android:textColor="#FF5252"
-                    android:textSize="@dimen/hud_sdi_limit_text_size"
-                    android:textStyle="bold"
-                    android:layout_marginStart="6dp"
-                    android:layout_marginBottom="2dp"/>
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- OP 상태 -->
-        <TextView
-            android:id="@+id/tvActiveStatus"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="OP OFF"
-            android:paddingHorizontal="@dimen/hud_status_padding_h"
-            android:paddingVertical="@dimen/hud_status_padding_v"
-            android:background="@drawable/bg_status_off"
-            android:textColor="#FFFFFF"
-            android:textSize="@dimen/hud_status_text_size"
-            android:textStyle="bold"
-            android:layout_marginStart="8dp"/>
-
-        <View
-            android:id="@+id/vTrafficLight"
-            android:layout_width="@dimen/hud_traffic_light_size"
-            android:layout_height="@dimen/hud_traffic_light_size"
-            android:background="@drawable/shape_circle_gray"
-            android:layout_marginStart="8dp"/>
-
-        <TextView
-            android:id="@+id/tvXStateBadge"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="CRUISE"
-            android:textColor="#2196F3"
-            android:textSize="@dimen/hud_xstate_text_size"
-            android:textStyle="bold"
-            android:visibility="gone"
-            android:layout_marginStart="6dp"/>
-
-        <!-- 음소거 | 검색 | 전송 (상단 HUD 바 안, 요청한 순서) -->
-        <ImageButton
-            android:id="@+id/btnMuteToggle"
-            android:layout_width="@dimen/hud_icon_button_size"
-            android:layout_height="@dimen/hud_icon_button_size"
-            android:layout_marginStart="10dp"
-            android:src="@android:drawable/ic_lock_silent_mode"
-            android:background="@drawable/shape_circle_gray"
-            android:scaleType="center"/>
-
-        <ImageButton
-            android:id="@+id/btnOpenSearch"
-            android:layout_width="@dimen/hud_icon_button_size"
-            android:layout_height="@dimen/hud_icon_button_size"
-            android:layout_marginStart="8dp"
-            android:src="@android:drawable/ic_menu_search"
-            android:background="@drawable/shape_circle_gray"
-            android:scaleType="center"/>
-
-        <ImageButton
-            android:id="@+id/btnShareLog"
-            android:layout_width="@dimen/hud_icon_button_size"
-            android:layout_height="@dimen/hud_icon_button_size"
-            android:layout_marginStart="8dp"
-            android:src="@android:drawable/ic_menu_send"
-            android:background="@drawable/shape_circle_gray"
-            android:scaleType="center"/>
-    </LinearLayout>
-
-    <!-- ===== 하단 상태바: 연결/GPS/버전/업데이트/설정/종료를 한 줄로 항상 표시 ===== -->
-    <LinearLayout
-        android:id="@+id/llDetailPanel"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_gravity="bottom"
-        android:background="#CC080808"
-        android:paddingHorizontal="@dimen/bottom_panel_padding_h"
-        android:paddingVertical="@dimen/bottom_panel_padding_v"
-        android:gravity="center_vertical"
-        android:elevation="8dp">
-
-        <View
-            android:id="@+id/vConnectionDot"
-            android:layout_width="@dimen/bottom_dot_size"
-            android:layout_height="@dimen/bottom_dot_size"
-            android:background="@drawable/shape_circle_gray"
-            android:layout_marginEnd="5dp"/>
-
-        <TextView
-            android:id="@+id/tvConnectionStatus"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="wrap_content"
-            android:text="연결 대기"
-            android:textColor="#888888"
-            android:textSize="@dimen/bottom_status_text_size"
-            android:maxLines="1"
-            android:ellipsize="end"/>
-
-        <TextView
-            android:id="@+id/tvCarrotVersion"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Ver: -"
-            android:textColor="#555555"
-            android:textSize="@dimen/bottom_meta_text_size"
-            android:layout_marginEnd="8dp"/>
-
-        <TextView
-            android:id="@+id/tvCarrotIp"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="IP: -"
-            android:textColor="#555555"
-            android:textSize="@dimen/bottom_meta_text_size"
-            android:layout_marginEnd="8dp"/>
-
-        <TextView
-            android:id="@+id/tvAppVersion"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="v-"
-            android:textColor="#444444"
-            android:textSize="@dimen/bottom_meta_text_size"
-            android:layout_marginEnd="8dp"/>
-
-        <Button
-            android:id="@+id/btnGpsStatus"
-            android:layout_width="wrap_content"
-            android:layout_height="@dimen/bottom_update_button_height"
-            android:minWidth="0dp"
-            android:text="GPS"
-            android:textSize="@dimen/bottom_gps_text_size"
-            android:paddingHorizontal="8dp"
-            android:backgroundTint="#333333"
-            android:layout_marginEnd="6dp"/>
-
-        <Button
-            android:id="@+id/btnEditKey"
-            android:layout_width="wrap_content"
-            android:layout_height="@dimen/bottom_update_button_height"
-            android:minWidth="0dp"
-            android:text="설정"
-            android:textSize="@dimen/bottom_update_text_size"
-            android:paddingHorizontal="10dp"
-            android:backgroundTint="#333333"
-            android:layout_marginEnd="8dp"/>
-
-        <Button
-            android:id="@+id/btnCheckUpdate"
-            android:layout_width="wrap_content"
-            android:layout_height="@dimen/bottom_update_button_height"
-            android:minWidth="0dp"
-            android:text="업데이트"
-            android:textSize="@dimen/bottom_update_text_size"
-            android:paddingHorizontal="10dp"
-            android:backgroundTint="#333333"
-            android:layout_marginEnd="8dp"/>
-
-        <ImageButton
-            android:id="@+id/btnExitApp"
-            android:layout_width="@dimen/bottom_exit_button_size"
-            android:layout_height="@dimen/bottom_exit_button_size"
-            android:src="@android:drawable/ic_menu_close_clear_cancel"
-            android:background="@drawable/shape_circle_gray"
-            android:backgroundTint="#F44336"
-            android:scaleType="center"/>
-    </LinearLayout>
-
-    <!-- ===== 구간단속 플로팅 카드 (기존 우상단 큰 카드 -> 슬림화, HUD 바 아래로 이동해 겹침 제거) ===== -->
+    <!-- 구간단속 플로팅 카드 -->
     <LinearLayout
         android:id="@+id/llOffset"
         android:layout_width="wrap_content"
@@ -296,8 +30,8 @@
         android:layout_marginTop="64dp"
         android:layout_marginEnd="14dp"
         android:background="@drawable/bg_sdi_panel"
-        android:paddingHorizontal="@dimen/hud_top_bar_padding_h"
-        android:paddingVertical="@dimen/hud_top_bar_padding_v"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="8dp"
         android:gravity="center"
         android:elevation="8dp"
         android:visibility="gone">
@@ -326,7 +60,7 @@
                 android:layout_height="wrap_content"
                 android:text="평균: 0km/h"
                 android:textColor="#FFFFFF"
-                android:textSize="@dimen/offset_avg_text_size"
+                android:textSize="13sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -335,7 +69,7 @@
                 android:layout_height="wrap_content"
                 android:text="거리: 0m"
                 android:textColor="#AAAAAA"
-                android:textSize="@dimen/offset_dist_text_size"/>
+                android:textSize="12sp"/>
 
             <TextView
                 android:id="@+id/tvBlockTime"
@@ -343,11 +77,9 @@
                 android:layout_height="wrap_content"
                 android:text="시간: 0:00"
                 android:textColor="#AAAAAA"
-                android:textSize="@dimen/offset_dist_text_size"/>
+                android:textSize="12sp"/>
         </LinearLayout>
     </LinearLayout>
-
-    <!-- 음소거/검색/전송 버튼은 상단 HUD 바 안으로 이동함 -->
 
     <!-- 목적지 검색 패널 -->
     <LinearLayout
@@ -357,7 +89,7 @@
         android:orientation="vertical"
         android:layout_gravity="bottom"
         android:background="#EE111111"
-        android:padding="@dimen/search_panel_padding"
+        android:padding="12dp"
         android:elevation="12dp"
         android:visibility="gone">
 
@@ -370,7 +102,7 @@
             <EditText
                 android:id="@+id/etDestination"
                 android:layout_width="0dp"
-                android:layout_height="@dimen/search_edit_height"
+                android:layout_height="42dp"
                 android:layout_weight="1"
                 android:hint="목적지를 입력하세요 (예: 서울역)"
                 android:textColor="#FFFFFF"
@@ -383,8 +115,8 @@
 
             <ImageButton
                 android:id="@+id/btnVoiceSearch"
-                android:layout_width="@dimen/search_button_size"
-                android:layout_height="@dimen/search_button_size"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
                 android:layout_marginStart="8dp"
                 android:src="@android:drawable/ic_btn_speak_now"
                 android:background="@drawable/shape_circle_gray"
@@ -393,25 +125,25 @@
             <Button
                 android:id="@+id/btnSearchGo"
                 android:layout_width="wrap_content"
-                android:layout_height="@dimen/search_edit_height"
+                android:layout_height="42dp"
                 android:layout_marginStart="8dp"
                 android:text="검색"
-                android:textSize="@dimen/search_text_size" />
+                android:textSize="12sp" />
 
             <Button
                 android:id="@+id/btnSearchClose"
                 android:layout_width="wrap_content"
-                android:layout_height="@dimen/search_edit_height"
+                android:layout_height="42dp"
                 android:layout_marginStart="8dp"
                 android:text="닫기"
-                android:textSize="@dimen/search_text_size"
+                android:textSize="12sp"
                 android:backgroundTint="#555555" />
         </LinearLayout>
 
         <ListView
             android:id="@+id/lvSearchResults"
             android:layout_width="match_parent"
-            android:layout_height="@dimen/search_results_height"
+            android:layout_height="180dp"
             android:layout_marginTop="8dp"
             android:divider="#33FFFFFF"
             android:dividerHeight="1dp"
@@ -424,7 +156,7 @@
             android:layout_marginTop="8dp"
             android:text=""
             android:textColor="#AAAAAA"
-            android:textSize="@dimen/search_status_text_size" />
+            android:textSize="11sp" />
     </LinearLayout>
 
     <!-- 길안내 중 표시 + 안내 종료 버튼 -->
@@ -435,7 +167,7 @@
         android:orientation="horizontal"
         android:layout_gravity="bottom"
         android:background="#EE1B5E20"
-        android:padding="@dimen/guidance_bar_padding"
+        android:padding="10dp"
         android:elevation="10dp"
         android:gravity="center_vertical"
         android:visibility="gone">
@@ -447,7 +179,7 @@
             android:layout_height="wrap_content"
             android:text="길안내 중"
             android:textColor="#FFFFFF"
-            android:textSize="@dimen/guidance_dest_text_size"
+            android:textSize="13sp"
             android:textStyle="bold" />
 
         <Button
@@ -455,11 +187,11 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="안내 종료"
-            android:textSize="@dimen/guidance_stop_text_size"
+            android:textSize="11sp"
             android:backgroundTint="#F44336" />
     </LinearLayout>
 
-    <!-- ===== 카카오내비 오버레이 (검색→길안내 시에만 Tmap 화면 위에 얹힘, 평소엔 GONE) ===== -->
+    <!-- ===== 카카오내비 오버레이 ===== -->
     <FrameLayout
         android:id="@+id/flKakaoOverlay"
         android:layout_width="match_parent"
@@ -483,5 +215,375 @@
             android:text="안내 종료"
             android:backgroundTint="#F44336" />
     </FrameLayout>
+
+    <!-- ===== 상단 HUD 바 (가로모드와 동일한 패턴) ===== -->
+    <LinearLayout
+        android:id="@+id/llTopHudBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:orientation="vertical"
+        android:elevation="20dp"
+        android:background="#FF080808">
+
+        <LinearLayout
+            android:id="@+id/llTopBarRow"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="12dp">
+
+            <!-- 속도 -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="bottom">
+
+                <TextView
+                    android:id="@+id/tvCurrentSpeed"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0"
+                    android:textColor="#FFFFFF"
+                    android:textSize="28sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvRoadSpeedLimit"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="--"
+                    android:textColor="#FF5252"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:background="@drawable/bg_speed_limit_hud"
+                    android:paddingHorizontal="5dp"
+                    android:paddingVertical="1dp"
+                    android:layout_marginStart="6dp"
+                    android:layout_marginBottom="4dp"/>
+            </LinearLayout>
+
+            <View android:layout_width="1dp" android:layout_height="28dp" android:background="#1A1A1A" android:layout_marginHorizontal="10dp"/>
+
+            <!-- 상태 -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/tvActiveStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="OP OFF"
+                    android:textColor="#AAAAAA"
+                    android:textSize="12sp"
+                    android:textStyle="bold"/>
+
+                <View
+                    android:id="@+id/vConnectionDot"
+                    android:layout_width="6dp"
+                    android:layout_height="6dp"
+                    android:background="@drawable/shape_circle_gray"
+                    android:layout_marginStart="6dp"
+                    android:layout_marginEnd="4dp"/>
+
+                <TextView
+                    android:id="@+id/tvConnectionStatus"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="연결 대기"
+                    android:textColor="#777777"
+                    android:textSize="9sp"
+                    android:maxLines="1"
+                    android:ellipsize="end"/>
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnGpsStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="28dp"
+                android:text="GPS"
+                android:textSize="9sp"
+                android:paddingHorizontal="8dp"
+                android:backgroundTint="#111111"
+                android:layout_marginEnd="8dp"/>
+
+            <ImageButton
+                android:id="@+id/btnMuteToggle"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginEnd="6dp"
+                android:src="@android:drawable/ic_lock_silent_mode"
+                android:background="@drawable/shape_circle_gray"
+                android:scaleType="center"/>
+
+            <ImageButton
+                android:id="@+id/btnOpenSearch"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginEnd="6dp"
+                android:src="@android:drawable/ic_menu_search"
+                android:background="@drawable/shape_circle_gray"
+                android:scaleType="center"/>
+
+            <ImageButton
+                android:id="@+id/btnMoreMenu"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:src="@android:drawable/ic_menu_more"
+                android:background="@drawable/shape_circle_gray"
+                android:scaleType="center"/>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvTopBarEta"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textColor="#CCCCCC"
+            android:textSize="11sp"
+            android:paddingHorizontal="12dp"
+            android:paddingBottom="8dp"
+            android:visibility="gone"/>
+
+        <!-- 보조 패널: btnMoreMenu 탭하면 열림/닫힘 -->
+        <ScrollView
+            android:id="@+id/svSecondaryPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top"
+            android:visibility="gone"
+            android:background="#0D0D0D"
+            android:overScrollMode="never">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <LinearLayout
+                    android:id="@+id/llSdiInfo"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginBottom="10dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="EVENT"
+                        android:textColor="#444444"
+                        android:textSize="9sp"
+                        android:letterSpacing="0.15"
+                        android:layout_marginBottom="4dp"/>
+
+                    <TextView
+                        android:id="@+id/tvSdiDescr"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="--"
+                        android:textColor="#FFC107"
+                        android:textSize="11sp"
+                        android:layout_marginBottom="2dp"/>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="bottom">
+
+                        <TextView
+                            android:id="@+id/tvSdiDist"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:layout_height="wrap_content"
+                            android:text="--"
+                            android:textColor="#FFFFFF"
+                            android:textSize="18sp"
+                            android:textStyle="bold"
+                            android:maxLines="1"/>
+
+                        <TextView
+                            android:id="@+id/tvSdiSpeedLimit"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text=""
+                            android:textColor="#FF5252"
+                            android:textSize="11sp"
+                            android:textStyle="bold"
+                            android:layout_marginStart="6dp"
+                            android:layout_marginBottom="4dp"/>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#1A1A1A" android:layout_marginBottom="10dp"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="10dp">
+
+                    <View
+                        android:id="@+id/vTrafficLight"
+                        android:layout_width="12dp"
+                        android:layout_height="12dp"
+                        android:background="@drawable/shape_circle_gray"
+                        android:layout_marginEnd="8dp"/>
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="SIGNAL"
+                            android:textColor="#444444"
+                            android:textSize="8sp"/>
+
+                        <TextView
+                            android:id="@+id/tvCarrotVersion"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text=""
+                            android:textColor="#666666"
+                            android:textSize="9sp"/>
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvXStateBadge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text=""
+                        android:textColor="#4FC3F7"
+                        android:textSize="9sp"
+                        android:textStyle="bold"
+                        android:visibility="gone"
+                        android:layout_marginStart="8dp"/>
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tvCarrotIp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="IP: -"
+                    android:textColor="#444444"
+                    android:textSize="9sp"
+                    android:maxLines="1"
+                    android:ellipsize="middle"
+                    android:layout_marginBottom="10dp"/>
+
+                <ImageButton
+                    android:id="@+id/btnShareLog"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:src="@android:drawable/ic_menu_send"
+                    android:background="@drawable/shape_circle_gray"
+                    android:scaleType="center"
+                    android:layout_marginBottom="10dp"/>
+
+                <LinearLayout
+                    android:id="@+id/llRecentSearchPanel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginBottom="10dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="최근 검색"
+                        android:textColor="#666666"
+                        android:textSize="9sp"
+                        android:letterSpacing="0.1"
+                        android:layout_marginBottom="4dp"/>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:background="#141414">
+
+                        <TextView
+                            android:id="@+id/tvRecentSearch1"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:padding="9dp"
+                            android:textColor="#DDDDDD"
+                            android:textSize="12sp"
+                            android:maxLines="1"
+                            android:ellipsize="end"
+                            android:visibility="gone"/>
+                    </LinearLayout>
+
+                    <Button
+                        android:id="@+id/btnMoreHistory"
+                        android:layout_width="match_parent"
+                        android:layout_height="32dp"
+                        android:layout_marginTop="4dp"
+                        android:text="+ 더보기"
+                        android:textSize="11sp"
+                        android:textColor="#888888"
+                        android:background="@drawable/shape_circle_gray"
+                        android:minHeight="0dp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"/>
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/btnEditKey"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:text="설정"
+                    android:textSize="13sp"
+                    android:padding="0dp"
+                    android:backgroundTint="#111111"
+                    android:textColor="#888888"
+                    android:layout_marginBottom="6dp"/>
+
+                <Button
+                    android:id="@+id/btnCheckUpdate"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:text="업데이트 확인"
+                    android:textSize="13sp"
+                    android:padding="0dp"
+                    android:backgroundTint="#111111"
+                    android:textColor="#888888"
+                    android:layout_marginBottom="6dp"/>
+
+                <Button
+                    android:id="@+id/btnExitApp"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:text="앱 종료"
+                    android:textSize="13sp"
+                    android:padding="0dp"
+                    android:backgroundTint="#1A0000"
+                    android:textColor="#EF5350"/>
+
+                <TextView
+                    android:id="@+id/tvAppVersion"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=""
+                    android:textColor="#333333"
+                    android:textSize="9sp"
+                    android:layout_marginTop="8dp"/>
+
+            </LinearLayout>
+        </ScrollView>
+    </LinearLayout>
 
 </FrameLayout>
