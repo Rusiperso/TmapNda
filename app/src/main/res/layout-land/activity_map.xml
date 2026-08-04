@@ -463,6 +463,23 @@
                 android:backgroundTint="#111111"
                 android:layout_marginBottom="4dp"/>
 
+            <!-- v3.5: 도움말 - 항상 GitHub 최신 릴리즈 노트를 웹으로 열어서 업데이트해도
+                 항상 최신 내용 보여줌(사용자 지적 10번) -->
+            <Button
+                android:id="@+id/btnHelp"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:text="도움말"
+                android:textSize="12sp"
+                android:textColor="#CCCCCC"
+                android:gravity="center_vertical|start"
+                android:paddingStart="10dp"
+                android:drawableStart="@drawable/ic_help_info"
+                android:drawableTint="#CCCCCC"
+                android:drawablePadding="10dp"
+                android:backgroundTint="#111111"
+                android:layout_marginBottom="4dp"/>
+
             <Button
                 android:id="@+id/btnExitApp"
                 android:layout_width="match_parent"
