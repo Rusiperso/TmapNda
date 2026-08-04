@@ -381,4 +381,17 @@
         </LinearLayout>
     </LinearLayout>
 
+    <!-- v3.10: 편집모드 확정 체크버튼 - 항상 화면 위에 떠서 편집을 끝낼 수 있게 함. #문제시 원복 -->
+    <ImageButton
+        android:id="@+id/btnConfirmEditPosition"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="12dp"
+        android:src="@drawable/ic_check"
+        android:background="@drawable/shape_circle_green"
+        android:scaleType="center"
+        android:elevation="30dp"
+        android:visibility="gone"/>
+
 </FrameLayout>
