@@ -12,14 +12,19 @@
     <com.kakaomobility.knsdk.ui.view.KNNaviView
         android:id="@+id/naviView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:layout_marginTop="76dp" />
 
+    <!-- v3.4: 예전엔 지도 자체를 옆으로 밀어냈는데, 지금 상단바는 지도 위에 얹는
+         방식이라 안내종료 버튼이 상단바 영역과 겹쳐서 안 보이던 문제(사용자 지적 3번).
+         상단바 아래로 이동. #문제시 원복 -->
     <Button
         android:id="@+id/btnStopKakaoGuidance"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|end"
-        android:layout_margin="12dp"
+        android:layout_marginTop="88dp"
+        android:layout_marginEnd="12dp"
         android:text="안내 종료"
         android:backgroundTint="#F44336"
         android:elevation="22dp" />
@@ -192,7 +197,7 @@
                 android:id="@+id/btnMoreMenu"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:src="@android:drawable/ic_menu_more"
+                android:src="@drawable/ic_hamburger"
                 android:background="@drawable/shape_circle_gray"
                 android:scaleType="center"/>
         </LinearLayout>
@@ -227,7 +232,7 @@
                     android:textColor="#CCCCCC"
                     android:gravity="center_vertical|start"
                     android:paddingStart="10dp"
-                    android:drawableStart="@android:drawable/ic_menu_send"
+                    android:drawableStart="@drawable/ic_send_paperplane"
                     android:drawableTint="#CCCCCC"
                     android:drawablePadding="10dp"
                     android:backgroundTint="#111111"
