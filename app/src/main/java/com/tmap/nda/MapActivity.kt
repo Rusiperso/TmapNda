@@ -221,6 +221,22 @@ class MapActivity : AppCompatActivity() {
             AutoUpdater.checkForUpdates(this)
         }
 
+        // v3.5: 앱 안에 정적 도움말을 박아두면 업데이트할 때마다 그 페이지도 같이
+        // 고쳐야 해서 항상 최신 상태 유지가 안 됨(재억 지적 10번) - 대신 GitHub 릴리즈
+        // 페이지(항상 최신 커밋 로그 기반)를 웹으로 열어서 "항상 갱신"을 보장. #문제시 원복
+        binding.btnHelp?.setOnClickListener {
+            try {
+                startActivity(
+                    Intent(
+                        Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://github.com/Rusiperso/TmapNda/releases/latest")
+                    )
+                )
+            } catch (e: Exception) {
+                Toast.makeText(this, "도움말을 열 수 없습니다: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+
         // v1.7: 짧게 누르기가 카카오키 재입력 화면으로 가버려서, 정작 자주 쓸 앱 설정
         // (속도초과 경고음/이동식카메라 감속 토글)은 길게 눌러야만 보였음 - 아무도
         // 그걸 몰라서 "설정 창에 그 기능이 안 보인다"는 문의로 이어짐. 우선순위를
@@ -1323,6 +1339,9 @@ class MapActivity : AppCompatActivity() {
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
         currentFocus?.let { imm?.hideSoftInputFromWindow(it.windowToken, 0) }
         binding.etDestination?.clearFocus()
+        // v3.5: 길안내 시작 후에도 검색창에 입력했던 텍스트가 계속 남아있던 문제
+        // (재억 지적 11번) - 포커스/패널만 닫고 텍스트는 안 지우고 있었음. #문제시 원복
+        binding.etDestination?.setText("")
         binding.llSearchPanel?.visibility = View.GONE
     }
 
