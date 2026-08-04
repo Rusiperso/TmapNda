@@ -316,6 +316,7 @@
                 android:layout_height="40dp"
                 android:layout_marginEnd="8dp"
                 android:src="@android:drawable/ic_btn_speak_now"
+                android:tint="#FFFFFF"
                 android:background="@drawable/shape_circle_gray"
                 android:scaleType="center"/>
 
