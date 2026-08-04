@@ -364,6 +364,9 @@ class UdpSenderService : Service() {
                             kr.safetyType in intArrayOf(1, 2, 3, 4, 7) -> "단속구간"
                             kr.safetyType == 22 -> "방지턱"
                             kr.safetyType == 33 -> "스쿨존"
+                            // v3.6: 현재 도로명(kr.roadName) 대신 목적지 이름을 표시 -
+                            // "지산동(현재위치) 말고 대구광역시청(목적지)이 떠야지" (사용자 지적 6번). #문제시 원복
+                            kr.destinationName.isNotBlank() && kr.destinationName != "목적지" -> kr.destinationName
                             kr.roadName.isNotEmpty() -> kr.roadName
                             else -> "카카오안내"
                         }
