@@ -178,6 +178,14 @@ class KakaoGuidanceDelegate(
             )
         }
 
+        // v2.2: 공식 KNSDK API 기반으로 HUD/UDP용 값을 다시 한 번 정확하게 채움.
+        // 위 리플렉션 코드보다 뒤에 있어야 함 - 리플렉션이 잘못된 값을 넣었어도 여기서 교정됨.
+        try {
+            KakaoHudBridge.publish(guidance, locationGuide, guidance.routeGuide)
+        } catch (e: Exception) {
+            NavLogger.e(context, "[HUD 브릿지] guidanceDidUpdateLocation 반영 실패: ${e.message}")
+        }
+
         naviView?.guidanceDidUpdateLocation(guidance, locationGuide)
     }
 
@@ -264,6 +272,13 @@ class KakaoGuidanceDelegate(
             )
         } catch (e: Exception) {
             NavLogger.e(context, "KakaoRouteDataRepository 갱신 예외: ${e.message}")
+        }
+
+        // v2.2: 공식 KNSDK API 기반으로 다시 한 번 정확하게 교정 (리플렉션 저장 코드보다 뒤).
+        try {
+            KakaoHudBridge.publish(guidance, guidance.locationGuide, routeGuide)
+        } catch (e: Exception) {
+            NavLogger.e(context, "[HUD 브릿지] guidanceDidUpdateRouteGuide 반영 실패: ${e.message}")
         }
 
         naviView?.guidanceDidUpdateRouteGuide(guidance, routeGuide)
