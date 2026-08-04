@@ -7,7 +7,6 @@ import android.os.Bundle
 import android.util.Base64
 import java.security.MessageDigest
 import com.kakaomobility.knsdk.KNSDK
-import com.kakaomobility.knsdk.KNLanguageType
 import com.kakaomobility.knsdk.KNRoutePriority
 import com.kakaomobility.knsdk.KNRouteAvoidOption
 import com.kakaomobility.knsdk.common.objects.KNPOI
@@ -190,10 +189,10 @@ class MapActivity : AppCompatActivity() {
 
         val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         val appKey = sharedPref.getString("APP_KEY", "") ?: ""
-        
+
         // Force Tmap SDK to run in background
         getSharedPreferences("user.settings.info", Context.MODE_PRIVATE).edit().putBoolean("set_suspend_in_background", false).apply()
-        
+
         if (appKey.isEmpty()) {
             Toast.makeText(this, "App Key가 설정되지 않았습니다.", Toast.LENGTH_SHORT).show()
             finish()
@@ -312,7 +311,7 @@ class MapActivity : AppCompatActivity() {
                                 NavLogger.e(this@MapActivity, "TmapUISDK method: ${m.name}")
                             }
                         }
-                        
+
                         // Let's also check TmapUISDK.Companion methods just in case
                         val compMethods = TmapUISDK.Companion::class.java.methods
                         for (m in compMethods) {
@@ -671,7 +670,7 @@ class MapActivity : AppCompatActivity() {
         lateinit var dialog: android.app.AlertDialog
         lateinit var listView: android.widget.ListView
 
-        fun buildAdapter() = object : android.widget.BaseAdapter() {
+        fun buildAdapter(): android.widget.BaseAdapter = object : android.widget.BaseAdapter() {
             override fun getCount() = history.size
             override fun getItem(position: Int) = history[position]
             override fun getItemId(position: Int) = position.toLong()
@@ -1005,11 +1004,10 @@ class MapActivity : AppCompatActivity() {
     // 코드에 하드코딩하면 TmapNda 쓰는 모든 사람이 재억 개인 카카오 앱 쿼터를 나눠쓰게 됨
     // (Tmap 하루1회 제한과 같은 문제 반복). 그래서 각자 본인 카카오 콘솔에서 발급받은
     // 네이티브 앱 키를 기기별 설정값으로 넣도록 변경. #문제시 원복
-    // 설정 안 했으면 재억 개인키로 폴백(당장 테스트용) - 나중엔 이 폴백도 빼는 게 맞음.
+    // 네이티브 앱 키가 비어 있으면 SDK를 초기화하지 않는다.
     private fun getKakaoNativeAppKey(): String {
         val prefs = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-        val userKey = prefs.getString("kakao_native_app_key", "") ?: ""
-        return userKey.ifBlank { "656bfa63fb6c4376040f2a119a5cd8b9" }
+        return prefs.getString("kakao_native_app_key", "").orEmpty().trim()
     }
     private var knsdkInitialized = false
     private var kakaoGuidanceDelegate: KakaoGuidanceDelegate? = null
@@ -1347,37 +1345,48 @@ class MapActivity : AppCompatActivity() {
     // 초기화 대기 없이 바로 naviView를 새로 inflate해서 길안내를 시작할 수 있게 함. #문제시 원복
     private fun initKakaoSdkAndShowIdleMap() {
         if (knsdkInitialized) return
-        try {
-            val dbPath = filesDir.absolutePath + "/knsdk"
-            NavLogger.d(this, "KNSDK install 시도(앱 시작 시점 선행 초기화): $dbPath")
-            KNSDK.install(application, dbPath)
-            KNSDK.initializeWithAppKey(
-                getKakaoNativeAppKey(),
-                "1.0",
-                "tmapnda_user",
-                "ko",
-                KNLanguageType.KNLanguageType_KOREAN
-            ) { error ->
-                runOnUiThread {
-                    if (error == null) {
-                        NavLogger.d(this, "KNSDK 초기화 성공(앱 시작 시점)")
-                        knsdkInitialized = true
-                        KakaoSdkState.initialized = true
-                        // onResume()이 이미 지나간 뒤에 초기화가 끝날 수 있어서, 최초 활성 신호를
-                        // 놓치지 않도록 초기화 성공 직후에도 한 번 전달. #문제시 원복
-                        try {
-                            KNSDK.handleWillEnterForeground()
-                            KNSDK.handleDidBecomeActive()
-                        } catch (e: Exception) {
-                            NavLogger.e(this, "KNSDK 라이프사이클(초기화 직후) 전달 예외: ${e.message}")
-                        }
-                    } else {
-                        NavLogger.e(this, "KNSDK 초기화 실패(앱 시작 시점): ${error.code} / ${error.msg}")
-                    }
-                }
+
+        val nativeAppKey = getKakaoNativeAppKey()
+
+        if (nativeAppKey.isBlank()) {
+            NavLogger.e(
+                this,
+                "KNSDK 선행 초기화 건너뜀: 카카오 네이티브 앱 키가 비어 있음"
+            )
+            return
+        }
+
+        KakaoSdkState.ensureInitialized(
+            application,
+            nativeAppKey
+        ) { success, message ->
+            if (isFinishing || isDestroyed) {
+                return@ensureInitialized
             }
-        } catch (e: Exception) {
-            NavLogger.e(this, "KNSDK install/init 예외(앱 시작 시점): ${e.message}")
+
+            if (success) {
+                NavLogger.d(
+                    this,
+                    "KNSDK 초기화 완료(앱 시작 시점)"
+                )
+
+                knsdkInitialized = true
+
+                try {
+                    KNSDK.handleWillEnterForeground()
+                    KNSDK.handleDidBecomeActive()
+                } catch (e: Exception) {
+                    NavLogger.e(
+                        this,
+                        "KNSDK 라이프사이클 전달 예외: ${e.message}"
+                    )
+                }
+            } else {
+                NavLogger.e(
+                    this,
+                    "KNSDK 초기화 실패(앱 시작 시점): $message"
+                )
+            }
         }
     }
 
@@ -1386,14 +1395,31 @@ class MapActivity : AppCompatActivity() {
     // 카카오 안내를 완전히 별도의 Activity(KakaoNaviActivity)로 분리함. startActivity()/finish()는
     // 안드로이드가 보장하는 화면전환이라 SurfaceView 타이밍/z-order 경쟁이 원천적으로 생기지 않음.
     // 검색 패널만 우리 쪽에서 미리 닫아주고, 나머지(초기화/경로요청/안내화면)는 새 Activity가 전담. #문제시 원복
-    private fun startKakaoOverlayGuidance(name: String, goalLat: Double, goalLon: Double) {
+    private fun startKakaoOverlayGuidance(
+        name: String,
+        goalLat: Double,
+        goalLon: Double
+    ) {
+        val nativeAppKey = getKakaoNativeAppKey()
+
+        if (nativeAppKey.isBlank()) {
+            Toast.makeText(
+                this,
+                "카카오 네이티브 앱 키를 먼저 입력하세요.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
         dismissKeyboardAndSearchPanel()
+
         val intent = Intent(this, KakaoNaviActivity::class.java).apply {
             putExtra("dest_name", name)
             putExtra("dest_lat", goalLat)
             putExtra("dest_lon", goalLon)
-            putExtra("kakao_native_app_key", getKakaoNativeAppKey())
+            putExtra("kakao_native_app_key", nativeAppKey)
         }
+
         startActivity(intent)
     }
 
@@ -1458,47 +1484,60 @@ class MapActivity : AppCompatActivity() {
             }
         }
 
-        if (knsdkInitialized) {
-            requestKakaoRoute(name, goalLat, goalLon)
+        val nativeAppKey = getKakaoNativeAppKey()
+
+        if (nativeAppKey.isBlank()) {
+            Toast.makeText(
+                this,
+                "카카오 네이티브 앱 키를 먼저 입력하세요.",
+                Toast.LENGTH_LONG
+            ).show()
+
+            isRequestingKakaoRoute = false
+            hideKakaoOverlay()
             return
         }
 
-        try {
-            val dbPath = filesDir.absolutePath + "/knsdk"
-            NavLogger.d(this, "KNSDK install 시도: $dbPath")
-            KNSDK.install(application, dbPath)
-            KNSDK.initializeWithAppKey(
-                getKakaoNativeAppKey(),
-                "1.0",
-                "tmapnda_user",
-                "ko",
-                KNLanguageType.KNLanguageType_KOREAN
-            ) { error ->
-                runOnUiThread {
-                    if (error == null) {
-                        NavLogger.d(this, "KNSDK 초기화 성공")
-                        knsdkInitialized = true
-                        KakaoSdkState.initialized = true
-                        try {
-                            KNSDK.handleWillEnterForeground()
-                            KNSDK.handleDidBecomeActive()
-                        } catch (e: Exception) {
-                            NavLogger.e(this, "KNSDK 라이프사이클(초기화 직후) 전달 예외: ${e.message}")
-                        }
-                        requestKakaoRoute(name, goalLat, goalLon)
-                    } else {
-                        NavLogger.e(this, "KNSDK 초기화 실패: ${error.code} / ${error.msg}")
-                        Toast.makeText(this, "카카오내비 초기화 실패: ${error.msg}", Toast.LENGTH_LONG).show()
-                        isRequestingKakaoRoute = false
-                        hideKakaoOverlay()
-                    }
-                }
+        KakaoSdkState.ensureInitialized(
+            application,
+            nativeAppKey
+        ) { success, message ->
+            if (isFinishing || isDestroyed) {
+                isRequestingKakaoRoute = false
+                return@ensureInitialized
             }
-        } catch (e: Exception) {
-            NavLogger.e(this, "KNSDK install/init 예외: ${e.message}")
-            Toast.makeText(this, "카카오내비 초기화 예외: ${e.message}", Toast.LENGTH_LONG).show()
-            isRequestingKakaoRoute = false
-            hideKakaoOverlay()
+
+            if (success) {
+                knsdkInitialized = true
+
+                try {
+                    KNSDK.handleWillEnterForeground()
+                    KNSDK.handleDidBecomeActive()
+                } catch (e: Exception) {
+                    NavLogger.e(
+                        this,
+                        "KNSDK 라이프사이클 전달 예외: ${e.message}"
+                    )
+                }
+
+                requestKakaoRoute(name, goalLat, goalLon)
+            } else {
+                val errorMessage = message ?: "알 수 없는 오류"
+
+                NavLogger.e(
+                    this,
+                    "KNSDK 초기화 실패: $errorMessage"
+                )
+
+                Toast.makeText(
+                    this,
+                    "카카오내비 초기화 실패: $errorMessage",
+                    Toast.LENGTH_LONG
+                ).show()
+
+                isRequestingKakaoRoute = false
+                hideKakaoOverlay()
+            }
         }
     }
 
@@ -1909,7 +1948,7 @@ class MapActivity : AppCompatActivity() {
             return
         }
         navigationFragment = getFragment() as NavigationFragment
-        
+
         supportFragmentManager.beginTransaction()
             .add(R.id.tmapUILayout, navigationFragment!!)
             .commitAllowingStateLoss()
@@ -1925,7 +1964,7 @@ class MapActivity : AppCompatActivity() {
                 NavLogger.d(this@MapActivity, "startSafeDrive() called")
             }, 1000)
 
-            /* 
+            /*
             // TODO: Use ObservableRouteData instead of DriveStatusListener
             */
 
@@ -1969,7 +2008,7 @@ class MapActivity : AppCompatActivity() {
                     if (isTmapMuted) {
                         TmapUISDK.setVolume(this@MapActivity, 0)
                     }
-                    
+
                     // 도로 기본 제한속도 추출 및 UI 업데이트
                     // realRoadLimit이 -1이나 0이면 GPS/엔진 일시 소실 → 이전 유효값 유지 (깜빡임 방지)
                     //
@@ -2171,13 +2210,7 @@ class MapActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (knsdkInitialized) {
-            try {
-                KNSDK.handleWillTerminate()
-            } catch (e: Exception) {
-                NavLogger.e(this, "KNSDK 라이프사이클(terminate) 전달 예외: ${e.message}")
-            }
-        }
+
         val intent = Intent(this, UdpSenderService::class.java)
         stopService(intent)
     }
@@ -2189,22 +2222,22 @@ class MapActivity : AppCompatActivity() {
             if (sdiObj != null) {
                 val sdiJsonStr = if (sdiObj is String) sdiObj else com.google.gson.Gson().toJson(sdiObj)
                 val json = org.json.JSONObject(sdiJsonStr)
-                
+
                 val sdiType = json.optInt("nSdiType", 0)
                 var sdiSpeedLimit = json.optInt("nSdiSpeedLimit", 0)
                 val sdiDist = json.optInt("nSdiDist", 0)
-                
+
                 val blockDist = json.optInt("nSdiBlockDist", 0)
                 val blockTime = json.optInt("nSdiBlockTime", 0)
                 val blockAvgSpeed = json.optInt("nSdiBlockAverageSpeed", 0)
                 val isBlockSection = sdiType == 2 || sdiType == 3 || sdiType == 4 || json.optBoolean("bSdiBlockSection", false)
-                
+
                 val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-                
+
                 if (sdiType == 22 && sdiSpeedLimit <= 0) {
                     sdiSpeedLimit = 30
                 }
-                
+
                 val useKmFormat = sharedPref.getBoolean("USE_KM_DISTANCE_FORMAT", true)
                 fun formatDistance(dist: Int): String {
                     return if (useKmFormat && dist >= 1000) {
@@ -2213,7 +2246,7 @@ class MapActivity : AppCompatActivity() {
                         "${dist}m"
                     }
                 }
-                
+
                 runOnUiThread {
                     binding.tvOffsetTitle?.text = "구간단속"
 
@@ -2419,7 +2452,7 @@ class MapActivity : AppCompatActivity() {
                 sdkManagerCompanion = companionField.get(null)
                 getInstanceMethod = sdkManagerCompanion?.javaClass?.getMethod("getInstance")
             }
-            
+
             val sdkManager = getInstanceMethod?.invoke(sdkManagerCompanion)
             if (sdkManager != null) {
                 if (getRecentRGDataMethod == null) {
@@ -2472,7 +2505,7 @@ class MapActivity : AppCompatActivity() {
     private fun clampAndPreventOverlap(v: View, targetX: Float, targetY: Float, otherViews: List<View>): Pair<Float, Float> {
         var x = targetX
         var y = targetY
-        
+
         // 1. Clamp to parent boundaries
         val parent = v.parent as? View
         if (parent != null) {
@@ -2492,10 +2525,10 @@ class MapActivity : AppCompatActivity() {
                     val rectX = android.graphics.RectF(x, v.y, x + v.width, v.y + v.height)
                     // Try moving only Y
                     val rectY = android.graphics.RectF(v.x, y, v.x + v.width, y + v.height)
-                    
+
                     val canMoveX = !android.graphics.RectF.intersects(rectX, otherRect)
                     val canMoveY = !android.graphics.RectF.intersects(rectY, otherRect)
-                    
+
                     if (canMoveX && !canMoveY) {
                         y = v.y
                     } else if (!canMoveX && canMoveY) {
@@ -2518,7 +2551,7 @@ class MapActivity : AppCompatActivity() {
 
         view.setOnTouchListener { v, event ->
             if (!isEditMode) return@setOnTouchListener false
-            
+
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     dX = v.x - event.rawX
@@ -2529,7 +2562,7 @@ class MapActivity : AppCompatActivity() {
                     val rawX = event.rawX + dX
                     val rawY = event.rawY + dY
                     val (clampedX, clampedY) = clampAndPreventOverlap(v, rawX, rawY, otherViews)
-                    
+
                     v.animate()
                         .x(clampedX)
                         .y(clampedY)
@@ -2556,7 +2589,7 @@ class MapActivity : AppCompatActivity() {
         val suffix = if (isLandscape) "land" else "port"
         val x = sharedPref.getFloat("${keyPrefix}_x_${suffix}", -1f)
         val y = sharedPref.getFloat("${keyPrefix}_y_${suffix}", -1f)
-        
+
         if (x != -1f && y != -1f) {
             val (clampedX, clampedY) = clampAndPreventOverlap(view, x, y, otherViews)
             view.x = clampedX

@@ -16,7 +16,6 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import com.kakaomobility.knsdk.KNLanguageType
 import com.kakaomobility.knsdk.KNRouteAvoidOption
 import com.kakaomobility.knsdk.KNRoutePriority
 import com.kakaomobility.knsdk.KNSDK
@@ -144,38 +143,52 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         applyTmapMute(wasTmapMuted)
         kakaoMuted = sharedPref.getBoolean("kakao_muted", false)
 
-        if (KakaoSdkState.initialized) {
-            setupContentAndStart(destName, destLat, destLon)
-        } else {
-            try {
-                val dbPath = filesDir.absolutePath + "/knsdk"
-                NavLogger.d(this, "KakaoNaviActivity: KNSDK install 시도: $dbPath")
-                KNSDK.install(application, dbPath)
-                KNSDK.initializeWithAppKey(
-                    nativeAppKey,
-                    "1.0",
-                    "tmapnda_user",
-                    "ko",
-                    KNLanguageType.KNLanguageType_KOREAN
-                ) { error ->
-                    runOnUiThread {
-                        if (error == null) {
-                            NavLogger.d(this, "KakaoNaviActivity: KNSDK 초기화 성공")
-                            KakaoSdkState.initialized = true
-                            setupContentAndStart(destName, destLat, destLon)
-                        } else {
-                            NavLogger.e(this, "KakaoNaviActivity: KNSDK 초기화 실패: ${error.code} / ${error.msg}")
-                            Toast.makeText(this, "카카오내비 초기화 실패: ${error.msg}", Toast.LENGTH_LONG).show()
-                            finish()
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                NavLogger.e(this, "KakaoNaviActivity: KNSDK install/init 예외: ${e.message}")
-                Toast.makeText(this, "카카오내비 초기화 예외: ${e.message}", Toast.LENGTH_LONG).show()
-                finish()
-            }
+      KakaoSdkState.ensureInitialized(
+    application,
+    nativeAppKey
+) { success, message ->
+    if (isFinishing || isDestroyed) {
+        return@ensureInitialized
+    }
+
+    if (success) {
+        NavLogger.d(
+            this,
+            "KakaoNaviActivity: KNSDK 초기화 확인 완료"
+        )
+
+        try {
+            KNSDK.handleWillEnterForeground()
+            KNSDK.handleDidBecomeActive()
+        } catch (e: Exception) {
+            NavLogger.e(
+                this,
+                "KakaoNaviActivity: KNSDK 활성화 신호 전달 실패: ${e.message}"
+            )
         }
+
+        setupContentAndStart(
+            destName,
+            destLat,
+            destLon
+        )
+    } else {
+        val errorMessage = message ?: "알 수 없는 오류"
+
+        NavLogger.e(
+            this,
+            "KakaoNaviActivity: KNSDK 초기화 실패: $errorMessage"
+        )
+
+        Toast.makeText(
+            this,
+            "카카오내비 초기화 실패: $errorMessage",
+            Toast.LENGTH_LONG
+        ).show()
+
+        finish()
+    }
+}
     }
 
     private fun setupContentAndStart(destName: String, destLat: Double, destLon: Double) {
