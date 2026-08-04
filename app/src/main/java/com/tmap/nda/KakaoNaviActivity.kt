@@ -211,6 +211,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     WindowInsetsCompat.Type.displayCutout()
             )
             view.setPadding(safeArea.left, safeArea.top, safeArea.right, safeArea.bottom)
+            // v3.0: Tmap 화면과 동일하게 보조패널 스크롤 하단에도 안전여백 추가 (사용자 지적 5번)
+            binding.svSecondaryPanel?.let { panel ->
+                panel.clipToPadding = false
+                panel.setPadding(panel.paddingLeft, panel.paddingTop, panel.paddingRight, safeArea.bottom)
+            }
             insets
         }
         ViewCompat.requestApplyInsets(binding.root)
@@ -653,6 +658,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     private fun setupHudActionButtons() {
         updateMuteButtonStyle()
+
+        // v3.0: Tmap 화면과 동일한 ≡ 메뉴 - 이벤트상세/신호등/최근검색 등을 열고 닫음
+        binding.btnMoreMenu?.setOnClickListener {
+            val panel = binding.svSecondaryPanel ?: return@setOnClickListener
+            panel.visibility = if (panel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        }
 
         binding.btnKakaoMuteToggle?.setOnClickListener {
             kakaoMuted = !kakaoMuted
