@@ -114,7 +114,8 @@ object PanelDragHelper {
         button: android.widget.Button,
         secondaryPanel: View?,
         moreMenuButton: View?,
-        confirmButton: View? = null
+        confirmButton: View? = null,
+        draggablePanel: android.view.ViewGroup? = null
     ) {
         fun setEditMode(enabled: Boolean) {
             isEditMode = enabled
@@ -124,9 +125,13 @@ object PanelDragHelper {
             moreMenuButton?.isEnabled = !isEditMode
             moreMenuButton?.alpha = if (isEditMode) 0.4f else 1.0f
             confirmButton?.visibility = if (isEditMode) View.VISIBLE else View.GONE
+            // v4.0: 자식 버튼/입력창이 터치를 먼저 가로채서, 빈 공간(아이콘·글자가 없는
+            // 곳)만 눌러야 드래그되던 문제(사용자 지적 3번). 편집모드 켤 때 안의 모든 뷰를
+            // 비활성화해서 어디를 눌러도 상단바 자체의 드래그가 먹히게 함. #문제시 원복
+            draggablePanel?.let { setDescendantsEnabled(it, !isEditMode) }
             if (isEditMode) {
                 button.text = "UI 편집 종료"
-                android.widget.Toast.makeText(context, "패널을 드래그해서 원하는 위치로 옮기고, 우측 상단 체크(✓)를 눌러 확정하세요", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(context, "패널 아무 곳이나 눌러서 드래그하고, 우측 상단 체크(✓)를 눌러 확정하세요", android.widget.Toast.LENGTH_LONG).show()
             } else {
                 button.text = "UI 편집"
                 android.widget.Toast.makeText(context, "위치가 저장됐습니다", android.widget.Toast.LENGTH_SHORT).show()
@@ -135,6 +140,22 @@ object PanelDragHelper {
 
         button.setOnClickListener { setEditMode(!isEditMode) }
         confirmButton?.setOnClickListener { setEditMode(false) }
+    }
+
+    private fun setDescendantsEnabled(view: View, enabled: Boolean) {
+        view.isEnabled = enabled
+        // enabled=false만으론 클릭 가능한 뷰가 터치를 여전히 소비해버려서(안드로이드
+        // 표준 동작 - 비활성 상태여도 clickable이면 onTouchEvent가 true를 반환), 부모의
+        // 드래그 리스너로 터치가 안 넘어감. clickable도 같이 꺼야 실제로 통과됨.
+        if (view !is android.view.ViewGroup) {
+            view.isClickable = enabled
+            view.isLongClickable = enabled
+        }
+        if (view is android.view.ViewGroup) {
+            for (i in 0 until view.childCount) {
+                setDescendantsEnabled(view.getChildAt(i), enabled)
+            }
+        }
     }
 
     // v3.9: 앱 설정 다이얼로그도 공용화. touchLockOverlay는 Tmap 화면에만 있는
