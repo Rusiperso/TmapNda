@@ -519,9 +519,16 @@ class MapActivity : AppCompatActivity() {
     private fun setupDestinationSearchUi() {
         // v2.6: 상단바 개편 - 자주 안 쓰는 항목(이벤트/신호등/최근검색/설정류)을
         // ≡ 버튼으로 열고 닫는 보조 패널로 뺌. #문제시 원복
-        binding.btnMoreMenu?.setOnClickListener {
+        binding.btnMoreMenu?.setOnClickListener { anchorView ->
             val panel = binding.svSecondaryPanel ?: return@setOnClickListener
-            panel.visibility = if (panel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            if (panel.visibility == View.VISIBLE) {
+                panel.visibility = View.GONE
+            } else {
+                panel.visibility = View.VISIBLE
+                panel.post {
+                    PanelDragHelper.positionPopupNearAnchor(binding.root, anchorView, panel)
+                }
+            }
         }
         binding.btnOpenSearch?.setOnClickListener {
             // 좌측 HUD 패널에 최근 검색 이력이 항상 보이도록 바뀌어서, 팝업 이력을

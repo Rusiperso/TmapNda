@@ -109,6 +109,34 @@ object PanelDragHelper {
     // 패널이 닫히고 ≡ 버튼도 비활성화돼서 "편집 끝내기"를 누를 방법이 아예 없어지는
     // 버그가 있었음(재억 지적). 이 체크 버튼은 항상 최상단에 떠서 언제든 편집을 끝낼
     // 수 있게 함 - toggleButton과 confirmButton 둘 다 같은 종료 로직을 공유. #문제시 원복
+    // v4.6: 더보기 팝업을 항상 메뉴(≡) 버튼 근처에 붙임 - 상단바가 가로스크롤
+    // 구조로 바뀌면서, 버튼의 실제 화면 위치가 "화면 오른쪽 끝"이 아닐 수 있는데
+    // 팝업은 고정 마진(top|end)으로 화면 끝에 떠서 서로 멀리 떨어져 보이던 문제
+    // (재억 지적: "메뉴 옆에 붙이라니까 화면 구석에 떠있다"). 버튼을 누르는 그
+    // 순간의 실제 화면 좌표를 계산해서 팝업을 거기 맞춰 이동시킴. #문제시 원복
+    fun positionPopupNearAnchor(root: View, anchor: View, popup: View) {
+        val anchorLoc = IntArray(2)
+        val rootLoc = IntArray(2)
+        anchor.getLocationOnScreen(anchorLoc)
+        root.getLocationOnScreen(rootLoc)
+
+        // 팝업을 먼저 measure해서 실제 크기를 알아야 화면 밖으로 안 나가게 clamp 가능
+        popup.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+        val popupWidth = popup.measuredWidth.takeIf { it > 0 } ?: popup.width
+        val popupHeight = popup.measuredHeight.takeIf { it > 0 } ?: popup.height
+
+        var targetX = (anchorLoc[0] - rootLoc[0] + anchor.width - popupWidth).toFloat()
+        var targetY = (anchorLoc[1] - rootLoc[1] + anchor.height + 8).toFloat()
+
+        val maxX = (root.width - popupWidth).toFloat().coerceAtLeast(0f)
+        val maxY = (root.height - popupHeight).toFloat().coerceAtLeast(0f)
+        targetX = targetX.coerceIn(0f, maxX)
+        targetY = targetY.coerceIn(0f, maxY)
+
+        popup.x = targetX
+        popup.y = targetY
+    }
+
     fun wireEditToggleButton(
         context: android.content.Context,
         button: android.widget.Button,
