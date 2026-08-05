@@ -373,6 +373,21 @@
                     android:layout_marginBottom="4dp"/>
 
                 <Button
+                    android:id="@+id/btnDeleteAllLogs"
+                    android:layout_width="match_parent"
+                    android:layout_height="38dp"
+                    android:text="로그 전체 삭제"
+                    android:textSize="12sp"
+                    android:textColor="#CCCCCC"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="10dp"
+                    android:drawableStart="@drawable/ic_send_paperplane"
+                    android:drawableTint="#CCCCCC"
+                    android:drawablePadding="10dp"
+                    android:backgroundTint="#111111"
+                    android:layout_marginBottom="4dp"/>
+
+                <Button
                     android:id="@+id/btnGuideHelp"
                     android:layout_width="match_parent"
                     android:layout_height="38dp"

@@ -313,6 +313,20 @@ class MapActivity : AppCompatActivity() {
                 Toast.makeText(this, "도움말을 열 수 없습니다: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
+        // v4.12: 저장된 로그 파일이 안 지워진다는 재억 지적 - 확인 다이얼로그와 함께
+        // 전체 삭제 버튼 추가. #문제시 원복
+        binding.btnDeleteAllLogs?.setOnClickListener {
+            binding.svSecondaryPanel?.visibility = View.GONE
+            android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("로그 전체 삭제")
+                .setMessage("저장된 로그 파일을 전부 삭제할까요? 되돌릴 수 없습니다.")
+                .setPositiveButton("삭제") { _, _ ->
+                    NavLogger.deleteAllLogFiles(this)
+                    Toast.makeText(this, "로그를 전부 삭제했습니다.", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("취소", null)
+                .show()
+        }
 
         // v1.7: 짧게 누르기가 카카오키 재입력 화면으로 가버려서, 정작 자주 쓸 앱 설정
         // (속도초과 경고음/이동식카메라 감속 토글)은 길게 눌러야만 보였음 - 아무도
