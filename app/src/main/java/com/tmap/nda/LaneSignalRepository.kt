@@ -23,7 +23,10 @@ object LaneSignalRepository {
     @Volatile var trafficLightRemainSec: Int = -1
     @Volatile var trafficLightColor: String = ""
 
-    fun resetIfStale(maxAgeMs: Long = 5000L) {
+    // v4.11: 카카오 안내 콜백이 매 초마다 오는 게 아니라 상황 바뀔 때만 오는 경우가
+    // 있어서, 5초로는 너무 짧아서 실제로 유효한 차선인데도 금방 사라져 보였음(재억
+    // 지적: "잠깐 나왔다 사라진다"). 15초로 늘림. #문제시 원복
+    fun resetIfStale(maxAgeMs: Long = 15000L) {
         if (System.currentTimeMillis() - lastUpdateTime > maxAgeMs) {
             lanes = emptyList()
             trafficLightRemainSec = -1
@@ -32,7 +35,7 @@ object LaneSignalRepository {
         }
     }
 
-    fun isFresh(maxAgeMs: Long = 5000L) = (System.currentTimeMillis() - lastUpdateTime) < maxAgeMs
+    fun isFresh(maxAgeMs: Long = 15000L) = (System.currentTimeMillis() - lastUpdateTime) < maxAgeMs
 }
 
 /**
@@ -70,8 +73,10 @@ fun renderLaneSignalBar(
         val tv = android.widget.TextView(context).apply {
             text = if (isRecommended) "▲" else "|"
             setTextColor(if (isRecommended) android.graphics.Color.parseColor("#4CAF50") else android.graphics.Color.parseColor("#888888"))
-            textSize = 14f
-            setPadding(14, 4, 14, 4)
+            textSize = 28f
+            gravity = android.view.Gravity.CENTER
+            setPadding(20, 12, 20, 12)
+            minWidth = 72
             setBackgroundColor(
                 if (isRecommended) android.graphics.Color.parseColor("#1B4D2C") else android.graphics.Color.parseColor("#333333")
             )
@@ -80,7 +85,7 @@ fun renderLaneSignalBar(
             android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
             android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
         )
-        lp.marginEnd = 4
+        lp.marginEnd = 8
         laneBoxContainer.addView(tv, lp)
     }
     laneBoxContainer.visibility = if (hasLanes) android.view.View.VISIBLE else android.view.View.GONE
