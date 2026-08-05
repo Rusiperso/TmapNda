@@ -534,7 +534,10 @@ class MapActivity : AppCompatActivity() {
             true
         }
         binding.etDestination?.setOnFocusChangeListener { _, hasFocus ->
-            if (hasFocus) showSearchHistory()
+            // v3.13: 검색창 탭했을 때도 삭제 기능(개별 ✕ / 전체 삭제) 있는 dialog로
+            // 통일 - 예전엔 삭제 기능 없는 showSearchHistory()를 불러서, 아이콘으로
+            // 열 때(삭제 됨)와 검색창 탭으로 열 때(삭제 안 됨)가 서로 달랐음. #문제시 원복
+            if (hasFocus) showFullSearchHistoryDialog()
         }
         // 텍스트로 직접 치고 싶을 때를 위해 입력창을 길게 누르면 키보드 포커스로 전환.
         binding.etDestination?.setOnLongClickListener {
@@ -570,9 +573,11 @@ class MapActivity : AppCompatActivity() {
             promptForKakaoKeyThenSearch("") // 빈 쿼리로 열면 저장만 하고 검색은 안 함(취소 눌러도 됨)
             true
         }
-        // v3.1: 필드 안 아이콘을 음성검색(왼쪽 버튼과 중복)에서 최근검색으로 변경
+        // v3.13: 최근검색 아이콘이 삭제 기능 없는 showSearchHistory()를 부르고 있었음 -
+        // 삭제 가능한 showFullSearchHistoryDialog()로 교체해서 카카오 화면과 통일
+        // (재억 지적: "카카오맵엔 삭제 기능 있는데 티맵엔 빠짐"). #문제시 원복
         binding.btnVoiceSearch?.setOnClickListener {
-            showSearchHistory()
+            showFullSearchHistoryDialog()
         }
         binding.btnStopGuidance?.setOnClickListener {
             stopGuidance()
@@ -788,7 +793,16 @@ class MapActivity : AppCompatActivity() {
                     .setNegativeButton("취소", null)
                     .show()
             }
-            .setNegativeButton("닫기", null)
+            .setNegativeButton("닫기") { _, _ ->
+                // v2.6에서 고친 것과 동일: 닫을 때 포커스를 유지하고 키보드를 명시적으로
+                // 다시 띄워줌 (검색창 탭 -> 이 다이얼로그가 뜨는 경로에서 닫으면 키보드가
+                // 안 뜨던 문제 재발 방지). #문제시 원복
+                binding.etDestination?.requestFocus()
+                binding.etDestination?.post {
+                    val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                    imm.showSoftInput(binding.etDestination, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+                }
+            }
             .create()
 
         listView.setOnItemClickListener { _, _, position, _ ->
