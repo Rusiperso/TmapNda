@@ -174,6 +174,14 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
+        // v4.0: 상단바 이벤트(카메라/구간단속/방지턱) 표시 켜고 끄기 - 모바일 화면은
+        // 좁아서 부담스러울 수 있어 옵션으로 제공 (사용자 지적 6번). #문제시 원복
+        val showTopBarEventCheckBox = android.widget.CheckBox(context).apply {
+            text = "상단바에 이벤트(카메라/구간단속/방지턱) 표시"
+            isChecked = pref.getBoolean("topbar_event_enabled", true)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
         val unlockMapTouchCheckBox = if (touchLockOverlay != null) {
             android.widget.CheckBox(context).apply {
                 text = "지도 터치 잠금 해제 (핀치줌/드래그 허용)"
@@ -187,6 +195,7 @@ object PanelDragHelper {
             orientation = android.widget.LinearLayout.VERTICAL
             addView(checkBox)
             addView(disableMobileCamCheckBox)
+            addView(showTopBarEventCheckBox)
             unlockMapTouchCheckBox?.let { addView(it) }
         }
         android.app.AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
@@ -196,6 +205,7 @@ object PanelDragHelper {
                 pref.edit()
                     .putBoolean("over_speed_warning_enabled", checkBox.isChecked)
                     .putBoolean("mobile_cam_slowdown_disabled", disableMobileCamCheckBox.isChecked)
+                    .putBoolean("topbar_event_enabled", showTopBarEventCheckBox.isChecked)
                     .apply {
                         if (unlockMapTouchCheckBox != null) {
                             putBoolean("map_touch_unlocked", unlockMapTouchCheckBox.isChecked)

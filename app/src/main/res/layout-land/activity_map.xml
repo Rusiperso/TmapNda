@@ -379,7 +379,22 @@
             <View android:layout_width="20dp" android:layout_height="0dp"/>
 
             <!-- 도착정보 (안내 중일 때만) -->
+                        <!-- v4.0: 카메라/구간단속/방지턱 등 이벤트를 상단바에 상시 표시 (사용자 지적
+                 5·6번). 설정에서 켜고 끌 수 있음(모바일 사용자 대응). #문제시 원복 -->
             <TextView
+                android:id="@+id/tvTopBarEvent"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="#FFC107"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:gravity="center_vertical"
+                android:layout_marginEnd="10dp"
+                android:visibility="gone"/>
+
+<TextView
                 android:id="@+id/tvTopBarEta"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
