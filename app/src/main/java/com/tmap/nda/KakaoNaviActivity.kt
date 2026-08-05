@@ -760,6 +760,18 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 Toast.makeText(this, "도움말을 열 수 없습니다: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
+        binding.btnDeleteAllLogs?.setOnClickListener {
+            binding.svSecondaryPanel?.visibility = View.GONE
+            android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("로그 전체 삭제")
+                .setMessage("저장된 로그 파일을 전부 삭제할까요? 되돌릴 수 없습니다.")
+                .setPositiveButton("삭제") { _, _ ->
+                    NavLogger.deleteAllLogFiles(this)
+                    Toast.makeText(this, "로그를 전부 삭제했습니다.", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("취소", null)
+                .show()
+        }
         binding.btnExitApp?.setOnClickListener {
             finishAffinity()
         }
