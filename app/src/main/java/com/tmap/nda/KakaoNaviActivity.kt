@@ -73,6 +73,19 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         view.layoutParams = params
     }
 
+    // v4.10: 지도(naviView)는 바가 baseline 높이일 때도 마진이 0이면 카카오 자체 UI
+    // 요소(도로번호/속도 표지 등)가 바 바로 밑에 딱 붙어서 가려짐(사용자 지적: "66
+    // 서울톨골 표지가 살짝 짤린다"). applyTopPanelExpansion은 baseline보다 "더 커진
+    // 만큼"만 밀어내서 baseline 상태에서 마진이 0이 되는 게 원인 - 이 함수는 바의
+    // 실제 전체 높이만큼 정확히 밀어내서 gap도 안 남고 겹침도 안 생기게 함. #문제시 원복
+    private fun applyExactTopOffset(view: View?, panelHeight: Int) {
+        if (view == null) return
+        val params = view.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+        if (params.topMargin == panelHeight) return
+        params.topMargin = panelHeight
+        view.layoutParams = params
+    }
+
     /** 상단 HUD 자동 확장 시 카카오 지도·플로팅 UI도 같은 만큼 아래로 이동한다. */
     private fun installTopPanelAutoOffset() {
         binding.llLeftHudPanel.addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
@@ -80,7 +93,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             val baseHeight = binding.llTopBarRow.minimumHeight
             val expandedHeight = (panelHeight - baseHeight).coerceAtLeast(0)
 
-            applyTopPanelExpansion(binding.naviView, expandedHeight)
+            applyExactTopOffset(binding.naviView, panelHeight)
             applyTopPanelExpansion(binding.svSecondaryPanel, expandedHeight)
         }
     }
