@@ -385,10 +385,9 @@
          (사용자 지적 1·2번 근본 해결). #문제시 원복 -->
     <ScrollView
         android:id="@+id/svSecondaryPanel"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="top"
-        android:layout_marginTop="52dp"
+        android:layout_gravity="center"
         android:visibility="gone"
         android:background="#0D0D0D"
         android:elevation="22dp"
@@ -396,7 +395,7 @@
         android:maxHeight="420dp">
 
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="280dp"
             android:layout_height="wrap_content"
             android:orientation="vertical"
                 android:padding="14dp">

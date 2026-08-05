@@ -217,6 +217,24 @@ class KakaoGuidanceDelegate(
                     .joinToString(", ") { m -> try { "${m.name}=${m.invoke(obj)}" } catch (e: Exception) { "${m.name}=<실패>" } }
             }
             NavLogger.d(context, "[차선정보?] KNLane 전체덤프: $laneFieldDump")
+
+            // v4.4: 지난 로그에서 KNLane.getLaneInfos()가 KNLane_LaneInfo 객체 리스트인 것까지
+            // 확인함(사용자 요청으로 차선/신호등 표시 작업 계속) - 그 개별 항목 안의 실제 필드명을
+            // 몰라서 한 단계 더 깊이 덤프. 이게 로그에 찍히면 실제 표시 로직을 완성할 수 있음. #문제시 원복
+            val laneInfoList = laneObj?.let { obj ->
+                try {
+                    obj.javaClass.methods.firstOrNull { it.name == "getLaneInfos" && it.parameterTypes.isEmpty() }
+                        ?.invoke(obj) as? List<*>
+                } catch (e: Exception) { null }
+            }
+            laneInfoList?.forEachIndexed { idx, laneInfo ->
+                if (laneInfo != null) {
+                    val dump = laneInfo.javaClass.methods
+                        .filter { it.parameterTypes.isEmpty() && it.name.startsWith("get") }
+                        .joinToString(", ") { m -> try { "${m.name}=${m.invoke(laneInfo)}" } catch (e: Exception) { "${m.name}=<실패>" } }
+                    NavLogger.d(context, "[차선정보?] KNLane_LaneInfo[$idx] 전체덤프: $dump")
+                }
+            }
         } catch (e: Exception) {
             NavLogger.e(context, "curDirection/Lane 전체덤프 예외: ${e.message}")
         }
