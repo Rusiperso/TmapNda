@@ -259,7 +259,12 @@ class KakaoGuidanceDelegate(
         try {
             val curDirection = findGetter(routeGuide, "getCurDirection")
             val nextTbtDist = curDirection?.let { findGetterInt(it, "Dist") } ?: 0
-            val turnTypeRaw = curDirection?.let { findGetter(it, null, "Type") }
+            // v4.12: 이름에 "Type"이 들어간 첫 getter를 찾다 보니 진짜 회전방향 필드
+            // (getRgCode: KNRGCode_LeftTurn/RightTurn 등, 로그로 확인함)가 아니라 엉뚱한
+            // getDirNameType(도로명이 도로명인지/장소명인지 구분하는 필드, 회전방향과 무관)을
+            // 잘못 잡고 있었음(재억 지적: "좌회전 우회전 갈 때 화살표 보여주고 싶다"). 정확히
+            // getRgCode를 지정해서 가져오도록 수정. #문제시 원복
+            val turnTypeRaw = curDirection?.let { findGetter(it, "getRgCode") }
             val roadNameNow = curDirection?.let { findGetterString(it, "Name") }
                 ?: findGetterString(routeGuide, "Name")
 
@@ -314,11 +319,19 @@ class KakaoGuidanceDelegate(
         naviView?.guidanceDidUpdateRouteGuide(guidance, routeGuide)
     }
 
-    // 카카오의 회전타입 코드(enum/정수, 정확한 값 체계 미확인)를 openpilot이 기대하는
-    // nTBTTurnType 코드(51=직진/알림 기본값)로 매핑. 지금은 안전하게 기본값(51, 알림)만
-    // 리턴 - 실제 로그로 카카오 turnType 원본값들을 수집한 뒤 표를 채워야 정확해짐. #문제시 원복
+    // v4.12: openpilot(carrot 계열 fork)의 실제 소스(selfdrive/road_speed_limiter.py)에서
+    // nTBTTurnType 코드표를 확인함 - 12/16=좌회전, 13/19=우회전, 7계열=좌측차선변경,
+    // 6계열=우측차선변경, 14/131~142=감속, 그 외=51(일반 알림). 카카오의 rgCode는 문자열
+    // enum(KNRGCode_LeftTurn/KNRGCode_RightTurn 등, 로그로 확인)이라 이름으로 매칭.
+    // 확실한 좌/우회전만 매핑하고, 나머지(유턴 등 확실치 않은 코드)는 안전하게 기본값
+    // 유지 (재억 요청: "좌회전 우회전 갈 때 화살표 표시"). #문제시 원복
     private fun mapKakaoTurnTypeToOpenpilot(kakaoTurnType: Any?): Int {
-        return 51
+        val name = kakaoTurnType?.toString() ?: return 51
+        return when {
+            name.contains("LeftTurn", ignoreCase = true) -> 12
+            name.contains("RightTurn", ignoreCase = true) -> 13
+            else -> 51
+        }
     }
 
     private fun findGetter(obj: Any, exactName: String? = null, nameContains: String? = null): Any? {
