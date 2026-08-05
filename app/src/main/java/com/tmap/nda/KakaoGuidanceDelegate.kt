@@ -217,6 +217,29 @@ class KakaoGuidanceDelegate(
         try {
             val lane = routeGuide.lane
             if (lane != null) {
+                val laneInfoList = lane.javaClass.methods
+                    .firstOrNull { it.name == "getLaneInfos" && it.parameterTypes.isEmpty() }
+                    ?.invoke(lane) as? List<*>
+                if (laneInfoList != null) {
+                    // v4.11: getHighlightType으로 추천 차선 여부를 실제로 판단해서 표시.
+                    // internal 접근 제한 때문에 타입 API가 아니라 리플렉션으로 메서드를
+                    // 직접 호출함(컴파일 에러로 linkIdx가 internal인 걸 확인했음 - 같은
+                    // 클래스의 다른 getter들도 마찬가지일 가능성이 높아 안전하게 리플렉션
+                    // 유지). #문제시 원복
+                    val recommendedFlags = laneInfoList.mapNotNull { info ->
+                        if (info == null) return@mapNotNull null
+                        try {
+                            val highlightType = info.javaClass.methods
+                                .firstOrNull { it.name == "getHighlightType" && it.parameterTypes.isEmpty() }
+                                ?.invoke(info) as? Int
+                            (highlightType ?: 0) != 0
+                        } catch (e: Exception) { false }
+                    }
+                    LaneSignalRepository.lanes = recommendedFlags
+                    LaneSignalRepository.source = "kakao"
+                    LaneSignalRepository.lastUpdateTime = System.currentTimeMillis()
+                }
+
                 val dump = lane.javaClass.methods
                     .filter { m -> m.parameterTypes.isEmpty() && m.name.startsWith("get") }
                     .joinToString(", ") { m -> try { "${m.name}=${m.invoke(lane)}" } catch (e: Exception) { "${m.name}=<실패>" } }
