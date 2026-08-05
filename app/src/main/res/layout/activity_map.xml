@@ -360,35 +360,24 @@
                 android:layout_height="36dp"
                 android:src="@drawable/ic_hamburger"
                 android:background="@drawable/shape_circle_gray"
-                android:scaleType="center"/>
+                android:scaleType="center"
+                android:layout_marginEnd="10dp"/>
+
+            <!-- v4.1: 이벤트는 스크롤 행 안, 메뉴 바로 뒤(맨 끝)에 위치 - 생겼다 없어졌다
+                 하는 항목이라 다른 요소를 계속 밀어내지 않게 함 (재억 요청). #문제시 원복 -->
+            <TextView
+                android:id="@+id/tvTopBarEvent"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="#FFC107"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:gravity="center_vertical"
+                android:visibility="gone"/>
         </LinearLayout>
         </HorizontalScrollView>
-
-                <!-- v4.0: 카메라/구간단속/방지턱 등 이벤트를 상단바에 상시 표시 (재억 지적
-             5·6번). 설정에서 켜고 끌 수 있음(모바일 사용자 대응). #문제시 원복 -->
-        <TextView
-            android:id="@+id/tvTopBarEvent"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text=""
-            android:textColor="#FFC107"
-            android:textSize="11sp"
-            android:textStyle="bold"
-            android:maxLines="1"
-            android:gravity="center_vertical"
-            android:layout_marginEnd="10dp"
-            android:visibility="gone"/>
-
-<TextView
-            android:id="@+id/tvTopBarEta"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text=""
-            android:textColor="#CCCCCC"
-            android:textSize="11sp"
-            android:paddingHorizontal="12dp"
-            android:paddingBottom="8dp"
-            android:visibility="gone"/>
     </LinearLayout>
 
     <!-- v3.0: 보조 패널을 llLeftHudPanel 밖으로 분리해서 화면 위에 뜨는 독립 오버레이로
