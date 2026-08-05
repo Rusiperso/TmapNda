@@ -733,6 +733,20 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             binding.svSecondaryPanel?.visibility = View.GONE
             AutoUpdater.showChangelogDialog(this)
         }
+        // v4.9: 진짜 "도움말" - README 웹페이지로 (티맵 화면과 동일). #문제시 원복
+        binding.btnGuideHelp?.setOnClickListener {
+            binding.svSecondaryPanel?.visibility = View.GONE
+            try {
+                startActivity(
+                    Intent(
+                        Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://github.com/Rusiperso/TmapNda/blob/openpilot/README.md")
+                    )
+                )
+            } catch (e: Exception) {
+                Toast.makeText(this, "도움말을 열 수 없습니다: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
         binding.btnExitApp?.setOnClickListener {
             finishAffinity()
         }
