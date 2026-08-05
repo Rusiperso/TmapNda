@@ -605,7 +605,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 if (sdiType > 0 || (sdiSpeedLimit > 0 && sdiDist > 0)) {
                     binding.tvSdiSpeedLimit?.text = if (sdiSpeedLimit > 0) "${sdiSpeedLimit}km" else "-"
                     binding.tvSdiDist?.text = if (sdiDist >= 1000) String.format("%.1fkm", sdiDist / 1000.0) else "${sdiDist}m"
-                    binding.tvSdiDescr?.text = when (sdiType) {
+                    val typeName = when (sdiType) {
                         1 -> "과속 단속"
                         2 -> "구간단속 시작"
                         3 -> "구간단속 종료"
@@ -615,10 +615,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         33 -> "어린이보호구역"
                         else -> if (sdiSpeedLimit > 0) "단속 카메라" else "주의 구간"
                     }
+                    binding.tvSdiDescr?.text = typeName
+                    updateTopBarEventDisplay(typeName, binding.tvSdiDist?.text?.toString())
                 } else {
                     binding.tvSdiSpeedLimit?.text = ""
                     binding.tvSdiDist?.text = "--"
                     binding.tvSdiDescr?.text = "--"
+                    updateTopBarEventDisplay(null, null)
                 }
                 hudPollHandler.postDelayed(this, 1000)
                 renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown)
@@ -937,6 +940,19 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 return view
             }
         }
+    }
+
+    // v4.0: 상단바 이벤트(카메라/구간단속/방지턱) 표시 - 설정에서 끄면 안 보이게 함
+    // (재억 지적 5·6번, 티맵과 동일). #문제시 원복
+    private fun updateTopBarEventDisplay(typeName: String?, distText: String?) {
+        val enabled = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .getBoolean("topbar_event_enabled", true)
+        if (!enabled || typeName == null) {
+            binding.tvTopBarEvent?.visibility = View.GONE
+            return
+        }
+        binding.tvTopBarEvent?.text = "$typeName $distText"
+        binding.tvTopBarEvent?.visibility = View.VISIBLE
     }
 
     private fun performInPlaceSearch(query: String) {

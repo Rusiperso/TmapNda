@@ -883,6 +883,19 @@ class MapActivity : AppCompatActivity() {
 
     // v2.0: 잠금 해제 상태면 오버레이가 터치를 그냥 통과시켜서(false 리턴) 지도가 핀치줌/드래그를 받게 함.
     // 잠금 상태(기본값)면 오버레이가 계속 터치를 소비(true)해서 지도 조작을 차단. #문제시 원복
+    // v4.0: 상단바 이벤트(카메라/구간단속/방지턱) 표시 - 설정에서 끄면 안 보이게 함
+    // (재억 지적 5·6번). #문제시 원복
+    private fun updateTopBarEventDisplay(typeName: String?, distText: String?) {
+        val enabled = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .getBoolean("topbar_event_enabled", true)
+        if (!enabled || typeName == null) {
+            binding.tvTopBarEvent?.visibility = View.GONE
+            return
+        }
+        binding.tvTopBarEvent?.text = "$typeName $distText"
+        binding.tvTopBarEvent?.visibility = View.VISIBLE
+    }
+
     private fun applyMapTouchLockState(unlocked: Boolean) {
         if (unlocked) {
             binding.vTouchLockOverlay?.setOnTouchListener { _, _ -> false }
@@ -2456,10 +2469,12 @@ class MapActivity : AppCompatActivity() {
                             else -> if (sdiSpeedLimit > 0) "단속 카메라" else "주의 구간"
                         }
                         binding.tvSdiDescr?.text = typeName
+                        updateTopBarEventDisplay(typeName, formatDistance(sdiDist))
                     } else {
                         binding.tvSdiSpeedLimit?.text = ""
                         binding.tvSdiDist?.text = "--"
                         binding.tvSdiDescr?.text = "--"
+                        updateTopBarEventDisplay(null, null)
                     }
 
                     // KakaoNaviActivity의 미니 HUD가 읽을 수 있도록 실제 값 반영 (기존엔 아무데서도
@@ -2483,6 +2498,7 @@ class MapActivity : AppCompatActivity() {
                     binding.tvSdiSpeedLimit?.text = ""
                     binding.tvSdiDist?.text = "--"
                     binding.tvSdiDescr?.text = "--"
+                    updateTopBarEventDisplay(null, null)
                     SdiDataRepository.updateCurrentSdiState(
                         limitSpeed = SdiDataRepository.roadLimitSpeed,
                         type = 0, speedLimit = 0, distance = 0,
