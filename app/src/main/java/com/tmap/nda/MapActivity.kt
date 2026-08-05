@@ -93,6 +93,10 @@ class MapActivity : AppCompatActivity() {
 
             applyTopPanelExpansion(binding.llOffset, expandedHeight)
             applyTopPanelExpansion(binding.svSecondaryPanel, expandedHeight)
+            // v4.0: 지도(tmapUILayout)는 이 자동보정 대상에서 빠져있어서, 바가 커지면
+            // (큰 폰트 설정 등) 그만큼 지도가 더 가려지던 문제(재억 지적 1번: "지도 부분이
+            // 살짝씩 짤리는 증상"). 지도도 같이 밀어냄. #문제시 원복
+            applyTopPanelExpansion(binding.tmapUILayout, expandedHeight)
         }
     }
 
@@ -337,7 +341,7 @@ class MapActivity : AppCompatActivity() {
         }
         // v3.9: Tmap/카카오 화면 동일 동작을 위해 공용 함수로 교체 (재억: "기본 UI는 차등 두지 말 것")
         binding.btnEditPanelPosition?.let {
-            PanelDragHelper.wireEditToggleButton(this, it, binding.svSecondaryPanel, binding.btnMoreMenu, binding.btnConfirmEditPosition)
+            PanelDragHelper.wireEditToggleButton(this, it, binding.svSecondaryPanel, binding.btnMoreMenu, binding.btnConfirmEditPosition, binding.llLeftHudPanel)
         }
 
         // Tmap 지도 터치 무력화: 화면/정보 표시는 그대로, 지도(NavigationFragment)로 가는

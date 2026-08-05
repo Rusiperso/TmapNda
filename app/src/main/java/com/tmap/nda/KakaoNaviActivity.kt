@@ -727,7 +727,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             finishAffinity()
         }
         binding.btnEditPanelPosition?.let {
-            PanelDragHelper.wireEditToggleButton(this, it, binding.svSecondaryPanel, binding.btnMoreMenu, binding.btnConfirmEditPosition)
+            PanelDragHelper.wireEditToggleButton(this, it, binding.svSecondaryPanel, binding.btnMoreMenu, binding.btnConfirmEditPosition, binding.llLeftHudPanel)
         }
         binding.btnEditKey?.setOnClickListener {
             binding.svSecondaryPanel?.visibility = View.GONE
