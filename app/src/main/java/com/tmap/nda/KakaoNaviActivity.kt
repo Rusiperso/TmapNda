@@ -709,9 +709,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         updateMuteButtonStyle()
 
         // v3.0: Tmap 화면과 동일한 ≡ 메뉴 - 이벤트상세/신호등/최근검색 등을 열고 닫음
-        binding.btnMoreMenu?.setOnClickListener {
+        binding.btnMoreMenu?.setOnClickListener { anchorView ->
             val panel = binding.svSecondaryPanel ?: return@setOnClickListener
-            panel.visibility = if (panel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            if (panel.visibility == View.VISIBLE) {
+                panel.visibility = View.GONE
+            } else {
+                panel.visibility = View.VISIBLE
+                panel.post {
+                    PanelDragHelper.positionPopupNearAnchor(binding.root, anchorView, panel)
+                }
+            }
         }
 
         // v3.8: 티맵 화면과 동일한 동작 - 업데이트확인/도움말은 화면과 무관한 앱 전체
