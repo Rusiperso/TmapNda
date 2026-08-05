@@ -420,6 +420,18 @@ class MapActivity : AppCompatActivity() {
                                 NavLogger.e(this@MapActivity, "TmapUISDK.Companion method: ${m.name}")
                             }
                         }
+
+                        // v4.8: 사용자 요청 - 차선/신호등 데이터를 따로 주는 observable/메서드가
+                        // TmapUISDK에 있는지 이름으로 넓게 탐색 (observableRouteData 외에
+                        // 다른 스트림이 있을 수 있음). #문제시 원복
+                        for (m in compMethods) {
+                            if (m.name.contains("observable", ignoreCase = true) || m.name.contains("lane", ignoreCase = true) ||
+                                m.name.contains("signal", ignoreCase = true) || m.name.contains("turn", ignoreCase = true) ||
+                                m.name.contains("guide", ignoreCase = true)
+                            ) {
+                                NavLogger.e(this@MapActivity, "[티맵 차선/신호등?] TmapUISDK.Companion method: ${m.name}")
+                            }
+                        }
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
@@ -2122,10 +2134,24 @@ class MapActivity : AppCompatActivity() {
             // TODO: Use ObservableRouteData instead of DriveStatusListener
             */
 
+            // v4.8: 사용자 요청으로 티맵 쪽도 차선/신호등 데이터 소스 계속 조사. 공식 문서에서
+            // ObservableRouteData의 확인된 필드(getNTotalDist/getNTotalTime/getTollFare/
+            // getTaxiFare/getRouteCoordinates/getRouteTrafficInfos)는 경로 요약·교통정체
+            // 수준이라 차선/신호등이 있을지 불확실 - 전체 getter를 리플렉션으로 덤프해서
+            // 다음 로그로 실제 필드를 확인. #문제시 원복
             TmapUISDK.observableRouteData.observe(this@MapActivity, Observer { data ->
                 data?.let {
                     NavLogger.e(this@MapActivity, "observableRouteData class: ${it.javaClass.name}")
-                    NavLogger.e(this@MapActivity, "observableRouteData: $it")
+                    try {
+                        val dump = it.javaClass.methods
+                            .filter { m -> m.parameterTypes.isEmpty() && m.name.startsWith("get") }
+                            .joinToString(", ") { m ->
+                                try { "${m.name}=${m.invoke(it)}" } catch (e: Exception) { "${m.name}=<실패>" }
+                            }
+                        NavLogger.e(this@MapActivity, "[티맵 차선/신호등?] observableRouteData 전체덤프: $dump")
+                    } catch (e: Exception) {
+                        NavLogger.e(this@MapActivity, "observableRouteData 덤프 예외: ${e.message}")
+                    }
                 }
             })
             TmapUISDK.observableEDCData.observe(this@MapActivity, Observer { data ->
