@@ -374,7 +374,7 @@ class MapActivity : AppCompatActivity() {
 
             if (state.ip != "-" && state.ip.isNotEmpty()) {
                 binding.vConnectionDot.setBackgroundResource(R.drawable.shape_circle_green)
-                binding.tvConnectionStatus.text = "연결됨"
+                binding.tvConnectionStatus.text = "통신중"
                 binding.tvConnectionStatus.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
             } else {
                 binding.vConnectionDot.setBackgroundResource(R.drawable.shape_circle_gray)

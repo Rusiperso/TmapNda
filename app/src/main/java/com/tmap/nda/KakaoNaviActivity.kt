@@ -564,7 +564,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
             val connected = state.ip.isNotEmpty() && state.ip != "-"
             if (connected) {
-                binding.tvConnectionStatus?.text = "연결됨"
+                binding.tvConnectionStatus?.text = "통신중"
                 binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
                 binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_green)
             } else {
