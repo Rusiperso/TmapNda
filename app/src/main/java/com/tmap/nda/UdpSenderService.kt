@@ -62,6 +62,9 @@ class UdpSenderService : Service() {
 
     // Latest Safe Drive Info
     private var roadLimitSpeed = 0
+    // v4.2: roadLimitSpeed가 한 번 값이 들어오면(30 이상) 절대 안 낮아지는 버그 수정용 -
+    // 마지막으로 유효한 값을 받은 시각. #문제시 원복
+    private var lastRoadLimitUpdateTime = 0L
     private var sdiType = 0
     private var sdiSpeedLimit = 0
     private var sdiDistance = 0
@@ -180,6 +183,7 @@ class UdpSenderService : Service() {
                     val currentLimitSpeed = limitSpeedStr.toIntOrNull() ?: 0
                     if (currentLimitSpeed >= 30) {
                         roadLimitSpeed = currentLimitSpeed
+                        lastRoadLimitUpdateTime = System.currentTimeMillis()
                     }
 
                     // 2. firstSDIInfo (GRT47과 동일하게 모든 key를 최상위로 복사)
@@ -227,6 +231,7 @@ class UdpSenderService : Service() {
 
                         if (sdiSpeedLimit >= 30) {
                             roadLimitSpeed = sdiSpeedLimit
+                            lastRoadLimitUpdateTime = System.currentTimeMillis()
                         }
 
                         if (sdiType == 0 && sdiSpeedLimit > 0 && sdiDist > 0) {
@@ -238,6 +243,16 @@ class UdpSenderService : Service() {
                     val realRoadLimit = getRoadLimitSpeedFromEngine()
                     if (realRoadLimit >= 30) {
                         roadLimitSpeed = realRoadLimit
+                        lastRoadLimitUpdateTime = System.currentTimeMillis()
+                    }
+
+                    // v4.2: roadLimitSpeed가 한 번 값이 들어오면(예: 고속도로 100) 그 뒤로
+                    // 국도/제한속도 정보 없는 구간으로 빠져도 절대 안 낮아지고 계속 옛날
+                    // 값을 openpilot에 보내던 버그. 8초 이상 새로 유효한 값(30 이상)이
+                    // 안 들어오면 0으로 리셋 - 방지턱/카메라 감속(별개 로직, SdiDataRepository
+                    // 기반)에는 영향 없음. #문제시 원복
+                    if (roadLimitSpeed > 0 && System.currentTimeMillis() - lastRoadLimitUpdateTime > 8000) {
+                        roadLimitSpeed = 0
                     }
 
                     json.put("nRoadLimitSpeed", roadLimitSpeed)
