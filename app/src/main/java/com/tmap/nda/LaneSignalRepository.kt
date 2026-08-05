@@ -48,6 +48,14 @@ fun renderLaneSignalBar(
     LaneSignalRepository.resetIfStale()
     if (bar == null || laneBoxContainer == null || countdownText == null) return
 
+    // v4.13: 설정에서 끄면 오버레이 자체를 안 띄움 (사용자 요청 3번). #문제시 원복
+    val overlayEnabled = context.getSharedPreferences("TmapNdaPrefs", android.content.Context.MODE_PRIVATE)
+        .getBoolean("lane_overlay_enabled", true)
+    if (!overlayEnabled) {
+        bar.visibility = android.view.View.GONE
+        return
+    }
+
     val hasLanes = LaneSignalRepository.lanes.isNotEmpty()
     val hasCountdown = LaneSignalRepository.trafficLightRemainSec >= 0
 

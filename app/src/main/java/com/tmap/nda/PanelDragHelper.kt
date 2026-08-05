@@ -210,6 +210,13 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
+        // v4.13: 차선 안내(추천 차선 하이라이트) 오버레이 켜고 끄기 - 사용자 요청 3번. #문제시 원복
+        val showLaneOverlayCheckBox = android.widget.CheckBox(context).apply {
+            text = "차선 안내 오버레이 표시"
+            isChecked = pref.getBoolean("lane_overlay_enabled", true)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
         val unlockMapTouchCheckBox = if (touchLockOverlay != null) {
             android.widget.CheckBox(context).apply {
                 text = "지도 터치 잠금 해제 (핀치줌/드래그 허용)"
@@ -224,6 +231,7 @@ object PanelDragHelper {
             addView(checkBox)
             addView(disableMobileCamCheckBox)
             addView(showTopBarEventCheckBox)
+            addView(showLaneOverlayCheckBox)
             unlockMapTouchCheckBox?.let { addView(it) }
         }
         android.app.AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
@@ -234,6 +242,7 @@ object PanelDragHelper {
                     .putBoolean("over_speed_warning_enabled", checkBox.isChecked)
                     .putBoolean("mobile_cam_slowdown_disabled", disableMobileCamCheckBox.isChecked)
                     .putBoolean("topbar_event_enabled", showTopBarEventCheckBox.isChecked)
+                    .putBoolean("lane_overlay_enabled", showLaneOverlayCheckBox.isChecked)
                     .apply {
                         if (unlockMapTouchCheckBox != null) {
                             putBoolean("map_touch_unlocked", unlockMapTouchCheckBox.isChecked)
