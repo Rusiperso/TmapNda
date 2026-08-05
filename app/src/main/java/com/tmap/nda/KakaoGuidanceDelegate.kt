@@ -200,43 +200,25 @@ class KakaoGuidanceDelegate(
         } catch (e: Exception) { "덤프 실패: ${e.message}" }
         NavLogger.d(context, "guidanceDidUpdateRouteGuide 호출됨: $routeGuide | $fieldDump")
 
-        // v1.6: 이전엔 curDirection 안에서 "TurnType"/"RemainDist" 같은 좁은 이름으로만 찾아서
-        // 실패했음(실제 로그에서 turnTypeRaw=null, remainDist=0으로 계속 찍힘) - curDirection과
-        // KNLane 객체 전체를 리플렉션으로 통으로 덤프해서 진짜 필드명을 확인. #문제시 원복
+        // v4.7: 공식 문서(developers.kakaomobility.com)에서 진짜 구조를 확인함 -
+        // KNLane(linkIdx: Int, location: KNLocation, laneCode: List<Number>). 리플렉션
+        // 대신 실제 타입 API로 정확하게 가져옴. laneCode 숫자 하나하나가 차선 하나의
+        // 방향 코드인데, 정확한 코드→방향 매핑표(1=좌회전인지 2=직진인지 등)를 문서에서
+        // 못 가져와서, 화면 표시는 아직 안 함(잘못 추측해서 틀린 화살표 보여주면 운전 중
+        // 위험할 수 있음) - 우선 정확한 값을 로그로 남겨서 코드 표를 확정한 뒤 표시 로직
+        // 완성 예정. 신호등 잔여시간은 KNGuide_Route 안에는 아예 없는 걸로 보임(공식
+        // 생성자에 curDirection/nextDirection/imgDirection/lane/safetyZones/hipassInfo/
+        // hwInfo/multiRouteInfo/roadEvents뿐) - 다른 델리게이트(예: KNGuide_Safety)
+        // 쪽을 다음에 조사해야 함. #문제시 원복
         try {
-            val curDirectionDump = findGetter(routeGuide, "getCurDirection")
-            val curDirectionFieldDump = curDirectionDump?.let { obj ->
-                obj.javaClass.methods.filter { it.parameterTypes.isEmpty() && it.name.startsWith("get") }
-                    .joinToString(", ") { m -> try { "${m.name}=${m.invoke(obj)}" } catch (e: Exception) { "${m.name}=<실패>" } }
-            }
-            NavLogger.d(context, "[차선정보?/신호등?] curDirection 전체덤프: $curDirectionFieldDump")
-
-            val laneObj = findGetter(routeGuide, "getLane")
-            val laneFieldDump = laneObj?.let { obj ->
-                obj.javaClass.methods.filter { it.parameterTypes.isEmpty() && it.name.startsWith("get") }
-                    .joinToString(", ") { m -> try { "${m.name}=${m.invoke(obj)}" } catch (e: Exception) { "${m.name}=<실패>" } }
-            }
-            NavLogger.d(context, "[차선정보?] KNLane 전체덤프: $laneFieldDump")
-
-            // v4.4: 지난 로그에서 KNLane.getLaneInfos()가 KNLane_LaneInfo 객체 리스트인 것까지
-            // 확인함(재억 요청으로 차선/신호등 표시 작업 계속) - 그 개별 항목 안의 실제 필드명을
-            // 몰라서 한 단계 더 깊이 덤프. 이게 로그에 찍히면 실제 표시 로직을 완성할 수 있음. #문제시 원복
-            val laneInfoList = laneObj?.let { obj ->
-                try {
-                    obj.javaClass.methods.firstOrNull { it.name == "getLaneInfos" && it.parameterTypes.isEmpty() }
-                        ?.invoke(obj) as? List<*>
-                } catch (e: Exception) { null }
-            }
-            laneInfoList?.forEachIndexed { idx, laneInfo ->
-                if (laneInfo != null) {
-                    val dump = laneInfo.javaClass.methods
-                        .filter { it.parameterTypes.isEmpty() && it.name.startsWith("get") }
-                        .joinToString(", ") { m -> try { "${m.name}=${m.invoke(laneInfo)}" } catch (e: Exception) { "${m.name}=<실패>" } }
-                    NavLogger.d(context, "[차선정보?] KNLane_LaneInfo[$idx] 전체덤프: $dump")
-                }
+            val lane = routeGuide.lane
+            if (lane != null) {
+                NavLogger.d(context, "[차선정보] linkIdx=${lane.linkIdx}, laneCode=${lane.laneCode}, location=${lane.location}")
+            } else {
+                NavLogger.d(context, "[차선정보] lane=null (이 구간엔 차선 안내 데이터 없음)")
             }
         } catch (e: Exception) {
-            NavLogger.e(context, "curDirection/Lane 전체덤프 예외: ${e.message}")
+            NavLogger.e(context, "차선정보 조회 예외: ${e.message}")
         }
 
         // v1.1.00: 카카오 안내 실제 데이터를 openpilot road_limit UDP로 내보내기 위해
