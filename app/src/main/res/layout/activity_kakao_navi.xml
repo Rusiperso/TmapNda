@@ -277,9 +277,13 @@
                 android:layout_height="34dp"
                 android:minHeight="0dp"
                 android:minWidth="0dp"
-                android:paddingHorizontal="10dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:paddingHorizontal="12dp"
                 android:text="안내 종료"
-                android:textSize="11sp"
+                android:textSize="10sp"
                 android:backgroundTint="#F44336"
                 android:layout_marginEnd="10dp"/>
 
