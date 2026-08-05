@@ -210,10 +210,17 @@ class KakaoGuidanceDelegate(
         // 생성자에 curDirection/nextDirection/imgDirection/lane/safetyZones/hipassInfo/
         // hwInfo/multiRouteInfo/roadEvents뿐) - 다른 델리게이트(예: KNGuide_Safety)
         // 쪽을 다음에 조사해야 함. #문제시 원복
+        // v4.10: 컴파일 에러로 확인됨 - 실제 설치된 KNSDK 버전(1.12.8-hotfix02)에서는
+        // linkIdx가 internal(모듈 밖에서 접근 불가)이고 laneCode는 아예 없는 필드였음.
+        // developers.kakaomobility.com 문서가 다른(더 최신) SDK 버전 기준이었던 것으로
+        // 보임. 리플렉션으로 되돌려서 이 버전에 실제로 공개된 getter 이름을 다시 확인. #문제시 원복
         try {
             val lane = routeGuide.lane
             if (lane != null) {
-                NavLogger.d(context, "[차선정보] linkIdx=${lane.linkIdx}, laneCode=${lane.laneCode}, location=${lane.location}")
+                val dump = lane.javaClass.methods
+                    .filter { m -> m.parameterTypes.isEmpty() && m.name.startsWith("get") }
+                    .joinToString(", ") { m -> try { "${m.name}=${m.invoke(lane)}" } catch (e: Exception) { "${m.name}=<실패>" } }
+                NavLogger.d(context, "[차선정보] KNLane 전체덤프: $dump")
             } else {
                 NavLogger.d(context, "[차선정보] lane=null (이 구간엔 차선 안내 데이터 없음)")
             }
