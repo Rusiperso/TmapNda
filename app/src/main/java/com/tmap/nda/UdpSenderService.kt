@@ -434,6 +434,7 @@ class UdpSenderService : Service() {
 
                 val buffer = ByteArray(4096)
                 var lastActive: Boolean? = null
+                var lastActivePeriodicLogTime = 0L
                 while (isActive && isRunning.get()) {
                     val packet = DatagramPacket(buffer, buffer.size)
                     try {
@@ -471,6 +472,16 @@ class UdpSenderService : Service() {
                             // (상태 변화 시에만, 스팸 방지). #문제시 원복
                             NavLogger.d(this@UdpSenderService, "[OP상태? 원본] $data")
                             lastActive = active
+                        }
+                        // v4.5: 위 로그는 값이 "바뀔 때만" 찍혀서, active가 계속 false로
+                        // 고정돼있으면(=바뀐 적이 없으면) 로그에 단 한 번만 남고 그 뒤로는
+                        // 전혀 안 찍혀서 실제로 크루즈 켠 순간에 뭘 받고 있었는지 확인이
+                        // 안 됐음(사용자 지적: 로그에 active= 기록이 거의 없다). 5초마다
+                        // 지금 값을 무조건 한 번씩 찍어서, 다음 로그 캡처 때 그 순간의
+                        // 실제 값을 확실히 볼 수 있게 함. #문제시 원복
+                        if (System.currentTimeMillis() - lastActivePeriodicLogTime > 5000) {
+                            lastActivePeriodicLogTime = System.currentTimeMillis()
+                            NavLogger.d(this@UdpSenderService, "[OP상태 주기] active=$active, xState=$xState, trafficState=$trafficState, ip=$ip, carrot2=$carrot2")
                         }
 
                         OpenpilotStateRepository.updateState(carrot2, ip, trafficState, xState, active)
