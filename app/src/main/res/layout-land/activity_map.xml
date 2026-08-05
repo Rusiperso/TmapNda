@@ -378,9 +378,19 @@
             <!-- 검색창을 고정폭으로 줄인 만큼, 오른쪽(도착정보/메뉴)을 끝까지 밀어내는 spacer -->
             <View android:layout_width="20dp" android:layout_height="0dp"/>
 
-            <!-- 도착정보 (안내 중일 때만) -->
-                        <!-- v4.0: 카메라/구간단속/방지턱 등 이벤트를 상단바에 상시 표시 (사용자 지적
-                 5·6번). 설정에서 켜고 끌 수 있음(모바일 사용자 대응). #문제시 원복 -->
+            <!-- v4.1: 순서를 검색창 -> 메뉴 -> 이벤트로 재배치 (사용자 요청). 이벤트는
+                 생겼다 없어졌다 하는 항목이라 맨 끝에 둬서 다른 요소를 계속 밀어내지
+                 않게 함. #문제시 원복 -->
+            <ImageButton
+                android:id="@+id/btnMoreMenu"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:src="@drawable/ic_hamburger"
+                android:background="@drawable/shape_circle_gray"
+                android:scaleType="center"
+                android:layout_marginEnd="10dp"/>
+
+            <!-- 카메라/구간단속/방지턱 등 이벤트 - 항상 맨 끝 -->
             <TextView
                 android:id="@+id/tvTopBarEvent"
                 android:layout_width="wrap_content"
@@ -391,29 +401,7 @@
                 android:textStyle="bold"
                 android:maxLines="1"
                 android:gravity="center_vertical"
-                android:layout_marginEnd="10dp"
                 android:visibility="gone"/>
-
-<TextView
-                android:id="@+id/tvTopBarEta"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text=""
-                android:textColor="#CCCCCC"
-                android:textSize="11sp"
-                android:gravity="end"
-                android:layout_marginStart="10dp"
-                android:layout_marginEnd="10dp"
-                android:visibility="gone"/>
-
-            <!-- 메뉴 (나머지 항목: 이벤트/신호등/최근검색/설정 등) -->
-            <ImageButton
-                android:id="@+id/btnMoreMenu"
-                android:layout_width="34dp"
-                android:layout_height="34dp"
-                android:src="@drawable/ic_hamburger"
-                android:background="@drawable/shape_circle_gray"
-                android:scaleType="center"/>
         </LinearLayout>
         </HorizontalScrollView>
     </LinearLayout>
