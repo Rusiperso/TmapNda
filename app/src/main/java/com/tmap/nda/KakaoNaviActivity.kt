@@ -168,6 +168,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         applyTmapMute(wasTmapMuted)
         kakaoMuted = sharedPref.getBoolean("kakao_muted", false)
 
+        // v3.13: 카카오 길안내 시작할 때마다 시스템 볼륨이 100%로 리셋되던 문제 - 마지막에
+        // 저장해둔 볼륨 퍼센트로 강제로 다시 맞춤 (사용자: "50, 60으로 조정해도 다음 안내
+        // 할 때 또 100프로"). #문제시 원복
+        VolumeHelper.applySavedSystemVolume(this)
+
       KakaoSdkState.ensureInitialized(
     application,
     nativeAppKey

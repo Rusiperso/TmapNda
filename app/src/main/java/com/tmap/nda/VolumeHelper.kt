@@ -32,4 +32,21 @@ object VolumeHelper {
         return context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             .getInt(PREF_KEY, 100)
     }
+
+    // v3.13: 카카오 SDK는 자체 음성안내 볼륨을 조절하는 공개 API가 없어서(문서에도 없음),
+    // TmapUISDK.setVolume()로는 카카오 음성 자체를 못 건드림. 대신 안드로이드 시스템
+    // 음악 스트림 볼륨 자체를 직접 마지막 저장값으로 맞춰버림 - 카카오 SDK 내부가 뭘
+    // 하든 결국 이 시스템 볼륨을 그대로 따라가서 확실하게 먹힘 (사용자: "50, 60으로
+    // 조정해도 다음 안내 할 때 또 100프로"). #문제시 원복
+    fun applySavedSystemVolume(context: Context) {
+        try {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            val percent = savedVolumePercent(context)
+            val target = ((percent * max) / 100).coerceIn(0, max)
+            am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+        } catch (e: Exception) {
+            NavLogger.e(context, "VolumeHelper 시스템볼륨 적용 예외: ${e.message}")
+        }
+    }
 }
