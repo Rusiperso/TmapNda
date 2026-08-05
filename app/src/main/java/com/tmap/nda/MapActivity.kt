@@ -297,6 +297,23 @@ class MapActivity : AppCompatActivity() {
             AutoUpdater.showChangelogDialog(this)
         }
 
+        // v4.9: 진짜 "도움말"(사용법 가이드) - README가 표/링크 등 서식이 있어서
+        // 팝업보다 웹으로 여는 게 훨씬 보기 편함 (재억: "이것도 팝업이 맞을까 인터넷
+        // 페이지 연결이 맞을까?" -> 웹 링크로 결정). #문제시 원복
+        binding.btnGuideHelp?.setOnClickListener {
+            binding.svSecondaryPanel?.visibility = View.GONE
+            try {
+                startActivity(
+                    Intent(
+                        Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://github.com/Rusiperso/TmapNda/blob/openpilot/README.md")
+                    )
+                )
+            } catch (e: Exception) {
+                Toast.makeText(this, "도움말을 열 수 없습니다: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+
         // v1.7: 짧게 누르기가 카카오키 재입력 화면으로 가버려서, 정작 자주 쓸 앱 설정
         // (속도초과 경고음/이동식카메라 감속 토글)은 길게 눌러야만 보였음 - 아무도
         // 그걸 몰라서 "설정 창에 그 기능이 안 보인다"는 문의로 이어짐. 우선순위를
