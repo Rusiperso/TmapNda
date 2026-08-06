@@ -48,16 +48,21 @@ fun renderLaneSignalBar(
     laneBoxContainer: android.widget.LinearLayout?,
     countdownText: android.widget.TextView?
 ) {
-    LaneSignalRepository.resetIfStale()
-    if (bar == null || laneBoxContainer == null || countdownText == null) return
-
-    // v4.13: 설정에서 끄면 오버레이 자체를 안 띄움 (사용자 요청 3번). #문제시 원복
+    // v4.17: "설정에서 항상표시로 했는데 15초 후 사라진다"(사용자 지적) - lane_overlay_enabled는
+    // 지금까지 "위젯을 보여줄지 말지"만 결정했고, resetIfStale()의 15초 데이터 소멸 로직은
+    // 이 설정과 무관하게 항상 실행되고 있었음. "항상표시"를 켰다는 건 "새 데이터가 올 때까지
+    // 마지막 값을 계속 보여달라"는 뜻으로 해석해서, 오버레이가 켜져 있을 땐 훨씬 긴 시간
+    // (2분)으로 완화 - 실제 주행 중 카카오 콜백 텀 정도로는 안 사라지되, 길안내가 완전히
+    // 끝난 뒤에는 결국 정리되게 함(무한정 옛날 값이 남는 것 방지). #문제시 원복
     val overlayEnabled = context.getSharedPreferences("TmapNdaPrefs", android.content.Context.MODE_PRIVATE)
         .getBoolean("lane_overlay_enabled", true)
     if (!overlayEnabled) {
-        bar.visibility = android.view.View.GONE
+        LaneSignalRepository.resetIfStale()
+        bar?.visibility = android.view.View.GONE
         return
     }
+    LaneSignalRepository.resetIfStale(maxAgeMs = 120000L)
+    if (bar == null || laneBoxContainer == null || countdownText == null) return
 
     val hasLanes = LaneSignalRepository.lanes.isNotEmpty()
     val hasCountdown = LaneSignalRepository.trafficLightRemainSec >= 0
