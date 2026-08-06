@@ -1125,6 +1125,31 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
+    // v4.14: MapActivity와 동일 - 검색창에 포커스가 간 채로 목적지 선택 없이 그냥
+    // 다른 곳을 탭하면 커서가 그대로 남아있던 문제(사용자 지적). 포커스가 간 EditText
+    // 바깥을 탭하면 전역으로 자동 정리. #문제시 원복
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (ev.action == android.view.MotionEvent.ACTION_DOWN) {
+            val focused = currentFocus
+            if (focused is android.widget.EditText) {
+                val outRect = android.graphics.Rect()
+                focused.getGlobalVisibleRect(outRect)
+                if (!outRect.contains(ev.rawX.toInt(), ev.rawY.toInt())) {
+                    val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+                    imm?.hideSoftInputFromWindow(focused.windowToken, 0)
+                    focused.apply {
+                        isFocusable = false
+                        isFocusableInTouchMode = false
+                        clearFocus()
+                        isFocusable = true
+                        isFocusableInTouchMode = true
+                    }
+                }
+            }
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun onResume() {
         super.onResume()
         NavLogger.d(this, "[lifecycle] onResume")
