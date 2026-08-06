@@ -2701,8 +2701,8 @@ class MapActivity : AppCompatActivity() {
     //    ANR을 유발할 위험 자체를 제거
     // 겸사겸사 배열 순회에도 상한(최대 20개)을 둬서 혹시 모를 대형 배열도 방어. #문제시 원복
     @Volatile private var laneDataDumped = false
-    private var laneDataObserver: androidx.lifecycle.Observer<Any>? = null
-    private var observableLaneDataLiveData: androidx.lifecycle.LiveData<Any>? = null
+    private var laneDataObserver: androidx.lifecycle.Observer<Any?>? = null
+    private var observableLaneDataLiveData: androidx.lifecycle.LiveData<Any?>? = null
     @Suppress("UNCHECKED_CAST")
     private fun setupObservableLaneDataDump() {
         try {
@@ -2714,9 +2714,14 @@ class MapActivity : AppCompatActivity() {
             }
             val sdkManager = getInstanceMethod?.invoke(sdkManagerCompanion) ?: return
             val method = sdkManager.javaClass.getMethod("getObservableLaneData")
-            val liveData = method.invoke(sdkManager) as? androidx.lifecycle.LiveData<Any> ?: return
+            // v4.22: 실제 크래시 로그로 확인됨 - 이 LiveData가 가끔 null을 실제로 내보내는데,
+            // Observer<Any>(non-null)로 선언해놨더니 코틀린 컴파일러가 자동으로 끼워넣는
+            // null 체크(Intrinsics.checkNotNullParameter)가 내가 직접 쓴 "if (data==null)"
+            // 보다 먼저 실행돼서 그 자리에서 NPE로 죽어버렸음(내 null 체크는 죽은 코드였던
+            // 셈). Any -> Any?로 바꿔서 진짜로 null을 안전하게 받도록 수정. #문제시 원복
+            val liveData = method.invoke(sdkManager) as? androidx.lifecycle.LiveData<Any?> ?: return
             observableLaneDataLiveData = liveData
-            val observer = androidx.lifecycle.Observer<Any> { data ->
+            val observer = androidx.lifecycle.Observer<Any?> { data ->
                 // 메인 스레드 콜백 - 여기선 플래그 체크와 백그라운드 위임만, 무거운 작업 없음
                 if (data == null || laneDataDumped) return@Observer
                 laneDataDumped = true
