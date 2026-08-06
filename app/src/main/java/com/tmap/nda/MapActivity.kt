@@ -792,6 +792,9 @@ class MapActivity : AppCompatActivity() {
                     tv.isEnabled = false
                     tv.alpha = 0.5f
                     // v2.1: 재검색이 아니라 저장된 좌표로 바로 길안내 시작 (4번)
+                    // v4.17: 이미 있는 최근목적지를 다시 탭해도 맨 위로 안 올라오던 문제
+                    // (사용자 요청: 최신순 정렬) - 다시 저장해서 순서 갱신. #문제시 원복
+                    saveSearchHistory(entry)
                     startKakaoOverlayGuidance(entry.name, entry.lat, entry.lon)
                     tv.postDelayed({
                         tv.isEnabled = true
@@ -889,6 +892,8 @@ class MapActivity : AppCompatActivity() {
             val picked = history[position]
             dialog.dismiss()
             // v2.1: 재검색이 아니라 저장된 좌표로 바로 길안내 시작 (4번)
+            // v4.17: 다시 탭해도 최신순 맨 위로 올라오게. #문제시 원복
+            saveSearchHistory(picked)
             startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon)
         }
         dialog.show()
@@ -928,6 +933,8 @@ class MapActivity : AppCompatActivity() {
         listView.setOnItemClickListener { _, _, position, _ ->
             val picked = history[position]
             dialog.dismiss()
+            // v4.17: 다시 탭해도 최신순 맨 위로 올라오게. #문제시 원복
+            saveSearchHistory(picked)
             startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon)
         }
         dialog.show()

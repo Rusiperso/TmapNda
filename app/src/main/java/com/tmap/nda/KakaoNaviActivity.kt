@@ -917,6 +917,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 setPadding(24, 20, 24, 20)
                 setOnClickListener {
                     // v2.5: 재검색이 아니라 저장된 좌표로 바로 길안내 시작
+                    // v4.17: 최근목적지 패널에서 "이미 있는" 항목을 다시 탭했을 때도
+                    // save()를 안 불러서 순서가 안 바뀌던 문제(사용자 요청: 최신순 정렬) -
+                    // 다시 탭해도 맨 위로 올라오게 재저장. #문제시 원복
+                    SearchHistoryStore.save(this@KakaoNaviActivity, entry)
+                    renderRecentDestinationsPanel()
                     KakaoRouteDataRepository.reset()
                     resolveCurrentPositionThenRequestRoute(entry.name, entry.lat, entry.lon, finishOnFailure = false)
                 }
@@ -1007,6 +1012,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             val picked = history[position]
             dialog.dismiss()
             // v2.5: 재검색이 아니라 저장된 좌표로 바로 길안내 시작
+            // v4.17: 다시 탭해도 최신순 맨 위로 올라오게. #문제시 원복
+            SearchHistoryStore.save(this, picked)
             KakaoRouteDataRepository.reset()
             resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
         }
