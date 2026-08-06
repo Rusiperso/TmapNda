@@ -447,6 +447,33 @@ class UdpSenderService : Service() {
 
     private var receiveSocket: DatagramSocket? = null
 
+    // v4.16: "차량 HUD 전송이 심할 때 아예 안 되는 것 같다" - 로그로 확인해보니 이번 세션
+    // 내내 7705(상태수신)/2899(NDA브릿지) 둘 다 openpilot으로부터 단 한 패킷도 못 받았음.
+    // 두 개의 독립적인 소켓이 동시에 똑같이 침묵했다는 건 앱 코드 문제라기보다 네트워크
+    // 자체(폰과 openpilot 기기가 같은 네트워크에 없음/AP 클라이언트 격리 등) 문제일 가능성이
+    // 높음 - 폰이 지금 어느 IP 대역에 있는지를 로그로 남겨서 openpilot 기기의 IP 대역과
+    // 실제로 같은 네트워크인지 다음 로그에서 바로 비교할 수 있게 함. #문제시 원복
+    private fun getLocalIpAddressesSummary(): String {
+        return try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            val list = mutableListOf<String>()
+            while (interfaces.hasMoreElements()) {
+                val iface = interfaces.nextElement()
+                if (!iface.isUp || iface.isLoopback) continue
+                val addrs = iface.inetAddresses
+                while (addrs.hasMoreElements()) {
+                    val addr = addrs.nextElement()
+                    if (addr is java.net.Inet4Address) {
+                        list.add("${iface.name}=${addr.hostAddress}")
+                    }
+                }
+            }
+            if (list.isEmpty()) "없음(네트워크 미연결?)" else list.joinToString(", ")
+        } catch (e: Exception) {
+            "조회실패: ${e.message}"
+        }
+    }
+
     private fun startReceivingLoop() {
         serviceScope.launch(Dispatchers.IO) {
             try {
@@ -455,7 +482,7 @@ class UdpSenderService : Service() {
                 socket.bind(java.net.InetSocketAddress("0.0.0.0", 7705))
                 socket.soTimeout = 5000
                 receiveSocket = socket
-                NavLogger.d(this@UdpSenderService, "openpilot UDP 수신 소켓 bind 성공: 0.0.0.0:7705")
+                NavLogger.d(this@UdpSenderService, "openpilot UDP 수신 소켓 bind 성공: 0.0.0.0:7705 / 폰 현재 IP: ${getLocalIpAddressesSummary()}")
 
                 val buffer = ByteArray(4096)
                 var lastActive: Boolean? = null
@@ -467,7 +494,7 @@ class UdpSenderService : Service() {
                     } catch (e: java.net.SocketTimeoutException) {
                         // 상태가 바뀔 때만 로그 (매 5초 반복 스팸 방지). 계속 끊긴 상태면 조용히 재시도만.
                         if (lastActive != false) {
-                            NavLogger.e(this@UdpSenderService, "openpilot으로부터 5초간 UDP 수신 없음 (연결 끊김 또는 openpilot 미실행 가능성)")
+                            NavLogger.e(this@UdpSenderService, "openpilot으로부터 5초간 UDP 수신 없음 (연결 끊김 또는 openpilot 미실행 가능성) / 폰 현재 IP: ${getLocalIpAddressesSummary()}")
                             OpenpilotStateRepository.updateState("-", "-", 0, 0, false)
                             lastActive = false
                         }
@@ -569,14 +596,22 @@ class UdpSenderService : Service() {
                     soTimeout = 8000
                 }
                 ndaListenSocket = socket
-                NavLogger.d(this@UdpSenderService, "[NDA] 비콘/GPS 수신 소켓 bind 성공: 0.0.0.0:$NDA_LISTEN_PORT")
+                NavLogger.d(this@UdpSenderService, "[NDA] 비콘/GPS 수신 소켓 bind 성공: 0.0.0.0:$NDA_LISTEN_PORT / 폰 현재 IP: ${getLocalIpAddressesSummary()}")
 
                 val buffer = ByteArray(2048)
+                var lastNdaTimeoutLogTime = 0L
                 while (isActive && isRunning.get()) {
                     val packet = DatagramPacket(buffer, buffer.size)
                     try {
                         socket.receive(packet)
                     } catch (e: java.net.SocketTimeoutException) {
+                        // v4.16: 기존엔 타임아웃 시 완전히 조용해서 "NDA 브릿지가 죽었는지
+                        // 살았는지"조차 로그로 알 수 없었음 - 30초 간격으로 생존 신호를 남김. #문제시 원복
+                        val now = System.currentTimeMillis()
+                        if (now - lastNdaTimeoutLogTime > 30000) {
+                            lastNdaTimeoutLogTime = now
+                            NavLogger.e(this@UdpSenderService, "[NDA] openpilot 비콘 수신 안 됨(계속 대기 중) / 폰 현재 IP: ${getLocalIpAddressesSummary()}")
+                        }
                         continue
                     } catch (e: java.io.IOException) {
                         // 외부에서 close()된 경우(EBADF 등) 죽은 소켓을 계속 붙잡지 말고 루프 종료
