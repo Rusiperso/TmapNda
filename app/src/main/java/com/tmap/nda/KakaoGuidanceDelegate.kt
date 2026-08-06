@@ -409,19 +409,89 @@ class KakaoGuidanceDelegate(
         } catch (e: Exception) { null }
     }
 
+    // v4.21: 사용자 지적으로 다시 파보니 - 지금까지 findGetterInt(safetyGuide, "Type"/"SpeedLimit"/
+    // "Dist")가 KNGuide_Safety 컨테이너 자체에서 그 이름의 게터를 찾고 있었는데, 실제로 이
+    // 클래스엔 getSafetiesOnGuide(): List<KNSafety> 하나만 있고 Type/SpeedLimit/Dist는
+    // 전부 그 리스트 안의 개별 KNSafety 항목(그리고 그 하위타입 KNSafety_Camera/
+    // KNSafety_Caution)에 있었음(APK 바이트코드로 직접 확인). 즉 지금까지 이 기능은 매번
+    // 0(찾는 게터 없음 → 기본값)만 반환해서 사실상 한 번도 제대로 동작한 적이 없었을
+    // 가능성이 높음. getCode()(KNSafetyCode enum)/getLocation().getDistFromS()(경로상
+    // 거리)로 정확한 경로로 다시 짬 + KNSafetyCode → Tmap/openpilot 고유 nSdiType 스킴으로
+    // 번역(carrot_serv.py의 _get_sdi_descr 표 기준, 확실한 것만 매핑). #문제시 원복
+    private fun mapKakaoSafetyCodeToSdiType(kakaoCodeName: String?): Int {
+        if (kakaoCodeName == null) return -1
+        return when (kakaoCodeName) {
+            "KNSafetyCode_SpeedViolationCamera" -> 1          // 과속(고정식)
+            "KNSafetyCode_SpeedViolationSectionInCamera" -> 2 // 구간단속 시작
+            "KNSafetyCode_SpeedViolationSectionOutCamera" -> 3 // 구간단속 끝
+            "KNSafetyCode_SpeedViolationSection" -> 4         // 구간단속중
+            "KNSafetyCode_SpeedViolationSectionHalf" -> 4
+            "KNSafetyCode_MovableSpeedViolationCamera" -> 7   // 과속(이동식)
+            "KNSafetyCode_BoxedSpeedViolationCamera" -> 8     // 고정식 과속위험구간(박스형)
+            "KNSafetyCode_SignalAndSpeedViolationCamera",
+            "KNSafetyCode_SignalAndSpeedViolationBackwardCamera" -> 0 // 신호과속
+            "KNSafetyCode_SignalViolationCamera" -> 6         // 신호단속
+            "KNSafetyCode_BuslaneViolationCamera",
+            "KNSafetyCode_BuslaneAndSpeedViolationCamera" -> 9 // 버스전용차로
+            "KNSafetyCode_ShoulderLaneViolationCamera" -> 11  // 갓길감시
+            "KNSafetyCode_CutInViolationCamera" -> 12         // 끼어들기금지
+            "KNSafetyCode_TrafficCollectionCamera" -> 13      // 교통정보수집
+            "KNSafetyCode_OverloadViolationCamera" -> 15      // 과적차량
+            "KNSafetyCode_CargoViolationCamera" -> 16         // 적재불량
+            "KNSafetyCode_ParkingViolationCamera" -> 17       // 주차단속
+            "KNSafetyCode_RailroadCrossing" -> 19             // 철길건널목
+            "KNSafetyCode_ChildrenProtectionZone" -> 20       // 어린이보호구역
+            "KNSafetyCode_Hump" -> 22                         // 과속방지턱
+            "KNSafetyCode_RestArea" -> 25                     // 휴게소
+            "KNSafetyCode_OneTollingGate" -> 26                // 톨게이트
+            "KNSafetyCode_FogArea", "KNSafetyCode_FogAreaLive" -> 27 // 안개주의
+            "KNSafetyCode_TrafficAccidentPos", "KNSafetyCode_CarAccidentPos",
+            "KNSafetyCode_PedestrianAccidentPos", "KNSafetyCode_ChildrenAccidentPos",
+            "KNSafetyCode_DrowsyDrivingAccidentPos", "KNSafetyCode_IntentTrafficAccident" -> 29 // 사고다발
+            "KNSafetyCode_SharpTurnSection" -> 30              // 급커브지역
+            "KNSafetyCode_SteepDownhillSection" -> 32          // 급경사구간
+            "KNSafetyCode_AnimalsAppearingCaution" -> 33       // 야생동물 사고 잦은 구간
+            else -> -1 // 확신 없는 코드는 억지로 안 채움(잘못된 라벨/감속 유발 위험) - 로그로 수집
+        }
+    }
+
     // ===== SafetyGuideDelegate =====
+    private var lastUnmappedSafetyCodeLogTime = 0L
     override fun guidanceDidUpdateSafetyGuide(guidance: KNGuidance, safetyGuide: KNGuide_Safety?) {
         try {
-            if (safetyGuide != null) {
-                val typeRaw = findGetterInt(safetyGuide, "Type")
-                val speedLimitRaw = findGetterInt(safetyGuide, "SpeedLimit")
-                val distRaw = findGetterInt(safetyGuide, "Dist")
-                KakaoRouteDataRepository.safetyType = typeRaw
-                KakaoRouteDataRepository.safetySpeedLimit = speedLimitRaw
-                KakaoRouteDataRepository.safetyDist = distRaw
-                NavLogger.d(context, "[카카오->openpilot] 안전정보: type=$typeRaw speedLimit=$speedLimitRaw dist=$distRaw")
+            val safetyList = safetyGuide?.let { findGetter(it, "getSafetiesOnGuide") } as? List<*>
+            // 경로상 여러 안전정보 중, 남은 거리(getDistFromS)가 0 이상이면서 가장 가까운
+            // 것 하나를 "현재 가장 시급한 이벤트"로 선택. #문제시 원복
+            var nearest: Any? = null
+            var nearestDist = Int.MAX_VALUE
+            safetyList?.forEach { item ->
+                if (item == null) return@forEach
+                val location = findGetter(item, "getLocation")
+                val dist = location?.let { findGetterInt(it, "DistFromS") } ?: -1
+                if (dist in 0 until nearestDist) {
+                    nearestDist = dist
+                    nearest = item
+                }
+            }
+            if (nearest != null) {
+                val codeObj = findGetter(nearest!!, "getCode")
+                val codeName = codeObj?.toString()
+                val codeValue = codeObj?.let { findGetterInt(it, "Value") } ?: -1
+                // 카메라형이면 getSpeedLimit(), 주의구간형이면 getLimit() - 클래스가 다르므로
+                // 이름에 맞는 게터를 그때그때 찾음. #문제시 원복
+                val speedLimit = findGetterInt(nearest!!, "SpeedLimit").takeIf { it > 0 }
+                    ?: findGetterInt(nearest!!, "Limit")
+                val sdiType = mapKakaoSafetyCodeToSdiType(codeName)
+                KakaoRouteDataRepository.safetyType = sdiType
+                KakaoRouteDataRepository.safetySpeedLimit = speedLimit
+                KakaoRouteDataRepository.safetyDist = nearestDist
+                if (sdiType == -1 && System.currentTimeMillis() - lastUnmappedSafetyCodeLogTime > 15000L) {
+                    lastUnmappedSafetyCodeLogTime = System.currentTimeMillis()
+                    NavLogger.d(context, "[카카오 안전정보코드 수집] 미매핑 code=$codeName(value=$codeValue) speedLimit=$speedLimit dist=$nearestDist")
+                }
+                NavLogger.d(context, "[카카오->openpilot] 안전정보: kakaoCode=$codeName(value=$codeValue) -> nSdiType=$sdiType speedLimit=$speedLimit dist=$nearestDist")
             } else {
-                KakaoRouteDataRepository.safetyType = 0
+                KakaoRouteDataRepository.safetyType = -1
                 KakaoRouteDataRepository.safetyDist = 0
             }
         } catch (e: Exception) {

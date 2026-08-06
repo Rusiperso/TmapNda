@@ -422,18 +422,29 @@ class UdpSenderService : Service() {
                         val kakaoTbtDist = if (kr.tbtDist > 0) kr.tbtDist else 9999
                         json.put("nTBTDist", kakaoTbtDist)
                         json.put("nTBTTurnType", kr.tbtTurnType)
-                        val kakaoPrefix = when {
-                            kr.safetyType in intArrayOf(1, 2, 3, 4, 7) -> "단속구간"
-                            kr.safetyType == 22 -> "방지턱"
-                            kr.safetyType == 33 -> "스쿨존"
-                            // v3.6: 현재 도로명(kr.roadName) 대신 목적지 이름을 표시 -
-                            // "지산동(현재위치) 말고 대구광역시청(목적지)이 떠야지" (사용자 지적 6번). #문제시 원복
-                            kr.destinationName.isNotBlank() && kr.destinationName != "목적지" -> kr.destinationName
-                            kr.roadName.isNotEmpty() -> kr.roadName
-                            else -> "카카오안내"
+                        // v4.21: 예전 매핑(1,2,3,4,7→단속구간/22→방지턱/33→스쿨존)이 실제
+                        // KNSafetyCode 값 체계랑 완전히 어긋나 있었음(사용자 지적으로 재검증) -
+                        // 이제 kr.safetyType은 KakaoGuidanceDelegate에서 이미 Tmap/openpilot
+                        // 고유 nSdiType 스킴(carrot_serv.py 기준: 1=고정식/2·3·4=구간단속/
+                        // 7=이동식/22=방지턱/20=스쿨존 등)으로 번역해서 들어오므로, 라벨도
+                        // 그 스킴 기준으로 맞춤. #문제시 원복
+                        val kakaoPrefix = when (kr.safetyType) {
+                            1, 7, 8 -> "과속카메라"
+                            2, 3, 4 -> "구간단속"
+                            0, 6 -> "신호단속"
+                            20, 21 -> "스쿨존"
+                            22 -> "방지턱"
+                            19 -> "철길건널목"
+                            26 -> "톨게이트"
+                            else ->
+                                // v3.6: 현재 도로명(kr.roadName) 대신 목적지 이름을 표시 -
+                                // "지산동(현재위치) 말고 대구광역시청(목적지)이 떠야지" (사용자 지적 6번). #문제시 원복
+                                if (kr.destinationName.isNotBlank() && kr.destinationName != "목적지") kr.destinationName
+                                else if (kr.roadName.isNotEmpty()) kr.roadName
+                                else "카카오안내"
                         }
                         json.put("szTBTMainText", "$kakaoPrefix | GPS: $currentGpsStatusText")
-                        if (kr.safetySpeedLimit > 0 && kr.safetyDist > 0) {
+                        if (kr.safetyType >= 0 && kr.safetySpeedLimit > 0 && kr.safetyDist > 0) {
                             json.put("nSdiType", kr.safetyType)
                             json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
                             json.put("nSdiDist", kr.safetyDist)

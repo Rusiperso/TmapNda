@@ -47,8 +47,11 @@ object KakaoRouteDataRepository {
     @Volatile var directionAngle: Int = 0
     @Volatile var destinationName: String = "목적지"
 
-    // 안전정보(스쿨존/구간단속 등) - openpilot cam_type 체계와 최대한 맞춤(추정치, 검증 필요)
-    @Volatile var safetyType: Int = 0
+    // 안전정보(스쿨존/구간단속 등) - v4.21: KNSafetyCode를 Tmap/openpilot nSdiType 스킴으로
+    // 정확히 번역해서 채움(KakaoGuidanceDelegate.mapKakaoSafetyCodeToSdiType 참고).
+    // -1 = 유효한 이벤트 없음/매핑 안 됨 (0은 그 스킴에서 "신호과속"이라는 실제 의미가
+    // 있는 값이라 기본값으로 못 씀). #문제시 원복
+    @Volatile var safetyType: Int = -1
     @Volatile var safetySpeedLimit: Int = 0
     @Volatile var safetyDist: Int = 0
 
@@ -66,7 +69,7 @@ object KakaoRouteDataRepository {
         rgCodeName = ""
         directionAngle = 0
         destinationName = "목적지"
-        safetyType = 0
+        safetyType = -1
         safetySpeedLimit = 0
         safetyDist = 0
         notifyListeners(snapshot())
