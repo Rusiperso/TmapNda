@@ -2227,6 +2227,13 @@ class MapActivity : AppCompatActivity() {
                     }
                 }
             })
+            // v4.17: 과거 세션에서 리플렉션 스캔으로 SDKManager.getObservableLaneData()라는
+            // 차선 전용 LiveData가 존재하는 걸 확인함(로그: "SDKManager: getObservableLaneData()
+            // -> MutableLiveData") - rgData.aheadLaneInfoData를 매 틱 폴링하는 것보다 이게
+            // Tmap이 실제로 차선 상황이 바뀔 때만 갱신해주는 진짜 경로일 가능성이 높음.
+            // 아직 실제로 뭐가 찍히는지 값을 못 봐서, 이번엔 직접 구독해서 값이 들어올 때마다
+            // 전체 필드를 덤프하도록 함(다음 로그로 실제 구조 확인용). #문제시 원복
+            setupObservableLaneDataDump()
             TmapUISDK.observableEDCData.observe(this@MapActivity, Observer { data ->
                 data?.let {
                     // 이전엔 매초 전체 Bundle을 그대로 파일에 찍어서 로그가 무한정 쌓였음.
@@ -2567,6 +2574,7 @@ class MapActivity : AppCompatActivity() {
         super.onDestroy()
 
         opConnectionTickHandler.removeCallbacks(opConnectionTickRunnable)
+        laneDataObserver?.let { observableLaneDataLiveData?.removeObserver(it) }
 
         val intent = Intent(this, UdpSenderService::class.java)
         stopService(intent)
@@ -2677,6 +2685,62 @@ class MapActivity : AppCompatActivity() {
 
     // Reflection Caching
     private var sdkManagerCompanion: Any? = null
+    // v4.17: SDKManager.getObservableLaneData()를 리플렉션으로 찾아서 구독 - LiveData이므로
+    // observeForever로 등록하고, 값이 들어올 때마다(=차선 상황이 바뀔 때만이길 기대) 전체
+    // get* 메서드를 덤프. 앱 종료 시 정리 안 하면 누수라서 onDestroy에서 removeObserver. #문제시 원복
+    private var laneDataObserver: androidx.lifecycle.Observer<Any>? = null
+    private var observableLaneDataLiveData: androidx.lifecycle.LiveData<Any>? = null
+    @Suppress("UNCHECKED_CAST")
+    private fun setupObservableLaneDataDump() {
+        try {
+            if (sdkManagerCompanion == null) {
+                val sdkManagerClass = Class.forName("com.skt.tmap.engine.navigation.SDKManager")
+                val companionField = sdkManagerClass.getField("Companion")
+                sdkManagerCompanion = companionField.get(null)
+                getInstanceMethod = sdkManagerCompanion?.javaClass?.getMethod("getInstance")
+            }
+            val sdkManager = getInstanceMethod?.invoke(sdkManagerCompanion) ?: return
+            val method = sdkManager.javaClass.getMethod("getObservableLaneData")
+            val liveData = method.invoke(sdkManager) as? androidx.lifecycle.LiveData<Any> ?: return
+            observableLaneDataLiveData = liveData
+            val observer = androidx.lifecycle.Observer<Any> { data ->
+                if (data == null) return@Observer
+                try {
+                    NavLogger.e(this, "===== [차선전용LiveData] getObservableLaneData 값 수신: class=${data.javaClass.name} =====")
+                    val dump = data.javaClass.methods
+                        .filter { m -> m.parameterTypes.isEmpty() && (m.name.startsWith("get") || m.name.startsWith("is")) }
+                        .joinToString(", ") { m ->
+                            try {
+                                val v = m.invoke(data)
+                                val vs = if (v?.javaClass?.isArray == true) {
+                                    val len = java.lang.reflect.Array.getLength(v)
+                                    (0 until len).joinToString(prefix = "[", postfix = "]") { i ->
+                                        java.lang.reflect.Array.get(v, i)?.let { elem ->
+                                            // 배열 원소가 또 객체면 그 안의 get*도 한 번 더 펼침 (LaneInfoData 등 구조체 대비)
+                                            try {
+                                                elem.javaClass.methods
+                                                    .filter { em -> em.parameterTypes.isEmpty() && em.name.startsWith("get") }
+                                                    .joinToString(prefix = "{", postfix = "}") { em -> "${em.name}=${em.invoke(elem)}" }
+                                            } catch (ie: Exception) { elem.toString() }
+                                        } ?: "null"
+                                    }
+                                } else v.toString()
+                                "${m.name}=$vs"
+                            } catch (e: Exception) { "${m.name}=<실패>" }
+                        }
+                    NavLogger.e(this, "[차선전용LiveData] 전체덤프: $dump")
+                } catch (e: Exception) {
+                    NavLogger.e(this, "[차선전용LiveData] 덤프 예외: ${e.message}")
+                }
+            }
+            laneDataObserver = observer
+            liveData.observeForever(observer)
+            NavLogger.d(this, "[차선전용LiveData] getObservableLaneData() 구독 성공")
+        } catch (e: Exception) {
+            NavLogger.e(this, "[차선전용LiveData] 구독 실패(리플렉션): ${e.message}")
+        }
+    }
+
     private var getInstanceMethod: java.lang.reflect.Method? = null
     private var getRecentRGDataMethod: java.lang.reflect.Method? = null
     private var nRoadLimitSpeedField: java.lang.reflect.Field? = null
