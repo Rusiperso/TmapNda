@@ -2438,6 +2438,34 @@ class MapActivity : AppCompatActivity() {
         return super.onKeyDown(keyCode, event)
     }
 
+    // v4.14: dismissKeyboardAndSearchPanel()은 "목적지를 실제로 선택했을 때"만 호출됐음 -
+    // 검색창을 눌러 포커스가 간 상태에서 "그냥 딴 데(지도든 어디든) 한 번 더 찍으면
+    // 커서가 없어져야" 하는데, 그 일반적인 케이스(목적지 선택 없이 그냥 다른 곳을 탭)를
+    // 처리하는 코드가 아예 없었음(재억 지적: "여전하네"). 안드로이드 표준 패턴대로
+    // 포커스가 가 있는 EditText 바깥을 탭하면 자동으로 포커스/키보드를 정리하도록
+    // dispatchTouchEvent에서 전역으로 처리. #문제시 원복
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (ev.action == android.view.MotionEvent.ACTION_DOWN) {
+            val focused = currentFocus
+            if (focused is android.widget.EditText) {
+                val outRect = android.graphics.Rect()
+                focused.getGlobalVisibleRect(outRect)
+                if (!outRect.contains(ev.rawX.toInt(), ev.rawY.toInt())) {
+                    val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+                    imm?.hideSoftInputFromWindow(focused.windowToken, 0)
+                    focused.apply {
+                        isFocusable = false
+                        isFocusableInTouchMode = false
+                        clearFocus()
+                        isFocusable = true
+                        isFocusableInTouchMode = true
+                    }
+                }
+            }
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun onResume() {
         super.onResume()
         NavLogger.d(this, "[MapActivity lifecycle] onResume")
