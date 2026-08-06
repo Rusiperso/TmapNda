@@ -543,6 +543,14 @@ class MapActivity : AppCompatActivity() {
 
                     startSafeDriveMode()
                     startUdpSenderService()
+                    // v4.20: getObservableLaneData() 조사 재도입 - 예전엔 startSafeDriveMode()
+                    // 안(=startUdpSenderService()보다 먼저)에서 리플렉션 구독했는데, LiveData가
+                    // 구독 시점에 이미 값을 갖고 있으면 observeForever()가 그 자리에서 동기적으로
+                    // 콜백을 실행하는 안드로이드 표준 동작 때문에, 포그라운드서비스가 뜨기도 전에
+                    // 메인 스레드에서 무거운 재귀 리플렉션이 돌 위험이 있었음(크래시 유력 원인으로
+                    // 판단해서 v4.19에서 통째로 뺐었음). 이번엔 순서를 서비스 시작 뒤로 미루고,
+                    // 실제 무거운 작업은 백그라운드 스레드로 넘기고, 값 1회만 받고 끝내도록 재작성. #문제시 원복
+                    setupObservableLaneDataDump()
                     initKakaoSdkAndShowIdleMap()
                 }
             }
@@ -2576,6 +2584,7 @@ class MapActivity : AppCompatActivity() {
         super.onDestroy()
 
         opConnectionTickHandler.removeCallbacks(opConnectionTickRunnable)
+        laneDataObserver?.let { observableLaneDataLiveData?.removeObserver(it) }
 
         val intent = Intent(this, UdpSenderService::class.java)
         stopService(intent)
@@ -2682,6 +2691,77 @@ class MapActivity : AppCompatActivity() {
             Log.e("MapActivity", "Error extracting SDI Info: ${e.message}")
             NavLogger.e(this, "Error extracting SDI Info: ${e.message}")
         }
+    }
+
+    // v4.20: getObservableLaneData() 안전 재구현 (v4.17 대비 3가지 안전장치):
+    // 1) 호출 순서를 startUdpSenderService() 이후로 이동 (포그라운드서비스 시작을 절대 안 막음)
+    // 2) LiveData 구독/수신은 메인스레드에서 하되(안드로이드 필수), 실제 무거운 리플렉션
+    //    덤프 작업은 Thread{}로 백그라운드에 위임 - 메인 스레드를 절대 안 묶음
+    // 3) 딱 1번만 덤프하고 이후 값은 전부 무시 (dumped 플래그) - 주행 내내 반복 실행되며
+    //    ANR을 유발할 위험 자체를 제거
+    // 겸사겸사 배열 순회에도 상한(최대 20개)을 둬서 혹시 모를 대형 배열도 방어. #문제시 원복
+    @Volatile private var laneDataDumped = false
+    private var laneDataObserver: androidx.lifecycle.Observer<Any>? = null
+    private var observableLaneDataLiveData: androidx.lifecycle.LiveData<Any>? = null
+    @Suppress("UNCHECKED_CAST")
+    private fun setupObservableLaneDataDump() {
+        try {
+            if (sdkManagerCompanion == null) {
+                val sdkManagerClass = Class.forName("com.skt.tmap.engine.navigation.SDKManager")
+                val companionField = sdkManagerClass.getField("Companion")
+                sdkManagerCompanion = companionField.get(null)
+                getInstanceMethod = sdkManagerCompanion?.javaClass?.getMethod("getInstance")
+            }
+            val sdkManager = getInstanceMethod?.invoke(sdkManagerCompanion) ?: return
+            val method = sdkManager.javaClass.getMethod("getObservableLaneData")
+            val liveData = method.invoke(sdkManager) as? androidx.lifecycle.LiveData<Any> ?: return
+            observableLaneDataLiveData = liveData
+            val observer = androidx.lifecycle.Observer<Any> { data ->
+                // 메인 스레드 콜백 - 여기선 플래그 체크와 백그라운드 위임만, 무거운 작업 없음
+                if (data == null || laneDataDumped) return@Observer
+                laneDataDumped = true
+                observableLaneDataLiveData?.removeObserver(laneDataObserver ?: return@Observer)
+                Thread {
+                    try {
+                        dumpLaneDataObjectSafely(data)
+                    } catch (e: Exception) {
+                        NavLogger.e(this, "[차선전용LiveData] 백그라운드 덤프 예외: ${e.message}")
+                    }
+                }.start()
+            }
+            laneDataObserver = observer
+            liveData.observeForever(observer)
+            NavLogger.d(this, "[차선전용LiveData] getObservableLaneData() 구독 성공")
+        } catch (e: Exception) {
+            NavLogger.e(this, "[차선전용LiveData] 구독 실패(리플렉션): ${e.message}")
+        }
+    }
+
+    /** 백그라운드 스레드에서만 호출됨 - 메인 스레드 절대 안 씀. #문제시 원복 */
+    private fun dumpLaneDataObjectSafely(data: Any) {
+        val MAX_ARRAY_ITEMS = 20
+        NavLogger.e(this, "===== [차선전용LiveData] getObservableLaneData 값 수신(1회, 백그라운드): class=${data.javaClass.name} =====")
+        val dump = data.javaClass.methods
+            .filter { m -> m.parameterTypes.isEmpty() && (m.name.startsWith("get") || m.name.startsWith("is")) }
+            .joinToString(", ") { m ->
+                try {
+                    val v = m.invoke(data)
+                    val vs = if (v?.javaClass?.isArray == true) {
+                        val len = minOf(java.lang.reflect.Array.getLength(v), MAX_ARRAY_ITEMS)
+                        (0 until len).joinToString(prefix = "[", postfix = if (java.lang.reflect.Array.getLength(v) > MAX_ARRAY_ITEMS) ",...]" else "]") { i ->
+                            java.lang.reflect.Array.get(v, i)?.let { elem ->
+                                try {
+                                    elem.javaClass.methods
+                                        .filter { em -> em.parameterTypes.isEmpty() && em.name.startsWith("get") }
+                                        .joinToString(prefix = "{", postfix = "}") { em -> "${em.name}=${em.invoke(elem)}" }
+                                } catch (ie: Exception) { elem.toString() }
+                            } ?: "null"
+                        }
+                    } else v.toString()
+                    "${m.name}=$vs"
+                } catch (e: Exception) { "${m.name}=<실패>" }
+            }
+        NavLogger.e(this, "[차선전용LiveData] 전체덤프: $dump")
     }
 
     // Reflection Caching
