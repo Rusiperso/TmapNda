@@ -1,14 +1,17 @@
 package com.tmap.nda
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Observer
 import com.google.gson.Gson
 import com.tmapmobility.tmap.tmapsdk.ui.util.TmapUISDK
@@ -88,10 +91,29 @@ class UdpSenderService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(1, createNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
-        } else {
-            startForeground(1, createNotification())
+        // v4.18: "앱이 실행이 안되고 튕겨" - 영상으로 확인함. startForeground()를
+        // FOREGROUND_SERVICE_TYPE_LOCATION으로 부르는데 ACCESS_BACKGROUND_LOCATION 권한
+        // 체크가 전혀 없었음 - 이 권한이 없으면 안드로이드 10+에서 SecurityException으로
+        // 그 자리에서 바로 죽음. 그리고 MainActivity의 "항상 허용" 요청 자체가 이 기기/버전
+        // 에서는 다이얼로그도 안 뜨고 즉시 거부돼서(안드로이드 11+부터 흔한 동작 - 설정
+        // 앱을 통해서만 허용 가능), 매번 여기서 크래시 -> 재시작 -> 다시 크래시 무한루프에
+        // 빠졌던 것. 권한 있으면 기존대로 location 타입, 없으면 일반 포그라운드 서비스로
+        // 안전하게 낮춰서 최소한 앱이 안 죽게 함. #문제시 원복
+        val hasBackgroundLocation = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && hasBackgroundLocation) {
+                startForeground(1, createNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+            } else {
+                startForeground(1, createNotification())
+            }
+        } catch (e: Exception) {
+            // 그래도 혹시 다른 이유(제조사별 정책 등)로 예외가 나도 앱 자체는 안 죽게 최종 방어
+            NavLogger.e(this, "startForeground 실패 - 백그라운드 위치 권한 없이 계속 진행: ${e.message}")
+            try { startForeground(1, createNotification()) } catch (e2: Exception) {
+                NavLogger.e(this, "startForeground 재시도도 실패: ${e2.message}")
+            }
         }
 
         try {

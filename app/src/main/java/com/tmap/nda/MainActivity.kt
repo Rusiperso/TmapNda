@@ -23,6 +23,14 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (!isGranted) {
+            // v4.18: 영상으로 확인함 - 이 기기/버전에서는 ACCESS_BACKGROUND_LOCATION을
+            // 다이얼로그로 직접 요청해도 실제 UI 없이 즉시 거부됨(안드로이드 11+에서 흔한
+            // 동작 - 설정 앱에서만 "항상 허용"으로 바꿀 수 있게 막아둠). 이 상태에서
+            // startForeground()가 무방비로 크래시 나던 건 UdpSenderService 쪽에서 별도로
+            // 고쳤고, 여기서는 다음에 또 헛되이 같은 다이얼로그를 반복하지 않도록 표시만 하고
+            // 앱 설정 화면으로 안내. #문제시 원복
+            getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).edit()
+                .putBoolean("background_permission_denied_once", true).apply()
             Toast.makeText(this, "항상 허용 권한이 거부되었습니다. (일부 기능 제한될 수 있음)", Toast.LENGTH_SHORT).show()
         }
         startMapActivity()
@@ -152,9 +160,25 @@ class MainActivity : AppCompatActivity() {
     private fun checkBackgroundPermissionAndStart() {
         if (binding.cbBackgroundLocation.isChecked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                // 백그라운드 권한 요청 (설정 화면으로 이동됨)
-                Toast.makeText(this, "설정에서 '항상 허용'을 선택해 주세요.", Toast.LENGTH_LONG).show()
-                backgroundPermissionLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                val deniedBefore = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                    .getBoolean("background_permission_denied_once", false)
+                if (deniedBefore) {
+                    // v4.18: 한 번 거부된 적 있으면 같은 다이얼로그를 또 띄워봐야 이 기기에서는
+                    // 어차피 즉시 재거부될 뿐이라(영상으로 확인함) - 설정 앱으로 바로 안내. #문제시 원복
+                    Toast.makeText(this, "설정 > 앱 > TmapNda > 권한 > 위치에서 '항상 허용'으로 바꿔주세요.", Toast.LENGTH_LONG).show()
+                    try {
+                        val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                        intent.data = android.net.Uri.fromParts("package", packageName, null)
+                        startActivity(intent)
+                    } catch (e: Exception) {
+                        NavLogger.e(this, "설정 화면 이동 실패: ${e.message}")
+                    }
+                    startMapActivity()
+                } else {
+                    // 백그라운드 권한 요청 (설정 화면으로 이동됨)
+                    Toast.makeText(this, "설정에서 '항상 허용'을 선택해 주세요.", Toast.LENGTH_LONG).show()
+                    backgroundPermissionLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                }
             } else {
                 startMapActivity()
             }
