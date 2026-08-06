@@ -1125,16 +1125,21 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
-    // v4.14: MapActivity와 동일 - 검색창에 포커스가 간 채로 목적지 선택 없이 그냥
-    // 다른 곳을 탭하면 커서가 그대로 남아있던 문제(재억 지적). 포커스가 간 EditText
-    // 바깥을 탭하면 전역으로 자동 정리. #문제시 원복
+    // v4.15: "티맵은 되는데 카카오 화면은 아무리 딴 데를 찍어도 검색창에서 안 빠져나온다"는
+    // 재억 지적 - 코드는 Tmap과 동일한데 실제로 다르게 동작한다는 건, dispatchTouchEvent가
+    // 이 화면에서 아예 안 불리거나, currentFocus가 기대와 다르거나, KNNaviView 쪽에서 뭔가
+    // 되돌리고 있다는 뜻. 추측으로 또 고치지 말고 원인을 확정할 수 있게 매 판정마다
+    // 로그를 남김(스팸 방지 없이 - 이 화면은 어차피 탭이 잦지 않음). #문제시 원복
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
         if (ev.action == android.view.MotionEvent.ACTION_DOWN) {
             val focused = currentFocus
+            NavLogger.d(this, "[검색창포커스진단] ACTION_DOWN currentFocus=${focused?.javaClass?.simpleName}(id=${focused?.id}) etDestinationId=${binding.etDestination?.id}")
             if (focused is android.widget.EditText) {
                 val outRect = android.graphics.Rect()
                 focused.getGlobalVisibleRect(outRect)
-                if (!outRect.contains(ev.rawX.toInt(), ev.rawY.toInt())) {
+                val outside = !outRect.contains(ev.rawX.toInt(), ev.rawY.toInt())
+                NavLogger.d(this, "[검색창포커스진단] EditText 포커스중 rect=$outRect touch=(${ev.rawX},${ev.rawY}) outside=$outside")
+                if (outside) {
                     val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
                     imm?.hideSoftInputFromWindow(focused.windowToken, 0)
                     focused.apply {
@@ -1144,6 +1149,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         isFocusable = true
                         isFocusableInTouchMode = true
                     }
+                    NavLogger.d(this, "[검색창포커스진단] 포커스 해제 실행함, 실행직후 currentFocus=${currentFocus?.javaClass?.simpleName}")
                 }
             }
         }
