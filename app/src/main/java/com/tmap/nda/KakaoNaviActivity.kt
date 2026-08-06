@@ -12,6 +12,7 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.car.app.notification.CarAppExtender
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.view.ViewCompat
@@ -356,59 +357,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             KNRoutePriority.KNRoutePriority_Recommand,
             KNRouteAvoidOption.KNRouteAvoidOption_None.value
         )
-        // v4.16: [볼륨API스캔]으로도 확인됐지만, 카카오모빌리티 공식 문서
-        // (사용자 맞춤 설정하기)에 명시된 공개 API였음 - KNNaviView.sndVolume(Float,
-        // 0.0~1.0, 기본값 1f)이 내비게이션 음성 안내 음량을 직접 조정하는 진짜 방법.
-        // 그동안 시스템 STREAM_MUSIC을 아무리 만져도 안 먹혔던 이유가 이거였음 - 카카오
-        // SDK가 시스템 볼륨과 무관하게 내부적으로 항상 1.0(100%)로 재생하고 있었던 것.
-        // 저장된 볼륨%(VolumeHelper)를 0.0~1.0으로 변환해서 실제로 반영. #문제시 원복
-        applyKakaoSdkVolume()
         naviView.post { logNaviViewDiagnostics("idle map 초기화 직후") }
 
         resolveCurrentPositionThenRequestRoute(destName, destLat, destLon)
-    }
-
-    // v4.16: naviView.sndVolume은 float(0.0~1.0)라 VolumeHelper의 %(0~100) 값과 변환이
-    // 필요함. 이 함수를 초기화 시점뿐 아니라 실시간 볼륨 캡처(volumeChangeReceiver)에서도
-    // 같이 호출해서, 하드웨어 볼륨버튼으로 조절할 때마다 카카오 SDK 자체 볼륨도 같이
-    // 실시간으로 맞춰지게 함. 공식 문서 기준 이름은 "sndVolume"인데, 실제 설치된 SDK
-    // 버전(1.12.8-hotfix02)에서 정확히 이 이름이 맞는지 확인이 안 된 상태라, 직접 프로퍼티
-    // 접근(컴파일 타임 바인딩) 대신 리플렉션으로 안전하게 시도 - 이름이 다르면 컴파일이
-    // 깨지는 대신 로그만 남기고 조용히 스킵됨. #문제시 원복
-    private var sndVolumeSetterField: java.lang.reflect.Field? = null
-    private var sndVolumeSetterMethod: java.lang.reflect.Method? = null
-    private var sndVolumeLookupFailed = false
-    private fun applyKakaoSdkVolume() {
-        try {
-            val percent = VolumeHelper.savedVolumePercent(this).coerceIn(0, 100)
-            val fraction = percent / 100f
-
-            if (!sndVolumeLookupFailed && sndVolumeSetterMethod == null && sndVolumeSetterField == null) {
-                // Kotlin의 "var sndVolume: Float"는 바이트코드상 setSndVolume(float) 메서드로 컴파일됨
-                try {
-                    sndVolumeSetterMethod = naviView.javaClass.getMethod("setSndVolume", Float::class.javaPrimitiveType)
-                } catch (e: NoSuchMethodException) {
-                    try {
-                        sndVolumeSetterField = naviView.javaClass.getField("sndVolume")
-                    } catch (e2: NoSuchFieldException) {
-                        sndVolumeLookupFailed = true
-                        NavLogger.e(this, "[카카오SDK볼륨] setSndVolume/sndVolume 둘 다 못 찾음 - SDK 버전에서 이름이 다를 수 있음")
-                    }
-                }
-            }
-            when {
-                sndVolumeSetterMethod != null -> {
-                    sndVolumeSetterMethod!!.invoke(naviView, fraction)
-                    NavLogger.d(this, "[카카오SDK볼륨] setSndVolume($fraction) 호출됨 (저장된 ${percent}%)")
-                }
-                sndVolumeSetterField != null -> {
-                    sndVolumeSetterField!!.setFloat(naviView, fraction)
-                    NavLogger.d(this, "[카카오SDK볼륨] sndVolume 필드에 $fraction 직접 대입 (저장된 ${percent}%)")
-                }
-            }
-        } catch (e: Exception) {
-            NavLogger.e(this, "[카카오SDK볼륨] 적용 예외: ${e.message}")
-        }
     }
 
     // requestKakaoRoute()에서 검증된 순서 그대로 재사용: lastKnown GPS 캐시 없이도
@@ -716,7 +667,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // PendingMapAction 신호로 처리하도록 함(중복 구현 회피). #문제시 원복
     // v1.7: nMirror(안드로이드오토 미러링 앱) 분석 결과, BIND_NOTIFICATION_LISTENER_SERVICE +
     // androidx.car.app.NAVIGATION_TEMPLATES 권한을 갖고 있어서, 표준 안드로이드 내비게이션
-    // 알림(NotificationCompat.CarExtender + CATEGORY_NAVIGATION)을 감지해 실제 차량
+    // 알림(CarAppExtender + CATEGORY_NAVIGATION)을 감지해 실제 차량
     // 클러스터/HUD로 전달해주는 것으로 추정됨(Tmap/카카오내비 원본 앱이 이 방식으로 이미
     // 뜨고 있었을 가능성). 루트 권한이나 nMirror 전용 프로토콜 없이, 표준 알림만 올려서
     // 시도해봄 - 안 잡히면 그냥 일반 알림 하나 뜨는 것 외엔 부작용 없음. #문제시 원복
@@ -755,7 +706,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
-                .extend(NotificationCompat.CarExtender())
+                .extend(
+                    CarAppExtender.Builder()
+                        .setImportance(NotificationManagerCompat.IMPORTANCE_LOW)
+                        .build()
+                )
 
             NotificationManagerCompat.from(this).notify(NAV_NOTIFICATION_ID, builder.build())
         } catch (e: Exception) {
@@ -1171,9 +1126,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 .getBoolean("tmap_muted", false)
             if (!muted) {
                 VolumeHelper.captureCurrentVolumePercent(this@KakaoNaviActivity)
-                // v4.16: 하드웨어 볼륨버튼으로 조절할 때마다 카카오 SDK 자체 볼륨
-                // (naviView.sndVolume)도 실시간으로 같이 맞춤. #문제시 원복
-                if (::naviView.isInitialized) applyKakaoSdkVolume()
             }
         }
     }
@@ -1183,27 +1135,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 이 화면에서 아예 안 불리거나, currentFocus가 기대와 다르거나, KNNaviView 쪽에서 뭔가
     // 되돌리고 있다는 뜻. 추측으로 또 고치지 말고 원인을 확정할 수 있게 매 판정마다
     // 로그를 남김(스팸 방지 없이 - 이 화면은 어차피 탭이 잦지 않음). #문제시 원복
-    // v4.15: 사용자가 실제로 말한 건 이거였음 - "더보기"(btnMoreMenu) 눌러서 뜨는
-    // svSecondaryPanel 팝업이 바깥을 찍어도 안 닫히고 버튼을 다시 눌러야만 닫힘. 각 메뉴
-    // 버튼 클릭 시에만 GONE 처리했지 "바깥 탭"에 대한 처리가 없었음. #문제시 원복
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
         if (ev.action == android.view.MotionEvent.ACTION_DOWN) {
-            val panel = binding.svSecondaryPanel
-            if (panel != null && panel.visibility == View.VISIBLE) {
-                val panelRect = android.graphics.Rect()
-                panel.getGlobalVisibleRect(panelRect)
-                val touchInPanel = panelRect.contains(ev.rawX.toInt(), ev.rawY.toInt())
-                // 토글 버튼 자체는 제외 - 안 그러면 버튼의 기존 토글 로직과 충돌해서 안 닫힘. #문제시 원복
-                var touchOnToggleButton = false
-                binding.btnMoreMenu?.let { btn ->
-                    val btnRect = android.graphics.Rect()
-                    btn.getGlobalVisibleRect(btnRect)
-                    touchOnToggleButton = btnRect.contains(ev.rawX.toInt(), ev.rawY.toInt())
-                }
-                if (!touchInPanel && !touchOnToggleButton) {
-                    panel.visibility = View.GONE
-                }
-            }
             val focused = currentFocus
             NavLogger.d(this, "[검색창포커스진단] ACTION_DOWN currentFocus=${focused?.javaClass?.simpleName}(id=${focused?.id}) etDestinationId=${binding.etDestination?.id}")
             if (focused is android.widget.EditText) {
