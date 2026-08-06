@@ -29,6 +29,12 @@ class UdpSenderService : Service() {
     private val UDP_PORT = 7706
     private var targetIp = "255.255.255.255"
 
+    // v4.21: 카카오 안전정보(과속카메라/방지턱 등) 추출 로직을 처음부터 다시 짰는데,
+    // getDistFromS()가 "지금 위치→이벤트까지 거리"가 맞는지 실주행 검증 전이라 - 검증
+    // 되기 전까진 로그로만 확인하고 실제 openpilot 감속 판단에는 안 씀(사용자 지적:
+    // "안전한 방법으로"). 다음 로그로 거리값이 정상적으로 줄어드는 게 확인되면 true로. #문제시 원복
+    private val KAKAO_SAFETY_LIVE = false
+
     // ===== NDA(EON:ROAD_LIMIT_SERVICE:v1) 호환 브릿지 관련 상수 =====
     // road_speed_limiter.py (carrot 계열이 아닌 다수의 HKG 커뮤니티 fork에도 포함된 표준 UDP 브릿지) 프로토콜을
     // 그대로 흉내내어, nMirror 없이도 이 프로토콜을 쓰는 openpilot과 직접 연동한다.
@@ -444,10 +450,18 @@ class UdpSenderService : Service() {
                                 else "카카오안내"
                         }
                         json.put("szTBTMainText", "$kakaoPrefix | GPS: $currentGpsStatusText")
-                        if (kr.safetyType >= 0 && kr.safetySpeedLimit > 0 && kr.safetyDist > 0) {
+                        // v4.21: getDistFromS()가 "지금 위치→이벤트까지 남은 거리"가 맞는지
+                        // 실주행으로 검증이 안 된 상태 - 이 가정이 틀리면 크래시는 안 나지만
+                        // 실제 차량 감속 타이밍이 너무 이르거나 늦게 나갈 위험이 있음(사용자 지적:
+                        // "안전한 방법으로"). 그래서 이번엔 UDP로 실제 전송(=차량 감속에 관여)은
+                        // 안 하고 로그로만 남김 - 다음 로그로 거리값이 접근하면서 정상적으로
+                        // 줄어드는지 확인되면 KAKAO_SAFETY_LIVE를 true로 바꿔서 실제로 내보냄. #문제시 원복
+                        if (KAKAO_SAFETY_LIVE && kr.safetyType >= 0 && kr.safetySpeedLimit > 0 && kr.safetyDist > 0) {
                             json.put("nSdiType", kr.safetyType)
                             json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
                             json.put("nSdiDist", kr.safetyDist)
+                        } else if (kr.safetyType >= 0 && kr.safetySpeedLimit > 0 && kr.safetyDist > 0) {
+                            NavLogger.d(this@UdpSenderService, "[카카오 안전정보 검증용][실제전송안함] type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}")
                         }
                         NavLogger.d(this@UdpSenderService, "[카카오->openpilot] UDP 페이로드 카카오 데이터로 덮어씀: nGoPosDist=${kr.remainDist} nTBTDist=$kakaoTbtDist turnType=${kr.tbtTurnType}")
                     }
