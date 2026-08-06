@@ -112,6 +112,26 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
+    // v4.13: openpilot 연결대기 상태에서 "n초 전" 경과시간을 1초마다 갱신해서 표시하기 위한
+    // 타이머. onDestroy에서 반드시 제거해야 함(안 그러면 Activity 누수). #문제시 원복
+    private var opConnectionLastGoodStateTime = 0L
+    private val opConnectionTickHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val opConnectionTickRunnable = object : Runnable {
+        override fun run() {
+            updateOpConnectionWaitingText()
+            opConnectionTickHandler.postDelayed(this, 1000)
+        }
+    }
+    private fun updateOpConnectionWaitingText() {
+        if (opConnectionLastGoodStateTime <= 0L) {
+            binding.tvConnectionStatus.text = "연결 대기"
+        } else {
+            val elapsedSec = (System.currentTimeMillis() - opConnectionLastGoodStateTime) / 1000
+            binding.tvConnectionStatus.text = "연결 대기 (${elapsedSec}초)"
+        }
+        binding.tvConnectionStatus.setTextColor(android.graphics.Color.parseColor("#555555"))
+    }
+
     // 음성 검색 결과 수신용 런처. 안드로이드 표준 음성인식 액티비티(RecognizerIntent)를 위임 호출하는 방식이라
     // 별도의 RECORD_AUDIO 런타임 권한 요청 없이 동작함 (인식은 시스템 음성입력 앱이 수행).
     // 로그 공유 화면(이메일 앱 등)에서 돌아왔을 때, 방금 보낸 로그 파일들을 삭제하기 위한 목록.
@@ -382,6 +402,8 @@ class MapActivity : AppCompatActivity() {
                 .getBoolean("map_touch_unlocked", false)
         )
 
+        opConnectionTickHandler.post(opConnectionTickRunnable)
+
         OpenpilotStateRepository.state.observe(this) { state ->
             binding.tvCarrotVersion.text = state.carrot2
             binding.tvCarrotIp.text = if (state.ip.isNotEmpty() && state.ip != "-") "IP: ${state.ip}" else "IP: -"
@@ -390,10 +412,14 @@ class MapActivity : AppCompatActivity() {
                 binding.vConnectionDot.setBackgroundResource(R.drawable.shape_circle_green)
                 binding.tvConnectionStatus.text = "통신중"
                 binding.tvConnectionStatus.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
+                opConnectionLastGoodStateTime = 0L
             } else {
                 binding.vConnectionDot.setBackgroundResource(R.drawable.shape_circle_gray)
-                binding.tvConnectionStatus.text = "연결 대기"
-                binding.tvConnectionStatus.setTextColor(android.graphics.Color.parseColor("#555555"))
+                // v4.13: "연결 대기에서 변화가 없어 앱이 멈춘 것처럼 보인다"(사용자 6번) -
+                // 마지막 수신 이후 경과시간을 같이 보여줘서, 앱이 멈춘 게 아니라 계속
+                // 재시도만 하고 있다는 걸 눈으로 확인 가능하게 함. #문제시 원복
+                opConnectionLastGoodStateTime = state.lastUpdateTime
+                updateOpConnectionWaitingText()
             }
 
             if (state.active) {
@@ -954,15 +980,15 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    private var lastOverSpeedWarningTime = 0L
     private fun checkOverSpeedWarning(speedKph: Int) {
         val pref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         if (!pref.getBoolean("over_speed_warning_enabled", false)) return
         val limit = SdiDataRepository.roadLimitSpeed
         if (limit < 30 || speedKph <= 0) return
         val now = System.currentTimeMillis()
-        if (speedKph > limit * 1.1 && now - lastOverSpeedWarningTime > 8000L) {
-            lastOverSpeedWarningTime = now
+        // v4.13: 화면(Tmap/Kakao) 공용 쿨다운으로 통합 - 아래 SdiDataRepository 항목 참고. #문제시 원복
+        if (speedKph > limit * 1.1 && now - SdiDataRepository.lastOverSpeedWarningTime > 8000L) {
+            SdiDataRepository.lastOverSpeedWarningTime = now
             try {
                 val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 100)
                 tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
@@ -1421,7 +1447,16 @@ class MapActivity : AppCompatActivity() {
     private fun dismissKeyboardAndSearchPanel() {
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
         currentFocus?.let { imm?.hideSoftInputFromWindow(it.windowToken, 0) }
-        binding.etDestination?.clearFocus()
+        // v4.13: clearFocus()만으로는 포커스를 넘겨받을 다른 뷰가 근처에 없어서 실제로는
+        // 포커스가 안 풀리고, 그래서 검색창 커서(깜빡임)가 계속 남아있는 문제(사용자 8번).
+        // 잠깐 포커스 불가 상태로 만들었다가 되돌리는 방식으로 강제로 포커스를 떨어뜨림. #문제시 원복
+        binding.etDestination?.apply {
+            isFocusable = false
+            isFocusableInTouchMode = false
+            clearFocus()
+            isFocusable = true
+            isFocusableInTouchMode = true
+        }
         // v3.5: 길안내 시작 후에도 검색창에 입력했던 텍스트가 계속 남아있던 문제
         // (사용자 지적 11번) - 포커스/패널만 닫고 텍스트는 안 지우고 있었음. #문제시 원복
         binding.etDestination?.setText("")
@@ -2258,6 +2293,10 @@ class MapActivity : AppCompatActivity() {
                     if (it is android.os.Bundle) {
                         extractAndDisplaySdiInfo(it)
                     }
+                    // v4.13: Tmap 자체 내비게이션 엔진(rgData)에도 차선 정보 필드가 있는 걸
+                    // 확인해서(사용자 2·3·4번) LaneSignalRepository에 연결. 카카오가 이미
+                    // 최근에 갱신했으면 카카오 값을 안 건드림(둘이 서로 덮어쓰기 경쟁 방지). #문제시 원복
+                    updateTmapLaneInfoFromEngine()
                     runOnUiThread {
                         renderLaneSignalBar(this@MapActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown)
                     }
@@ -2469,6 +2508,8 @@ class MapActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
 
+        opConnectionTickHandler.removeCallbacks(opConnectionTickRunnable)
+
         val intent = Intent(this, UdpSenderService::class.java)
         stopService(intent)
     }
@@ -2584,6 +2625,19 @@ class MapActivity : AppCompatActivity() {
     private var nTBTDistField: java.lang.reflect.Field? = null
     private var tbtDistFieldLookupFailed = false
     private var rgDataRecursiveDumped = false
+    // v4.13: nTBTDist는 rgData 최상위가 아니라 rgData.stGuidePoint(TBTInfo) 안에 중첩되어
+    // 있었음(전체 필드 덤프로 실제 확인함) - 그동안 최상위에서 찾아서 매번 실패하고
+    // Int.MAX_VALUE만 반환했음(=도로제한속도 히스테리시스의 "안내지점 근접" 판정이 항상
+    // 거짓으로 나오던 원인). stGuidePoint를 먼저 찾고 그 안에서 nTBTDist/nTBTTurnType을
+    // 찾도록 수정. #문제시 원복
+    private var stGuidePointField: java.lang.reflect.Field? = null
+    private var stGuidePointFieldLookupFailed = false
+    private var nTBTTurnTypeField: java.lang.reflect.Field? = null
+    // v4.13: 순정 Tmap 안내 시 콤마에 회전방향(좌/우/유턴)을 못 보내는 문제(사용자 9번) -
+    // 정확한 코드→방향 매핑표를 아직 확정 못 해서 표시 로직은 없지만, 실주행 중 실제로
+    // 어떤 코드가 찍히는지 확인할 수 있게 0이 아닌 값이 뜰 때만(스팸 방지, 30초 간격)
+    // 로그로 남김. 이 로그가 쌓이면 다음 세션에서 매핑표를 완성할 수 있음. #문제시 원복
+    private var lastNonZeroTbtTurnTypeLogTime = 0L
 
     // 분기 오매칭 방지용 상태
     private var pendingRoadLimit = 0
@@ -2683,18 +2737,38 @@ class MapActivity : AppCompatActivity() {
                 }
 
                 if (rgData != null) {
-                    if (nTBTDistField == null && !tbtDistFieldLookupFailed) {
+                    if (stGuidePointField == null && !stGuidePointFieldLookupFailed) {
                         try {
-                            nTBTDistField = rgData.javaClass.getField("nTBTDist")
+                            stGuidePointField = rgData.javaClass.getField("stGuidePoint")
                         } catch (fe: Exception) {
-                            // "nTBTDist"라는 필드 자체가 이 SDK 버전엔 없음(stGuidePoint 내부 dump로 확인 필요).
-                            // 매번 재시도+로깅하면 로그만 쌓이고 어차피 계속 실패하니 1회만 로깅하고 이후엔 조용히 스킵.
-                            tbtDistFieldLookupFailed = true
-                            Log.e("MapActivity", "Reflection error (TBTDist): ${fe.message}")
-                            NavLogger.e(this, "Reflection error (TBTDist): ${fe.message} - 이후 재시도 안 함")
+                            stGuidePointFieldLookupFailed = true
+                            NavLogger.e(this, "Reflection error (stGuidePoint): ${fe.message} - 이후 재시도 안 함")
                         }
                     }
-                    return nTBTDistField?.getInt(rgData) ?: Int.MAX_VALUE
+                    val guidePoint = stGuidePointField?.get(rgData)
+                    if (guidePoint != null) {
+                        if (nTBTDistField == null && !tbtDistFieldLookupFailed) {
+                            try {
+                                nTBTDistField = guidePoint.javaClass.getField("nTBTDist")
+                                nTBTTurnTypeField = guidePoint.javaClass.getField("nTBTTurnType")
+                            } catch (fe: Exception) {
+                                tbtDistFieldLookupFailed = true
+                                Log.e("MapActivity", "Reflection error (TBTDist): ${fe.message}")
+                                NavLogger.e(this, "Reflection error (TBTDist): ${fe.message} - 이후 재시도 안 함")
+                            }
+                        }
+                        // v4.13: nTBTTurnType이 0이 아닌 값으로 찍히는 순간을 30초 간격으로
+                        // 로그에 남김 - 다음 세션에서 이 값들을 모아 Tmap 자체 회전코드
+                        // 매핑표(사용자 9번)를 완성하는 데 씀. #문제시 원복
+                        try {
+                            val turnType = (nTBTTurnTypeField?.get(guidePoint) as? Short)?.toInt() ?: 0
+                            if (turnType != 0 && System.currentTimeMillis() - lastNonZeroTbtTurnTypeLogTime > 30000L) {
+                                lastNonZeroTbtTurnTypeLogTime = System.currentTimeMillis()
+                                NavLogger.d(this, "[Tmap 회전코드 수집] nTBTTurnType=$turnType nTBTDist=${nTBTDistField?.getInt(guidePoint)}")
+                            }
+                        } catch (ie: Exception) { /* 무시 - 수집용 로그라 실패해도 안전 */ }
+                        return nTBTDistField?.getInt(guidePoint) ?: Int.MAX_VALUE
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -2735,6 +2809,75 @@ class MapActivity : AppCompatActivity() {
             NavLogger.e(this, "Reflection error (RoadLimitSpeed): ${e.message}")
         }
         return -1
+    }
+
+    private var nLaneCountField: java.lang.reflect.Field? = null
+    private var bLaneField: java.lang.reflect.Field? = null
+    private var aheadLaneInfoDataField: java.lang.reflect.Field? = null
+    private var laneFieldLookupFailed = false
+    private var aheadLaneInfoDataDumped = false
+
+    // v4.13: Tmap 자체 안내 시엔 지금까지 차선정보가 아예 안 나왔던 문제(사용자 2·3·4번) -
+    // Tmap의 EDCData 번들(얕은 경로)엔 차선 필드가 없지만, getRecentRGData()로 얻는
+    // 진짜 엔진 구조체(rgData)엔 nLaneCount/bLane/aheadLaneInfoData가 실제로 존재함(로그로
+    // 확인함). 다만 aheadLaneInfoData(LaneInfoData[])의 개별 필드가 "이 차선이 추천 차선인지"
+    // 를 정확히 어떻게 나타내는지는(카카오의 getHighlightType 같은) 아직 실주행 값으로 확인을
+    // 못 했음 - 잘못 추측해서 틀린 차선을 추천 표시하면 위험하므로(사용자 지적 사례와 동일한
+    // 이유), 우선 "차선 개수"만 정직하게 표시(전부 추천 아님으로 렌더링)하고,
+    // aheadLaneInfoData 내부 구조는 nLaneCount>0인 순간 1회 전체 덤프해서 다음 세션에서
+    // 정확한 매핑을 완성할 재료로 남겨둠. #문제시 원복
+    private fun updateTmapLaneInfoFromEngine() {
+        try {
+            // 카카오가 최근에 이미 갱신했으면 건드리지 않음(소스 경쟁 방지)
+            if (LaneSignalRepository.source == "kakao" && LaneSignalRepository.isFresh()) return
+
+            if (sdkManagerCompanion == null) {
+                val sdkManagerClass = Class.forName("com.skt.tmap.engine.navigation.SDKManager")
+                val companionField = sdkManagerClass.getField("Companion")
+                sdkManagerCompanion = companionField.get(null)
+                getInstanceMethod = sdkManagerCompanion?.javaClass?.getMethod("getInstance")
+            }
+            val sdkManager = getInstanceMethod?.invoke(sdkManagerCompanion) ?: return
+            if (getRecentRGDataMethod == null) {
+                getRecentRGDataMethod = sdkManager.javaClass.getMethod("getRecentRGData")
+            }
+            val rgData = getRecentRGDataMethod?.invoke(sdkManager) ?: return
+
+            if (nLaneCountField == null && !laneFieldLookupFailed) {
+                try {
+                    nLaneCountField = rgData.javaClass.getField("nLaneCount")
+                    bLaneField = rgData.javaClass.getField("bLane")
+                    aheadLaneInfoDataField = rgData.javaClass.getField("aheadLaneInfoData")
+                } catch (fe: Exception) {
+                    laneFieldLookupFailed = true
+                    NavLogger.e(this, "Reflection error (차선 필드): ${fe.message} - 이후 재시도 안 함")
+                    return
+                }
+            }
+
+            val laneCount = (nLaneCountField?.getInt(rgData)) ?: 0
+            val laneActive = (bLaneField?.get(rgData) as? Boolean) ?: false
+
+            if (laneCount > 0 && laneActive) {
+                // 정확한 추천차선 판정 불가 - 우선 개수만 정직하게 표시 (전부 미추천으로)
+                LaneSignalRepository.lanes = List(laneCount) { false }
+                LaneSignalRepository.source = "tmap"
+                LaneSignalRepository.lastUpdateTime = System.currentTimeMillis()
+
+                if (!aheadLaneInfoDataDumped) {
+                    aheadLaneInfoDataDumped = true
+                    val laneInfoArray = aheadLaneInfoDataField?.get(rgData)
+                    if (laneInfoArray != null) {
+                        NavLogger.e(this, "===== [차선정보 수집] aheadLaneInfoData 전체 덤프 (nLaneCount=$laneCount) =====")
+                        dumpValueRecursive("aheadLaneInfoData", laneInfoArray, laneInfoArray.javaClass, 0, maxArrayItems = 10)
+                    }
+                }
+            } else if (LaneSignalRepository.source == "tmap" && !laneActive) {
+                LaneSignalRepository.lanes = emptyList()
+            }
+        } catch (e: Exception) {
+            NavLogger.e(this, "Tmap 차선정보 갱신 예외: ${e.message}")
+        }
     }
 
     private fun setAutoRepeatButton(button: android.view.View?, action: () -> Unit) {

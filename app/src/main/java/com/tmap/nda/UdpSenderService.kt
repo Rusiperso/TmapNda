@@ -61,10 +61,20 @@ class UdpSenderService : Service() {
     @Volatile private var ndaLastBeaconTime = 0L
 
     // Latest Safe Drive Info
+    // v4.13: roadLimitSpeed는 openpilot에 보내는 nRoadLimitSpeed용으로, 카메라 개별
+    // 제한속도(sdiSpeedLimit)가 들어오면 그 값으로도 덮어써짐(구간단속 카메라 감속 등을
+    // openpilot에 알려주기 위한 의도적 설계). 문제는 이 변수를 그대로
+    // SdiDataRepository.roadLimitSpeed(=과속경고음이 읽는 "도로 기본 제한속도")에도
+    // 흘려보내고 있어서, 카메라 옆을 지날 때 카메라의 개별 제한속도가 도로 기본
+    // 제한속도인 것처럼 오인식돼 "10% 안 넘었는데 경고음" 오탐이 발생했음(사용자 지적).
+    // 카메라 영향을 받는 이 값과 별개로, 순수 "도로 기본 제한속도"만 추적하는
+    // generalRoadLimitSpeed를 새로 둬서 SdiDataRepository/알람 쪽엔 이걸로만 전달. #문제시 원복
     private var roadLimitSpeed = 0
+    private var generalRoadLimitSpeed = 0
     // v4.2: roadLimitSpeed가 한 번 값이 들어오면(30 이상) 절대 안 낮아지는 버그 수정용 -
     // 마지막으로 유효한 값을 받은 시각. #문제시 원복
     private var lastRoadLimitUpdateTime = 0L
+    private var lastGeneralRoadLimitUpdateTime = 0L
     private var sdiType = 0
     private var sdiSpeedLimit = 0
     private var sdiDistance = 0
@@ -184,6 +194,10 @@ class UdpSenderService : Service() {
                     if (currentLimitSpeed >= 30) {
                         roadLimitSpeed = currentLimitSpeed
                         lastRoadLimitUpdateTime = System.currentTimeMillis()
+                        // v4.13: 이건 카메라가 아니라 도로 자체의 기본 제한속도이므로
+                        // generalRoadLimitSpeed에도 반영. #문제시 원복
+                        generalRoadLimitSpeed = currentLimitSpeed
+                        lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
                     }
 
                     // 2. firstSDIInfo (GRT47과 동일하게 모든 key를 최상위로 복사)
@@ -230,6 +244,9 @@ class UdpSenderService : Service() {
                         }
 
                         if (sdiSpeedLimit >= 30) {
+                            // v4.13: 이건 카메라(구간단속/스쿨존 등)의 개별 제한속도라
+                            // generalRoadLimitSpeed는 절대 건드리지 않음 - roadLimitSpeed만
+                            // (openpilot 카메라 감속용) 갱신. #문제시 원복
                             roadLimitSpeed = sdiSpeedLimit
                             lastRoadLimitUpdateTime = System.currentTimeMillis()
                         }
@@ -244,6 +261,8 @@ class UdpSenderService : Service() {
                     if (realRoadLimit >= 30) {
                         roadLimitSpeed = realRoadLimit
                         lastRoadLimitUpdateTime = System.currentTimeMillis()
+                        generalRoadLimitSpeed = realRoadLimit
+                        lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
                     }
 
                     // v4.2: roadLimitSpeed가 한 번 값이 들어오면(예: 고속도로 100) 그 뒤로
@@ -253,6 +272,9 @@ class UdpSenderService : Service() {
                     // 기반)에는 영향 없음. #문제시 원복
                     if (roadLimitSpeed > 0 && System.currentTimeMillis() - lastRoadLimitUpdateTime > 8000) {
                         roadLimitSpeed = 0
+                    }
+                    if (generalRoadLimitSpeed > 0 && System.currentTimeMillis() - lastGeneralRoadLimitUpdateTime > 8000) {
+                        generalRoadLimitSpeed = 0
                     }
 
                     json.put("nRoadLimitSpeed", roadLimitSpeed)
@@ -346,8 +368,11 @@ class UdpSenderService : Service() {
                         val blockTime = json.optInt("nSdiBlockTime", 0)
                         val blockAvgSpeed = json.optInt("nSdiBlockAverageSpeed", 0)
                         val isBlockSection = sdiType == 2 || sdiType == 3 || sdiType == 4 || json.optBoolean("bSdiBlockSection", false)
+                        // v4.13: 카메라 개별 제한속도(roadLimitSpeed)가 아니라 도로 기본
+                        // 제한속도(generalRoadLimitSpeed)만 전달 - 과속경고음/HUD 표시가
+                        // 카메라 제한값을 도로 제한값으로 오인하지 않도록. #문제시 원복
                         SdiDataRepository.updateCurrentSdiState(
-                            limitSpeed = roadLimitSpeed,
+                            limitSpeed = generalRoadLimitSpeed,
                             type = sdiType,
                             speedLimit = sdiSpeedLimit,
                             distance = sdiDist,
