@@ -2390,11 +2390,20 @@ class MapActivity : AppCompatActivity() {
     }
 
     private fun startUdpSenderService() {
-        val intent = Intent(this, UdpSenderService::class.java)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
+        // v4.18: startForeground()의 위치권한 케이스는 서비스 쪽에서 이미 방어했는데,
+        // startForegroundService() 호출 그 자체도 안드로이드 12+에서는 "백그라운드에서
+        // 포그라운드서비스 시작 제한"에 걸려 ForegroundServiceStartNotAllowedException을
+        // 던질 수 있음 - 여기도 방어 없었음. 최소한 이 한 줄 때문에 앱 전체가 죽는 일은
+        // 없게 함(서비스가 아예 안 뜨면 UDP 전송/HUD 기능만 빠지는 정도로 완화). #문제시 원복
+        try {
+            val intent = Intent(this, UdpSenderService::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+        } catch (e: Exception) {
+            NavLogger.e(this, "UdpSenderService 시작 실패: ${e.javaClass.simpleName}: ${e.message}")
         }
     }
 
