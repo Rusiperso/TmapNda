@@ -6,16 +6,23 @@ import android.os.Looper
 import android.util.Log
 import androidx.car.app.CarAppService
 import androidx.car.app.CarContext
+import androidx.car.app.CarToast
 import androidx.car.app.Screen
 import androidx.car.app.Session
+import androidx.car.app.SessionInfo
+import androidx.car.app.model.Action
+import androidx.car.app.model.ActionStrip
+import androidx.car.app.model.CarColor
 import androidx.car.app.model.DateTimeWithZone
 import androidx.car.app.model.Distance
-import androidx.car.app.model.MessageTemplate
 import androidx.car.app.model.Template
 import androidx.car.app.navigation.NavigationManager
 import androidx.car.app.navigation.NavigationManagerCallback
 import androidx.car.app.navigation.model.Destination
 import androidx.car.app.navigation.model.Maneuver
+import androidx.car.app.navigation.model.MessageInfo
+import androidx.car.app.navigation.model.NavigationTemplate
+import androidx.car.app.navigation.model.RoutingInfo
 import androidx.car.app.navigation.model.Step
 import androidx.car.app.navigation.model.TravelEstimate
 import androidx.car.app.navigation.model.Trip
@@ -31,22 +38,18 @@ private const val STALE_MS = 5_000L
 private const val MIN_STALE_CHECK_DELAY_MS = 250L
 
 /**
- * 순정 차량 Android Auto 클러스터/HUD로 회전·거리·ETA를 전송.
- * 화면(Screen)은 상태 안내용 최소 화면만 두고, 실제 정보는 NavigationManager.updateTrip()으로
- * 차량 자체 내비게이션 UI에 그려지게 한다.
- *
- * KakaoHudBridge가 공식 KNSDK 안내 데이터를 KakaoRouteDataRepository에 반영하고,
- * 이 서비스가 해당 값을 Android Auto 표준 Trip/Maneuver 형식으로 변환한다.
- * 실제 HUD 표시 항목은 차량과 Android Auto 호스트 기능에 따라 달라질 수 있다.
+ * Android Auto에서 TmapNda를 실행한 뒤 휴대폰 길안내가 시작되면 표준 Trip 정보를
+ * 차량 클러스터/HUD로 전송한다. Android Auto 메인 화면도 NavigationTemplate을 사용해
+ * 호스트가 이 앱을 실제 내비게이션 세션으로 처리할 수 있게 한다.
  */
 class TmapNdaCarAppService : CarAppService() {
 
-    // 사이드로드·개발 테스트용. Play 배포 전에는 공식 Host allowlist 방식으로 변경 권장.
+    // GitHub APK 사이드로드·개발 테스트용. Play 배포 전에는 공식 Host allowlist가 필요하다.
     override fun createHostValidator(): HostValidator =
         HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
 
-    override fun onCreateSession(): Session {
-        Log.i(TAG, "Android Auto가 TmapNda 차량용 세션을 생성함")
+    override fun onCreateSession(sessionInfo: SessionInfo): Session {
+        Log.i(TAG, "Android Auto가 TmapNda 차량용 세션을 생성함: displayType=${sessionInfo.displayType}")
         return TmapNdaCarSession()
     }
 }
@@ -55,7 +58,7 @@ private class TmapNdaCarSession : Session() {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private lateinit var navigationManager: NavigationManager
-    private lateinit var statusScreen: HudStatusScreen
+    private lateinit var navigationScreen: HudNavigationScreen
 
     private var navigating = false
     private var hostStopped = false
@@ -70,17 +73,18 @@ private class TmapNdaCarSession : Session() {
         val ageMs = (System.currentTimeMillis() - value.lastUpdateTime).coerceAtLeast(0L)
         if (!value.isActive || ageMs >= STALE_MS) {
             endNavigation("길안내 데이터가 ${STALE_MS / 1000}초 이상 갱신되지 않음")
-            statusScreen.updateStatus("Android Auto 연결됨 · 휴대폰 길안내 대기 중")
+            navigationScreen.updateStatus("Android Auto 연결됨 · 휴대폰 길안내 대기 중")
         } else {
-            // Handler가 약간 일찍 실행된 경우 남은 시간만큼 다시 검사한다.
             scheduleExpireCheck(ageMs)
         }
     }
 
     override fun onCreateScreen(intent: Intent): Screen {
-        Log.i(TAG, "TmapNda HUD 화면 연결됨: action=${intent.action}")
+        Log.i(TAG, "TmapNda Android Auto 화면 연결됨: action=${intent.action}")
+
         navigationManager = carContext.getCarService(NavigationManager::class.java)
-        statusScreen = HudStatusScreen(carContext)
+        val surfaceRenderer = TmapNdaHudSurfaceRenderer(carContext, lifecycle)
+        navigationScreen = HudNavigationScreen(carContext, surfaceRenderer)
 
         navigationManager.setNavigationManagerCallback(
             object : NavigationManagerCallback {
@@ -89,7 +93,7 @@ private class TmapNdaCarSession : Session() {
                     navigating = false
                     lastSentUpdateTime = -1L
                     mainHandler.removeCallbacks(expireRunnable)
-                    statusScreen.updateStatus("차량이 HUD 안내를 중지했습니다 · 새 길안내를 시작해 주세요")
+                    navigationScreen.updateStatus("차량이 HUD 안내를 중지했습니다 · 새 길안내를 시작해 주세요")
                     Log.i(TAG, "Android Auto 호스트가 길안내 중지를 요청함")
                 }
             }
@@ -99,28 +103,28 @@ private class TmapNdaCarSession : Session() {
             object : DefaultLifecycleObserver {
                 override fun onDestroy(owner: LifecycleOwner) {
                     KakaoRouteDataRepository.removeListener(routeListener)
-                    mainHandler.removeCallbacks(expireRunnable)
+                    mainHandler.removeCallbacksAndMessages(null)
                     endNavigation("Android Auto 세션 종료")
                     runCatching { navigationManager.clearNavigationManagerCallback() }
-                    Log.i(TAG, "TmapNda HUD 화면 연결 종료")
+                    Log.i(TAG, "TmapNda Android Auto 화면 연결 종료")
                 }
             }
         )
 
         KakaoRouteDataRepository.addListener(routeListener)
-
-        return statusScreen
+        return navigationScreen
     }
 
     private fun applySnapshot(value: KakaoRouteSnapshot) {
         if (!value.isActive) {
             hostStopped = false
             endNavigation("휴대폰 길안내 종료")
-            statusScreen.updateStatus("Android Auto 연결됨 · 휴대폰 길안내 대기 중")
+            navigationScreen.updateStatus("Android Auto 연결됨 · 휴대폰 길안내 대기 중")
             return
         }
 
         if (hostStopped) {
+            navigationScreen.updateStatus("차량이 HUD 안내를 중지했습니다 · 휴대폰에서 새 길안내를 시작해 주세요")
             Log.d(TAG, "차량의 중지 요청 이후 Trip 전송 보류")
             return
         }
@@ -128,7 +132,7 @@ private class TmapNdaCarSession : Session() {
         val ageMs = (System.currentTimeMillis() - value.lastUpdateTime).coerceAtLeast(0L)
         if (ageMs >= STALE_MS) {
             endNavigation("오래된 길안내 데이터 수신")
-            statusScreen.updateStatus("Android Auto 연결됨 · 새 길안내 데이터 대기 중")
+            navigationScreen.updateStatus("Android Auto 연결됨 · 새 길안내 데이터 대기 중")
             return
         }
 
@@ -139,10 +143,9 @@ private class TmapNdaCarSession : Session() {
                 navigationManager.navigationStarted()
             }.onSuccess {
                 navigating = true
-                statusScreen.updateStatus("순정 HUD로 길안내 정보 전송 중")
                 Log.i(TAG, "HUD 길안내 시작")
             }.onFailure { error ->
-                statusScreen.updateStatus("HUD 길안내 시작 실패 · TmapNdaHud 로그 확인")
+                navigationScreen.updateStatus("HUD 길안내 시작 실패 · TmapNdaHud 로그 확인")
                 Log.e(TAG, "HUD 길안내 시작 실패", error)
             }.isSuccess
 
@@ -151,19 +154,19 @@ private class TmapNdaCarSession : Session() {
 
         if (lastSentUpdateTime == value.lastUpdateTime) return
 
+        val maneuverType = maneuverType(value.rgCodeName, value.directionAngle)
         runCatching {
-            val maneuver = maneuverType(value.rgCodeName, value.directionAngle)
-            navigationManager.updateTrip(buildTrip(value, maneuver))
+            navigationManager.updateTrip(buildTrip(value, maneuverType))
             lastSentUpdateTime = value.lastUpdateTime
-            statusScreen.updateStatus("순정 HUD로 길안내 정보 전송 중")
-            Log.d(
+            navigationScreen.updateNavigation(value, maneuverType)
+            Log.i(
                 TAG,
-                "Trip 전송 성공: maneuver=$maneuver, turn=${value.tbtDist}m/${value.tbtMainText}, " +
+                "Trip 전송 성공: maneuver=$maneuverType, turn=${value.tbtDist}m/${value.tbtMainText}, " +
                     "road=${value.roadName}, destination=${value.destinationName}, " +
                     "remain=${value.remainDist}m/${value.remainTime}s"
             )
         }.onFailure { error ->
-            statusScreen.updateStatus("HUD 정보 전송 실패 · TmapNdaHud 로그 확인")
+            navigationScreen.updateStatus("HUD 정보 전송 실패 · TmapNdaHud 로그 확인")
             Log.e(TAG, "Trip 전송 실패", error)
         }
     }
@@ -189,12 +192,11 @@ private class TmapNdaCarSession : Session() {
 
     private fun buildTrip(value: KakaoRouteSnapshot, maneuverType: Int): Trip {
         val now = System.currentTimeMillis()
-
         val remainingDistance = value.remainDist.coerceAtLeast(0)
         val remainingSeconds = value.remainTime.coerceAtLeast(0)
         val turnDistance = value.tbtDist.coerceAtLeast(0)
 
-        // 남은거리 대비 다음 회전까지 거리 비율로 회전 예상시간을 근사 계산 (Kakao SDK가 직접 안 줌)
+        // KNSDK가 다음 회전 예상시간을 직접 주지 않아 전체 여정 비율로 근사한다.
         val turnSeconds = if (remainingDistance > 0) {
             (remainingSeconds.toLong() * turnDistance / remainingDistance)
                 .coerceIn(0L, remainingSeconds.toLong())
@@ -203,27 +205,16 @@ private class TmapNdaCarSession : Session() {
             0
         }
 
-        // v2.2: rgCodeName/directionAngle이 이제 KakaoHudBridge(공식 API)로 실제 채워지므로,
-        // 전체 방향 매핑 테이블 적용 - 더 이상 항상 TYPE_STRAIGHT가 아님. #문제시 원복
-        val maneuverBuilder = Maneuver.Builder(maneuverType)
-        if (maneuverType == Maneuver.TYPE_ROUNDABOUT_ENTER_AND_EXIT_CCW_WITH_ANGLE) {
-            maneuverBuilder.setRoundaboutExitAngle(roundaboutAngle(value))
-        }
-        val maneuver = maneuverBuilder.build()
-
-        val cue = value.tbtMainText.ifBlank { "경로 안내" }
-        val stepBuilder = Step.Builder(cue).setManeuver(maneuver)
-        if (value.roadName.isNotBlank()) {
-            stepBuilder.setRoad(value.roadName)
-        }
-
         val tripBuilder = Trip.Builder()
-            .addStep(stepBuilder.build(), travelEstimate(turnDistance, turnSeconds, now))
+            .addStep(
+                buildNavigationStep(value, maneuverType),
+                createTravelEstimate(turnDistance, turnSeconds, now)
+            )
             .addDestination(
                 Destination.Builder()
                     .setName(value.destinationName.ifBlank { "목적지" })
                     .build(),
-                travelEstimate(remainingDistance, remainingSeconds, now)
+                createTravelEstimate(remainingDistance, remainingSeconds, now)
             )
 
         if (value.roadName.isNotBlank()) {
@@ -231,16 +222,6 @@ private class TmapNdaCarSession : Session() {
         }
 
         return tripBuilder.build()
-    }
-
-    private fun travelEstimate(distanceMeters: Int, seconds: Int, now: Long): TravelEstimate {
-        val etaMillis = now + seconds.coerceAtLeast(0).toLong() * 1000L
-        return TravelEstimate.Builder(
-            Distance.create(distanceMeters.coerceAtLeast(0).toDouble(), Distance.UNIT_METERS),
-            DateTimeWithZone.create(etaMillis, TimeZone.getDefault())
-        )
-            .setRemainingTimeSeconds(seconds.coerceAtLeast(0).toLong())
-            .build()
     }
 
     private fun maneuverType(code: String, angle: Int): Int {
@@ -286,27 +267,102 @@ private class TmapNdaCarSession : Session() {
             else -> Maneuver.TYPE_TURN_SLIGHT_LEFT
         }
     }
-
-    private fun roundaboutAngle(value: KakaoRouteSnapshot): Int {
-        val normalized = ((value.directionAngle % 360) + 360) % 360
-        if (normalized in 1..359) return normalized
-        val clock = value.rgCodeName.substringAfterLast('_').toIntOrNull() ?: 6
-        return (clock * 30).coerceIn(1, 360)
-    }
-
 }
 
-private class HudStatusScreen(carContext: CarContext) : Screen(carContext) {
+private class HudNavigationScreen(
+    carContext: CarContext,
+    private val surfaceRenderer: TmapNdaHudSurfaceRenderer
+) : Screen(carContext) {
     private var statusText = "Android Auto 연결됨 · 휴대폰 길안내 대기 중"
+    private var route: KakaoRouteSnapshot? = null
+    private var maneuverType = Maneuver.TYPE_STRAIGHT
 
     fun updateStatus(value: String) {
-        if (statusText == value) return
+        if (statusText == value && route == null) return
         statusText = value
+        route = null
+        surfaceRenderer.updateRoute(null, value)
         invalidate()
     }
 
-    override fun onGetTemplate(): Template =
-        MessageTemplate.Builder(statusText)
-            .setTitle("TmapNda HUD")
-            .build()
+    fun updateNavigation(value: KakaoRouteSnapshot, maneuver: Int) {
+        if (route == value && maneuverType == maneuver) return
+        route = value
+        maneuverType = maneuver
+        statusText = "순정 HUD로 길안내 정보 전송 중"
+        surfaceRenderer.updateRoute(value, statusText)
+        invalidate()
+    }
+
+    override fun onGetTemplate(): Template {
+        val currentRoute = route
+        val builder = NavigationTemplate.Builder()
+            .setBackgroundColor(CarColor.SECONDARY)
+            .setActionStrip(
+                ActionStrip.Builder()
+                    .addAction(
+                        Action.Builder()
+                            .setTitle("연동 상태")
+                            .setOnClickListener {
+                                CarToast.makeText(carContext, statusText, CarToast.LENGTH_LONG).show()
+                            }
+                            .build()
+                    )
+                    .build()
+            )
+
+        if (currentRoute != null && currentRoute.isActive) {
+            builder.setNavigationInfo(
+                RoutingInfo.Builder()
+                    .setCurrentStep(
+                        buildNavigationStep(currentRoute, maneuverType),
+                        Distance.create(currentRoute.tbtDist.coerceAtLeast(0).toDouble(), Distance.UNIT_METERS)
+                    )
+                    .build()
+            )
+            builder.setDestinationTravelEstimate(
+                createTravelEstimate(
+                    currentRoute.remainDist,
+                    currentRoute.remainTime,
+                    System.currentTimeMillis()
+                )
+            )
+        } else {
+            builder.setNavigationInfo(MessageInfo.Builder(statusText).build())
+        }
+
+        return builder.build()
+    }
+}
+
+private fun buildNavigationStep(value: KakaoRouteSnapshot, maneuverType: Int): Step {
+    val maneuverBuilder = Maneuver.Builder(maneuverType)
+    if (maneuverType == Maneuver.TYPE_ROUNDABOUT_ENTER_AND_EXIT_CCW_WITH_ANGLE) {
+        maneuverBuilder.setRoundaboutExitAngle(roundaboutAngle(value))
+    }
+
+    val cue = value.tbtMainText.ifBlank { value.roadName.ifBlank { "경로 안내" } }
+    val stepBuilder = Step.Builder(cue).setManeuver(maneuverBuilder.build())
+    if (value.roadName.isNotBlank()) {
+        stepBuilder.setRoad(value.roadName)
+    }
+    return stepBuilder.build()
+}
+
+private fun createTravelEstimate(distanceMeters: Int, seconds: Int, now: Long): TravelEstimate {
+    val safeSeconds = seconds.coerceAtLeast(0)
+    val etaMillis = now + safeSeconds.toLong() * 1000L
+    return TravelEstimate.Builder(
+        Distance.create(distanceMeters.coerceAtLeast(0).toDouble(), Distance.UNIT_METERS),
+        DateTimeWithZone.create(etaMillis, TimeZone.getDefault())
+    )
+        .setRemainingTimeSeconds(safeSeconds.toLong())
+        .build()
+}
+
+private fun roundaboutAngle(value: KakaoRouteSnapshot): Int {
+    val normalized = ((value.directionAngle % 360) + 360) % 360
+    if (normalized in 1..359) return normalized
+    val clock = value.rgCodeName.substringAfterLast('_').toIntOrNull() ?: 6
+    return (clock * 30).coerceIn(1, 360)
 }
