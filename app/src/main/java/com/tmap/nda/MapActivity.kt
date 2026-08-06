@@ -2444,8 +2444,31 @@ class MapActivity : AppCompatActivity() {
     // 처리하는 코드가 아예 없었음(재억 지적: "여전하네"). 안드로이드 표준 패턴대로
     // 포커스가 가 있는 EditText 바깥을 탭하면 자동으로 포커스/키보드를 정리하도록
     // dispatchTouchEvent에서 전역으로 처리. #문제시 원복
+    // v4.15: 재억이 실제로 말한 건 이거였음 - "더보기"(btnMoreMenu) 눌러서 뜨는
+    // svSecondaryPanel 팝업이 바깥을 찍어도 안 닫히고 버튼을 다시 눌러야만 닫힘.
+    // 지금까지 각 메뉴 버튼 클릭 시에만 GONE 처리했지 "바깥 탭"에 대한 처리가 아예
+    // 없었음. 같은 dispatchTouchEvent 안에서 팝업 바깥 탭도 같이 처리. #문제시 원복
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
         if (ev.action == android.view.MotionEvent.ACTION_DOWN) {
+            val panel = binding.svSecondaryPanel
+            if (panel != null && panel.visibility == View.VISIBLE) {
+                val panelRect = android.graphics.Rect()
+                panel.getGlobalVisibleRect(panelRect)
+                val touchInPanel = panelRect.contains(ev.rawX.toInt(), ev.rawY.toInt())
+                // 토글 버튼(btnMoreMenu) 자체를 눌렀을 때는 그 버튼의 기존 토글 로직이
+                // 알아서 처리하게 두고, 여기서 먼저 GONE으로 바꿔버리면 버튼 클릭 리스너가
+                // "지금 GONE이네" 하고 다시 VISIBLE로 되돌려서 안 닫히는 것처럼 보임 - 그래서
+                // 버튼 영역은 이 자동닫기 대상에서 제외. #문제시 원복
+                var touchOnToggleButton = false
+                binding.btnMoreMenu?.let { btn ->
+                    val btnRect = android.graphics.Rect()
+                    btn.getGlobalVisibleRect(btnRect)
+                    touchOnToggleButton = btnRect.contains(ev.rawX.toInt(), ev.rawY.toInt())
+                }
+                if (!touchInPanel && !touchOnToggleButton) {
+                    panel.visibility = View.GONE
+                }
+            }
             val focused = currentFocus
             if (focused is android.widget.EditText) {
                 val outRect = android.graphics.Rect()

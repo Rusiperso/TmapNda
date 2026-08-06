@@ -1130,8 +1130,27 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 이 화면에서 아예 안 불리거나, currentFocus가 기대와 다르거나, KNNaviView 쪽에서 뭔가
     // 되돌리고 있다는 뜻. 추측으로 또 고치지 말고 원인을 확정할 수 있게 매 판정마다
     // 로그를 남김(스팸 방지 없이 - 이 화면은 어차피 탭이 잦지 않음). #문제시 원복
+    // v4.15: 재억이 실제로 말한 건 이거였음 - "더보기"(btnMoreMenu) 눌러서 뜨는
+    // svSecondaryPanel 팝업이 바깥을 찍어도 안 닫히고 버튼을 다시 눌러야만 닫힘. 각 메뉴
+    // 버튼 클릭 시에만 GONE 처리했지 "바깥 탭"에 대한 처리가 없었음. #문제시 원복
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
         if (ev.action == android.view.MotionEvent.ACTION_DOWN) {
+            val panel = binding.svSecondaryPanel
+            if (panel != null && panel.visibility == View.VISIBLE) {
+                val panelRect = android.graphics.Rect()
+                panel.getGlobalVisibleRect(panelRect)
+                val touchInPanel = panelRect.contains(ev.rawX.toInt(), ev.rawY.toInt())
+                // 토글 버튼 자체는 제외 - 안 그러면 버튼의 기존 토글 로직과 충돌해서 안 닫힘. #문제시 원복
+                var touchOnToggleButton = false
+                binding.btnMoreMenu?.let { btn ->
+                    val btnRect = android.graphics.Rect()
+                    btn.getGlobalVisibleRect(btnRect)
+                    touchOnToggleButton = btnRect.contains(ev.rawX.toInt(), ev.rawY.toInt())
+                }
+                if (!touchInPanel && !touchOnToggleButton) {
+                    panel.visibility = View.GONE
+                }
+            }
             val focused = currentFocus
             NavLogger.d(this, "[검색창포커스진단] ACTION_DOWN currentFocus=${focused?.javaClass?.simpleName}(id=${focused?.id}) etDestinationId=${binding.etDestination?.id}")
             if (focused is android.widget.EditText) {
