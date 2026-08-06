@@ -334,12 +334,34 @@ class KakaoGuidanceDelegate(
     // 위험이 있어 매핑하지 않고 51로 두되, 어떤 코드가 안 걸렸는지 15초 간격으로 로그를
     // 남겨서 다음 세션에서 매핑표를 확장할 수 있게 함. #문제시 원복
     private var lastUnmappedTurnTypeLogTime = 0L
+    // v4.16: TmapNda 자체 APK를 디컴파일해서 KNRGCode enum을 바이트코드 레벨에서 직접
+    // 추출 - 전체 92개 값을 정확히 확인함(사용자가 준 CarrotNavi 참고로 openpilot이 기대하는
+    // 코드체계도 확인됨: carrot_serv.py의 turn_type_mapping). 이 둘을 대조해서 확실한
+    // 것만 매핑하고, 애매한 건(Direction_1~12, InHighway 계열 등) 잘못된 화살표를 보여줄
+    // 위험이 있어 그냥 51(무안내)로 둠 - 예전에 사용자가 지적한 것과 같은 이유. #문제시 원복
+    //
+    // openpilot(carrot_serv.py) 쪽 코드체계 참고:
+    //   12=좌회전 13=우회전 14=유턴 51~55=무안내(직진) 201=도착
+    //   6/43/73/74/117/123/124=우측분기(fork right)  7/17/44/75/76/118=좌측분기(fork left)
+    //   101/104/111/114=우측 완만한 램프(off-ramp 우) 102/105/112/115=좌측 완만한 램프
+    //   153/154/249=톨게이트(TG)
     private fun mapKakaoTurnTypeToOpenpilot(kakaoTurnType: Any?): Int {
         val name = kakaoTurnType?.toString() ?: return 51
-        return when {
-            name.contains("LeftTurn", ignoreCase = true) -> 12
-            name.contains("RightTurn", ignoreCase = true) -> 13
-            name.contains("UTurn", ignoreCase = true) || name.contains("U_Turn", ignoreCase = true) -> 14
+        return when (name) {
+            // 확실한 매핑 (좌/우회전, 유턴 - 기존에 이미 검증됨)
+            "KNRGCode_LeftTurn", "KNRGCode_UnprotectedLeftTurn" -> 12
+            "KNRGCode_RightTurn" -> 13
+            "KNRGCode_UTurn" -> 14
+            // 도착
+            "KNRGCode_Goal" -> 201
+            // 분기(fork) - 로그로 실제 관측된 RightDirection 포함
+            "KNRGCode_LeftDirection" -> 7
+            "KNRGCode_RightDirection" -> 6
+            // 고속도로 진출 램프
+            "KNRGCode_LeftOutHighway" -> 102
+            "KNRGCode_RightOutHighway", "KNRGCode_OutHighway" -> 101
+            // 톨게이트
+            "KNRGCode_Tollgate", "KNRGCode_NonstopTollgate" -> 153
             else -> {
                 if (System.currentTimeMillis() - lastUnmappedTurnTypeLogTime > 15000L) {
                     lastUnmappedTurnTypeLogTime = System.currentTimeMillis()
