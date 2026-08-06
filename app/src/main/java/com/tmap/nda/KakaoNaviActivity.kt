@@ -566,6 +566,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // MapActivity와 동일한 앱 전역 싱글턴(OpenpilotStateRepository/SdiDataRepository)을
     // 그대로 관찰해서 자체 미니 HUD로 복제하는 방식으로 해결. #문제시 원복
     private val hudPollHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    // v4.13: MapActivity와 동일하게, 연결대기 중 경과시간을 표시하기 위한 상태(재억 6번). #문제시 원복
+    private var opConnectionLastGoodStateTime = 0L
     private fun startMiniHudBinding() {
         OpenpilotStateRepository.state.observe(this) { state ->
             if (state.active) {
@@ -580,8 +582,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 binding.tvConnectionStatus?.text = "통신중"
                 binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
                 binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_green)
+                opConnectionLastGoodStateTime = 0L
             } else {
-                binding.tvConnectionStatus?.text = "연결 대기"
+                opConnectionLastGoodStateTime = state.lastUpdateTime
                 binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#555555"))
                 binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_gray)
             }
@@ -635,6 +638,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     binding.tvSdiDist?.text = "--"
                     binding.tvSdiDescr?.text = "--"
                     updateTopBarEventDisplay(null, null)
+                }
+                // v4.13: 연결대기 상태일 때 경과시간 표시(재억 6번) - MapActivity와 동일. #문제시 원복
+                if (opConnectionLastGoodStateTime <= 0L) {
+                    binding.tvConnectionStatus?.text = "연결 대기"
+                } else {
+                    val elapsedSec = (System.currentTimeMillis() - opConnectionLastGoodStateTime) / 1000
+                    binding.tvConnectionStatus?.text = "연결 대기 (${elapsedSec}초)"
                 }
                 hudPollHandler.postDelayed(this, 1000)
                 renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown)
@@ -1062,6 +1072,18 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         listView.setOnItemClickListener { _, _, position, _ ->
                             val picked = hits[position]
                             pickDialog.dismiss()
+                            // v4.13: 카카오 화면 인라인 검색도 티맵 화면과 같은 커서 잔류
+                            // 문제가 있었음(재억 8번) - 동일한 방식으로 포커스 강제 정리. #문제시 원복
+                            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+                            currentFocus?.let { imm?.hideSoftInputFromWindow(it.windowToken, 0) }
+                            binding.etDestination?.apply {
+                                isFocusable = false
+                                isFocusableInTouchMode = false
+                                clearFocus()
+                                isFocusable = true
+                                isFocusableInTouchMode = true
+                                setText("")
+                            }
                             SearchHistoryStore.save(this@KakaoNaviActivity, picked)
                             renderRecentDestinationsPanel()
                             KakaoRouteDataRepository.reset()
@@ -1148,15 +1170,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 반복돼서(예: 매초 완전히 동일한 좌표) GPS_PROVIDER의 정확한 실시간 값과 번갈아
     // KNSDK로 들어가는 바람에 위치가 오락가락했음(재억 - "평택인데 용인으로 잡힘").
     // GPS_PROVIDER만 반영하고, 정확도가 너무 나쁜 픽스(accuracy > 50m)는 무시함. #문제시 원복
-    private var lastOverSpeedWarningTime = 0L
     private fun checkOverSpeedWarning(speedKph: Int) {
         val pref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         if (!pref.getBoolean("over_speed_warning_enabled", false)) return
         val limit = SdiDataRepository.roadLimitSpeed
         if (limit < 30 || speedKph <= 0) return
         val now = System.currentTimeMillis()
-        if (speedKph > limit * 1.1 && now - lastOverSpeedWarningTime > 8000L) {
-            lastOverSpeedWarningTime = now
+        // v4.13: 화면(Tmap/Kakao) 공용 쿨다운으로 통합 - 두 화면이 동시에 켜져 있어도
+        // 경고음이 중복으로 안 울리게 함(재억 지적). #문제시 원복
+        if (speedKph > limit * 1.1 && now - SdiDataRepository.lastOverSpeedWarningTime > 8000L) {
+            SdiDataRepository.lastOverSpeedWarningTime = now
             try {
                 val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 100)
                 tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)

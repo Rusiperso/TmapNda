@@ -325,12 +325,27 @@ class KakaoGuidanceDelegate(
     // enum(KNRGCode_LeftTurn/KNRGCode_RightTurn 등, 로그로 확인)이라 이름으로 매칭.
     // 확실한 좌/우회전만 매핑하고, 나머지(유턴 등 확실치 않은 코드)는 안전하게 기본값
     // 유지 (재억 요청: "좌회전 우회전 갈 때 화살표 표시"). #문제시 원복
+    // v4.13: openpilot(carrot_serv.py의 turn_type_mapping) 쪽 코드표를 확인해보니
+    // 12=좌회전, 13=우회전 외에 14=유턴이 있는데 여태 안 쓰고 있었음 - 유턴 안내가
+    // 항상 51(무안내)로 나가서 화살표가 안 뜨던 원인 중 하나(재억 5번). U-turn 매핑 추가.
+    // 그리고 "RightTurn"/"LeftTurn"이 아닌 나머지 KNRGCode(예: 최근 로그에서 실제로 관측된
+    // KNRGCode_RightDirection처럼 우측 분기/차선변경성 코드)는 잘못된 화살표를 보여줄
+    // 위험이 있어 매핑하지 않고 51로 두되, 어떤 코드가 안 걸렸는지 15초 간격으로 로그를
+    // 남겨서 다음 세션에서 매핑표를 확장할 수 있게 함. #문제시 원복
+    private var lastUnmappedTurnTypeLogTime = 0L
     private fun mapKakaoTurnTypeToOpenpilot(kakaoTurnType: Any?): Int {
         val name = kakaoTurnType?.toString() ?: return 51
         return when {
             name.contains("LeftTurn", ignoreCase = true) -> 12
             name.contains("RightTurn", ignoreCase = true) -> 13
-            else -> 51
+            name.contains("UTurn", ignoreCase = true) || name.contains("U_Turn", ignoreCase = true) -> 14
+            else -> {
+                if (System.currentTimeMillis() - lastUnmappedTurnTypeLogTime > 15000L) {
+                    lastUnmappedTurnTypeLogTime = System.currentTimeMillis()
+                    NavLogger.d(context, "[카카오 회전코드 수집] 미매핑 KNRGCode=$name -> 51(무안내)로 전송됨")
+                }
+                51
+            }
         }
     }
 
@@ -419,8 +434,43 @@ class KakaoGuidanceDelegate(
         return allow
     }
 
+    // v4.13: "볼륨 50/60으로 낮춰도 카카오 안내는 항상 100%처럼 들린다"는 제보(재억 7번) -
+    // 지금까지 STREAM_MUSIC만 조절해왔는데, 이 헤드유닛에서 카카오 TTS가 실제로
+    // STREAM_MUSIC이 아닌 다른 스트림(STREAM_SYSTEM 등)이나 USAGE_ASSISTANCE_NAVIGATION_
+    // GUIDANCE 전용 볼륨 그룹으로 나갈 가능성을 확인하기 위한 진단 로그. 음성이 "실제로
+    // 재생되는 그 순간"의 모든 스트림 볼륨 + (API 26+) 활성 재생 세션의 AudioAttributes를
+    // 같이 찍어서, 다음 로그로 어떤 스트림이 진짜인지 확정할 수 있게 함. #문제시 원복
+    private fun logAudioStreamDiagnostics() {
+        try {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager ?: return
+            val streams = mapOf(
+                "MUSIC" to android.media.AudioManager.STREAM_MUSIC,
+                "SYSTEM" to android.media.AudioManager.STREAM_SYSTEM,
+                "NOTIFICATION" to android.media.AudioManager.STREAM_NOTIFICATION,
+                "RING" to android.media.AudioManager.STREAM_RING,
+                "ALARM" to android.media.AudioManager.STREAM_ALARM,
+                "VOICE_CALL" to android.media.AudioManager.STREAM_VOICE_CALL,
+                "DTMF" to android.media.AudioManager.STREAM_DTMF
+            )
+            val volDump = streams.entries.joinToString(", ") { (name, stream) ->
+                "$name=${am.getStreamVolume(stream)}/${am.getStreamMaxVolume(stream)}"
+            }
+            NavLogger.e(context, "[볼륨진단] 카카오 음성재생 시점 스트림볼륨: $volDump")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                val configs = am.activePlaybackConfigurations
+                for (cfg in configs) {
+                    val attrs = cfg.audioAttributes
+                    NavLogger.e(context, "[볼륨진단] 활성재생: usage=${attrs.usage} contentType=${attrs.contentType}")
+                }
+            }
+        } catch (e: Exception) {
+            NavLogger.e(context, "[볼륨진단] 예외: ${e.message}")
+        }
+    }
+
     override fun willPlayVoiceGuide(guidance: KNGuidance, voiceGuide: KNGuide_Voice) {
         NavLogger.d(context, "[음성] willPlayVoiceGuide(카카오 음성 재생 시작) ${tmapMuteStateSnapshot()}")
+        logAudioStreamDiagnostics()
         if (!isRouteGuideActive()) return
         naviView?.willPlayVoiceGuide(guidance, voiceGuide)
     }

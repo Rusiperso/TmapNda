@@ -1,6 +1,11 @@
 package com.tmap.nda
 
 object SdiDataRepository {
+    // v4.13: MapActivity/KakaoNaviActivity가 각자 독립적으로 lastOverSpeedWarningTime을
+    // 들고 있어서, 둘 다 살아있는 동안 같은 GPS 속도값에 대해 경고음이 두 번(각 화면당
+    // 8초 쿨다운) 겹쳐 울릴 수 있었음. 화면과 무관한 공용 쿨다운으로 통합. #문제시 원복
+    @Volatile var lastOverSpeedWarningTime: Long = 0L
+
     var roadLimitSpeed: Int = 80
     var sdiType: Int = 0
     var sdiSpeedLimit: Int = 0
