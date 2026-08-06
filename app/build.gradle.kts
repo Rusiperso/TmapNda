@@ -109,6 +109,7 @@ dependencies {
 
   // v2.0: Android Auto 차량 클러스터/HUD로 회전·거리·ETA Trip 정보 전송
   implementation("androidx.car.app:app:1.7.0")
+  implementation("androidx.car.app:app-projected:1.7.0")
 
   // for vsm sdk
   implementation("com.google.flatbuffers:flatbuffers-java:1.11.0")

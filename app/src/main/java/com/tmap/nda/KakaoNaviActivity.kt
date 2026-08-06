@@ -12,6 +12,7 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.car.app.notification.CarAppExtender
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.view.ViewCompat
@@ -716,7 +717,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // PendingMapAction 신호로 처리하도록 함(중복 구현 회피). #문제시 원복
     // v1.7: nMirror(안드로이드오토 미러링 앱) 분석 결과, BIND_NOTIFICATION_LISTENER_SERVICE +
     // androidx.car.app.NAVIGATION_TEMPLATES 권한을 갖고 있어서, 표준 안드로이드 내비게이션
-    // 알림(NotificationCompat.CarExtender + CATEGORY_NAVIGATION)을 감지해 실제 차량
+    // 알림(CarAppExtender + CATEGORY_NAVIGATION)을 감지해 실제 차량
     // 클러스터/HUD로 전달해주는 것으로 추정됨(Tmap/카카오내비 원본 앱이 이 방식으로 이미
     // 뜨고 있었을 가능성). 루트 권한이나 nMirror 전용 프로토콜 없이, 표준 알림만 올려서
     // 시도해봄 - 안 잡히면 그냥 일반 알림 하나 뜨는 것 외엔 부작용 없음. #문제시 원복
@@ -755,7 +756,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
-                .extend(NotificationCompat.CarExtender())
+                .extend(
+                    CarAppExtender.Builder()
+                        .setImportance(NotificationManagerCompat.IMPORTANCE_LOW)
+                        .build()
+                )
 
             NotificationManagerCompat.from(this).notify(NAV_NOTIFICATION_ID, builder.build())
         } catch (e: Exception) {
