@@ -356,9 +356,59 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             KNRoutePriority.KNRoutePriority_Recommand,
             KNRouteAvoidOption.KNRouteAvoidOption_None.value
         )
+        // v4.16: [볼륨API스캔]으로도 확인됐지만, 카카오모빌리티 공식 문서
+        // (사용자 맞춤 설정하기)에 명시된 공개 API였음 - KNNaviView.sndVolume(Float,
+        // 0.0~1.0, 기본값 1f)이 내비게이션 음성 안내 음량을 직접 조정하는 진짜 방법.
+        // 그동안 시스템 STREAM_MUSIC을 아무리 만져도 안 먹혔던 이유가 이거였음 - 카카오
+        // SDK가 시스템 볼륨과 무관하게 내부적으로 항상 1.0(100%)로 재생하고 있었던 것.
+        // 저장된 볼륨%(VolumeHelper)를 0.0~1.0으로 변환해서 실제로 반영. #문제시 원복
+        applyKakaoSdkVolume()
         naviView.post { logNaviViewDiagnostics("idle map 초기화 직후") }
 
         resolveCurrentPositionThenRequestRoute(destName, destLat, destLon)
+    }
+
+    // v4.16: naviView.sndVolume은 float(0.0~1.0)라 VolumeHelper의 %(0~100) 값과 변환이
+    // 필요함. 이 함수를 초기화 시점뿐 아니라 실시간 볼륨 캡처(volumeChangeReceiver)에서도
+    // 같이 호출해서, 하드웨어 볼륨버튼으로 조절할 때마다 카카오 SDK 자체 볼륨도 같이
+    // 실시간으로 맞춰지게 함. 공식 문서 기준 이름은 "sndVolume"인데, 실제 설치된 SDK
+    // 버전(1.12.8-hotfix02)에서 정확히 이 이름이 맞는지 확인이 안 된 상태라, 직접 프로퍼티
+    // 접근(컴파일 타임 바인딩) 대신 리플렉션으로 안전하게 시도 - 이름이 다르면 컴파일이
+    // 깨지는 대신 로그만 남기고 조용히 스킵됨. #문제시 원복
+    private var sndVolumeSetterField: java.lang.reflect.Field? = null
+    private var sndVolumeSetterMethod: java.lang.reflect.Method? = null
+    private var sndVolumeLookupFailed = false
+    private fun applyKakaoSdkVolume() {
+        try {
+            val percent = VolumeHelper.savedVolumePercent(this).coerceIn(0, 100)
+            val fraction = percent / 100f
+
+            if (!sndVolumeLookupFailed && sndVolumeSetterMethod == null && sndVolumeSetterField == null) {
+                // Kotlin의 "var sndVolume: Float"는 바이트코드상 setSndVolume(float) 메서드로 컴파일됨
+                try {
+                    sndVolumeSetterMethod = naviView.javaClass.getMethod("setSndVolume", Float::class.javaPrimitiveType)
+                } catch (e: NoSuchMethodException) {
+                    try {
+                        sndVolumeSetterField = naviView.javaClass.getField("sndVolume")
+                    } catch (e2: NoSuchFieldException) {
+                        sndVolumeLookupFailed = true
+                        NavLogger.e(this, "[카카오SDK볼륨] setSndVolume/sndVolume 둘 다 못 찾음 - SDK 버전에서 이름이 다를 수 있음")
+                    }
+                }
+            }
+            when {
+                sndVolumeSetterMethod != null -> {
+                    sndVolumeSetterMethod!!.invoke(naviView, fraction)
+                    NavLogger.d(this, "[카카오SDK볼륨] setSndVolume($fraction) 호출됨 (저장된 ${percent}%)")
+                }
+                sndVolumeSetterField != null -> {
+                    sndVolumeSetterField!!.setFloat(naviView, fraction)
+                    NavLogger.d(this, "[카카오SDK볼륨] sndVolume 필드에 $fraction 직접 대입 (저장된 ${percent}%)")
+                }
+            }
+        } catch (e: Exception) {
+            NavLogger.e(this, "[카카오SDK볼륨] 적용 예외: ${e.message}")
+        }
     }
 
     // requestKakaoRoute()에서 검증된 순서 그대로 재사용: lastKnown GPS 캐시 없이도
@@ -1121,6 +1171,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 .getBoolean("tmap_muted", false)
             if (!muted) {
                 VolumeHelper.captureCurrentVolumePercent(this@KakaoNaviActivity)
+                // v4.16: 하드웨어 볼륨버튼으로 조절할 때마다 카카오 SDK 자체 볼륨
+                // (naviView.sndVolume)도 실시간으로 같이 맞춤. #문제시 원복
+                if (::naviView.isInitialized) applyKakaoSdkVolume()
             }
         }
     }
