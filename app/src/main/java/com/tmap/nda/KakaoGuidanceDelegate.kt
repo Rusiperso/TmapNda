@@ -1,6 +1,7 @@
 package com.tmap.nda
 
 import android.content.Context
+import com.kakaomobility.knsdk.KNSDK
 import com.kakaomobility.knsdk.common.objects.KNError
 import com.kakaomobility.knsdk.guidance.knguidance.*
 import com.kakaomobility.knsdk.guidance.knguidance.citsguide.KNGuide_Cits
@@ -440,6 +441,45 @@ class KakaoGuidanceDelegate(
     // GUIDANCE 전용 볼륨 그룹으로 나갈 가능성을 확인하기 위한 진단 로그. 음성이 "실제로
     // 재생되는 그 순간"의 모든 스트림 볼륨 + (API 26+) 활성 재생 세션의 AudioAttributes를
     // 같이 찍어서, 다음 로그로 어떤 스트림이 진짜인지 확정할 수 있게 함. #문제시 원복
+    // v4.15: [볼륨진단] 로그로 확인됨 - 카카오 음성 재생 시점에 STREAM_MUSIC=69/150(46%)로
+    // 최대가 아닌데도 사용자 체감은 계속 100%. 즉 STREAM_MUSIC을 만지는 건 애초에 방향이
+    // 틀렸다는 게 실측으로 확정됨. v3.13때 "카카오 SDK엔 공개 볼륨 API가 없다"고
+    // 결론지었던 걸 재검증 - Tmap의 rgData 리플렉션과 같은 방식으로, KNGuidance/KNSDK
+    // 객체의 메서드 중 volume/sound/audio가 들어간 게 실제로 있는지 1회 스캔해서 로그로
+    // 남김(SDK 버전이 바뀌었을 수도 있어서). #문제시 원복
+    private var audioApiScanDone = false
+    private fun scanForVolumeApiOnce(guidance: KNGuidance) {
+        if (audioApiScanDone) return
+        audioApiScanDone = true
+        try {
+            NavLogger.e(context, "===== [볼륨API스캔] KNGuidance 메서드 목록 =====")
+            for (m in guidance.javaClass.methods) {
+                val n = m.name.lowercase()
+                if (n.contains("volume") || n.contains("sound") || n.contains("audio") || n.contains("mute")) {
+                    NavLogger.e(context, "[볼륨API스캔] KNGuidance.${m.name}(${m.parameterTypes.joinToString { it.simpleName }})")
+                }
+            }
+            NavLogger.e(context, "===== [볼륨API스캔] KNSDK 클래스 메서드 목록 =====")
+            for (m in KNSDK.javaClass.methods) {
+                val n = m.name.lowercase()
+                if (n.contains("volume") || n.contains("sound") || n.contains("audio") || n.contains("mute")) {
+                    NavLogger.e(context, "[볼륨API스캔] KNSDK.${m.name}(${m.parameterTypes.joinToString { it.simpleName }})")
+                }
+            }
+            if (naviView != null) {
+                NavLogger.e(context, "===== [볼륨API스캔] naviView 메서드 목록 =====")
+                for (m in naviView!!.javaClass.methods) {
+                    val n = m.name.lowercase()
+                    if (n.contains("volume") || n.contains("sound") || n.contains("audio") || n.contains("mute")) {
+                        NavLogger.e(context, "[볼륨API스캔] naviView.${m.name}(${m.parameterTypes.joinToString { it.simpleName }})")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            NavLogger.e(context, "[볼륨API스캔] 예외: ${e.message}")
+        }
+    }
+
     private fun logAudioStreamDiagnostics() {
         try {
             val am = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager ?: return
@@ -471,6 +511,7 @@ class KakaoGuidanceDelegate(
     override fun willPlayVoiceGuide(guidance: KNGuidance, voiceGuide: KNGuide_Voice) {
         NavLogger.d(context, "[음성] willPlayVoiceGuide(카카오 음성 재생 시작) ${tmapMuteStateSnapshot()}")
         logAudioStreamDiagnostics()
+        scanForVolumeApiOnce(guidance)
         if (!isRouteGuideActive()) return
         naviView?.willPlayVoiceGuide(guidance, voiceGuide)
     }
