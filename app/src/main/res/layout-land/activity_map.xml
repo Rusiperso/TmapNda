@@ -461,21 +461,6 @@
                 android:layout_marginBottom="4dp"/>
 
             <Button
-                android:id="@+id/btnEditKey"
-                android:layout_width="match_parent"
-                android:layout_height="38dp"
-                android:text="설정"
-                android:textSize="12sp"
-                android:textColor="#CCCCCC"
-                android:gravity="center_vertical|start"
-                android:paddingStart="10dp"
-                android:drawableStart="@drawable/ic_settings_gear"
-                android:drawableTint="#CCCCCC"
-                android:drawablePadding="10dp"
-                android:backgroundTint="#111111"
-                android:layout_marginBottom="4dp"/>
-
-            <Button
                 android:id="@+id/btnCheckUpdate"
                 android:layout_width="match_parent"
                 android:layout_height="38dp"
@@ -517,6 +502,23 @@
                 android:gravity="center_vertical|start"
                 android:paddingStart="10dp"
                 android:drawableStart="@drawable/ic_send_paperplane"
+                android:drawableTint="#CCCCCC"
+                android:drawablePadding="10dp"
+                android:backgroundTint="#111111"
+                android:layout_marginBottom="4dp"/>
+
+            <!-- v4.14: 메뉴 순서 조정 - "설정"을 로그 전체 삭제와 도움말 사이로 이동
+                 (재억 요청). #문제시 원복 -->
+            <Button
+                android:id="@+id/btnEditKey"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:text="설정"
+                android:textSize="12sp"
+                android:textColor="#CCCCCC"
+                android:gravity="center_vertical|start"
+                android:paddingStart="10dp"
+                android:drawableStart="@drawable/ic_settings_gear"
                 android:drawableTint="#CCCCCC"
                 android:drawablePadding="10dp"
                 android:backgroundTint="#111111"
