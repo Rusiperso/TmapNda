@@ -31,6 +31,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.tmap.nda.KakaoRouteDataRepository
 import com.tmap.nda.KakaoRouteSnapshot
+import com.tmap.nda.NavLogger
 import java.util.TimeZone
 
 private const val TAG = "TmapNdaHud"
@@ -50,6 +51,7 @@ class TmapNdaCarAppService : CarAppService() {
 
     override fun onCreateSession(sessionInfo: SessionInfo): Session {
         Log.i(TAG, "Android Auto가 TmapNda 차량용 세션을 생성함: displayType=${sessionInfo.displayType}")
+        NavLogger.d(this, "[TmapNdaHud] Android Auto가 세션을 생성함: displayType=${sessionInfo.displayType}")
         return TmapNdaCarSession()
     }
 }
@@ -81,6 +83,7 @@ private class TmapNdaCarSession : Session() {
 
     override fun onCreateScreen(intent: Intent): Screen {
         Log.i(TAG, "TmapNda Android Auto 화면 연결됨: action=${intent.action}")
+        NavLogger.d(carContext, "[TmapNdaHud] Android Auto 화면 연결됨: action=${intent.action}")
 
         navigationManager = carContext.getCarService(NavigationManager::class.java)
         val surfaceRenderer = TmapNdaHudSurfaceRenderer(carContext, lifecycle)
@@ -95,6 +98,7 @@ private class TmapNdaCarSession : Session() {
                     mainHandler.removeCallbacks(expireRunnable)
                     navigationScreen.updateStatus("차량이 HUD 안내를 중지했습니다 · 새 길안내를 시작해 주세요")
                     Log.i(TAG, "Android Auto 호스트가 길안내 중지를 요청함")
+                    NavLogger.d(carContext, "[TmapNdaHud] Android Auto 호스트가 길안내 중지를 요청함")
                 }
             }
         )
@@ -107,6 +111,7 @@ private class TmapNdaCarSession : Session() {
                     endNavigation("Android Auto 세션 종료")
                     runCatching { navigationManager.clearNavigationManagerCallback() }
                     Log.i(TAG, "TmapNda Android Auto 화면 연결 종료")
+                    NavLogger.d(carContext, "[TmapNdaHud] Android Auto 화면 연결 종료")
                 }
             }
         )
@@ -126,6 +131,7 @@ private class TmapNdaCarSession : Session() {
         if (hostStopped) {
             navigationScreen.updateStatus("차량이 HUD 안내를 중지했습니다 · 휴대폰에서 새 길안내를 시작해 주세요")
             Log.d(TAG, "차량의 중지 요청 이후 Trip 전송 보류")
+            NavLogger.d(carContext, "[TmapNdaHud] 차량의 중지 요청 이후 Trip 전송 보류")
             return
         }
 
@@ -144,9 +150,11 @@ private class TmapNdaCarSession : Session() {
             }.onSuccess {
                 navigating = true
                 Log.i(TAG, "HUD 길안내 시작")
+                NavLogger.d(carContext, "[TmapNdaHud] HUD 길안내 시작")
             }.onFailure { error ->
                 navigationScreen.updateStatus("HUD 길안내 시작 실패 · TmapNdaHud 로그 확인")
                 Log.e(TAG, "HUD 길안내 시작 실패", error)
+                NavLogger.e(carContext, "[TmapNdaHud] HUD 길안내 시작 실패: ${error.message}")
             }.isSuccess
 
             if (!started) return
@@ -165,9 +173,16 @@ private class TmapNdaCarSession : Session() {
                     "road=${value.roadName}, destination=${value.destinationName}, " +
                     "remain=${value.remainDist}m/${value.remainTime}s"
             )
+            NavLogger.d(
+                carContext,
+                "[TmapNdaHud] Trip 전송 성공: maneuver=$maneuverType, turn=${value.tbtDist}m/${value.tbtMainText}, " +
+                    "road=${value.roadName}, destination=${value.destinationName}, " +
+                    "remain=${value.remainDist}m/${value.remainTime}s"
+            )
         }.onFailure { error ->
             navigationScreen.updateStatus("HUD 정보 전송 실패 · TmapNdaHud 로그 확인")
             Log.e(TAG, "Trip 전송 실패", error)
+            NavLogger.e(carContext, "[TmapNdaHud] Trip 전송 실패: ${error.message}")
         }
     }
 
@@ -183,8 +198,10 @@ private class TmapNdaCarSession : Session() {
             navigationManager.navigationEnded()
         }.onSuccess {
             Log.i(TAG, "HUD 길안내 종료: $reason")
+            NavLogger.d(carContext, "[TmapNdaHud] HUD 길안내 종료: $reason")
         }.onFailure { error ->
             Log.e(TAG, "HUD 길안내 종료 알림 실패: $reason", error)
+            NavLogger.e(carContext, "[TmapNdaHud] HUD 길안내 종료 알림 실패: $reason (${error.message})")
         }
         navigating = false
         lastSentUpdateTime = -1L
