@@ -7,6 +7,10 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -28,6 +32,89 @@ class UdpSenderService : Service() {
     private val CHANNEL_ID = "TmapNdaChannel"
     private val UDP_PORT = 7706
     private var targetIp = "255.255.255.255"
+
+    // v: 사용자 제보(실주행 로그) - 헤드유닛에 Wi-Fi(콤마와 같은 폰 핫스팟)랑 모바일
+    // 데이터(SKT)가 동시에 켜져 있으면, 안드로이드가 UDP를 자기 판단으로 모바일 데이터
+    // 쪽으로 내보낼 수 있음. 콤마는 핫스팟 와이파이에만 있으니 그럼 패킷이 영영 안 닿음
+    // (openpilot 비콘을 몇 분간 한 번도 못 받던 문제의 원인으로 추정). ConnectivityManager로
+    // Wi-Fi 네트워크를 명시적으로 찾아서 모든 UDP 소켓을 거기 바인딩 - 모바일 데이터가
+    // 같이 켜져 있어도 무조건 Wi-Fi로만 나가도록 강제. Wi-Fi가 아예 없으면(순수 테더링 등
+    // 예외 상황) 바인딩 없이 시스템 기본 라우팅에 맡김. #문제시 원복
+    // v: 사용자 요청 - "내 폰이 남의 핫스팟에 붙는 경우"랑 "내 폰이 직접 핫스팟을 켜고
+    // 콤마가 거기 붙는 경우" 둘 다 항상 되게 해달라고 함. 이 둘은 안드로이드 입장에서
+    // 완전히 다르게 인식됨:
+    //  1) 클라이언트 모드(핫스팟에 붙는 쪽) - ConnectivityManager가 TRANSPORT_WIFI
+    //     네트워크로 잡아줌 -> Network.bindSocket()으로 명시적으로 그 쪽에 소켓을 묶음.
+    //  2) 호스트 모드(직접 핫스팟 켜는 쪽) - 자기 자신의 핫스팟은 ConnectivityManager
+    //     기준으로는 "연결된 네트워크"가 아니라서(그냥 내 인터페이스일 뿐) 1번 방식으로는
+    //     못 찾음. 이 경우 NetworkInterface를 직접 뒤져서 모바일 데이터(rmnet 계열)가
+    //     아닌 로컬 인터페이스(보통 wlan0/ap0/swlan0)를 찾아서 그 IP로 소켓을 직접 bind.
+    // 소켓 로컬 바인딩은 생성 직후, 아직 아무 것도 안 보낸 상태에서만 가능해서 호출하는
+    // 쪽에서 DatagramSocket(null)(=아직 안 묶인 상태)로 만들어서 넘겨줘야 함. #문제시 원복
+    // 수신(listen) 소켓 전용 - 이미 고정 포트로 0.0.0.0에 bind()하는 소켓들이라 여기서
+    // 추가로 로컬 인터페이스에 bind()하면 "이미 바인딩됨" 예외가 남. ConnectivityManager로
+    // Wi-Fi 네트워크를 찾을 수 있을 때만(클라이언트 모드) 묶어주고, 못 찾으면(호스트 모드
+    // 등) 그냥 넘어감 - 어차피 0.0.0.0으로 듣는 소켓은 모든 인터페이스에서 수신 가능해서
+    // 호스트 모드에서도 수신 자체는 원래 문제없음. #문제시 원복
+    private fun bindToWifiIfAvailable(socket: DatagramSocket, label: String) {
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+            val wifiNetwork = cm.allNetworks.firstOrNull { net ->
+                val caps = cm.getNetworkCapabilities(net)
+                caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+            }
+            if (wifiNetwork != null) {
+                wifiNetwork.bindSocket(socket)
+                NavLogger.d(this, "[네트워크] $label 소켓을 Wi-Fi 네트워크(클라이언트 모드)에 바인딩함")
+            } else {
+                NavLogger.d(this, "[네트워크] $label - Wi-Fi 클라이언트 네트워크 없음(핫스팟 호스트 모드일 수 있음), 0.0.0.0 수신이라 문제없음")
+            }
+        } catch (e: Exception) {
+            NavLogger.e(this, "[네트워크] $label Wi-Fi 바인딩 실패: ${e.message}")
+        }
+    }
+
+    // 송신 소켓 전용 - 클라이언트/호스트 모드 둘 다 커버(위 주석 참고). 호출 전에 소켓이
+    // 아직 아무 데도 안 묶인 상태(DatagramSocket(null))여야 함.
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            val wifiNetwork = cm?.allNetworks?.firstOrNull { net ->
+                val caps = cm.getNetworkCapabilities(net)
+                caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+            }
+            if (wifiNetwork != null) {
+                wifiNetwork.bindSocket(socket)
+                NavLogger.d(this, "[네트워크] $label: Wi-Fi 네트워크(클라이언트 모드)에 바인딩함")
+                return
+            }
+        } catch (e: Exception) {
+            NavLogger.e(this, "[네트워크] $label Wi-Fi 네트워크 바인딩 시도 실패: ${e.message}")
+        }
+
+        // 클라이언트로 잡히는 Wi-Fi 네트워크가 없으면(=내 폰이 핫스팟을 켜고 있는 호스트
+        // 모드일 가능성) 모바일 데이터가 아닌 로컬 인터페이스를 직접 찾아서 그쪽으로 바인딩.
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val iface = interfaces.nextElement()
+                if (!iface.isUp || iface.isLoopback) continue
+                val name = iface.name.lowercase()
+                if (name.startsWith("rmnet") || name.startsWith("ccmni") || name.startsWith("wwan")) continue
+                val addrs = iface.inetAddresses
+                while (addrs.hasMoreElements()) {
+                    val addr = addrs.nextElement()
+                    if (addr is java.net.Inet4Address) {
+                        socket.bind(java.net.InetSocketAddress(addr, 0))
+                        NavLogger.d(this, "[네트워크] $label: 로컬 인터페이스(${iface.name}=${addr.hostAddress})에 직접 바인딩함 (핫스팟 호스트 모드 추정)")
+                        return
+                    }
+                }
+            }
+            NavLogger.d(this, "[네트워크] $label: 바인딩 가능한 Wi-Fi/핫스팟 인터페이스를 못 찾음 - 기본 라우팅 사용")
+        } catch (e: Exception) {
+            NavLogger.e(this, "[네트워크] $label 로컬 인터페이스 바인딩 실패: ${e.message}")
+        }
+    }
 
     // ===== NDA(EON:ROAD_LIMIT_SERVICE:v1) 호환 브릿지 관련 상수 =====
     // road_speed_limiter.py (carrot 계열이 아닌 다수의 HKG 커뮤니티 fork에도 포함된 표준 UDP 브릿지) 프로토콜을
@@ -117,8 +204,14 @@ class UdpSenderService : Service() {
         }
 
         try {
-            udpSocket = DatagramSocket()
-            udpSocket?.broadcast = true
+            val socket = DatagramSocket(null)
+            bindSendSocketToLocalNetwork(socket, "openpilot 전송용")
+            if (socket.localPort <= 0) {
+                // 위에서 아무 데도 못 묶었으면(둘 다 실패) 그냥 기본 라우팅으로라도 동작하게 wildcard bind
+                socket.bind(java.net.InetSocketAddress(0))
+            }
+            socket.broadcast = true
+            udpSocket = socket
             NavLogger.d(this, "openpilot 전송용 UDP 소켓 생성 성공 (port=$UDP_PORT)")
         } catch (e: Exception) {
             NavLogger.e(this, "openpilot 전송용 UDP 소켓 생성 실패: ${e.message}")
@@ -593,6 +686,7 @@ class UdpSenderService : Service() {
             try {
                 val socket = DatagramSocket(null)
                 socket.reuseAddress = true
+                bindToWifiIfAvailable(socket, "openpilot 수신용(7705)")
                 socket.bind(java.net.InetSocketAddress("0.0.0.0", 7705))
                 socket.soTimeout = 5000
                 receiveSocket = socket
@@ -706,6 +800,7 @@ class UdpSenderService : Service() {
             try {
                 val socket = DatagramSocket(null).apply {
                     reuseAddress = true
+                    bindToWifiIfAvailable(this, "NDA 비콘 수신용($NDA_LISTEN_PORT)")
                     bind(java.net.InetSocketAddress("0.0.0.0", NDA_LISTEN_PORT))
                     soTimeout = 8000
                 }
@@ -800,7 +895,12 @@ class UdpSenderService : Service() {
     private fun startNdaSendLoop() {
         serviceScope.launch(Dispatchers.IO) {
             try {
-                ndaSendSocket = DatagramSocket()
+                val socket = DatagramSocket(null)
+                bindSendSocketToLocalNetwork(socket, "NDA 송신용")
+                if (socket.localPort <= 0) {
+                    socket.bind(java.net.InetSocketAddress(0))
+                }
+                ndaSendSocket = socket
             } catch (e: Exception) {
                 NavLogger.e(this@UdpSenderService, "[NDA] 송신 소켓 생성 실패: ${e.message}")
                 return@launch
