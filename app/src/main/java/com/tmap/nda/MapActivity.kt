@@ -1018,6 +1018,11 @@ class MapActivity : AppCompatActivity() {
         // v4.13: 화면(Tmap/Kakao) 공용 쿨다운으로 통합 - 아래 SdiDataRepository 항목 참고. #문제시 원복
         if (speedKph > limit * 1.1 && now - SdiDataRepository.lastOverSpeedWarningTime > 8000L) {
             SdiDataRepository.lastOverSpeedWarningTime = now
+            // v4.23: "60도로에 65로 주행시 경고음(10% 안 넘는데)"(사용자 1번) - 발생 순간의
+            // 실제 limit/speedKph 값을 못 남기고 있어서 원인 특정이 안 됐음. 트리거되는
+            // 바로 그 순간의 값을 남겨서 다음 로그로 어떤 limit이 실제로 쓰였는지
+            // 확정할 수 있게 함. #문제시 원복
+            NavLogger.e(this, "[과속경고음발생] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1})")
             try {
                 val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 100)
                 tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
@@ -3052,7 +3057,7 @@ class MapActivity : AppCompatActivity() {
 
             if (laneCount > 0 && laneActive) {
                 // 정확한 추천차선 판정 불가 - 우선 개수만 정직하게 표시 (전부 미추천으로)
-                LaneSignalRepository.lanes = List(laneCount) { false }
+                LaneSignalRepository.lanes = List(laneCount) { LaneDisplayInfo(recommended = false) }
                 LaneSignalRepository.source = "tmap"
                 LaneSignalRepository.lastUpdateTime = System.currentTimeMillis()
 

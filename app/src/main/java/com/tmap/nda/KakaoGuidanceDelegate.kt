@@ -233,8 +233,17 @@ class KakaoGuidanceDelegate(
                             val highlightType = info.javaClass.methods
                                 .firstOrNull { it.name == "getHighlightType" && it.parameterTypes.isEmpty() }
                                 ?.invoke(info) as? Int
-                            (highlightType ?: 0) != 0
-                        } catch (e: Exception) { false }
+                            // v4.23: getBusType도 실제로 존재함(APK 바이트코드로 확인) - 버스전용차로
+                            // 표시(사용자 10번)용으로 같이 읽음. Byte로 반환되니 Number로 넓게 받아서 처리. #문제시 원복
+                            val busTypeRaw = info.javaClass.methods
+                                .firstOrNull { it.name == "getBusType" && it.parameterTypes.isEmpty() }
+                                ?.invoke(info)
+                            val busType = (busTypeRaw as? Number)?.toInt() ?: 0
+                            if (busType != 0) {
+                                NavLogger.d(context, "[버스차로 수집] getBusType=$busType (0이 아닌 값 실제 관측)")
+                            }
+                            LaneDisplayInfo(recommended = (highlightType ?: 0) != 0, busType = busType)
+                        } catch (e: Exception) { LaneDisplayInfo(recommended = false) }
                     }
                     LaneSignalRepository.lanes = recommendedFlags
                     LaneSignalRepository.source = "kakao"

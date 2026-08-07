@@ -125,13 +125,18 @@ object NavLogger {
     /** 앱 종료 시 호출 - logs 디렉토리의 로그 파일(현재 파일 + 회전되어 보관중이던 파일) 전부 삭제.
      *  실행 중엔 계속 쌓이다가(10MB 넘으면 회전) 종료할 때만 비워지는 방식으로 변경. #문제시 원복 */
     fun deleteAllLogFiles(context: Context) {
-        for (file in allLogFiles(context)) {
+        // v4.23: "로그 전체 삭제 눌러도 안 지워지는 거 같다"(사용자 8번) 확인용 - 실제로
+        // 몇 개를 지우려 시도했고 몇 개가 성공했는지 로그로 남김. #문제시 원복
+        val targets = allLogFiles(context)
+        var success = 0
+        for (file in targets) {
             try {
-                file.delete()
+                if (file.delete()) success++
             } catch (e: Exception) {
                 Log.e(TAG, "NavLogger deleteAllLogFiles error: ${e.message}")
             }
         }
+        Log.i(TAG, "[로그삭제] 대상 ${targets.size}개 중 $success 개 삭제 성공")
     }
 
     fun clear(context: Context) {

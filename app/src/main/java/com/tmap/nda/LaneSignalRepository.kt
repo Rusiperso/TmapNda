@@ -12,12 +12,22 @@ package com.tmap.nda
  * 코드: 2/8/10/40 등)은 정확한 코드→화살표 매핑표를 못 구해서, 잘못된 화살표를
  * 보여줄 위험을 피하려고 우선 "추천 차선인지 아닌지"만 표시. #문제시 원복
  */
+/**
+ * TmapNda 자체 빌드 APK를 바이트코드로 까봐서 KNLane_LaneInfo에 getBusType()도
+ * 실제로 존재하는 걸 확인함(사용자 10번: 버스전용차로 표시 가능?) - 근데 어떤 byte
+ * 값이 "버스전용차로"를 뜻하는지는 아직 실주행 로그로 확정 못 함. 안전 문제가 되는
+ * 회전방향(getTurnType)과 달리 버스차로 표시는 틀려도 위험하지 않아서, "0이 아니면
+ * 버스전용차로"로 우선 표시하고 실제 raw 값을 로그로 남겨서 다음 세션에 검증. #문제시 원복
+ */
+data class LaneDisplayInfo(val recommended: Boolean, val busType: Int = 0)
+
 object LaneSignalRepository {
     @Volatile var source: String = ""       // "tmap" | "kakao" | ""(없음)
     @Volatile var lastUpdateTime: Long = 0
 
-    // 차선 안내: 차선 개수만큼 true/false - true면 "이 경로엔 이 차선을 타야 함"(추천 차선)
-    @Volatile var lanes: List<Boolean> = emptyList()
+    // 차선 안내: 차선 개수만큼 - recommended면 "이 경로엔 이 차선을 타야 함"(추천 차선),
+    // busType!=0이면 버스전용차로로 추정
+    @Volatile var lanes: List<LaneDisplayInfo> = emptyList()
 
     // 신호등 잔여시간(초), 색상("RED"/"GREEN"/"YELLOW"/"")
     @Volatile var trafficLightRemainSec: Int = -1
@@ -74,16 +84,31 @@ fun renderLaneSignalBar(
     bar.visibility = android.view.View.VISIBLE
 
     laneBoxContainer.removeAllViews()
-    LaneSignalRepository.lanes.forEach { isRecommended ->
+    LaneSignalRepository.lanes.forEach { info ->
         val tv = android.widget.TextView(context).apply {
-            text = if (isRecommended) "▲" else "|"
-            setTextColor(if (isRecommended) android.graphics.Color.parseColor("#4CAF50") else android.graphics.Color.parseColor("#888888"))
+            // v4.23: 버스전용차로(busType!=0)는 "B"로 구분 표시(사용자 10번). #문제시 원복
+            text = when {
+                info.busType != 0 -> "B"
+                info.recommended -> "▲"
+                else -> "|"
+            }
+            setTextColor(
+                when {
+                    info.busType != 0 -> android.graphics.Color.parseColor("#42A5F5")
+                    info.recommended -> android.graphics.Color.parseColor("#4CAF50")
+                    else -> android.graphics.Color.parseColor("#888888")
+                }
+            )
             textSize = 28f
             gravity = android.view.Gravity.CENTER
             setPadding(20, 12, 20, 12)
             minWidth = 72
             setBackgroundColor(
-                if (isRecommended) android.graphics.Color.parseColor("#1B4D2C") else android.graphics.Color.parseColor("#333333")
+                when {
+                    info.busType != 0 -> android.graphics.Color.parseColor("#1A3A5C")
+                    info.recommended -> android.graphics.Color.parseColor("#1B4D2C")
+                    else -> android.graphics.Color.parseColor("#333333")
+                }
             )
         }
         val lp = android.widget.LinearLayout.LayoutParams(

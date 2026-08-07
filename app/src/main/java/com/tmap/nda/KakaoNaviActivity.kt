@@ -1309,6 +1309,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // 경고음이 중복으로 안 울리게 함(사용자 지적). #문제시 원복
         if (speedKph > limit * 1.1 && now - SdiDataRepository.lastOverSpeedWarningTime > 8000L) {
             SdiDataRepository.lastOverSpeedWarningTime = now
+            NavLogger.e(this, "[과속경고음발생] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1})")
             try {
                 val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 100)
                 tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
