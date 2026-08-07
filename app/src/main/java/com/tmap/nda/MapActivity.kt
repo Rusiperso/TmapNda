@@ -368,6 +368,8 @@ class MapActivity : AppCompatActivity() {
             // 공유시 삭제하던 방식에서 변경: 이제 로그는 실행 중엔 계속 쌓이고(10MB 회전),
             // 앱을 종료하는 이 시점에 전체 삭제. #문제시 원복
             NavLogger.deleteAllLogFiles(this)
+            // v4.23: UdpSenderService 정지는 이제 여기(의도적 종료)에서만. #문제시 원복
+            stopService(Intent(this, UdpSenderService::class.java))
             finishAffinity()
         }
 
@@ -2616,8 +2618,16 @@ class MapActivity : AppCompatActivity() {
         opConnectionTickHandler.removeCallbacks(opConnectionTickRunnable)
         laneDataObserver?.let { observableLaneDataLiveData?.removeObserver(it) }
 
-        val intent = Intent(this, UdpSenderService::class.java)
-        stopService(intent)
+        // v4.23: "티맵 화면에선 카메라 반응 감속이 되는데 카카오맵에선 안 된다"(사용자 지적) -
+        // 원인으로 의심되는 구조적 문제를 찾음: UdpSenderService(카메라 감속 데이터를
+        // openpilot으로 보내는 바로 그 서비스)가 MapActivity.onDestroy()에서 무조건
+        // stopService()되고 있었음. MapActivity는 카카오 화면으로 넘어가도 보통은
+        // 백스택에 남아있어서 destroy가 안 되지만, 헤드유닛처럼 메모리가 빠듯한 기기에서
+        // OS가 백그라운드의 MapActivity를 메모리 확보 차원에서 강제로 destroy하면
+        // (사용자는 여전히 카카오 화면을 보고 있는데) 이 UDP 서비스 전체가 조용히
+        // 죽어버림 - 카메라 감속뿐 아니라 도로제한속도/HUD 데이터까지 전부 끊김.
+        // "앱 종료" 버튼(의도적 종료)에서 명시적으로 멈추도록 옮기고, 여기서는 더 이상
+        // 무조건 멈추지 않음. #문제시 원복
     }
 
 

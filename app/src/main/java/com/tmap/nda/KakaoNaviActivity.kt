@@ -848,6 +848,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 .show()
         }
         binding.btnExitApp?.setOnClickListener {
+            // v4.23: MapActivity.onDestroy()가 더 이상 자동으로 서비스를 안 멈추게 바꿔서
+            // (카카오 화면 중 OS가 MapActivity만 강제로 destroy하는 경우에도 UDP 서비스가
+            // 안 죽게 하려고), 카카오 화면의 "앱 종료"에서도 명시적으로 멈춰줘야
+            // finishAffinity() 후에도 서비스가 고아 상태로 계속 도는 걸 방지함. #문제시 원복
+            stopService(Intent(this, UdpSenderService::class.java))
             finishAffinity()
         }
         binding.btnEditPanelPosition?.let {
