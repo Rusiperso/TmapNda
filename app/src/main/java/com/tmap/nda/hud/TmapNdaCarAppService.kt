@@ -58,13 +58,22 @@ class TmapNdaCarAppService : CarAppService() {
 
     override fun onCreateSession(sessionInfo: SessionInfo): Session {
         everConnected = true
-        Log.i(TAG, "Android Auto가 TmapNda 차량용 세션을 생성함: displayType=${sessionInfo.displayType}")
-        NavLogger.d(this, "[TmapNdaHud] Android Auto가 세션을 생성함: displayType=${sessionInfo.displayType}")
-        return TmapNdaCarSession()
+        val isCluster = sessionInfo.displayType == SessionInfo.DISPLAY_TYPE_CLUSTER
+        Log.i(TAG, "Android Auto가 TmapNda 차량용 세션을 생성함: displayType=${sessionInfo.displayType} (cluster=$isCluster)")
+        NavLogger.d(
+            this,
+            "[TmapNdaHud] Android Auto가 세션을 생성함: displayType=${sessionInfo.displayType} (cluster=$isCluster)"
+        )
+        return TmapNdaCarSession(isCluster)
     }
 }
 
-private class TmapNdaCarSession : Session() {
+// v: 클러스터(계기판) 디스플레이는 메인 화면과 지원 템플릿 세트가 다르고 터치 입력을 지원하지
+// 않는다(Android for Cars 가이드 NF-9). 실제 스톡 Tmap/CarrotNavi APK를 디컴파일해서 확인한
+// 결과, TmapCarAppService.onCreateSession()이 displayType==CLUSTER일 때 메인 화면과 완전히
+// 다른 별도의 ClusterSession/ClusterNavigationScreen 클래스를 리턴하고 있었음. 우리도 같은
+// 방식으로 isCluster를 세션까지 전달해서 화면을 분기함. #문제시 원복
+private class TmapNdaCarSession(private val isCluster: Boolean) : Session() {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private lateinit var navigationManager: NavigationManager
@@ -95,7 +104,7 @@ private class TmapNdaCarSession : Session() {
 
         navigationManager = carContext.getCarService(NavigationManager::class.java)
         val surfaceRenderer = TmapNdaHudSurfaceRenderer(carContext, lifecycle)
-        navigationScreen = HudNavigationScreen(carContext, surfaceRenderer)
+        navigationScreen = HudNavigationScreen(carContext, surfaceRenderer, isCluster)
 
         navigationManager.setNavigationManagerCallback(
             object : NavigationManagerCallback {
@@ -296,7 +305,8 @@ private class TmapNdaCarSession : Session() {
 
 private class HudNavigationScreen(
     carContext: CarContext,
-    private val surfaceRenderer: TmapNdaHudSurfaceRenderer
+    private val surfaceRenderer: TmapNdaHudSurfaceRenderer,
+    private val isCluster: Boolean
 ) : Screen(carContext) {
     private var statusText = "Android Auto 연결됨 · 휴대폰 길안내 대기 중"
     private var route: KakaoRouteSnapshot? = null
@@ -323,7 +333,19 @@ private class HudNavigationScreen(
         val currentRoute = route
         val builder = NavigationTemplate.Builder()
             .setBackgroundColor(CarColor.SECONDARY)
-            .setActionStrip(
+
+        // v: 클러스터(계기판)는 터치 입력을 지원하지 않아 클릭 리스너 달린 커스텀 액션은
+        // 못 쓴다(Android for Cars 가이드 NF-9). 실제 Tmap 앱(TmapCarAppService의 클러스터
+        // 전용 화면)을 디컴파일해서 확인해보니, ActionStrip을 아예 빼는 게 아니라
+        // 미리 정의된 표준 액션인 Action.APP_ICON 하나만 넣고 있었음. 메인 화면에서만
+        // 커스텀 클릭 액션("연동 상태" 버튼)을 쓰고, 클러스터는 APP_ICON만 쓰도록 맞춤.
+        // #문제시 원복
+        builder.setActionStrip(
+            if (isCluster) {
+                ActionStrip.Builder()
+                    .addAction(Action.APP_ICON)
+                    .build()
+            } else {
                 ActionStrip.Builder()
                     .addAction(
                         Action.Builder()
@@ -334,7 +356,8 @@ private class HudNavigationScreen(
                             .build()
                     )
                     .build()
-            )
+            }
+        )
 
         if (currentRoute != null && currentRoute.isActive) {
             builder.setNavigationInfo(
