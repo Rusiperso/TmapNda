@@ -33,13 +33,6 @@ class UdpSenderService : Service() {
     private val UDP_PORT = 7706
     private var targetIp = "255.255.255.255"
 
-    // v: 사용자 제보(실주행 로그) - 헤드유닛에 Wi-Fi(콤마와 같은 폰 핫스팟)랑 모바일
-    // 데이터(SKT)가 동시에 켜져 있으면, 안드로이드가 UDP를 자기 판단으로 모바일 데이터
-    // 쪽으로 내보낼 수 있음. 콤마는 핫스팟 와이파이에만 있으니 그럼 패킷이 영영 안 닿음
-    // (openpilot 비콘을 몇 분간 한 번도 못 받던 문제의 원인으로 추정). ConnectivityManager로
-    // Wi-Fi 네트워크를 명시적으로 찾아서 모든 UDP 소켓을 거기 바인딩 - 모바일 데이터가
-    // 같이 켜져 있어도 무조건 Wi-Fi로만 나가도록 강제. Wi-Fi가 아예 없으면(순수 테더링 등
-    // 예외 상황) 바인딩 없이 시스템 기본 라우팅에 맡김. #문제시 원복
     // v: 사용자 요청 - "내 폰이 남의 핫스팟에 붙는 경우"랑 "내 폰이 직접 핫스팟을 켜고
     // 콤마가 거기 붙는 경우" 둘 다 항상 되게 해달라고 함. 이 둘은 안드로이드 입장에서
     // 완전히 다르게 인식됨:
@@ -49,13 +42,14 @@ class UdpSenderService : Service() {
     //     기준으로는 "연결된 네트워크"가 아니라서(그냥 내 인터페이스일 뿐) 1번 방식으로는
     //     못 찾음. 이 경우 NetworkInterface를 직접 뒤져서 모바일 데이터(rmnet 계열)가
     //     아닌 로컬 인터페이스(보통 wlan0/ap0/swlan0)를 찾아서 그 IP로 소켓을 직접 bind.
-    // 소켓 로컬 바인딩은 생성 직후, 아직 아무 것도 안 보낸 상태에서만 가능해서 호출하는
-    // 쪽에서 DatagramSocket(null)(=아직 안 묶인 상태)로 만들어서 넘겨줘야 함. #문제시 원복
+    // (사용자 제보: 헤드유닛에 Wi-Fi+모바일데이터 동시 활성 시 UDP가 모바일 쪽으로 새서
+    // openpilot 비콘을 몇 분간 못 받던 문제의 원인으로 추정) #문제시 원복
+    //
     // 수신(listen) 소켓 전용 - 이미 고정 포트로 0.0.0.0에 bind()하는 소켓들이라 여기서
     // 추가로 로컬 인터페이스에 bind()하면 "이미 바인딩됨" 예외가 남. ConnectivityManager로
     // Wi-Fi 네트워크를 찾을 수 있을 때만(클라이언트 모드) 묶어주고, 못 찾으면(호스트 모드
     // 등) 그냥 넘어감 - 어차피 0.0.0.0으로 듣는 소켓은 모든 인터페이스에서 수신 가능해서
-    // 호스트 모드에서도 수신 자체는 원래 문제없음. #문제시 원복
+    // 호스트 모드에서도 수신 자체는 원래 문제없음.
     private fun bindToWifiIfAvailable(socket: DatagramSocket, label: String) {
         try {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
@@ -76,6 +70,7 @@ class UdpSenderService : Service() {
 
     // 송신 소켓 전용 - 클라이언트/호스트 모드 둘 다 커버(위 주석 참고). 호출 전에 소켓이
     // 아직 아무 데도 안 묶인 상태(DatagramSocket(null))여야 함.
+    private fun bindSendSocketToLocalNetwork(socket: DatagramSocket, label: String) {
         try {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
             val wifiNetwork = cm?.allNetworks?.firstOrNull { net ->
