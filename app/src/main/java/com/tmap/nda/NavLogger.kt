@@ -37,6 +37,25 @@ object NavLogger {
     // 이전엔 회전될 때마다 prev 파일 하나만 남기고 그 이전 건 덮어써서 지워버렸음.
     // "로그 보내기"를 오래 안 누르면 회전된 로그들이 통째로 유실되던 문제 -> 타임스탬프 파일로
     // 각각 보관하고, 공유할 때 한꺼번에 다 보낸 뒤(공유 성공 시) 삭제하는 방식으로 변경. #문제시 원복
+    // v: 로그 파일 자체에는 앱 버전이 전혀 안 남아있어서, 로그만 보고는 이 로그가
+    // 정확히 어느 빌드에서 난 건지 알 방법이 없었음(공유 시 이메일 본문에만 버전이
+    // 적혔는데, 그 본문 텍스트를 안 보고 로그 txt 파일만 따로 보면 버전을 알 수 없음).
+    // 사용자 요청으로 매 로그 줄마다 버전을 찍도록 변경 - PackageManager 호출은 비용이
+    // 있으니 최초 1회만 조회해서 캐싱. #문제시 원복
+    @Volatile
+    private var cachedVersionName: String? = null
+
+    private fun versionTag(context: Context): String {
+        cachedVersionName?.let { return it }
+        val v = try {
+            "v" + (context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?")
+        } catch (e: Exception) {
+            "v?"
+        }
+        cachedVersionName = v
+        return v
+    }
+
     private fun appendToFile(context: Context, level: String, message: String) {
         try {
             val file = logFile(context)
@@ -44,7 +63,7 @@ object NavLogger {
                 val rotatedName = "tmapnda_log_${System.currentTimeMillis()}.txt"
                 file.renameTo(File(file.parentFile, rotatedName))
             }
-            val line = "${timeFormat.format(Date())} [$level] $message\n"
+            val line = "${timeFormat.format(Date())} [${versionTag(context)}] [$level] $message\n"
             // 플랫폼 기본 charset에 의존하던 FileWriter 대신 UTF-8을 명시함.
             // 예전엔 로그 공유/전송 과정에서 한글이 mojibake(占쏙옙 패턴)로 영구 손상되는 문제가 있었음. #문제시 원복
             OutputStreamWriter(FileOutputStream(logFile(context), true), StandardCharsets.UTF_8).use { it.write(line) }
