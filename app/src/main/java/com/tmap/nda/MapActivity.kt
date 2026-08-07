@@ -422,14 +422,26 @@ class MapActivity : AppCompatActivity() {
                 updateOpConnectionWaitingText()
             }
 
-            if (state.active) {
-                binding.tvActiveStatus.text = "OP ON"
-                binding.tvActiveStatus.setTextColor(android.graphics.Color.parseColor("#4FC3F7"))
-                binding.tvActiveStatus.background = null
-            } else {
-                binding.tvActiveStatus.text = "OP OFF"
-                binding.tvActiveStatus.setTextColor(android.graphics.Color.parseColor("#555555"))
-                binding.tvActiveStatus.background = null
+            // v4.23: 실주행 로그로 openpilot 자체 발신 active값이 초당 2회씩 진동하는 게
+            // 확인됨(사용자 지적: OP ON/OFF 반복 점멸) - 원본 active 대신 안정화된
+            // displayActive 사용. 진동이 심하면 ON/OFF 대신 "OP 불안정"으로 표시해서
+            // 실제 불안정 상태를 숨기지 않으면서도 화면이 초당 2번 깜빡이진 않게 함. #문제시 원복
+            when {
+                state.isFlickering -> {
+                    binding.tvActiveStatus.text = "OP 불안정"
+                    binding.tvActiveStatus.setTextColor(android.graphics.Color.parseColor("#FFA726"))
+                    binding.tvActiveStatus.background = null
+                }
+                state.displayActive -> {
+                    binding.tvActiveStatus.text = "OP ON"
+                    binding.tvActiveStatus.setTextColor(android.graphics.Color.parseColor("#4FC3F7"))
+                    binding.tvActiveStatus.background = null
+                }
+                else -> {
+                    binding.tvActiveStatus.text = "OP OFF"
+                    binding.tvActiveStatus.setTextColor(android.graphics.Color.parseColor("#555555"))
+                    binding.tvActiveStatus.background = null
+                }
             }
 
             when (state.trafficState) {

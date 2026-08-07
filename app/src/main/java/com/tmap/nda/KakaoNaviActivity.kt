@@ -622,12 +622,21 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private var opConnectionLastGoodStateTime = 0L
     private fun startMiniHudBinding() {
         OpenpilotStateRepository.state.observe(this) { state ->
-            if (state.active) {
-                binding.tvActiveStatus?.text = "OP ON"
-                binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#4FC3F7"))
-            } else {
-                binding.tvActiveStatus?.text = "OP OFF"
-                binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#555555"))
+            // v4.23: MapActivity와 동일 - 원본 active 대신 안정화된 displayActive 사용,
+            // 진동이 심하면 "OP 불안정"으로 표시. #문제시 원복
+            when {
+                state.isFlickering -> {
+                    binding.tvActiveStatus?.text = "OP 불안정"
+                    binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#FFA726"))
+                }
+                state.displayActive -> {
+                    binding.tvActiveStatus?.text = "OP ON"
+                    binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#4FC3F7"))
+                }
+                else -> {
+                    binding.tvActiveStatus?.text = "OP OFF"
+                    binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#555555"))
+                }
             }
             val connected = state.ip.isNotEmpty() && state.ip != "-"
             if (connected) {
