@@ -1009,13 +1009,23 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
+    private var lastOverSpeedDiagLogTime = 0L
     private fun checkOverSpeedWarning(speedKph: Int) {
         val pref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         if (!pref.getBoolean("over_speed_warning_enabled", false)) return
         val limit = SdiDataRepository.roadLimitSpeed
         if (limit < 30 || speedKph <= 0) return
         val now = System.currentTimeMillis()
-        // v4.13: 화면(Tmap/Kakao) 공용 쿨다운으로 통합 - 아래 SdiDataRepository 항목 참고. #문제시 원복
+        // v: "65로 주행 중이었고 60 제한이면 10%(66)를 안 넘었는데 경고음이 났다"(사용자
+        // 재지적) - 지금까지는 실제로 트리거된 순간의 값만 로그로 남겨서, 화면에 보이는
+        // limit이랑 이 함수가 실제로 쓰는 limit이 서로 다른 타이밍일 가능성(구간 경계
+        // 넘는 순간 limit이 잠깐 옛날 값에 머무는 지연)을 확인할 방법이 없었음. 트리거
+        // 여부와 무관하게 3초에 한 번씩 limit 흐름 자체를 남김 - 다음 로그에서 "65 주행
+        // 당시 limit이 실제로 몇이었는지"를 직접 대조할 수 있게 함. #문제시 원복
+        if (now - lastOverSpeedDiagLogTime > 3000L) {
+            lastOverSpeedDiagLogTime = now
+            NavLogger.d(this, "[과속경고음진단] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1})")
+        }
         if (speedKph > limit * 1.1 && now - SdiDataRepository.lastOverSpeedWarningTime > 8000L) {
             SdiDataRepository.lastOverSpeedWarningTime = now
             // v4.23: "60도로에 65로 주행시 경고음(10% 안 넘는데)"(사용자 1번) - 발생 순간의
