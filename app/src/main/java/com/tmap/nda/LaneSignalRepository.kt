@@ -99,9 +99,11 @@ fun renderLaneSignalBar(
                     else -> android.graphics.Color.parseColor("#888888")
                 }
             )
-            textSize = 28f
+            textSize = 22f
             gravity = android.view.Gravity.CENTER
-            setPadding(20, 12, 20, 12)
+            // v4.24: "오버레이 너무 크게 나온다"(사용자 9번) - 가로폭(20dp/최소너비 72dp)은
+            // 유지하고 세로(위아래 여백)만 줄임(사용자: "위 아래 세로만 축소, 넓이는 그대로"). #문제시 원복
+            setPadding(20, 6, 20, 6)
             minWidth = 72
             setBackgroundColor(
                 when {
