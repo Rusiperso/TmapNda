@@ -2423,7 +2423,7 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    private var udpServiceStartRetried = false
+    private var udpServiceStartRetryCount = 0
     private fun startUdpSenderService() {
         // v4.18: startForeground()의 위치권한 케이스는 서비스 쪽에서 이미 방어했는데,
         // startForegroundService() 호출 그 자체도 안드로이드 12+에서는 "백그라운드에서
@@ -2437,6 +2437,11 @@ class MapActivity : AppCompatActivity() {
         // 불려서 막히는 경우로 보임(사용자 지적 2·3번: 콤마 연결이 계속 끊겨 보이던 것의 원인
         // 중 하나). 실패해도 그냥 포기하지 않고, Activity가 완전히 포그라운드로 자리잡을
         // 시간을 준 뒤(2초) 딱 한 번 재시도. #문제시 원복
+        // v: 실제 크래시 로그로 확인됨(사용자 제보 - 06:52~06:54 사이 2분간 20번 연속
+        // 같은 예외로 반복 강제종료). "2초 후 딱 1번만 재시도, 실패하면 그 세션 내내 포기"로는
+        // 부족했음 - mAllowStartForeground=false 상태가 2초 안에 안 풀리는 경우(콤마/차량
+        // 부팅 초기 등)엔 그대로 셧다운. 최대 5번까지, 간격을 2s→4s→8s→16s→30s로 늘려가며
+        // 재시도하도록 강화. #문제시 원복
         try {
             val intent = Intent(this, UdpSenderService::class.java)
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
@@ -2444,17 +2449,18 @@ class MapActivity : AppCompatActivity() {
             } else {
                 startService(intent)
             }
-            udpServiceStartRetried = false
+            udpServiceStartRetryCount = 0
         } catch (e: Exception) {
-            NavLogger.e(this, "UdpSenderService 시작 실패: ${e.javaClass.simpleName}: ${e.message}")
-            if (!udpServiceStartRetried) {
-                udpServiceStartRetried = true
+            NavLogger.e(this, "UdpSenderService 시작 실패(${udpServiceStartRetryCount + 1}번째): ${e.javaClass.simpleName}: ${e.message}")
+            if (udpServiceStartRetryCount < 5) {
+                val delayMs = 2000L shl udpServiceStartRetryCount // 2,4,8,16,32초
+                udpServiceStartRetryCount++
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    NavLogger.d(this, "UdpSenderService 시작 재시도(2초 후)")
+                    NavLogger.d(this, "UdpSenderService 시작 재시도(${delayMs / 1000}초 후, ${udpServiceStartRetryCount}번째)")
                     startUdpSenderService()
-                }, 2000)
+                }, delayMs)
             } else {
-                NavLogger.e(this, "UdpSenderService 재시도도 실패 - 포기함")
+                NavLogger.e(this, "UdpSenderService 재시도 5회 모두 실패 - 포기함")
             }
         }
     }
