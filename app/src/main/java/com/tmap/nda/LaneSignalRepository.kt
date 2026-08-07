@@ -56,7 +56,8 @@ fun renderLaneSignalBar(
     context: android.content.Context,
     bar: android.widget.LinearLayout?,
     laneBoxContainer: android.widget.LinearLayout?,
-    countdownText: android.widget.TextView?
+    countdownText: android.widget.TextView?,
+    screenName: String
 ) {
     // v4.17: "설정에서 항상표시로 했는데 15초 후 사라진다"(사용자 지적) - lane_overlay_enabled는
     // 지금까지 "위젯을 보여줄지 말지"만 결정했고, resetIfStale()의 15초 데이터 소멸 로직은
@@ -64,11 +65,14 @@ fun renderLaneSignalBar(
     // 마지막 값을 계속 보여달라"는 뜻으로 해석해서, 오버레이가 켜져 있을 땐 훨씬 긴 시간
     // (2분)으로 완화 - 실제 주행 중 카카오 콜백 텀 정도로는 안 사라지되, 길안내가 완전히
     // 끝난 뒤에는 결국 정리되게 함(무한정 옛날 값이 남는 것 방지). #문제시 원복
-    // v5.4: 사용자 요청 - "티맵 켜고 카카오 끄기" 또는 반대처럼 소스별로 독립적으로 켜고
-    // 끌 수 있어야 함. 하나의 lane_overlay_enabled 대신, 지금 표시하려는 데이터의
-    // 출처(LaneSignalRepository.source)에 맞는 설정만 확인. #문제시 원복
+    // v5.4: 처음에 "데이터 출처(LaneSignalRepository.source)"로 잘못 게이팅했었음.
+    // 이 기능의 원래 취지는 "티맵 화면엔 차선정보가 없으니 카카오가 만든 차선정보를
+    // 티맵 화면 위에도 오버레이로 띄우자"였음 - 즉 데이터가 어디서 왔는지가 아니라
+    // "지금 어느 화면을 보고 있는지"로 켜고 꺼야 함. screenName("tmap"/"kakao")은
+    // 실제로 이 함수를 부르는 화면(MapActivity/KakaoNaviActivity)을 나타내고, 데이터
+    // 자체는 거의 항상 카카오산이어도 티맵 화면에서 그대로 보여줌. #문제시 원복
     val prefs = context.getSharedPreferences("TmapNdaPrefs", android.content.Context.MODE_PRIVATE)
-    val overlayEnabled = when (LaneSignalRepository.source) {
+    val overlayEnabled = when (screenName) {
         "tmap" -> prefs.getBoolean("lane_overlay_tmap_enabled", true)
         "kakao" -> prefs.getBoolean("lane_overlay_kakao_enabled", true)
         else -> false

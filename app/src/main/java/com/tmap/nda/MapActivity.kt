@@ -2332,7 +2332,7 @@ class MapActivity : AppCompatActivity() {
                     // 최근에 갱신했으면 카카오 값을 안 건드림(둘이 서로 덮어쓰기 경쟁 방지). #문제시 원복
                     updateTmapLaneInfoFromEngine()
                     runOnUiThread {
-                        renderLaneSignalBar(this@MapActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown)
+                        renderLaneSignalBar(this@MapActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "tmap")
                     }
                 }
             })
@@ -3029,12 +3029,9 @@ class MapActivity : AppCompatActivity() {
     // 정확한 매핑을 완성할 재료로 남겨둠. #문제시 원복
     private fun updateTmapLaneInfoFromEngine() {
         try {
-            // v5.4: 사용자 요청 - Tmap/카카오 차선 오버레이를 독립적으로 켜고 끌 수 있게
-            // (예: 티맵은 끄고 카카오만 쓰기, 또는 반대). 소스별 별도 설정으로 분리. #문제시 원복
-            val tmapLaneEnabled = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-                .getBoolean("lane_overlay_tmap_enabled", true)
-            if (!tmapLaneEnabled) return
-
+            // v5.4: 이 토글은 "화면 표시 여부"만 결정해야 함(재확인) - 데이터 수집 자체를
+            // 막으면 안 됨. Tmap 자체 엔진에 혹시라도 값이 있으면(드물지만) 계속 수집하고,
+            // 실제로 보여줄지는 renderLaneSignalBar에서 화면별로 결정. #문제시 원복
             // 카카오가 최근에 이미 갱신했으면 건드리지 않음(소스 경쟁 방지)
             if (LaneSignalRepository.source == "kakao" && LaneSignalRepository.isFresh()) return
 

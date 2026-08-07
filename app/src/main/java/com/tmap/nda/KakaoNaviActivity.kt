@@ -708,7 +708,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     binding.tvConnectionStatus?.text = "연결 대기 (${elapsedSec}초)"
                 }
                 hudPollHandler.postDelayed(this, 1000)
-                renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown)
+                renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "kakao")
                 updateNavNotification()
             }
         }

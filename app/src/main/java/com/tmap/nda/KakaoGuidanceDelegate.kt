@@ -217,10 +217,11 @@ class KakaoGuidanceDelegate(
         // 보임. 리플렉션으로 되돌려서 이 버전에 실제로 공개된 getter 이름을 다시 확인. #문제시 원복
         try {
             val lane = routeGuide.lane
-            // v5.4: 사용자 요청 - Tmap/카카오 차선 오버레이 독립 토글. #문제시 원복
-            val kakaoLaneEnabled = context.getSharedPreferences("TmapNdaPrefs", android.content.Context.MODE_PRIVATE)
-                .getBoolean("lane_overlay_kakao_enabled", true)
-            if (lane != null && kakaoLaneEnabled) {
+            // v5.4: 이 토글은 "화면 표시 여부"만 결정해야 함(재확인) - 카카오 데이터는
+            // 티맵 화면에도 오버레이로 띄우는 게 이 기능의 원래 취지라, 여기서 수집 자체를
+            // 막으면 안 됨. 계속 수집하고, 실제로 보여줄지는 renderLaneSignalBar에서
+            // 화면별로 결정. #문제시 원복
+            if (lane != null) {
                 val laneInfoList = lane.javaClass.methods
                     .firstOrNull { it.name == "getLaneInfos" && it.parameterTypes.isEmpty() }
                     ?.invoke(lane) as? List<*>
