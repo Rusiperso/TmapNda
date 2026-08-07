@@ -12,6 +12,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES" />
+    <uses-permission android:name="androidx.car.app.MAP_TEMPLATES" />
     <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
 
     <application
@@ -68,8 +69,13 @@
             android:foregroundServiceType="location"
             android:exported="false" />
 
-        <!-- v2.0: Android Auto 차량 클러스터/HUD로 회전·거리·ETA 전송.
-             FEATURE_CLUSTER는 넣지 않음 - 계기판 지도를 직접 그리는 기능이라 별개. -->
+        <!-- v4.24: "순정 티맵은 HUD 되는데 TmapNda 카카오는 안 된다"(사용자, 반복 지적) -
+             순정 티맵 APK를 까봐서 비교한 결과, TmapCarAppService가 NAVIGATION과 함께
+             FEATURE_CLUSTER 카테고리도 선언하고 있었음. 예전 코멘트("계기판 지도를 직접
+             그리는 기능이라 별개")는 잘못된 판단이었음 - FEATURE_CLUSTER는 Android Auto
+             호스트에게 "이 앱이 계기판/클러스터에도 렌더링할 의사가 있다"는 걸 알리는
+             카테고리라, 이게 없으면 호스트가 애초에 클러스터용 세션 생성 시도 자체를
+             안 함(TmapNdaHud 로그가 계속 0건이었던 것과 정확히 일치). 추가함. #문제시 원복 -->
         <service
             android:name=".hud.TmapNdaCarAppService"
             android:exported="true"
@@ -77,6 +83,7 @@
             <intent-filter>
                 <action android:name="androidx.car.app.CarAppService" />
                 <category android:name="androidx.car.app.category.NAVIGATION" />
+                <category android:name="androidx.car.app.category.FEATURE_CLUSTER" />
             </intent-filter>
         </service>
             
