@@ -217,7 +217,10 @@ class KakaoGuidanceDelegate(
         // 보임. 리플렉션으로 되돌려서 이 버전에 실제로 공개된 getter 이름을 다시 확인. #문제시 원복
         try {
             val lane = routeGuide.lane
-            if (lane != null) {
+            // v5.4: 사용자 요청 - Tmap/카카오 차선 오버레이 독립 토글. #문제시 원복
+            val kakaoLaneEnabled = context.getSharedPreferences("TmapNdaPrefs", android.content.Context.MODE_PRIVATE)
+                .getBoolean("lane_overlay_kakao_enabled", true)
+            if (lane != null && kakaoLaneEnabled) {
                 val laneInfoList = lane.javaClass.methods
                     .firstOrNull { it.name == "getLaneInfos" && it.parameterTypes.isEmpty() }
                     ?.invoke(lane) as? List<*>
@@ -254,7 +257,7 @@ class KakaoGuidanceDelegate(
                     .filter { m -> m.parameterTypes.isEmpty() && m.name.startsWith("get") }
                     .joinToString(", ") { m -> try { "${m.name}=${m.invoke(lane)}" } catch (e: Exception) { "${m.name}=<실패>" } }
                 NavLogger.d(context, "[차선정보] KNLane 전체덤프: $dump")
-            } else {
+            } else if (lane == null) {
                 NavLogger.d(context, "[차선정보] lane=null (이 구간엔 차선 안내 데이터 없음)")
             }
         } catch (e: Exception) {

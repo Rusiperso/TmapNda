@@ -64,8 +64,15 @@ fun renderLaneSignalBar(
     // 마지막 값을 계속 보여달라"는 뜻으로 해석해서, 오버레이가 켜져 있을 땐 훨씬 긴 시간
     // (2분)으로 완화 - 실제 주행 중 카카오 콜백 텀 정도로는 안 사라지되, 길안내가 완전히
     // 끝난 뒤에는 결국 정리되게 함(무한정 옛날 값이 남는 것 방지). #문제시 원복
-    val overlayEnabled = context.getSharedPreferences("TmapNdaPrefs", android.content.Context.MODE_PRIVATE)
-        .getBoolean("lane_overlay_enabled", true)
+    // v5.4: 사용자 요청 - "티맵 켜고 카카오 끄기" 또는 반대처럼 소스별로 독립적으로 켜고
+    // 끌 수 있어야 함. 하나의 lane_overlay_enabled 대신, 지금 표시하려는 데이터의
+    // 출처(LaneSignalRepository.source)에 맞는 설정만 확인. #문제시 원복
+    val prefs = context.getSharedPreferences("TmapNdaPrefs", android.content.Context.MODE_PRIVATE)
+    val overlayEnabled = when (LaneSignalRepository.source) {
+        "tmap" -> prefs.getBoolean("lane_overlay_tmap_enabled", true)
+        "kakao" -> prefs.getBoolean("lane_overlay_kakao_enabled", true)
+        else -> false
+    }
     if (!overlayEnabled) {
         LaneSignalRepository.resetIfStale()
         bar?.visibility = android.view.View.GONE

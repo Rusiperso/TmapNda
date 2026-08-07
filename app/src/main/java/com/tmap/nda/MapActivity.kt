@@ -3029,6 +3029,12 @@ class MapActivity : AppCompatActivity() {
     // 정확한 매핑을 완성할 재료로 남겨둠. #문제시 원복
     private fun updateTmapLaneInfoFromEngine() {
         try {
+            // v5.4: 사용자 요청 - Tmap/카카오 차선 오버레이를 독립적으로 켜고 끌 수 있게
+            // (예: 티맵은 끄고 카카오만 쓰기, 또는 반대). 소스별 별도 설정으로 분리. #문제시 원복
+            val tmapLaneEnabled = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .getBoolean("lane_overlay_tmap_enabled", true)
+            if (!tmapLaneEnabled) return
+
             // 카카오가 최근에 이미 갱신했으면 건드리지 않음(소스 경쟁 방지)
             if (LaneSignalRepository.source == "kakao" && LaneSignalRepository.isFresh()) return
 

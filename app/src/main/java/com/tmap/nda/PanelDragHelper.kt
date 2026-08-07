@@ -210,10 +210,19 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
-        // v4.13: 차선 안내(추천 차선 하이라이트) 오버레이 켜고 끄기 - 사용자 요청 3번. #문제시 원복
-        val showLaneOverlayCheckBox = android.widget.CheckBox(context).apply {
-            text = "차선 안내 오버레이 표시"
-            isChecked = pref.getBoolean("lane_overlay_enabled", true)
+        // v4.13: 차선 안내(추천 차선 하이라이트) 오버레이 켜고 끄기 - 사용자 요청 3번.
+        // v5.4: 사용자 요청으로 Tmap/카카오 독립 토글로 분리 - "티맵 켜고 카카오 끄기"
+        // 또는 반대처럼 병렬로 따로 쓸 수 있어야 함(사용자: "카카오 차선 정보를 오버레이로
+        // 띄우기"라는 최초 취지에 부합). #문제시 원복
+        val showLaneOverlayTmapCheckBox = android.widget.CheckBox(context).apply {
+            text = "티맵 차선 안내 오버레이 표시"
+            isChecked = pref.getBoolean("lane_overlay_tmap_enabled", true)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
+        val showLaneOverlayKakaoCheckBox = android.widget.CheckBox(context).apply {
+            text = "카카오 차선 안내 오버레이 표시"
+            isChecked = pref.getBoolean("lane_overlay_kakao_enabled", true)
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
@@ -240,7 +249,8 @@ object PanelDragHelper {
             addView(checkBox)
             addView(disableMobileCamCheckBox)
             addView(showTopBarEventCheckBox)
-            addView(showLaneOverlayCheckBox)
+            addView(showLaneOverlayTmapCheckBox)
+            addView(showLaneOverlayKakaoCheckBox)
             addView(distanceFormatKmCheckBox)
             unlockMapTouchCheckBox?.let { addView(it) }
         }
@@ -252,7 +262,8 @@ object PanelDragHelper {
                     .putBoolean("over_speed_warning_enabled", checkBox.isChecked)
                     .putBoolean("mobile_cam_slowdown_disabled", disableMobileCamCheckBox.isChecked)
                     .putBoolean("topbar_event_enabled", showTopBarEventCheckBox.isChecked)
-                    .putBoolean("lane_overlay_enabled", showLaneOverlayCheckBox.isChecked)
+                    .putBoolean("lane_overlay_tmap_enabled", showLaneOverlayTmapCheckBox.isChecked)
+                    .putBoolean("lane_overlay_kakao_enabled", showLaneOverlayKakaoCheckBox.isChecked)
                     .putBoolean("USE_KM_DISTANCE_FORMAT", distanceFormatKmCheckBox.isChecked)
                     .apply {
                         if (unlockMapTouchCheckBox != null) {
