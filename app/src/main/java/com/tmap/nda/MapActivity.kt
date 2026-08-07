@@ -2619,6 +2619,10 @@ class MapActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        // v4.24: 이 로그가 그동안 없어서 "MapActivity가 백그라운드에서 OS에 의해
+        // 강제 종료됐는지"를 로그로 직접 확인할 방법이 없었음(사용자: 카카오 화면 중
+        // 카메라 감속 안 되던 문제 조사 때 아쉬웠던 부분) - 추가함. #문제시 원복
+        NavLogger.d(this, "[MapActivity lifecycle] onDestroy (isFinishing=$isFinishing, isChangingConfigurations=$isChangingConfigurations)")
 
         opConnectionTickHandler.removeCallbacks(opConnectionTickRunnable)
         laneDataObserver?.let { observableLaneDataLiveData?.removeObserver(it) }

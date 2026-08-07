@@ -1364,6 +1364,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     override fun onDestroy() {
         super.onDestroy()
+        // v4.24: MapActivity와 동일 이유로 추가. #문제시 원복
+        NavLogger.d(this, "[KakaoNaviActivity lifecycle] onDestroy (isFinishing=$isFinishing, isChangingConfigurations=$isChangingConfigurations)")
         cancelNavNotification()
         hudPollHandler.removeCallbacksAndMessages(null)
         try {

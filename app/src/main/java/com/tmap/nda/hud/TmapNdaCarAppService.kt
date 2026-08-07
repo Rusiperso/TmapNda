@@ -45,11 +45,19 @@ private const val MIN_STALE_CHECK_DELAY_MS = 250L
  */
 class TmapNdaCarAppService : CarAppService() {
 
+    // v4.24: "로그를 통해 가져올 수 있는 모든 걸 다 가져오게 하라"(사용자) - 이 서비스가
+    // 지금까지 단 한 번이라도 Android Auto에 의해 호출된 적이 있는지, 다른 곳(주기적
+    // 전체상태 스냅샷)에서도 확인할 수 있게 정적 플래그로 노출. #문제시 원복
+    companion object {
+        @Volatile var everConnected: Boolean = false
+    }
+
     // GitHub APK 사이드로드·개발 테스트용. Play 배포 전에는 공식 Host allowlist가 필요하다.
     override fun createHostValidator(): HostValidator =
         HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
 
     override fun onCreateSession(sessionInfo: SessionInfo): Session {
+        everConnected = true
         Log.i(TAG, "Android Auto가 TmapNda 차량용 세션을 생성함: displayType=${sessionInfo.displayType}")
         NavLogger.d(this, "[TmapNdaHud] Android Auto가 세션을 생성함: displayType=${sessionInfo.displayType}")
         return TmapNdaCarSession()

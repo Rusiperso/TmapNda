@@ -166,6 +166,57 @@ class UdpSenderService : Service() {
         } catch (e: SecurityException) {
             currentGpsStatusText = "권한 없음"
         }
+
+        // v4.24: "맨날 뭐만하면 로그 가져오게 코드 넣는다고 하지 말고, 가져올 수 있는 건
+        // 다 가져오게 해라"(사용자) - 매번 새 버그마다 로그 한 줄씩 추가하는 대신, 앱의 거의
+        // 모든 핵심 상태를 15초마다 한 줄로 통째로 남기는 "전체상태 스냅샷"을 상시 가동.
+        // 앞으로 어떤 문제가 나와도 이 로그 하나로 그 시점 전후 상황을 다 알 수 있게 함.
+        // 차량 HUD(TmapNdaCarAppService) 연결 여부도 포함. #문제시 원복
+        serviceScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                try {
+                    logFullStateSnapshot()
+                } catch (e: Exception) {
+                    NavLogger.e(this@UdpSenderService, "[전체상태] 스냅샷 예외: ${e.message}")
+                }
+                delay(15000)
+            }
+        }
+    }
+
+    private fun logFullStateSnapshot() {
+        val ctx = this
+        val opState = OpenpilotStateRepository.state.value
+        val ndaGps = OpenpilotStateRepository.ndaGpsState.value
+        val versionName = try {
+            packageManager.getPackageInfo(packageName, 0).versionName
+        } catch (e: Exception) { "?" }
+        val volumePercent = try { VolumeHelper.savedVolumePercent(ctx) } catch (e: Exception) { -1 }
+        val am = getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
+        val musicVol = am?.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+        val musicMax = am?.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+        val memInfo = android.app.ActivityManager.MemoryInfo()
+        (getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager)?.getMemoryInfo(memInfo)
+        val batteryPct = try {
+            val bm = getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager
+            bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        } catch (e: Exception) { null }
+
+        NavLogger.d(
+            ctx,
+            "[전체상태] v=$versionName " +
+                "연결(ip=${opState?.ip ?: "-"}, active=${opState?.active}, displayActive=${opState?.displayActive}, " +
+                "flickering=${opState?.isFlickering}, 마지막수신=${opState?.lastUpdateTime?.let { System.currentTimeMillis() - it }}ms전) " +
+                "도로제한(camera=$roadLimitSpeed, general=$generalRoadLimitSpeed) " +
+                "SDI(type=$sdiType, limit=$sdiSpeedLimit, dist=$sdiDistance) " +
+                "차선(source=${LaneSignalRepository.source}, 개수=${LaneSignalRepository.lanes.size}, fresh=${LaneSignalRepository.isFresh()}) " +
+                "볼륨(저장%=$volumePercent, STREAM_MUSIC=$musicVol/$musicMax) " +
+                "HUD(everConnected=${com.tmap.nda.hud.TmapNdaCarAppService.everConnected}) " +
+                "NDA수신(addr=${ndaRemoteAddr}, GPS=${ndaGps?.hasFix}) " +
+                "폰IP=${getLocalIpAddressesSummary()} " +
+                "배터리=${batteryPct}% 메모리여유=${memInfo.availMem / 1024 / 1024}MB/${memInfo.totalMem / 1024 / 1024}MB lowMemory=${memInfo.lowMemory} " +
+                "기기=${android.os.Build.MANUFACTURER}/${android.os.Build.MODEL} SDK=${android.os.Build.VERSION.SDK_INT}"
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -442,12 +493,26 @@ class UdpSenderService : Service() {
                             22 -> "방지턱"
                             19 -> "철길건널목"
                             26 -> "톨게이트"
-                            else ->
-                                // v3.6: 현재 도로명(kr.roadName) 대신 목적지 이름을 표시 -
-                                // "지산동(현재위치) 말고 대구광역시청(목적지)이 떠야지" (사용자 지적 6번). #문제시 원복
-                                if (kr.destinationName.isNotBlank() && kr.destinationName != "목적지") kr.destinationName
-                                else if (kr.roadName.isNotEmpty()) kr.roadName
+                            else -> {
+                                // v4.24: 사용자 요청 - 콤마에 "00km 직진" 표시. carrot.cc는
+                                // szTBTMainText를 이미 조건 없이 그려주고 있어서(우측하단
+                                // 박스), openpilot 쪽은 안 건드리고 여기서 보내는 내용만
+                                // 바꿈. 안전이벤트가 없고(else 분기) 실제 회전이 임박한
+                                // 게 아닐 때(nTBTTurnType이 좌/우회전·유턴·분기·램프가
+                                // 아닐 때)만 "Nm/km 직진"으로 표시 - 회전 임박 시엔 기존
+                                // 목적지/도로명 라벨을 그대로 둬서 화살표(nTBTTurnType)와
+                                // 안 헷갈리게 함. #문제시 원복
+                                val isImminentTurn = kr.tbtTurnType in setOf(12, 13, 14, 6, 7, 101, 102)
+                                if (!isImminentTurn && kakaoTbtDist in 1..8000) {
+                                    if (kakaoTbtDist >= 1000) "%.1fkm 직진".format(kakaoTbtDist / 1000f)
+                                    else "${kakaoTbtDist}m 직진"
+                                } else if (kr.destinationName.isNotBlank() && kr.destinationName != "목적지") {
+                                    // v3.6: 현재 도로명(kr.roadName) 대신 목적지 이름을 표시 -
+                                    // "지산동(현재위치) 말고 대구광역시청(목적지)이 떠야지" (사용자 지적 6번). #문제시 원복
+                                    kr.destinationName
+                                } else if (kr.roadName.isNotEmpty()) kr.roadName
                                 else "카카오안내"
+                            }
                         }
                         json.put("szTBTMainText", "$kakaoPrefix | GPS: $currentGpsStatusText")
                         // v4.21: getDistFromS()가 "지금 위치→이벤트까지 남은 거리"가 맞는지
