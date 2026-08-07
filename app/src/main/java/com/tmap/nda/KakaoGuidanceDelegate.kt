@@ -399,6 +399,13 @@ class KakaoGuidanceDelegate(
         } catch (e: Exception) { 0 }
     }
 
+    // v5.1: getPassed() 같은 Boolean 게터용 - findGetterInt와 동일 패턴. #문제시 원복
+    private fun findGetterBool(obj: Any, nameContains: String): Boolean? {
+        return try {
+            findGetter(obj, null, nameContains) as? Boolean
+        } catch (e: Exception) { null }
+    }
+
     private fun findGetterString(obj: Any, nameContains: String): String? {
         return try {
             // "get$nameContains" 정확히 일치하는 getter 우선 시도(예: getName()).
@@ -475,8 +482,20 @@ class KakaoGuidanceDelegate(
             var nearestDist = Int.MAX_VALUE
             safetyList?.forEach { item ->
                 if (item == null) return@forEach
+                // v5.1: [카카오 안전정보 검증용] 로그로 확정된 버그 - getDistFromS()는
+                // "경로 시작점부터의 거리"라 주행할수록 계속 증가하기만 했음(사용자 실주행
+                // 검증으로 발견: 1015→2169→...→43621처럼 계속 늘어남, 이벤트에 가까워질수록
+                // 줄어들어야 하는데 정반대). APK 바이트코드 재조사 결과 KNSafety_Section/
+                // KNSafety_SectionSegment엔 진짜 "남은 거리" getRemainDist()가 따로 있었음 -
+                // 이걸 우선 시도하고, 없는 타입(카메라 등 단일지점형)만 기존 DistFromS로 폴백
+                // (이 폴백은 여전히 미검증이라 주석의 "확신 없음" 상태 유지). getPassed()로
+                // 이미 지나친 이벤트는 아예 후보에서 제외. #문제시 원복
+                val alreadyPassed = (findGetterBool(item, "Passed")) == true
+                if (alreadyPassed) return@forEach
+                val remainDist = findGetterInt(item, "RemainDist").takeIf { it > 0 }
                 val location = findGetter(item, "getLocation")
-                val dist = location?.let { findGetterInt(it, "DistFromS") } ?: -1
+                val distFromS = location?.let { findGetterInt(it, "DistFromS") } ?: -1
+                val dist = remainDist ?: distFromS
                 if (dist in 0 until nearestDist) {
                     nearestDist = dist
                     nearest = item
