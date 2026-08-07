@@ -2404,12 +2404,20 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
+    private var udpServiceStartRetried = false
     private fun startUdpSenderService() {
         // v4.18: startForeground()의 위치권한 케이스는 서비스 쪽에서 이미 방어했는데,
         // startForegroundService() 호출 그 자체도 안드로이드 12+에서는 "백그라운드에서
         // 포그라운드서비스 시작 제한"에 걸려 ForegroundServiceStartNotAllowedException을
         // 던질 수 있음 - 여기도 방어 없었음. 최소한 이 한 줄 때문에 앱 전체가 죽는 일은
         // 없게 함(서비스가 아예 안 뜨면 UDP 전송/HUD 기능만 빠지는 정도로 완화). #문제시 원복
+        //
+        // v4.23: 로그로 확인됨 - 이 예외가 실주행 중(08:26경, 앱이 이미 한참 실행 중이던
+        // 시점)에도 발생함. 이건 OS가 메모리 부족 등으로 앱 프로세스를 껐다가 Activity만
+        // 다시 띄우는 순간, 아직 "포그라운드로 인정"되기 직전 타이밍에 startForegroundService()가
+        // 불려서 막히는 경우로 보임(사용자 지적 2·3번: 콤마 연결이 계속 끊겨 보이던 것의 원인
+        // 중 하나). 실패해도 그냥 포기하지 않고, Activity가 완전히 포그라운드로 자리잡을
+        // 시간을 준 뒤(2초) 딱 한 번 재시도. #문제시 원복
         try {
             val intent = Intent(this, UdpSenderService::class.java)
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
@@ -2417,8 +2425,18 @@ class MapActivity : AppCompatActivity() {
             } else {
                 startService(intent)
             }
+            udpServiceStartRetried = false
         } catch (e: Exception) {
             NavLogger.e(this, "UdpSenderService 시작 실패: ${e.javaClass.simpleName}: ${e.message}")
+            if (!udpServiceStartRetried) {
+                udpServiceStartRetried = true
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    NavLogger.d(this, "UdpSenderService 시작 재시도(2초 후)")
+                    startUdpSenderService()
+                }, 2000)
+            } else {
+                NavLogger.e(this, "UdpSenderService 재시도도 실패 - 포기함")
+            }
         }
     }
 
