@@ -211,9 +211,10 @@ object PanelDragHelper {
             setPadding(40, 0, 40, 30)
         }
         // v4.13: 차선 안내(추천 차선 하이라이트) 오버레이 켜고 끄기 - 사용자 요청 3번.
-        // v5.4: 사용자 요청으로 Tmap/카카오 독립 토글로 분리 - "티맵 켜고 카카오 끄기"
-        // 또는 반대처럼 병렬로 따로 쓸 수 있어야 함(사용자: "카카오 차선 정보를 오버레이로
-        // 띄우기"라는 최초 취지에 부합). #문제시 원복
+        // v5.4: Tmap 쪽에서 켜고/끄기, 카카오 쪽에서 켜고/끄기를 각각 독립적으로 할 수
+        // 있게(사용자 설명: 티맵 ON+카카오 OFF → 티맵 오버레이만, 티맵 OFF+카카오 ON →
+        // 카카오 오버레이만, 둘 다 ON → 둘 다 가능 - 화면에 뜨는 오버레이 자체는 하나).
+        // #문제시 원복
         val showLaneOverlayTmapCheckBox = android.widget.CheckBox(context).apply {
             text = "티맵 차선 안내 오버레이 표시"
             isChecked = pref.getBoolean("lane_overlay_tmap_enabled", true)
