@@ -1299,14 +1299,19 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 반복돼서(예: 매초 완전히 동일한 좌표) GPS_PROVIDER의 정확한 실시간 값과 번갈아
     // KNSDK로 들어가는 바람에 위치가 오락가락했음(사용자 - "평택인데 용인으로 잡힘").
     // GPS_PROVIDER만 반영하고, 정확도가 너무 나쁜 픽스(accuracy > 50m)는 무시함. #문제시 원복
+    private var lastOverSpeedDiagLogTime = 0L
     private fun checkOverSpeedWarning(speedKph: Int) {
         val pref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         if (!pref.getBoolean("over_speed_warning_enabled", false)) return
         val limit = SdiDataRepository.roadLimitSpeed
         if (limit < 30 || speedKph <= 0) return
         val now = System.currentTimeMillis()
-        // v4.13: 화면(Tmap/Kakao) 공용 쿨다운으로 통합 - 두 화면이 동시에 켜져 있어도
-        // 경고음이 중복으로 안 울리게 함(사용자 지적). #문제시 원복
+        // v: MapActivity와 동일한 진단 로그 - 트리거 여부와 무관하게 3초마다 limit 흐름을
+        // 남겨서 "65 주행 당시 limit이 실제로 몇이었는지" 대조 가능하게 함. #문제시 원복
+        if (now - lastOverSpeedDiagLogTime > 3000L) {
+            lastOverSpeedDiagLogTime = now
+            NavLogger.d(this, "[과속경고음진단] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1})")
+        }
         if (speedKph > limit * 1.1 && now - SdiDataRepository.lastOverSpeedWarningTime > 8000L) {
             SdiDataRepository.lastOverSpeedWarningTime = now
             NavLogger.e(this, "[과속경고음발생] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1})")
