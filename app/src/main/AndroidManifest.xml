@@ -15,6 +15,13 @@
     <uses-permission android:name="androidx.car.app.MAP_TEMPLATES" />
     <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
 
+    <!-- v: 스톡 Tmap 매니페스트를 디컴파일해서 비교한 결과, Android 11+ 패키지 가시성 제한
+         대응을 위해 Android Auto 호스트(gearhead) 패키지를 queries에 명시하고 있었음.
+         우리 쪽에는 queries 블록 자체가 없었어서 동일하게 추가함. #문제시 원복 -->
+    <queries>
+        <package android:name="com.google.android.projection.gearhead" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:icon="@drawable/icon"
@@ -79,6 +86,7 @@
         <service
             android:name=".hud.TmapNdaCarAppService"
             android:exported="true"
+            android:foregroundServiceType="location"
             android:label="@string/app_name">
             <intent-filter>
                 <action android:name="androidx.car.app.CarAppService" />

@@ -1,6 +1,10 @@
 package com.tmap.nda.hud
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -27,16 +31,21 @@ import androidx.car.app.navigation.model.Step
 import androidx.car.app.navigation.model.TravelEstimate
 import androidx.car.app.navigation.model.Trip
 import androidx.car.app.validation.HostValidator
+import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.tmap.nda.KakaoRouteDataRepository
 import com.tmap.nda.KakaoRouteSnapshot
 import com.tmap.nda.NavLogger
+import com.tmap.nda.R
 import java.util.TimeZone
 
 private const val TAG = "TmapNdaHud"
 private const val STALE_MS = 5_000L
 private const val MIN_STALE_CHECK_DELAY_MS = 250L
+private const val HUD_CHANNEL_ID = "tmapnda_hud_car_service"
+private const val HUD_NOTIFICATION_ID = 2001
 
 /**
  * Android Auto에서 TmapNda를 실행한 뒤 휴대폰 길안내가 시작되면 표준 Trip 정보를
@@ -64,8 +73,46 @@ class TmapNdaCarAppService : CarAppService() {
             this,
             "[TmapNdaHud] Android Auto가 세션을 생성함: displayType=${sessionInfo.displayType} (cluster=$isCluster)"
         )
+
+        // v: 스톡 Tmap의 TmapCarAppService.onCreateSession()을 디컴파일해보니, 세션을
+        // 만들 때마다 ServiceCompat.startForeground(..., FOREGROUND_SERVICE_TYPE_LOCATION)를
+        // 직접 호출해서 이 서비스를 명시적으로 포그라운드 서비스로 승격시키고 있었음.
+        // targetSdk 34+ 에서는 foregroundServiceType을 매니페스트에 선언해도, 실제로
+        // startForeground()를 호출해서 타입을 명시하지 않으면 화면이 꺼진 채로 폰이
+        // 거치대/주머니에 있는 실제 주행 상황(=클러스터가 필요한 바로 그 상황)에서
+        // 서비스가 백그라운드 제약에 걸려 제대로 안 살아있을 수 있음. 우리 서비스에는
+        // 이 호출이 아예 없었어서 동일하게 추가함. #문제시 원복
+        try {
+            createHudNotificationChannel()
+            ServiceCompat.startForeground(
+                this,
+                HUD_NOTIFICATION_ID,
+                buildHudNotification(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            )
+        } catch (e: Exception) {
+            NavLogger.e(this, "[TmapNdaHud] startForeground 실패: ${e.message}")
+        }
+
         return TmapNdaCarSession(isCluster)
     }
+
+    private fun createHudNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                HUD_CHANNEL_ID,
+                "TmapNda 차량 연동",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
+        }
+    }
+
+    private fun buildHudNotification() = NotificationCompat.Builder(this, HUD_CHANNEL_ID)
+        .setContentTitle("TmapNda 차량 연동 중")
+        .setContentText("Android Auto 클러스터/HUD로 안내 정보를 전송 중...")
+        .setSmallIcon(R.mipmap.ic_launcher)
+        .build()
 }
 
 // v: 클러스터(계기판) 디스플레이는 메인 화면과 지원 템플릿 세트가 다르고 터치 입력을 지원하지
@@ -359,15 +406,24 @@ private class HudNavigationScreen(
             }
         )
 
+        // v: ClusterNavigationScreen.onGetTemplate()을 디컴파일해서 확인한 결과, Tmap은
+        // 클러스터 템플릿에서 setNavigationInfo(RoutingInfo...)를 단 한 번도 호출하지 않음.
+        // 다음 턴 안내(회전 아이콘 등)는 템플릿이 아니라 자기네 지도 엔진이 서피스에 직접
+        // 그리는 방식이고, 템플릿에는 setDestinationTravelEstimate()만 넣고 있었음.
+        // 우리가 클러스터에도 RoutingInfo/MessageInfo를 얹은 게 호스트가 템플릿 전체를
+        // 거부하는 원인일 수 있어서, 클러스터일 때는 Tmap과 동일하게 navigationInfo를
+        // 아예 생략하고 TravelEstimate만 내려주도록 맞춤. #문제시 원복
         if (currentRoute != null && currentRoute.isActive) {
-            builder.setNavigationInfo(
-                RoutingInfo.Builder()
-                    .setCurrentStep(
-                        buildNavigationStep(currentRoute, maneuverType),
-                        Distance.create(currentRoute.tbtDist.coerceAtLeast(0).toDouble(), Distance.UNIT_METERS)
-                    )
-                    .build()
-            )
+            if (!isCluster) {
+                builder.setNavigationInfo(
+                    RoutingInfo.Builder()
+                        .setCurrentStep(
+                            buildNavigationStep(currentRoute, maneuverType),
+                            Distance.create(currentRoute.tbtDist.coerceAtLeast(0).toDouble(), Distance.UNIT_METERS)
+                        )
+                        .build()
+                )
+            }
             builder.setDestinationTravelEstimate(
                 createTravelEstimate(
                     currentRoute.remainDist,
@@ -375,7 +431,7 @@ private class HudNavigationScreen(
                     System.currentTimeMillis()
                 )
             )
-        } else {
+        } else if (!isCluster) {
             builder.setNavigationInfo(MessageInfo.Builder(statusText).build())
         }
 
