@@ -34,8 +34,11 @@ object LaneSignalRepository {
     // 공식 렌더링 컴포넌트(KNDriveLaneView)를 그대로 씀. APK 바이트코드로 확인: setLane()
     // 하나만 호출하면 추천차선/버스차로/회전방향 화살표까지 카카오가 알아서 정확하게
     // 그려줌 - 우리가 방향 코드를 해석할 필요가 아예 없어짐. 원본 KNLane 객체를 그대로
-    // 들고 있다가 화면 쪽에서 이 View에 넘겨줌. #문제시 원복
-    @Volatile var kakaoLane: com.kakaomobility.knsdk.guidance.knguidance.routeguide.objects.KNLane? = null
+    // 들고 있다가 화면 쪽에서 이 View에 넘겨줌. 타입을 Any로 둔 이유: KNDriveLaneView
+    // 직접 타입 사용 시 빌드가 실패해서(internal 가시성 의심, 이 파일에 이미 있던 전례와
+    // 동일 패턴) 리플렉션으로 우회했는데, 혹시 KNLane 타입 자체도 이 파일(다른 모듈)에서
+    // 프로퍼티 타입으로 직접 쓰면 문제가 될 수 있어 안전하게 Any로 보관. #문제시 원복
+    @Volatile var kakaoLane: Any? = null
 
     // 신호등 잔여시간(초), 색상("RED"/"GREEN"/"YELLOW"/"")
     @Volatile var trafficLightRemainSec: Int = -1
@@ -106,23 +109,32 @@ fun renderLaneSignalBar(
 
     if (kakaoLane != null) {
         // v5.4: 카카오 공식 컴포넌트로 그리기 - 추천차선/버스차로/회전화살표까지 전부
-        // 카카오가 알아서 정확하게 렌더링. laneBoxContainer 안에 1개만 만들어서 재사용
-        // (매번 새로 만들면 setLane() 호출할 때마다 뷰가 깜빡일 수 있어서). #문제시 원복
+        // 카카오가 알아서 정확하게 렌더링. 직접 타입으로 썼다가 빌드가 실패함(exit code 1,
+        // 로그 원문은 Azure blob 도메인이 네트워크 허용목록 밖이라 못 봄) - 이 코드베이스에
+        // 이미 있던 전례(linkIdx가 internal이라 컴파일 실패했던 것)와 같은 종류일 가능성이
+        // 높아서, KNDriveLaneView 자체도 리플렉션으로 안전하게 우회. #문제시 원복
         try {
-            var driveLaneView = laneBoxContainer.getChildAt(0) as? com.kakaomobility.knsdk.ui.component.KNDriveLaneView
-            if (driveLaneView == null) {
+            val existing = laneBoxContainer.getChildAt(0)
+            val driveLaneView: android.view.View
+            if (existing != null && existing.javaClass.name == "com.kakaomobility.knsdk.ui.component.KNDriveLaneView") {
+                driveLaneView = existing
+            } else {
                 laneBoxContainer.removeAllViews()
-                driveLaneView = com.kakaomobility.knsdk.ui.component.KNDriveLaneView(context)
+                val cls = Class.forName("com.kakaomobility.knsdk.ui.component.KNDriveLaneView")
+                val ctor = cls.getConstructor(android.content.Context::class.java)
+                driveLaneView = ctor.newInstance(context) as android.view.View
                 val lp = android.widget.LinearLayout.LayoutParams(
                     android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
                     android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
                 )
                 laneBoxContainer.addView(driveLaneView, lp)
             }
-            driveLaneView.setLane(kakaoLane)
+            val laneClass = Class.forName("com.kakaomobility.knsdk.guidance.knguidance.routeguide.objects.KNLane")
+            val setLaneMethod = driveLaneView.javaClass.methods.firstOrNull { it.name == "setLane" && it.parameterTypes.size == 1 && it.parameterTypes[0].isAssignableFrom(laneClass) }
+            setLaneMethod?.invoke(driveLaneView, kakaoLane)
             laneBoxContainer.visibility = android.view.View.VISIBLE
         } catch (e: Exception) {
-            NavLogger.e(context, "[차선정보] KNDriveLaneView 렌더링 예외: ${e.message} - 예전 방식으로 폴백")
+            NavLogger.e(context, "[차선정보] KNDriveLaneView 렌더링 예외: ${e.javaClass.simpleName}: ${e.message} - 예전 방식으로 폴백")
             renderLaneBoxesFallback(context, laneBoxContainer)
         }
     } else {
