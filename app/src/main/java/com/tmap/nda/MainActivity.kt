@@ -87,14 +87,12 @@ class MainActivity : AppCompatActivity() {
         val savedKakaoNativeKey = sharedPref.getString("kakao_native_app_key", "")
         val savedTargetIp = sharedPref.getString("TARGET_IP", "255.255.255.255")
         val savedReqBackground = sharedPref.getBoolean("REQ_BACKGROUND", false)
-        val savedDistanceFormatKm = sharedPref.getBoolean("USE_KM_DISTANCE_FORMAT", true)
-        
+
         binding.etAppKey.setText(savedAppKey)
         binding.etKakaoAppKey.setText(savedKakaoKey)
         binding.etKakaoNativeAppKey.setText(savedKakaoNativeKey)
         binding.etTargetIp.setText(savedTargetIp)
         binding.cbBackgroundLocation.isChecked = savedReqBackground
-        binding.cbDistanceFormatKm.isChecked = savedDistanceFormatKm
 
         try {
             val pInfo = packageManager.getPackageInfo(packageName, 0)
@@ -115,7 +113,6 @@ class MainActivity : AppCompatActivity() {
             val kakaoNativeKey = binding.etKakaoNativeAppKey.text.toString().trim()
             val targetIp = binding.etTargetIp.text.toString().trim()
             val reqBackground = binding.cbBackgroundLocation.isChecked
-            val distanceFormatKm = binding.cbDistanceFormatKm.isChecked
 
             if (appKey.isEmpty()) {
                 Toast.makeText(this, "App Key를 입력하세요.", Toast.LENGTH_SHORT).show()
@@ -129,7 +126,6 @@ class MainActivity : AppCompatActivity() {
                 putString("kakao_native_app_key", kakaoNativeKey)
                 putString("TARGET_IP", targetIp)
                 putBoolean("REQ_BACKGROUND", reqBackground)
-                putBoolean("USE_KM_DISTANCE_FORMAT", distanceFormatKm)
                 apply()
             }
 

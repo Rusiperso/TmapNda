@@ -217,6 +217,15 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
+        // v5.2: 초기 설정화면(MainActivity)에 있던 항목을 여기로 이동 - 매번 앱 처음 켤 때만
+        // 보이는 화면이라 여기 있을 이유가 없었음(사용자 지적). SharedPreferences 키는
+        // 그대로(USE_KM_DISTANCE_FORMAT) 써서 기존 저장값/읽는 쪽 코드는 안 건드림. #문제시 원복
+        val distanceFormatKmCheckBox = android.widget.CheckBox(context).apply {
+            text = "1000m 이상일 때 km 단위로 거리 표시"
+            isChecked = pref.getBoolean("USE_KM_DISTANCE_FORMAT", true)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
         val unlockMapTouchCheckBox = if (touchLockOverlay != null) {
             android.widget.CheckBox(context).apply {
                 text = "지도 터치 잠금 해제 (핀치줌/드래그 허용)"
@@ -226,23 +235,66 @@ object PanelDragHelper {
             }
         } else null
 
+        // v5.2: "README엔 설정에서 키 확인 가능하다는데 실제론 없다"(사용자 지적) - 맞는
+        // 지적이었음. 지금까지 Tmap/카카오 앱키는 MainActivity(최초 실행 화면)에서만
+        // 입력받고, 키가 이미 저장돼있으면 자동으로 MapActivity로 건너뛰어버려서 앱
+        // 실행 중엔 그 화면으로 돌아갈 방법 자체가 없었음. 이 설정 다이얼로그에 실제로
+        // 키 입력란을 추가해서 README 설명이 진짜로 맞게 만듦. #문제시 원복
+        val sectionLabel = android.widget.TextView(context).apply {
+            text = "API 키"
+            setTextColor(android.graphics.Color.parseColor("#AAAAAA"))
+            textSize = 13f
+            setPadding(40, 20, 40, 10)
+        }
+        val etAppKey = android.widget.EditText(context).apply {
+            hint = "Tmap App Key"
+            setText(pref.getString("APP_KEY", ""))
+            setTextColor(android.graphics.Color.WHITE)
+            setHintTextColor(android.graphics.Color.GRAY)
+            setPadding(40, 10, 40, 10)
+        }
+        val etKakaoRestKey = android.widget.EditText(context).apply {
+            hint = "카카오 REST API 키"
+            setText(pref.getString("kakao_rest_api_key", ""))
+            setTextColor(android.graphics.Color.WHITE)
+            setHintTextColor(android.graphics.Color.GRAY)
+            setPadding(40, 10, 40, 10)
+        }
+        val etKakaoNativeKey = android.widget.EditText(context).apply {
+            hint = "카카오 Native App Key"
+            setText(pref.getString("kakao_native_app_key", ""))
+            setTextColor(android.graphics.Color.WHITE)
+            setHintTextColor(android.graphics.Color.GRAY)
+            setPadding(40, 10, 40, 10)
+        }
+
         val container = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             addView(checkBox)
             addView(disableMobileCamCheckBox)
             addView(showTopBarEventCheckBox)
             addView(showLaneOverlayCheckBox)
+            addView(distanceFormatKmCheckBox)
             unlockMapTouchCheckBox?.let { addView(it) }
+            addView(sectionLabel)
+            addView(etAppKey)
+            addView(etKakaoRestKey)
+            addView(etKakaoNativeKey)
         }
+        val scrollContainer = android.widget.ScrollView(context).apply { addView(container) }
         android.app.AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("앱 설정")
-            .setView(container)
+            .setView(scrollContainer)
             .setPositiveButton("저장") { _, _ ->
                 pref.edit()
                     .putBoolean("over_speed_warning_enabled", checkBox.isChecked)
                     .putBoolean("mobile_cam_slowdown_disabled", disableMobileCamCheckBox.isChecked)
                     .putBoolean("topbar_event_enabled", showTopBarEventCheckBox.isChecked)
                     .putBoolean("lane_overlay_enabled", showLaneOverlayCheckBox.isChecked)
+                    .putBoolean("USE_KM_DISTANCE_FORMAT", distanceFormatKmCheckBox.isChecked)
+                    .putString("APP_KEY", etAppKey.text.toString().trim())
+                    .putString("kakao_rest_api_key", etKakaoRestKey.text.toString().trim())
+                    .putString("kakao_native_app_key", etKakaoNativeKey.text.toString().trim())
                     .apply {
                         if (unlockMapTouchCheckBox != null) {
                             putBoolean("map_touch_unlocked", unlockMapTouchCheckBox.isChecked)
@@ -256,7 +308,7 @@ object PanelDragHelper {
                         touchLockOverlay.setOnTouchListener { _, _ -> true }
                     }
                 }
-                android.widget.Toast.makeText(context, "저장됨", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(context, "저장됨 (키를 바꾸셨으면 앱을 재시작해주세요)", android.widget.Toast.LENGTH_LONG).show()
             }
             .setNegativeButton("취소", null)
             .show()
