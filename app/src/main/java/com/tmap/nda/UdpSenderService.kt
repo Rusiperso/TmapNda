@@ -172,6 +172,7 @@ class UdpSenderService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        NavLogger.d(this, "===== UdpSenderService.onCreate() 호출됨 - 서비스 생성됨 =====")
         createNotificationChannel()
         // v4.18: "앱이 실행이 안되고 튕겨" - 영상으로 확인함. startForeground()를
         // FOREGROUND_SERVICE_TYPE_LOCATION으로 부르는데 ACCESS_BACKGROUND_LOCATION 권한
@@ -302,6 +303,7 @@ class UdpSenderService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        NavLogger.d(this, "===== UdpSenderService.onStartCommand() 호출됨 (intent=${if (intent == null) "null(시스템이 재시작시킴)" else "있음"}, isRunning=${isRunning.get()}) =====")
         val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         targetIp = sharedPref.getString("TARGET_IP", "255.255.255.255") ?: "255.255.255.255"
 
@@ -1031,6 +1033,14 @@ class UdpSenderService : Service() {
     }
 
     override fun onDestroy() {
+        // v: 오늘 실주행 로그로 확인됨 - 카카오 화면 전환 직후 UDP 수신이 갑자기 조용히
+        // 멈추고 다시는 안 살아났는데, onDestroy()에 로그가 단 한 줄도 없어서 "서비스
+        // 자체가 죽은 건지, 다른 이유인지"조차 알 방법이 없었음. 최우선으로 로그부터
+        // 남김 - 다음에 같은 증상 재현되면 이 로그 유무로 "OS가 서비스를 강제 종료한 것"과
+        // "그 외의 원인"을 확실히 구분할 수 있음. 스택트레이스도 같이 남겨서 어떤 경로로
+        // 불렸는지(직접 stopService 호출 vs 시스템 강제종료) 알 수 있게 함. #문제시 원복
+        val trace = Thread.currentThread().stackTrace.joinToString("\n") { "  at $it" }
+        NavLogger.e(this, "===== UdpSenderService.onDestroy() 호출됨 - 서비스 종료됨 =====\n$trace")
         super.onDestroy()
         // isRunning을 가장 먼저 false로 내려서, 각 수신 루프들이 while(isActive && isRunning.get())
         // 조건에서 스스로 빠져나오도록 신호를 준 뒤 소켓을 닫는다.
