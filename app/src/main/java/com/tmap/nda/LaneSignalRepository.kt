@@ -29,6 +29,14 @@ object LaneSignalRepository {
     // busType!=0이면 버스전용차로로 추정
     @Volatile var lanes: List<LaneDisplayInfo> = emptyList()
 
+    // v5.4: "차선 화살표(좌회전/우회전/직진/유턴/대각선)를 제대로 표시해달라"(사용자) -
+    // getTurnType() 바이트값을 추측해서 매핑표를 만드는 대신, 카카오 SDK가 이미 만들어둔
+    // 공식 렌더링 컴포넌트(KNDriveLaneView)를 그대로 씀. APK 바이트코드로 확인: setLane()
+    // 하나만 호출하면 추천차선/버스차로/회전방향 화살표까지 카카오가 알아서 정확하게
+    // 그려줌 - 우리가 방향 코드를 해석할 필요가 아예 없어짐. 원본 KNLane 객체를 그대로
+    // 들고 있다가 화면 쪽에서 이 View에 넘겨줌. #문제시 원복
+    @Volatile var kakaoLane: com.kakaomobility.knsdk.guidance.knguidance.routeguide.objects.KNLane? = null
+
     // 신호등 잔여시간(초), 색상("RED"/"GREEN"/"YELLOW"/"")
     @Volatile var trafficLightRemainSec: Int = -1
     @Volatile var trafficLightColor: String = ""
@@ -39,6 +47,7 @@ object LaneSignalRepository {
     fun resetIfStale(maxAgeMs: Long = 15000L) {
         if (System.currentTimeMillis() - lastUpdateTime > maxAgeMs) {
             lanes = emptyList()
+            kakaoLane = null
             trafficLightRemainSec = -1
             trafficLightColor = ""
             source = ""
@@ -85,7 +94,8 @@ fun renderLaneSignalBar(
     LaneSignalRepository.resetIfStale(maxAgeMs = 120000L)
     if (bar == null || laneBoxContainer == null || countdownText == null) return
 
-    val hasLanes = LaneSignalRepository.lanes.isNotEmpty()
+    val kakaoLane = LaneSignalRepository.kakaoLane
+    val hasLanes = kakaoLane != null || LaneSignalRepository.lanes.isNotEmpty()
     val hasCountdown = LaneSignalRepository.trafficLightRemainSec >= 0
 
     if (!hasLanes && !hasCountdown) {
@@ -94,10 +104,54 @@ fun renderLaneSignalBar(
     }
     bar.visibility = android.view.View.VISIBLE
 
+    if (kakaoLane != null) {
+        // v5.4: 카카오 공식 컴포넌트로 그리기 - 추천차선/버스차로/회전화살표까지 전부
+        // 카카오가 알아서 정확하게 렌더링. laneBoxContainer 안에 1개만 만들어서 재사용
+        // (매번 새로 만들면 setLane() 호출할 때마다 뷰가 깜빡일 수 있어서). #문제시 원복
+        try {
+            var driveLaneView = laneBoxContainer.getChildAt(0) as? com.kakaomobility.knsdk.ui.component.KNDriveLaneView
+            if (driveLaneView == null) {
+                laneBoxContainer.removeAllViews()
+                driveLaneView = com.kakaomobility.knsdk.ui.component.KNDriveLaneView(context)
+                val lp = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                laneBoxContainer.addView(driveLaneView, lp)
+            }
+            driveLaneView.setLane(kakaoLane)
+            laneBoxContainer.visibility = android.view.View.VISIBLE
+        } catch (e: Exception) {
+            NavLogger.e(context, "[차선정보] KNDriveLaneView 렌더링 예외: ${e.message} - 예전 방식으로 폴백")
+            renderLaneBoxesFallback(context, laneBoxContainer)
+        }
+    } else {
+        renderLaneBoxesFallback(context, laneBoxContainer)
+    }
+
+    if (hasCountdown) {
+        countdownText.text = "${LaneSignalRepository.trafficLightRemainSec}s"
+        countdownText.setTextColor(
+            when (LaneSignalRepository.trafficLightColor) {
+                "RED" -> android.graphics.Color.parseColor("#FF5252")
+                "GREEN" -> android.graphics.Color.parseColor("#4CAF50")
+                "YELLOW" -> android.graphics.Color.parseColor("#FFC107")
+                else -> android.graphics.Color.WHITE
+            }
+        )
+        countdownText.visibility = android.view.View.VISIBLE
+    } else {
+        countdownText.visibility = android.view.View.GONE
+    }
+}
+
+// v5.4: KNDriveLaneView를 못 쓰는 경우(Tmap 엔진 자체 데이터 등 KNLane 객체가 없는 경우)를
+// 위한 예전 방식 - 추천/버스차로만 박스로 표시, 방향 화살표는 여전히 없음. #문제시 원복
+private fun renderLaneBoxesFallback(context: android.content.Context, laneBoxContainer: android.widget.LinearLayout) {
+    val hasLanes = LaneSignalRepository.lanes.isNotEmpty()
     laneBoxContainer.removeAllViews()
     LaneSignalRepository.lanes.forEach { info ->
         val tv = android.widget.TextView(context).apply {
-            // v4.23: 버스전용차로(busType!=0)는 "B"로 구분 표시(사용자 10번). #문제시 원복
             text = when {
                 info.busType != 0 -> "B"
                 info.recommended -> "▲"
@@ -112,8 +166,6 @@ fun renderLaneSignalBar(
             )
             textSize = 22f
             gravity = android.view.Gravity.CENTER
-            // v4.24: "오버레이 너무 크게 나온다"(사용자 9번) - 가로폭(20dp/최소너비 72dp)은
-            // 유지하고 세로(위아래 여백)만 줄임(사용자: "위 아래 세로만 축소, 넓이는 그대로"). #문제시 원복
             setPadding(20, 6, 20, 6)
             minWidth = 72
             setBackgroundColor(
@@ -132,19 +184,4 @@ fun renderLaneSignalBar(
         laneBoxContainer.addView(tv, lp)
     }
     laneBoxContainer.visibility = if (hasLanes) android.view.View.VISIBLE else android.view.View.GONE
-
-    if (hasCountdown) {
-        countdownText.text = "${LaneSignalRepository.trafficLightRemainSec}s"
-        countdownText.setTextColor(
-            when (LaneSignalRepository.trafficLightColor) {
-                "RED" -> android.graphics.Color.parseColor("#FF5252")
-                "GREEN" -> android.graphics.Color.parseColor("#4CAF50")
-                "YELLOW" -> android.graphics.Color.parseColor("#FFC107")
-                else -> android.graphics.Color.WHITE
-            }
-        )
-        countdownText.visibility = android.view.View.VISIBLE
-    } else {
-        countdownText.visibility = android.view.View.GONE
-    }
 }

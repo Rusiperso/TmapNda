@@ -253,12 +253,16 @@ class KakaoGuidanceDelegate(
                     LaneSignalRepository.source = "kakao"
                     LaneSignalRepository.lastUpdateTime = System.currentTimeMillis()
                 }
+                // v5.4: KNDriveLaneView(카카오 공식 렌더링 컴포넌트)에 그대로 넘겨줄 원본
+                // KNLane 객체 보관. #문제시 원복
+                LaneSignalRepository.kakaoLane = lane
 
                 val dump = lane.javaClass.methods
                     .filter { m -> m.parameterTypes.isEmpty() && m.name.startsWith("get") }
                     .joinToString(", ") { m -> try { "${m.name}=${m.invoke(lane)}" } catch (e: Exception) { "${m.name}=<실패>" } }
                 NavLogger.d(context, "[차선정보] KNLane 전체덤프: $dump")
             } else if (lane == null) {
+                LaneSignalRepository.kakaoLane = null
                 NavLogger.d(context, "[차선정보] lane=null (이 구간엔 차선 안내 데이터 없음)")
             }
         } catch (e: Exception) {
