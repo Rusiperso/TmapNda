@@ -687,6 +687,11 @@ class UdpSenderService : Service() {
                 socket.bind(java.net.InetSocketAddress("0.0.0.0", 7705))
                 socket.soTimeout = 5000
                 receiveSocket = socket
+                // v: "5초 타임아웃 로그조차 안 찍히고 완전히 조용해짐" 미스터리 - Wi-Fi
+                // 바인딩(Network.bindSocket) 이후 soTimeout이 실제로 유지되는지 자체가
+                // 의심스러워서, 설정 직후 실제 값을 읽어서 로그로 남김. 5000이 아닌
+                // 다른 값(특히 0=무한대기)이 찍히면 이게 원인 확정. #문제시 원복
+                NavLogger.d(this@UdpSenderService, "openpilot 수신 소켓 soTimeout 확인: ${socket.soTimeout}ms")
                 NavLogger.d(this@UdpSenderService, "openpilot UDP 수신 소켓 bind 성공: 0.0.0.0:7705 / 폰 현재 IP: ${getLocalIpAddressesSummary()}")
 
                 val buffer = ByteArray(4096)
@@ -706,12 +711,20 @@ class UdpSenderService : Service() {
                         continue
                     } catch (e: java.io.IOException) {
                         // 소켓이 외부(onDestroy 등)에서 close()된 경우 EBADF 등이 여기로 들어옴.
-                        // 더 이상 죽은 소켓을 붙잡고 반복하지 말고 조용히 루프 종료.
+                        // 그 경우엔 죽은 소켓을 붙잡고 반복하지 말고 조용히 루프 종료.
                         if (!isActive || !isRunning.get()) {
                             break
                         }
-                        NavLogger.e(this@UdpSenderService, "openpilot UDP 수신 중 오류: ${e.message}")
-                        break
+                        // v: 오늘 실주행 로그로 확인됨 - 서비스 자체는 안 죽었는데(onDestroy
+                        // 없음) 수신이 몇 분간 완전히 멈춘 사례가 있었음. 그동안은 여기서
+                        // isRunning이 true여도 무조건 break로 루프를 영구 종료시키고 있어서,
+                        // EBADF가 아닌 다른 일시적 IOException(네트워크 순간 끊김 등)에도
+                        // 다시는 복구가 안 됐던 게 원인일 수 있음. 이제 영구 종료 대신
+                        // 로그만 남기고 2초 쉬었다가 계속 재시도하도록 변경 - 소켓이 진짜
+                        // 죽어서 반복 실패해도 스팸 로그만 나고 서비스 자체는 안 죽음. #문제시 원복
+                        NavLogger.e(this@UdpSenderService, "openpilot UDP 수신 중 오류(재시도함): ${e.message}")
+                        delay(2000)
+                        continue
                     }
                     val data = String(packet.data, 0, packet.length, Charsets.UTF_8)
                     try {
@@ -820,12 +833,14 @@ class UdpSenderService : Service() {
                         }
                         continue
                     } catch (e: java.io.IOException) {
-                        // 외부에서 close()된 경우(EBADF 등) 죽은 소켓을 계속 붙잡지 말고 루프 종료
+                        // 외부에서 close()된 경우(EBADF 등)만 루프 종료, 그 외엔 재시도.
+                        // (위 openpilot 수신 루프와 동일한 이유로 변경) #문제시 원복
                         if (!isActive || !isRunning.get()) {
                             break
                         }
-                        NavLogger.e(this@UdpSenderService, "[NDA] 수신 오류: ${e.message}")
-                        break
+                        NavLogger.e(this@UdpSenderService, "[NDA] 수신 오류(재시도함): ${e.message}")
+                        delay(2000)
+                        continue
                     }
 
                     val text = String(packet.data, 0, packet.length, Charsets.UTF_8)
