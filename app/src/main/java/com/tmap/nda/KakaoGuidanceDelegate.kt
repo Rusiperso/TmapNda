@@ -399,6 +399,13 @@ class KakaoGuidanceDelegate(
         } catch (e: Exception) { 0 }
     }
 
+    // v5.2: DoublePoint.getX()/getY() 같은 Double 게터용. #문제시 원복
+    private fun findGetterDouble(obj: Any, nameContains: String): Double {
+        return try {
+            (findGetter(obj, null, nameContains) as? Number)?.toDouble() ?: 0.0
+        } catch (e: Exception) { 0.0 }
+    }
+
     // v5.1: getPassed() 같은 Boolean 게터용 - findGetterInt와 동일 패턴. #문제시 원복
     private fun findGetterBool(obj: Any, nameContains: String): Boolean? {
         return try {
@@ -481,6 +488,19 @@ class KakaoGuidanceDelegate(
             var nearest: Any? = null
             var nearestDist = Int.MAX_VALUE
             var nearestIsTrusted = false
+            var nearestGeoDist = -1
+
+            // v5.2: 사용자 요청("2번 경우도 완성") - 카메라형(단일지점)은 SDK에 "남은 거리"
+            // getter가 없어서, 안전정보 위치(getPos())와 현재 GPS 위치로 직접 유클리드
+            // 거리를 계산함. 카카오 좌표계(DoublePoint.x/y)가 KATEC(미터 단위 평면좌표)일
+            // 것으로 추정하고 계산하지만, 100% 확신은 아니라서 - 이번엔 이 값도 아직
+            // "미검증"으로 두고 로그로만 남김(구간단속 getRemainDist() 검증 때와 동일한
+            // 절차). 다음 로그에서 실제로 접근할수록 이 값이 줄어드는 게 확인되면 그때
+            // 신뢰(trusted) 처리. #문제시 원복
+            val gpsPos = try {
+                KNSDK.sharedGpsManager()?.recentGpsData?.pos
+            } catch (e: Exception) { null }
+
             safetyList?.forEach { item ->
                 if (item == null) return@forEach
                 // v5.1: [카카오 안전정보 검증용] 로그로 확정된 버그 - getDistFromS()는
@@ -488,19 +508,37 @@ class KakaoGuidanceDelegate(
                 // 검증으로 발견: 1015→2169→...→43621처럼 계속 늘어남, 이벤트에 가까워질수록
                 // 줄어들어야 하는데 정반대). APK 바이트코드 재조사 결과 KNSafety_Section/
                 // KNSafety_SectionSegment엔 진짜 "남은 거리" getRemainDist()가 따로 있었음 -
-                // 이걸 우선 시도하고, 없는 타입(카메라 등 단일지점형)만 기존 DistFromS로 폴백
-                // (이 폴백은 여전히 미검증이라 주석의 "확신 없음" 상태 유지). getPassed()로
-                // 이미 지나친 이벤트는 아예 후보에서 제외. #문제시 원복
+                // 이걸 우선 시도. getPassed()로 이미 지나친 이벤트는 아예 후보에서 제외. #문제시 원복
                 val alreadyPassed = (findGetterBool(item, "Passed")) == true
                 if (alreadyPassed) return@forEach
                 val remainDist = findGetterInt(item, "RemainDist").takeIf { it > 0 }
+
+                // 카메라형 등 remainDist가 없는 타입은 좌표 기반 직선거리를 후보로 계산
+                var geoDist = -1
+                if (remainDist == null && gpsPos != null) {
+                    try {
+                        val evLocation = findGetter(item, "getLocation")
+                        val evPos = evLocation?.let { findGetter(it, "getPos") }
+                        if (evPos != null) {
+                            val ex = findGetterDouble(evPos, "X")
+                            val ey = findGetterDouble(evPos, "Y")
+                            val gx = findGetterDouble(gpsPos, "X")
+                            val gy = findGetterDouble(gpsPos, "Y")
+                            val dx = ex - gx
+                            val dy = ey - gy
+                            geoDist = kotlin.math.sqrt(dx * dx + dy * dy).toInt()
+                        }
+                    } catch (e: Exception) { /* 무시 - 검증용 계산이라 실패해도 안전 */ }
+                }
+
                 val location = findGetter(item, "getLocation")
                 val distFromS = location?.let { findGetterInt(it, "DistFromS") } ?: -1
-                val dist = remainDist ?: distFromS
+                val dist = remainDist ?: geoDist.takeIf { it > 0 } ?: distFromS
                 if (dist in 0 until nearestDist) {
                     nearestDist = dist
                     nearest = item
                     nearestIsTrusted = remainDist != null
+                    nearestGeoDist = geoDist
                 }
             }
             if (nearest != null) {
@@ -520,7 +558,7 @@ class KakaoGuidanceDelegate(
                     lastUnmappedSafetyCodeLogTime = System.currentTimeMillis()
                     NavLogger.d(context, "[카카오 안전정보코드 수집] 미매핑 code=$codeName(value=$codeValue) speedLimit=$speedLimit dist=$nearestDist")
                 }
-                NavLogger.d(context, "[카카오->openpilot] 안전정보: kakaoCode=$codeName(value=$codeValue) -> nSdiType=$sdiType speedLimit=$speedLimit dist=$nearestDist trusted=$nearestIsTrusted")
+                NavLogger.d(context, "[카카오->openpilot] 안전정보: kakaoCode=$codeName(value=$codeValue) -> nSdiType=$sdiType speedLimit=$speedLimit dist=$nearestDist trusted=$nearestIsTrusted geoDist=$nearestGeoDist")
             } else {
                 KakaoRouteDataRepository.safetyType = -1
                 KakaoRouteDataRepository.safetyDist = 0
