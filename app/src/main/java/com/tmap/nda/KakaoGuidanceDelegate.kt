@@ -480,6 +480,7 @@ class KakaoGuidanceDelegate(
             // 것 하나를 "현재 가장 시급한 이벤트"로 선택. #문제시 원복
             var nearest: Any? = null
             var nearestDist = Int.MAX_VALUE
+            var nearestIsTrusted = false
             safetyList?.forEach { item ->
                 if (item == null) return@forEach
                 // v5.1: [카카오 안전정보 검증용] 로그로 확정된 버그 - getDistFromS()는
@@ -499,6 +500,7 @@ class KakaoGuidanceDelegate(
                 if (dist in 0 until nearestDist) {
                     nearestDist = dist
                     nearest = item
+                    nearestIsTrusted = remainDist != null
                 }
             }
             if (nearest != null) {
@@ -513,14 +515,16 @@ class KakaoGuidanceDelegate(
                 KakaoRouteDataRepository.safetyType = sdiType
                 KakaoRouteDataRepository.safetySpeedLimit = speedLimit
                 KakaoRouteDataRepository.safetyDist = nearestDist
+                KakaoRouteDataRepository.safetyDistTrusted = nearestIsTrusted
                 if (sdiType == -1 && System.currentTimeMillis() - lastUnmappedSafetyCodeLogTime > 15000L) {
                     lastUnmappedSafetyCodeLogTime = System.currentTimeMillis()
                     NavLogger.d(context, "[카카오 안전정보코드 수집] 미매핑 code=$codeName(value=$codeValue) speedLimit=$speedLimit dist=$nearestDist")
                 }
-                NavLogger.d(context, "[카카오->openpilot] 안전정보: kakaoCode=$codeName(value=$codeValue) -> nSdiType=$sdiType speedLimit=$speedLimit dist=$nearestDist")
+                NavLogger.d(context, "[카카오->openpilot] 안전정보: kakaoCode=$codeName(value=$codeValue) -> nSdiType=$sdiType speedLimit=$speedLimit dist=$nearestDist trusted=$nearestIsTrusted")
             } else {
                 KakaoRouteDataRepository.safetyType = -1
                 KakaoRouteDataRepository.safetyDist = 0
+                KakaoRouteDataRepository.safetyDistTrusted = false
             }
         } catch (e: Exception) {
             NavLogger.e(context, "안전정보 반영 예외: ${e.message}")

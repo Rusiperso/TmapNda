@@ -54,6 +54,10 @@ object KakaoRouteDataRepository {
     @Volatile var safetyType: Int = -1
     @Volatile var safetySpeedLimit: Int = 0
     @Volatile var safetyDist: Int = 0
+    // v5.1: getRemainDist()(진짜 남은거리, 검증됨)로 구했는지 DistFromS()(미검증 폴백)로
+    // 구했는지 표시. UdpSenderService가 "믿을 수 있는 카카오 값만 Tmap 폴백으로 쓴다"를
+    // 판단하는 데 씀. #문제시 원복
+    @Volatile var safetyDistTrusted: Boolean = false
 
     private val listeners = CopyOnWriteArraySet<(KakaoRouteSnapshot) -> Unit>()
 

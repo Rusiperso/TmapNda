@@ -29,12 +29,6 @@ class UdpSenderService : Service() {
     private val UDP_PORT = 7706
     private var targetIp = "255.255.255.255"
 
-    // v4.21: 카카오 안전정보(과속카메라/방지턱 등) 추출 로직을 처음부터 다시 짰는데,
-    // getDistFromS()가 "지금 위치→이벤트까지 거리"가 맞는지 실주행 검증 전이라 - 검증
-    // 되기 전까진 로그로만 확인하고 실제 openpilot 감속 판단에는 안 씀(사용자 지적:
-    // "안전한 방법으로"). 다음 로그로 거리값이 정상적으로 줄어드는 게 확인되면 true로. #문제시 원복
-    private val KAKAO_SAFETY_LIVE = false
-
     // ===== NDA(EON:ROAD_LIMIT_SERVICE:v1) 호환 브릿지 관련 상수 =====
     // road_speed_limiter.py (carrot 계열이 아닌 다수의 HKG 커뮤니티 fork에도 포함된 표준 UDP 브릿지) 프로토콜을
     // 그대로 흉내내어, nMirror 없이도 이 프로토콜을 쓰는 openpilot과 직접 연동한다.
@@ -515,18 +509,26 @@ class UdpSenderService : Service() {
                             }
                         }
                         json.put("szTBTMainText", "$kakaoPrefix | GPS: $currentGpsStatusText")
-                        // v4.21: getDistFromS()가 "지금 위치→이벤트까지 남은 거리"가 맞는지
-                        // 실주행으로 검증이 안 된 상태 - 이 가정이 틀리면 크래시는 안 나지만
-                        // 실제 차량 감속 타이밍이 너무 이르거나 늦게 나갈 위험이 있음(사용자 지적:
-                        // "안전한 방법으로"). 그래서 이번엔 UDP로 실제 전송(=차량 감속에 관여)은
-                        // 안 하고 로그로만 남김 - 다음 로그로 거리값이 접근하면서 정상적으로
-                        // 줄어드는지 확인되면 KAKAO_SAFETY_LIVE를 true로 바꿔서 실제로 내보냄. #문제시 원복
-                        if (KAKAO_SAFETY_LIVE && kr.safetyType >= 0 && kr.safetySpeedLimit > 0 && kr.safetyDist > 0) {
-                            json.put("nSdiType", kr.safetyType)
-                            json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
-                            json.put("nSdiDist", kr.safetyDist)
-                        } else if (kr.safetyType >= 0 && kr.safetySpeedLimit > 0 && kr.safetyDist > 0) {
-                            NavLogger.d(this@UdpSenderService, "[카카오 안전정보 검증용][실제전송안함] type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}")
+                        // v5.1: 사용자 지적 - "Tmap에 안전정보 있고 카카오에 없을 수도, 반대일
+                        // 수도, 둘 다 있을 수도 있으니 Tmap을 1순위로 두고 카카오를 2순위
+                        // 폴백으로 쓸 수 있다고 했잖아, 근데 안 되는 거야?" - 확인해보니
+                        // 맞는 지적이었음. 지금까지는 KAKAO_SAFETY_LIVE 하나로 "전부 로그만"
+                        // 아니면 "카카오가 무조건 덮어씀" 둘 중 하나였지, 진짜 "Tmap 우선,
+                        // 없을 때만 카카오"라는 순위 판단 로직 자체가 없었음. 이제 진짜로
+                        // 구현: Tmap이 이미 뭔가 잡고 있으면(nSdiType!=0 또는 nSdiDist>0)
+                        // 절대 안 건드리고, Tmap이 아무것도 없을 때만 - 그리고 카카오 값이
+                        // 검증된(safetyDistTrusted=getRemainDist() 기반) 경우에만 - 카카오
+                        // 값으로 채움. 미검증(카메라형) 카카오 데이터는 여전히 로그로만. #문제시 원복
+                        val tmapHasSdi = json.optInt("nSdiType", 0) != 0 || json.optInt("nSdiDist", 0) > 0
+                        if (!tmapHasSdi && kr.safetyType >= 0 && kr.safetySpeedLimit > 0 && kr.safetyDist > 0) {
+                            if (kr.safetyDistTrusted) {
+                                json.put("nSdiType", kr.safetyType)
+                                json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
+                                json.put("nSdiDist", kr.safetyDist)
+                                NavLogger.d(this@UdpSenderService, "[안전정보 우선순위] Tmap 없음 -> 검증된 카카오값으로 폴백: type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}")
+                            } else {
+                                NavLogger.d(this@UdpSenderService, "[카카오 안전정보 검증용][실제전송안함 - 미검증 폴백] type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}")
+                            }
                         }
                         NavLogger.d(this@UdpSenderService, "[카카오->openpilot] UDP 페이로드 카카오 데이터로 덮어씀: nGoPosDist=${kr.remainDist} nTBTDist=$kakaoTbtDist turnType=${kr.tbtTurnType}")
                     }
