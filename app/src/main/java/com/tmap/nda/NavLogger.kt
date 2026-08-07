@@ -100,6 +100,16 @@ object NavLogger {
             FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         })
 
+        // v5.2: 로그 전송 양식 개편(사용자 요청) - "로그 보낸 메일 주소" 항목 제거,
+        // "현재 사용 중인 버전"(TmapNda 자체 앱 버전) 항목 추가. "브렌치 이름"은 openpilot
+        // 자체 브랜치명을 UDP로 안 받고 있어서 정확히는 못 채우지만, openpilot이 보내는
+        // 자체 버전 문자열(Carrot2 필드, 화면에 "통신중" 옆에 표시되는 그 값)이 가장
+        // 가까운 대체 정보라 그걸로 자동 채움 - 연결 안 돼있으면 빈 채로 남음. #문제시 원복
+        val appVersion = try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
+        } catch (e: Exception) { "" }
+        val opBranchGuess = OpenpilotStateRepository.state.value?.carrot2?.takeIf { it.isNotBlank() && it != "-" } ?: ""
+
         val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_EMAIL, arrayOf("jaeeok.cho@icloud.com"))
@@ -108,10 +118,10 @@ object NavLogger {
             Intent.EXTRA_TEXT,
             """
             1. 오픈 카톡 닉네임:
-            2. 브렌치명:
+            2. 브렌치 이름: $opBranchGuess
             3. 브렌치 주소:
-            4. 오류 증상:
-            5. 로그 보낸 메일 주소:
+            4. 현재 사용 중인 버전: $appVersion
+            5. 오류 증상:
 
             첨부 로그: 총 ${files.size}개
             """.trimIndent()
