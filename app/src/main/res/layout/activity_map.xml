@@ -330,24 +330,24 @@
                         android:layout_marginEnd="5dp"/>
 
                     <TextView
-                        android:id="@+id/tvActiveStatus"
+                        android:id="@+id/tvConnectionStatus"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="OP OFF"
+                        android:text="콤마 대기중"
                         android:textColor="#CCCCCC"
                         android:textSize="10sp"
-                        android:textStyle="bold"/>
+                        android:textStyle="bold"
+                        android:maxLines="1"
+                        android:ellipsize="end"/>
                 </LinearLayout>
 
                 <TextView
-                    android:id="@+id/tvConnectionStatus"
+                    android:id="@+id/tvActiveStatus"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="연결 대기"
+                    android:text="크루즈 대기중"
                     android:textColor="#777777"
                     android:textSize="8sp"
-                    android:maxLines="1"
-                    android:ellipsize="end"
                     android:layout_marginTop="1dp"/>
             </LinearLayout>
 
