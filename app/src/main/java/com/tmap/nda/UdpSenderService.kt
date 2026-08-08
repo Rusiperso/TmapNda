@@ -25,6 +25,7 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicBoolean
+import android.net.wifi.WifiManager
 import android.os.PowerManager
 
 class UdpSenderService : Service() {
@@ -658,6 +659,13 @@ class UdpSenderService : Service() {
     // 높음 - 폰이 지금 어느 IP 대역에 있는지를 로그로 남겨서 openpilot 기기의 IP 대역과
     // 실제로 같은 네트워크인지 다음 로그에서 바로 비교할 수 있게 함. #문제시 원복
     private fun getLocalIpAddressesSummary(): String {
+        val ssidPart = try {
+            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            val ssid = wifiManager?.connectionInfo?.ssid?.trim('"')
+            if (!ssid.isNullOrBlank() && ssid != "<unknown ssid>") "Wi-Fi SSID=$ssid, " else ""
+        } catch (e: Exception) {
+            ""
+        }
         return try {
             val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
             val list = mutableListOf<String>()
@@ -672,9 +680,9 @@ class UdpSenderService : Service() {
                     }
                 }
             }
-            if (list.isEmpty()) "없음(네트워크 미연결?)" else list.joinToString(", ")
+            ssidPart + (if (list.isEmpty()) "없음(네트워크 미연결?)" else list.joinToString(", "))
         } catch (e: Exception) {
-            "조회실패: ${e.message}"
+            "${ssidPart}조회실패: ${e.message}"
         }
     }
 
