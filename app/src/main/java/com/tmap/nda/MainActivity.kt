@@ -81,6 +81,8 @@ class MainActivity : AppCompatActivity() {
         // 자동 업데이트 체크
         AutoUpdater.checkForUpdates(this)
 
+        requestIgnoreBatteryOptimizationsIfNeeded()
+
         val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         val savedAppKey = sharedPref.getString("APP_KEY", "")
         val savedKakaoKey = sharedPref.getString("kakao_rest_api_key", "")
@@ -231,6 +233,33 @@ class MainActivity : AppCompatActivity() {
             file.writeText(sb.toString())
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    // v: 지금까지 배터리 최적화(Doze/앱 대기 모드) 예외를 단 한 번도 요청한 적이 없었음.
+    // UdpSenderService가 PARTIAL_WAKE_LOCK은 잡고 있어도 그건 CPU만 안 재우는 거고,
+    // 안드로이드/제조사(특히 커스텀 헤드유닛 ROM)의 배터리 최적화가 백그라운드 UDP
+    // 네트워크 접근 자체를 조일 수 있음 - "처음엔 연결됐다가 한동안 지나면 조용히 끊기고
+    // 다시는 안 되는" 미스터리의 추가 원인 후보. 매번 물어보면 시끄러우니 한 번 거부하면
+    // 다시 안 물어봄(설정에서 직접 켜야 함). #문제시 원복
+    private fun requestIgnoreBatteryOptimizationsIfNeeded() {
+        try {
+            val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            if (sharedPref.getBoolean("battery_optimization_prompt_shown", false)) return
+
+            val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                NavLogger.d(this, "[배터리 최적화] 예외 미설정 상태 - 요청 다이얼로그 표시")
+                val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = android.net.Uri.parse("package:$packageName")
+                }
+                startActivity(intent)
+            } else {
+                NavLogger.d(this, "[배터리 최적화] 이미 예외 설정되어 있음")
+            }
+            sharedPref.edit().putBoolean("battery_optimization_prompt_shown", true).apply()
+        } catch (e: Exception) {
+            NavLogger.e(this, "[배터리 최적화] 요청 실패: ${e.message}")
         }
     }
 }
