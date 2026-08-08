@@ -608,7 +608,11 @@ class UdpSenderService : Service() {
                         // trusted 여부와 무관하게 카메라/방지턱/구간단속 다 그대로 전송
                         // (geoDist 기반 추정치도 충분히 쓸만하다고 판단). 길안내 안 할 때는
                         // 이 블록 자체가 안 돌아서 Tmap 원본값이 자동으로 그대로 유지됨. #문제시 원복
-                        if (kr.safetyType >= 0 && kr.safetySpeedLimit > 0 && kr.safetyDist > 0) {
+                        // v: 지피티 분석 반영(2026-08-08) - 방지턱(safetyType==22)은 원래
+                        // speedLimit이 0으로 오는 게 정상인데, safetySpeedLimit > 0 조건 때문에
+                        // 방지턱만 항상 이 분기에서 탈락하고 있었음. 방지턱은 speedLimit 조건
+                        // 없이 통과시킴. #문제시 원복
+                        if (kr.safetyType >= 0 && kr.safetyDist > 0 && (kr.safetySpeedLimit > 0 || kr.safetyType == 22)) {
                             json.put("nSdiType", kr.safetyType)
                             json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
                             json.put("nSdiDist", kr.safetyDist)
