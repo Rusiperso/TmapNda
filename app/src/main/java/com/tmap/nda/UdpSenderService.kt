@@ -296,7 +296,7 @@ class UdpSenderService : Service() {
                 "차선(source=${LaneSignalRepository.source}, 개수=${LaneSignalRepository.lanes.size}, fresh=${LaneSignalRepository.isFresh()}) " +
                 "볼륨(저장%=$volumePercent, STREAM_MUSIC=$musicVol/$musicMax) " +
                 "HUD(everConnected=${com.tmap.nda.hud.TmapNdaCarAppService.everConnected} - AndroidAuto Cluster용, 이 구조에선 항상 false가 정상) " +
-                "구형NDA비콘(addr=${ndaRemoteAddr}, GPS=${ndaGps?.hasFix} - 현재 openpilot 미지원, 항상 null/false가 정상) " +
+                "구형NDA비콘(addr=${ndaRemoteAddr}, GPS=${ndaGps?.hasFix} - openpilot 포크에 따라 지원 여부가 다름, 재억 본인 차량은 미지원이 정상) " +
                 "폰IP=${getLocalIpAddressesSummary()} " +
                 "배터리=${batteryPct}% 메모리여유=${memInfo.availMem / 1024 / 1024}MB/${memInfo.totalMem / 1024 / 1024}MB lowMemory=${memInfo.lowMemory} " +
                 "기기=${android.os.Build.MANUFACTURER}/${android.os.Build.MODEL} SDK=${android.os.Build.VERSION.SDK_INT}"
