@@ -710,11 +710,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     updateTopBarEventDisplay(null, null)
                 }
                 // v4.13: 연결대기 상태일 때 경과시간 표시(사용자 6번) - MapActivity와 동일. #문제시 원복
-                if (opConnectionLastGoodStateTime <= 0L) {
-                    binding.tvConnectionStatus?.text = "콤마 대기중"
-                } else {
-                    val elapsedSec = (System.currentTimeMillis() - opConnectionLastGoodStateTime) / 1000
-                    binding.tvConnectionStatus?.text = "연결 대기 (${elapsedSec}초)"
+                // v: MapActivity와 동일한 이유로 NDA 연결 시엔 건드리지 않음. #문제시 원복
+                if (OpenpilotStateRepository.ndaConnected.value != true) {
+                    if (opConnectionLastGoodStateTime <= 0L) {
+                        binding.tvConnectionStatus?.text = "콤마 대기중"
+                    } else {
+                        val elapsedSec = (System.currentTimeMillis() - opConnectionLastGoodStateTime) / 1000
+                        binding.tvConnectionStatus?.text = "연결 대기 (${elapsedSec}초)"
+                    }
                 }
                 hudPollHandler.postDelayed(this, 1000)
                 renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "kakao")

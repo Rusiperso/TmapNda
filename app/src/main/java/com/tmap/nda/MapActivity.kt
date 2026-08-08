@@ -123,6 +123,13 @@ class MapActivity : AppCompatActivity() {
         }
     }
     private fun updateOpConnectionWaitingText() {
+        // v: 사용자 제보(2026-08-08) - v6.8에서 NDA 연결도 "콤마 연결됨"으로 뜨게 고쳤는데도
+        // 계속 "대기중"으로만 보인다고 함. 원인 파악: 이 함수가 1초마다 도는 타이머
+        // (opConnectionTickRunnable)에서 NDA 연결 여부는 전혀 안 보고 무조건 텍스트를
+        // 덮어쓰고 있었음 - updateConnectionUi()가 잠깐 "연결됨"으로 바꿔놔도 1초 안에
+        // 이 함수가 다시 "대기중"으로 되돌려버리는 구조였음. NDA로 연결돼있으면 이 함수가
+        // 아예 손 대지 않도록 수정. #문제시 원복
+        if (OpenpilotStateRepository.ndaConnected.value == true) return
         if (opConnectionLastGoodStateTime <= 0L) {
             binding.tvConnectionStatus.text = "콤마 대기중"
         } else {
