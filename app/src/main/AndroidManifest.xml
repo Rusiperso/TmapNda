@@ -3,6 +3,10 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- v: 지금까지 IP 대역으로만 "와이파이인지 모바일인지" 추측했는데, 이 권한으로
+         실제 연결된 Wi-Fi 이름(SSID)까지 로그에 정확히 남길 수 있음 - 클라이언트
+         모드(남의 핫스팟에 붙음)/호스트 모드(내가 핫스팟 켬) 구분이 훨씬 확실해짐. #문제시 원복 -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
@@ -11,6 +15,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- v: 배터리 최적화(Doze/앱 대기 모드) 예외를 요청하기 위한 권한. 지금까지 이걸 아예
+         요청한 적이 없어서, 헤드유닛의 배터리 최적화 정책에 따라 UdpSenderService의
+         백그라운드 네트워크(UDP)가 한동안 잘 되다가 조용히 조여질 수 있었음("연결 한 번
+         되고 다시는 안 됨" 미스터리의 추가 원인 후보). #문제시 원복 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES" />
     <uses-permission android:name="androidx.car.app.MAP_TEMPLATES" />
     <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
