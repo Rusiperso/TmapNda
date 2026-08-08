@@ -242,11 +242,12 @@ class MainActivity : AppCompatActivity() {
     // 네트워크 접근 자체를 조일 수 있음 - "처음엔 연결됐다가 한동안 지나면 조용히 끊기고
     // 다시는 안 되는" 미스터리의 추가 원인 후보. 매번 물어보면 시끄러우니 한 번 거부하면
     // 다시 안 물어봄(설정에서 직접 켜야 함). #문제시 원복
+    // v: 사용자 요청(2026-08-08) - "한 번 보여주면 다신 안 물어봄" 방식이었는데, 그 한 번을
+    // 놓치면 영원히 배터리 최적화가 꺼진 채로 방치될 수 있었음. 다른 권한(위치/알림)들처럼
+    // 매번 실행할 때 꺼져있으면 무조건 다시 물어보도록 변경 - 앱 업데이트든 그냥 재실행이든
+    // 상관없이 켜질 때까지 계속 뜸. #문제시 원복
     private fun requestIgnoreBatteryOptimizationsIfNeeded() {
         try {
-            val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-            if (sharedPref.getBoolean("battery_optimization_prompt_shown", false)) return
-
             val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
             if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
                 NavLogger.d(this, "[배터리 최적화] 예외 미설정 상태 - 요청 다이얼로그 표시")
@@ -257,7 +258,6 @@ class MainActivity : AppCompatActivity() {
             } else {
                 NavLogger.d(this, "[배터리 최적화] 이미 예외 설정되어 있음")
             }
-            sharedPref.edit().putBoolean("battery_optimization_prompt_shown", true).apply()
         } catch (e: Exception) {
             NavLogger.e(this, "[배터리 최적화] 요청 실패: ${e.message}")
         }
