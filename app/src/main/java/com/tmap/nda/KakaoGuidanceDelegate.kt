@@ -52,14 +52,37 @@ class KakaoGuidanceDelegate(
     var naviView: com.kakaomobility.knsdk.ui.view.KNNaviView? = null
     private var lastLocationLogAt = 0L
 
+    // 카카오 안전정보의 DistFromS와 현재 KNLocation의 dist는 둘 다
+    // "경로 시작점부터의 누적거리"다. 단일 카메라/방지턱처럼 KNSDK가
+    // getRemainDist()를 주지 않는 이벤트는 두 값을 빼서 실제 남은거리를 구한다.
+    @Volatile
+    private var currentRouteDistFromStart = -1
+
+    // routeDelta 방식으로 추적 중인 단일 카메라/방지턱의 경로상 고정 위치.
+    // 위치 콜백마다 현재 누적거리를 빼서 safetyDist를 실시간으로 줄인다.
+    @Volatile
+    private var currentSafetyEventRouteDist = -1
+
+    private fun clearKakaoSafetyState() {
+        currentSafetyEventRouteDist = -1
+        KakaoRouteDataRepository.safetyType = -1
+        KakaoRouteDataRepository.safetySpeedLimit = 0
+        KakaoRouteDataRepository.safetyDist = 0
+        KakaoRouteDataRepository.safetyDistTrusted = false
+    }
+
     // ===== GuideStateDelegate =====
     override fun guidanceGuideStarted(guidance: KNGuidance) {
+        currentRouteDistFromStart = -1
+        clearKakaoSafetyState()
         NavLogger.d(context, "[카카오안내] 시작됨")
         naviView?.guidanceGuideStarted(guidance)
         onGuideStarted()
     }
 
     override fun guidanceGuideEnded(guidance: KNGuidance) {
+        currentRouteDistFromStart = -1
+        currentSafetyEventRouteDist = -1
         NavLogger.d(context, "[카카오안내] 종료됨(도착) - Tmap으로 복귀")
         KakaoRouteDataRepository.reset()
         naviView?.guidanceGuideEnded(guidance)
@@ -67,6 +90,9 @@ class KakaoGuidanceDelegate(
     }
 
     override fun guidanceOutOfRoute(guidance: KNGuidance) {
+        // 경로를 벗어난 순간 이전 경로의 DistFromS 기준을 더 이상 사용하지 않는다.
+        currentRouteDistFromStart = -1
+        clearKakaoSafetyState()
         NavLogger.d(context, "[카카오안내] 경로이탈 감지, 재탐색 위임")
         naviView?.guidanceOutOfRoute(guidance)
     }
@@ -94,6 +120,9 @@ class KakaoGuidanceDelegate(
         toLocation: KNLocation,
         changeReason: KNGuideRouteChangeReason
     ) {
+        // 재탐색 후 DistFromS 기준점이 새 경로로 바뀌므로 이전 누적거리/안전이벤트를 폐기한다.
+        currentRouteDistFromStart = -1
+        clearKakaoSafetyState()
         NavLogger.d(context, "[카카오안내] 경로 변경됨: 사유=$changeReason")
         naviView?.guidanceRouteChanged(guidance)
     }
@@ -155,6 +184,30 @@ class KakaoGuidanceDelegate(
         try {
             val currentRoute = guidance.routesOnGuide?.firstOrNull()
             val currentLocation = locationGuide.location
+
+            if (currentLocation != null) {
+                // 실주행 로그에서 KNSafety.location.distFromS와 같은 누적거리 기준임을 확인.
+                // SDK 버전에 따라 공개 프로퍼티가 달라질 수 있어 리플렉션으로 안전하게 읽는다.
+                val routeDist = (findGetter(currentLocation, "getDist") as? Number)?.toInt()
+                    ?: (findGetter(currentLocation, "getDistFromS") as? Number)?.toInt()
+                if (routeDist != null && routeDist >= 0) {
+                    currentRouteDistFromStart = routeDist
+
+                    // safetyGuide 콜백은 이벤트 변경 시에만 듬성듬성 들어올 수 있다.
+                    // routeDelta로 잡은 단일 카메라/방지턱은 위치 콜백마다 남은거리를 갱신해
+                    // openpilot이 정지된 거리값이 아니라 실제 접근 거리를 받게 한다.
+                    if (currentSafetyEventRouteDist >= 0) {
+                        val liveSafetyDist = currentSafetyEventRouteDist - routeDist
+                        if (liveSafetyDist >= 0) {
+                            KakaoRouteDataRepository.safetyDist = liveSafetyDist
+                            KakaoRouteDataRepository.safetyDistTrusted = true
+                        } else {
+                            // getPassed() 콜백이 늦더라도 위치를 지나면 즉시 이벤트 제거.
+                            clearKakaoSafetyState()
+                        }
+                    }
+                }
+            }
 
             if (currentRoute != null && currentLocation != null) {
                 val remainDist = currentRoute.remainDistFromLocation(currentLocation)
@@ -459,8 +512,10 @@ class KakaoGuidanceDelegate(
             "KNSafetyCode_SpeedViolationSectionHalf" -> 4
             "KNSafetyCode_MovableSpeedViolationCamera" -> 7   // 과속(이동식)
             "KNSafetyCode_BoxedSpeedViolationCamera" -> 8     // 고정식 과속위험구간(박스형)
+            // openpilot/NDA의 cam_type=0은 "카메라 없음"으로 해석되는 fork가 있으므로
+            // 신호+과속 복합카메라는 일반 과속카메라와 같은 1로 정규화한다.
             "KNSafetyCode_SignalAndSpeedViolationCamera",
-            "KNSafetyCode_SignalAndSpeedViolationBackwardCamera" -> 0 // 신호과속
+            "KNSafetyCode_SignalAndSpeedViolationBackwardCamera" -> 1 // 신호+과속
             "KNSafetyCode_SignalViolationCamera" -> 6         // 신호단속
             "KNSafetyCode_BuslaneViolationCamera",
             "KNSafetyCode_BuslaneAndSpeedViolationCamera" -> 9 // 버스전용차로
@@ -491,42 +546,54 @@ class KakaoGuidanceDelegate(
     override fun guidanceDidUpdateSafetyGuide(guidance: KNGuidance, safetyGuide: KNGuide_Safety?) {
         try {
             val safetyList = safetyGuide?.let { findGetter(it, "getSafetiesOnGuide") } as? List<*>
-            // 경로상 여러 안전정보 중, 남은 거리(getDistFromS)가 0 이상이면서 가장 가까운
-            // 것 하나를 "현재 가장 시급한 이벤트"로 선택. #문제시 원복
+
             var nearest: Any? = null
             var nearestDist = Int.MAX_VALUE
             var nearestIsTrusted = false
             var nearestGeoDist = -1
+            var nearestEventRouteDist = -1
+            var nearestDistanceSource = "none"
 
-            // v5.2: 사용자 요청("2번 경우도 완성") - 카메라형(단일지점)은 SDK에 "남은 거리"
-            // getter가 없어서, 안전정보 위치(getPos())와 현재 GPS 위치로 직접 유클리드
-            // 거리를 계산함. 카카오 좌표계(DoublePoint.x/y)가 KATEC(미터 단위 평면좌표)일
-            // 것으로 추정하고 계산하지만, 100% 확신은 아니라서 - 이번엔 이 값도 아직
-            // "미검증"으로 두고 로그로만 남김(구간단속 getRemainDist() 검증 때와 동일한
-            // 절차). 다음 로그에서 실제로 접근할수록 이 값이 줄어드는 게 확인되면 그때
-            // 신뢰(trusted) 처리. #문제시 원복
+            // 경로 누적거리 정보를 얻지 못했을 때만 사용하는 최후 폴백용 GPS 좌표.
             val gpsPos = try {
                 KNSDK.sharedGpsManager()?.recentGpsData?.pos
             } catch (e: Exception) { null }
 
             safetyList?.forEach { item ->
                 if (item == null) return@forEach
-                // v5.1: [카카오 안전정보 검증용] 로그로 확정된 버그 - getDistFromS()는
-                // "경로 시작점부터의 거리"라 주행할수록 계속 증가하기만 했음(사용자 실주행
-                // 검증으로 발견: 1015→2169→...→43621처럼 계속 늘어남, 이벤트에 가까워질수록
-                // 줄어들어야 하는데 정반대). APK 바이트코드 재조사 결과 KNSafety_Section/
-                // KNSafety_SectionSegment엔 진짜 "남은 거리" getRemainDist()가 따로 있었음 -
-                // 이걸 우선 시도. getPassed()로 이미 지나친 이벤트는 아예 후보에서 제외. #문제시 원복
-                val alreadyPassed = (findGetterBool(item, "Passed")) == true
-                if (alreadyPassed) return@forEach
-                val remainDist = findGetterInt(item, "RemainDist").takeIf { it > 0 }
 
-                // 카메라형 등 remainDist가 없는 타입은 좌표 기반 직선거리를 후보로 계산
+                // 이미 지난 이벤트는 getPassed() 갱신 시점에 즉시 제외.
+                if (findGetterBool(item, "Passed") == true) return@forEach
+
+                // 구간단속 계열은 KNSDK가 실제 남은거리 getRemainDist()를 제공하므로 최우선.
+                val sectionRemainDist = findGetterInt(item, "RemainDist").takeIf { it > 0 }
+
+                val eventLocation = findGetter(item, "getLocation")
+                val eventRouteDist = eventLocation?.let { location ->
+                    (findGetter(location, "getDistFromS") as? Number)?.toInt()
+                        ?: (findGetter(location, "getDist") as? Number)?.toInt()
+                } ?: -1
+
+                // 단일 카메라/방지턱 실주행 로그에서 검증된 계산.
+                // 예: 카메라 2169m - 현재 1999m = 약 170m 남음.
+                val routeDeltaDist = if (
+                    sectionRemainDist == null &&
+                    eventRouteDist >= 0 &&
+                    currentRouteDistFromStart >= 0
+                ) {
+                    val diff = eventRouteDist - currentRouteDistFromStart
+                    // getPassed 갱신이 늦어도 현재 위치 뒤쪽 이벤트는 다시 선택하지 않는다.
+                    if (diff < 0) return@forEach
+                    diff
+                } else {
+                    -1
+                }
+
+                // 누적거리 계산을 못 한 경우에만 기존 KATEC 직선거리 계산을 폴백으로 유지.
                 var geoDist = -1
-                if (remainDist == null && gpsPos != null) {
+                if (sectionRemainDist == null && routeDeltaDist < 0 && gpsPos != null) {
                     try {
-                        val evLocation = findGetter(item, "getLocation")
-                        val evPos = evLocation?.let { findGetter(it, "getPos") }
+                        val evPos = eventLocation?.let { findGetter(it, "getPos") }
                         if (evPos != null) {
                             val ex = findGetterDouble(evPos, "X")
                             val ey = findGetterDouble(evPos, "Y")
@@ -536,41 +603,82 @@ class KakaoGuidanceDelegate(
                             val dy = ey - gy
                             geoDist = kotlin.math.sqrt(dx * dx + dy * dy).toInt()
                         }
-                    } catch (e: Exception) { /* 무시 - 검증용 계산이라 실패해도 안전 */ }
+                    } catch (e: Exception) {
+                        // 폴백 실패 시 해당 이벤트는 아래에서 자동 제외.
+                    }
                 }
 
-                val location = findGetter(item, "getLocation")
-                val distFromS = location?.let { findGetterInt(it, "DistFromS") } ?: -1
-                val dist = remainDist ?: geoDist.takeIf { it > 0 } ?: distFromS
+                val dist: Int
+                val trusted: Boolean
+                val source: String
+                when {
+                    sectionRemainDist != null -> {
+                        dist = sectionRemainDist
+                        trusted = true
+                        source = "sdkRemainDist"
+                    }
+                    routeDeltaDist >= 0 -> {
+                        dist = routeDeltaDist
+                        trusted = true
+                        source = "routeDelta"
+                    }
+                    geoDist > 0 -> {
+                        dist = geoDist
+                        trusted = false
+                        source = "geoFallback"
+                    }
+                    else -> return@forEach
+                }
+
                 if (dist in 0 until nearestDist) {
                     nearestDist = dist
                     nearest = item
-                    nearestIsTrusted = remainDist != null
+                    nearestIsTrusted = trusted
                     nearestGeoDist = geoDist
+                    nearestEventRouteDist = eventRouteDist
+                    nearestDistanceSource = source
                 }
             }
+
             if (nearest != null) {
                 val codeObj = findGetter(nearest!!, "getCode")
                 val codeName = codeObj?.toString()
                 val codeValue = codeObj?.let { findGetterInt(it, "Value") } ?: -1
-                // 카메라형이면 getSpeedLimit(), 주의구간형이면 getLimit() - 클래스가 다르므로
-                // 이름에 맞는 게터를 그때그때 찾음. #문제시 원복
+
+                // 방지턱은 KNSDK에서 제한속도 0이 정상이다. 여기서는 그대로 저장하고
+                // UdpSenderService에서 type=22인 경우 speedLimit=0도 유효 이벤트로 처리한다.
                 val speedLimit = findGetterInt(nearest!!, "SpeedLimit").takeIf { it > 0 }
                     ?: findGetterInt(nearest!!, "Limit")
                 val sdiType = mapKakaoSafetyCodeToSdiType(codeName)
+
                 KakaoRouteDataRepository.safetyType = sdiType
                 KakaoRouteDataRepository.safetySpeedLimit = speedLimit
                 KakaoRouteDataRepository.safetyDist = nearestDist
                 KakaoRouteDataRepository.safetyDistTrusted = nearestIsTrusted
+                currentSafetyEventRouteDist = if (nearestDistanceSource == "routeDelta") {
+                    nearestEventRouteDist
+                } else {
+                    -1
+                }
+
                 if (sdiType == -1 && System.currentTimeMillis() - lastUnmappedSafetyCodeLogTime > 15000L) {
                     lastUnmappedSafetyCodeLogTime = System.currentTimeMillis()
-                    NavLogger.d(context, "[카카오 안전정보코드 수집] 미매핑 code=$codeName(value=$codeValue) speedLimit=$speedLimit dist=$nearestDist")
+                    NavLogger.d(
+                        context,
+                        "[카카오 안전정보코드 수집] 미매핑 code=$codeName(value=$codeValue) speedLimit=$speedLimit dist=$nearestDist"
+                    )
                 }
-                NavLogger.d(context, "[카카오->openpilot] 안전정보: kakaoCode=$codeName(value=$codeValue) -> nSdiType=$sdiType speedLimit=$speedLimit dist=$nearestDist trusted=$nearestIsTrusted geoDist=$nearestGeoDist")
+
+                NavLogger.d(
+                    context,
+                    "[카카오->openpilot] 안전정보: kakaoCode=$codeName(value=$codeValue) -> " +
+                        "nSdiType=$sdiType speedLimit=$speedLimit dist=$nearestDist " +
+                        "trusted=$nearestIsTrusted source=$nearestDistanceSource " +
+                        "eventRouteDist=$nearestEventRouteDist currentRouteDist=$currentRouteDistFromStart " +
+                        "geoDist=$nearestGeoDist"
+                )
             } else {
-                KakaoRouteDataRepository.safetyType = -1
-                KakaoRouteDataRepository.safetyDist = 0
-                KakaoRouteDataRepository.safetyDistTrusted = false
+                clearKakaoSafetyState()
             }
         } catch (e: Exception) {
             NavLogger.e(context, "안전정보 반영 예외: ${e.message}")

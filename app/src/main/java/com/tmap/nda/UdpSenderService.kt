@@ -605,14 +605,62 @@ class UdpSenderService : Service() {
                         // 이 블록 자체가 이미 KakaoRouteDataRepository.isFresh()(=카카오
                         // 길안내 중) 안에 있으므로, 여기 도달했다는 것 자체가 "카카오 길안내
                         // 중"이라는 뜻 - Tmap이 뭘 잡았든 상관없이 카카오 값으로 덮어씀.
-                        // trusted 여부와 무관하게 카메라/방지턱/구간단속 다 그대로 전송
-                        // (geoDist 기반 추정치도 충분히 쓸만하다고 판단). 길안내 안 할 때는
-                        // 이 블록 자체가 안 돌아서 Tmap 원본값이 자동으로 그대로 유지됨. #문제시 원복
-                        if (kr.safetyType >= 0 && kr.safetySpeedLimit > 0 && kr.safetyDist > 0) {
-                            json.put("nSdiType", kr.safetyType)
-                            json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
+                        // trusted 여부와 무관하게 카메라/방지턱/구간단속 다 그대로 전송.
+                        // 카카오 길안내 중에는 Tmap 안전이벤트 값을 먼저 지워서 기기별로
+                        // 백그라운드 Tmap SDI가 섞여 "개발자 기기에서만 우연히 감속"하는 상태를 막는다.
+                        // 도로 자체 제한속도는 generalRoadLimitSpeed를 계속 사용한다.
+                        json.put("nRoadLimitSpeed", generalRoadLimitSpeed)
+                        json.put("nSdiType", 0)
+                        json.put("nSdiSpeedLimit", 0)
+                        json.put("nSdiDist", 0)
+                        json.remove("nSdiPlusType")
+                        json.remove("nSdiPlusSpeedLimit")
+                        json.remove("nSdiPlusDist")
+                        json.remove("nSdiPlusBlockType")
+                        json.remove("nSdiPlusBlockSpeed")
+                        json.remove("nSdiPlusBlockDist")
+                        json.remove("nSdiBlockType")
+                        json.remove("nSdiBlockSpeed")
+                        json.remove("nSdiBlockDist")
+                        json.remove("nSdiBlockTime")
+                        json.remove("nSdiBlockAverageSpeed")
+                        json.remove("nSdiSection")
+                        json.remove("bSdiBlockSection")
+                        json.remove("roadcate")
+
+                        // KNSafetyCode_SignalAndSpeedViolationCamera는 내부 매핑상 0이지만,
+                        // NDA road_limit의 cam_type=0은 여러 fork에서 "카메라 없음"으로 취급될 수 있다.
+                        // Tmap 원본 경로도 type=0 + 속도/거리 값이 있으면 1로 정규화하고 있으므로
+                        // 카카오 신호+과속 카메라도 동일하게 type=1로 정규화한다.
+                        val kakaoSdiType = if (
+                            kr.safetyType == 0 && kr.safetySpeedLimit > 0 && kr.safetyDist > 0
+                        ) 1 else kr.safetyType
+
+                        // 방지턱(type=22)은 KNSDK가 SpeedLimit=0을 주는 것이 정상이다.
+                        // openpilot은 cam_type=22 + 남은거리로 처리하므로 속도값 0이어도 전송한다.
+                        val isSpeedBump = kakaoSdiType == 22
+                        val hasUsableKakaoSafety =
+                            kakaoSdiType >= 0 &&
+                                kr.safetyDist > 0 &&
+                                (kr.safetySpeedLimit > 0 || isSpeedBump)
+
+                        if (hasUsableKakaoSafety) {
+                            json.put("nSdiType", kakaoSdiType)
+                            json.put("nSdiSpeedLimit", kr.safetySpeedLimit.coerceAtLeast(0))
                             json.put("nSdiDist", kr.safetyDist)
-                            NavLogger.d(this@UdpSenderService, "[안전정보] 카카오 길안내 중 - 카카오값 사용: type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist} trusted=${kr.safetyDistTrusted}")
+                            NavLogger.d(
+                                this@UdpSenderService,
+                                "[안전정보] 카카오 길안내 중 - 카카오값 사용: " +
+                                    "rawType=${kr.safetyType} sendType=$kakaoSdiType " +
+                                    "speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist} " +
+                                    "trusted=${kr.safetyDistTrusted}"
+                            )
+                        } else if (kr.safetyType >= 0 && kr.safetyDist > 0) {
+                            NavLogger.d(
+                                this@UdpSenderService,
+                                "[안전정보] 카카오 이벤트 전송 보류: " +
+                                    "type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}"
+                            )
                         }
                         NavLogger.d(this@UdpSenderService, "[카카오->openpilot] UDP 페이로드 카카오 데이터로 덮어씀: nGoPosDist=${kr.remainDist} nTBTDist=$kakaoTbtDist turnType=${kr.tbtTurnType}")
                     }
