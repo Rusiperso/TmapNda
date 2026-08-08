@@ -621,6 +621,25 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // v4.13: MapActivity와 동일하게, 연결대기 중 경과시간을 표시하기 위한 상태(사용자 6번). #문제시 원복
     private var opConnectionLastGoodStateTime = 0L
     private fun startMiniHudBinding() {
+        // v: MapActivity와 동일 - 메인 채널 또는 NDA 채널, 둘 중 하나라도 연결되면
+        // "콤마 연결됨"으로 표시. #문제시 원복
+        fun updateConnectionUi() {
+            val state = OpenpilotStateRepository.state.value
+            val mainConnected = state != null && state.ip.isNotEmpty() && state.ip != "-"
+            val ndaConnected = OpenpilotStateRepository.ndaConnected.value == true
+            if (mainConnected || ndaConnected) {
+                binding.tvConnectionStatus?.text = if (mainConnected) "콤마 연결됨" else "콤마 연결됨(NDA)"
+                binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
+                binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_green)
+                opConnectionLastGoodStateTime = 0L
+            } else {
+                opConnectionLastGoodStateTime = state?.lastUpdateTime ?: 0L
+                binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#555555"))
+                binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_gray)
+            }
+        }
+        OpenpilotStateRepository.ndaConnected.observe(this) { updateConnectionUi() }
+
         OpenpilotStateRepository.state.observe(this) { state ->
             // v4.23: MapActivity와 동일 - 원본 active 대신 안정화된 displayActive 사용,
             // 진동이 심하면 "OP 불안정"으로 표시. #문제시 원복
@@ -638,17 +657,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#555555"))
                 }
             }
-            val connected = state.ip.isNotEmpty() && state.ip != "-"
-            if (connected) {
-                binding.tvConnectionStatus?.text = "콤마 연결됨"
-                binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
-                binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_green)
-                opConnectionLastGoodStateTime = 0L
-            } else {
-                opConnectionLastGoodStateTime = state.lastUpdateTime
-                binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#555555"))
-                binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_gray)
-            }
+            updateConnectionUi()
             binding.tvCarrotVersion?.text = state.carrot2
             binding.tvCarrotIp?.text = if (state.ip.isNotEmpty() && state.ip != "-") "IP: ${state.ip}" else "IP: -"
             when (state.trafficState) {

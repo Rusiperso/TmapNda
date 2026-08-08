@@ -406,13 +406,18 @@ class MapActivity : AppCompatActivity() {
 
         opConnectionTickHandler.post(opConnectionTickRunnable)
 
-        OpenpilotStateRepository.state.observe(this) { state ->
-            binding.tvCarrotVersion.text = state.carrot2
-            binding.tvCarrotIp.text = if (state.ip.isNotEmpty() && state.ip != "-") "IP: ${state.ip}" else "IP: -"
+        // v: 사용자 제보(2026-08-08) - 옛날 프로토콜(NDA)만 지원하는 openpilot 포크를 쓰는
+        // 사용자는 NDA로 실제 잘 연결돼있어도 화면엔 계속 "대기중"만 떴음(메인 채널만 보던
+        // 버그). 이제 메인 채널 또는 NDA 채널, 둘 중 하나라도 연결되면 "연결됨"으로 표시.
+        // #문제시 원복
+        fun updateConnectionUi() {
+            val state = OpenpilotStateRepository.state.value
+            val mainConnected = state != null && state.ip.isNotEmpty() && state.ip != "-"
+            val ndaConnected = OpenpilotStateRepository.ndaConnected.value == true
 
-            if (state.ip != "-" && state.ip.isNotEmpty()) {
+            if (mainConnected || ndaConnected) {
                 binding.vConnectionDot.setBackgroundResource(R.drawable.shape_circle_green)
-                binding.tvConnectionStatus.text = "콤마 연결됨"
+                binding.tvConnectionStatus.text = if (mainConnected) "콤마 연결됨" else "콤마 연결됨(NDA)"
                 binding.tvConnectionStatus.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
                 opConnectionLastGoodStateTime = 0L
             } else {
@@ -420,9 +425,18 @@ class MapActivity : AppCompatActivity() {
                 // v4.13: "연결 대기에서 변화가 없어 앱이 멈춘 것처럼 보인다"(사용자 6번) -
                 // 마지막 수신 이후 경과시간을 같이 보여줘서, 앱이 멈춘 게 아니라 계속
                 // 재시도만 하고 있다는 걸 눈으로 확인 가능하게 함. #문제시 원복
-                opConnectionLastGoodStateTime = state.lastUpdateTime
+                opConnectionLastGoodStateTime = state?.lastUpdateTime ?: 0L
                 updateOpConnectionWaitingText()
             }
+        }
+
+        OpenpilotStateRepository.ndaConnected.observe(this) { updateConnectionUi() }
+
+        OpenpilotStateRepository.state.observe(this) { state ->
+            binding.tvCarrotVersion.text = state.carrot2
+            binding.tvCarrotIp.text = if (state.ip.isNotEmpty() && state.ip != "-") "IP: ${state.ip}" else "IP: -"
+
+            updateConnectionUi()
 
             // v4.23: 실주행 로그로 openpilot 자체 발신 active값이 초당 2회씩 진동하는 게
             // 확인됨(사용자 지적: OP ON/OFF 반복 점멸) - 원본 active 대신 안정화된

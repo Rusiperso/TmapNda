@@ -855,6 +855,7 @@ class UdpSenderService : Service() {
                         ndaRemoteAddr = packet.address
                         ndaRemotePort = NDA_SEND_PORT_PRIMARY
                         ndaLastBeaconTime = System.currentTimeMillis()
+                        OpenpilotStateRepository.updateNdaConnected(true)
                         if (isNewHost) {
                             NavLogger.d(this@UdpSenderService, "[NDA] openpilot 발견: ${packet.address?.hostAddress}")
                         }
@@ -993,6 +994,7 @@ class UdpSenderService : Service() {
                     if (System.currentTimeMillis() - ndaLastBeaconTime > NDA_ACTIVE_TIMEOUT_MS) {
                         NavLogger.d(this@UdpSenderService, "[NDA] 비콘 타임아웃, openpilot 연결 해제")
                         ndaRemoteAddr = null
+                        OpenpilotStateRepository.updateNdaConnected(false)
                     }
                 }
                 delay(500) // 2Hz
