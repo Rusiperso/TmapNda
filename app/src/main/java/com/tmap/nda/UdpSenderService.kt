@@ -295,8 +295,8 @@ class UdpSenderService : Service() {
                 "SDI(type=$sdiType, limit=$sdiSpeedLimit, dist=$sdiDistance) " +
                 "차선(source=${LaneSignalRepository.source}, 개수=${LaneSignalRepository.lanes.size}, fresh=${LaneSignalRepository.isFresh()}) " +
                 "볼륨(저장%=$volumePercent, STREAM_MUSIC=$musicVol/$musicMax) " +
-                "HUD(everConnected=${com.tmap.nda.hud.TmapNdaCarAppService.everConnected}) " +
-                "NDA수신(addr=${ndaRemoteAddr}, GPS=${ndaGps?.hasFix}) " +
+                "HUD(everConnected=${com.tmap.nda.hud.TmapNdaCarAppService.everConnected} - AndroidAuto Cluster용, 이 구조에선 항상 false가 정상) " +
+                "구형NDA비콘(addr=${ndaRemoteAddr}, GPS=${ndaGps?.hasFix} - 현재 openpilot 미지원, 항상 null/false가 정상) " +
                 "폰IP=${getLocalIpAddressesSummary()} " +
                 "배터리=${batteryPct}% 메모리여유=${memInfo.availMem / 1024 / 1024}MB/${memInfo.totalMem / 1024 / 1024}MB lowMemory=${memInfo.lowMemory} " +
                 "기기=${android.os.Build.MANUFACTURER}/${android.os.Build.MODEL} SDK=${android.os.Build.VERSION.SDK_INT}"
@@ -602,21 +602,21 @@ class UdpSenderService : Service() {
                         // 카카오 안전정보가 사실상 거의 다 막히고 있었음(재억 로그 기준 검증됨=0,
                         // 미검증=417). 구조를 단순하게 바꿈: "카카오 길안내 중이면 카카오
                         // 안전정보만 사용, 길안내 안 하면 Tmap 안전정보만 사용"으로 명확히 분리.
-                        // 이 블록 자체가 이미 KakaoRouteDataRepository.isFresh()(=카카오
-                        // 길안내 중) 안에 있으므로, 여기 도달했다는 것 자체가 "카카오 길안내
-                        // 중"이라는 뜻 - Tmap이 뭘 잡았든 상관없이 카카오 값으로 덮어씀.
-                        // trusted 여부와 무관하게 카메라/방지턱/구간단속 다 그대로 전송
-                        // (geoDist 기반 추정치도 충분히 쓸만하다고 판단). 길안내 안 할 때는
-                        // 이 블록 자체가 안 돌아서 Tmap 원본값이 자동으로 그대로 유지됨. #문제시 원복
-                        // v: 지피티 분석 반영(2026-08-08) - 방지턱(safetyType==22)은 원래
-                        // speedLimit이 0으로 오는 게 정상인데, safetySpeedLimit > 0 조건 때문에
-                        // 방지턱만 항상 이 분기에서 탈락하고 있었음. 방지턱은 speedLimit 조건
-                        // 없이 통과시킴. #문제시 원복
-                        if (kr.safetyType >= 0 && kr.safetyDist > 0 && (kr.safetySpeedLimit > 0 || kr.safetyType == 22)) {
-                            json.put("nSdiType", kr.safetyType)
-                            json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
-                            json.put("nSdiDist", kr.safetyDist)
-                            NavLogger.d(this@UdpSenderService, "[안전정보] 카카오 길안내 중 - 카카오값 사용: type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist} trusted=${kr.safetyDistTrusted}")
+                        // v: 사용자 요청(2026-08-08) - "카카오 길안내 중=카카오만" 구조를
+                        // 하이브리드(Tmap 우선 + 카카오 trusted 폴백)로 롤백. 구조 자체가
+                        // 문제였던 게 아니라 trusted 판정 로직이 버그였던 거라(DistFromS
+                        // 뺄셈으로 이미 고침), 하이브리드로 되돌려도 이제는 정상 작동해야 함.
+                        // 방지턱 speedLimit 예외는 그대로 유지. #문제시 원복
+                        val tmapHasSdi = json.optInt("nSdiType", 0) != 0 || json.optInt("nSdiDist", 0) > 0
+                        if (!tmapHasSdi && kr.safetyType >= 0 && kr.safetyDist > 0 && (kr.safetySpeedLimit > 0 || kr.safetyType == 22)) {
+                            if (kr.safetyDistTrusted) {
+                                json.put("nSdiType", kr.safetyType)
+                                json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
+                                json.put("nSdiDist", kr.safetyDist)
+                                NavLogger.d(this@UdpSenderService, "[안전정보 우선순위] Tmap 없음 -> 검증된 카카오값으로 폴백: type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}")
+                            } else {
+                                NavLogger.d(this@UdpSenderService, "[카카오 안전정보 검증용][실제전송안함 - 미검증 폴백] type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}")
+                            }
                         }
                         NavLogger.d(this@UdpSenderService, "[카카오->openpilot] UDP 페이로드 카카오 데이터로 덮어씀: nGoPosDist=${kr.remainDist} nTBTDist=$kakaoTbtDist turnType=${kr.tbtTurnType}")
                     }
@@ -918,6 +918,7 @@ class UdpSenderService : Service() {
                     socket.bind(java.net.InetSocketAddress(0))
                 }
                 ndaSendSocket = socket
+                socket.broadcast = true
             } catch (e: Exception) {
                 NavLogger.e(this@UdpSenderService, "[NDA] 송신 소켓 생성 실패: ${e.message}")
                 return@launch
@@ -929,7 +930,18 @@ class UdpSenderService : Service() {
             var lastNdaSendLogTime = 0L
 
             while (isActive && isRunning.get()) {
-                val addr = ndaRemoteAddr
+                // v: 사용자 지적(2026-08-08) - 지금까지 "비콘을 받아서 상대 주소를 알기 전엔
+                // 아무것도 안 보냄" 구조였는데, 반대로 openpilot 쪽(road_speed_limiter.py류)은
+                // "우리한테서 뭔가 받아야만 우리 주소를 알고 비콘을 보내주기 시작"하는 구조라,
+                // 서로 상대가 먼저 말 걸어주길 기다리기만 하는 완벽한 닭과 달걀 문제였음 -
+                // 그래서 지금까지 그 누구한테도(캘빈 포함) 이 기능이 작동할 수 없었음.
+                // 상대 주소를 아직 모르면 브로드캐스트(255.255.255.255)로 먼저 찔러서
+                // openpilot이 우리 주소를 등록할 기회를 줌. #문제시 원복
+                val addr = ndaRemoteAddr ?: try {
+                    InetAddress.getByName("255.255.255.255")
+                } catch (e: Exception) {
+                    null
+                }
                 if (addr != null) {
                     val json = buildNdaRoadLimitJson()
                     val bytes = json.toString().toByteArray(Charsets.UTF_8)
