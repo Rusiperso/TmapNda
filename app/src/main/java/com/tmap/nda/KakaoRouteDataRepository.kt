@@ -54,6 +54,12 @@ object KakaoRouteDataRepository {
     @Volatile var safetyType: Int = -1
     @Volatile var safetySpeedLimit: Int = 0
     @Volatile var safetyDist: Int = 0
+    // v: 사용자 제보(지피티 분석) - getRemainDist()가 없는 카메라형 안전정보도, 경로
+    // 시작점부터 이벤트까지의 누적거리(getDistFromS)에서 "경로 시작점부터 현재 차량
+    // 위치까지의 누적거리"를 빼면 실제 "남은 거리"를 정확히 구할 수 있음(직선거리보다
+    // 정확 - 곡선 도로 경로를 그대로 따라감). guidanceDidUpdateLocation()에서 매번
+    // 갱신됨. #문제시 원복
+    @Volatile var currentDistFromS: Int = -1
     // v5.1: getRemainDist()(진짜 남은거리, 검증됨)로 구했는지 DistFromS()(미검증 폴백)로
     // 구했는지 표시. UdpSenderService가 "믿을 수 있는 카카오 값만 Tmap 폴백으로 쓴다"를
     // 판단하는 데 씀. #문제시 원복

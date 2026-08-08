@@ -172,6 +172,17 @@ class KakaoGuidanceDelegate(
                     )
                 }
             }
+
+            // v: 지피티 분석 반영 - 현재 위치의 DistFromS(경로 시작점부터 누적거리)를
+            // 매번 저장해둠. 안전정보 이벤트의 DistFromS에서 이 값을 빼면 실제 남은
+            // 거리를 곡선 경로 그대로 정확히 계산할 수 있음(아래 카메라/방지턱 검색
+            // 로직에서 사용). #문제시 원복
+            if (currentLocation != null) {
+                val myDistFromS = findGetterInt(currentLocation, "DistFromS")
+                if (myDistFromS > 0) {
+                    KakaoRouteDataRepository.currentDistFromS = myDistFromS
+                }
+            }
         } catch (e: Exception) {
             NavLogger.e(
                 context,
@@ -541,11 +552,23 @@ class KakaoGuidanceDelegate(
 
                 val location = findGetter(item, "getLocation")
                 val distFromS = location?.let { findGetterInt(it, "DistFromS") } ?: -1
-                val dist = remainDist ?: geoDist.takeIf { it > 0 } ?: distFromS
+
+                // v: 지피티 분석 반영(2026-08-08) - getRemainDist()가 없어도, 이벤트의
+                // DistFromS(경로 시작점~이벤트 누적거리)에서 현재 위치의 DistFromS(경로
+                // 시작점~현재위치 누적거리)를 빼면 실제 남은 거리를 곡선 경로 그대로 정확히
+                // 계산할 수 있음 - 직선거리(geoDist)보다 정확하고, 좌표 계산 실패 시에도
+                // 안 끊김. 둘 다 유효하고(양수) 뺄셈 결과가 0 이상일 때만 채택, 이것도
+                // trusted로 인정. #문제시 원복
+                val myDistFromS = KakaoRouteDataRepository.currentDistFromS
+                val routeBasedDist = if (distFromS > 0 && myDistFromS > 0) {
+                    (distFromS - myDistFromS).takeIf { it >= 0 }
+                } else null
+
+                val dist = remainDist ?: routeBasedDist ?: geoDist.takeIf { it > 0 } ?: distFromS
                 if (dist in 0 until nearestDist) {
                     nearestDist = dist
                     nearest = item
-                    nearestIsTrusted = remainDist != null
+                    nearestIsTrusted = remainDist != null || routeBasedDist != null
                     nearestGeoDist = geoDist
                 }
             }
