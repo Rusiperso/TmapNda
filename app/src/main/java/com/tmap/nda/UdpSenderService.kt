@@ -582,56 +582,37 @@ class UdpSenderService : Service() {
                         // 고유 nSdiType 스킴(carrot_serv.py 기준: 1=고정식/2·3·4=구간단속/
                         // 7=이동식/22=방지턱/20=스쿨존 등)으로 번역해서 들어오므로, 라벨도
                         // 그 스킴 기준으로 맞춤. #문제시 원복
-                        val kakaoPrefix = when (kr.safetyType) {
-                            1, 7, 8 -> "과속카메라"
-                            2, 3, 4 -> "구간단속"
-                            0, 6 -> "신호단속"
-                            20, 21 -> "스쿨존"
-                            22 -> "방지턱"
-                            19 -> "철길건널목"
-                            26 -> "톨게이트"
-                            else -> {
-                                // v4.24: 사용자 요청 - 콤마에 "00km 직진" 표시. carrot.cc는
-                                // szTBTMainText를 이미 조건 없이 그려주고 있어서(우측하단
-                                // 박스), openpilot 쪽은 안 건드리고 여기서 보내는 내용만
-                                // 바꿈. 안전이벤트가 없고(else 분기) 실제 회전이 임박한
-                                // 게 아닐 때(nTBTTurnType이 좌/우회전·유턴·분기·램프가
-                                // 아닐 때)만 "Nm/km 직진"으로 표시 - 회전 임박 시엔 기존
-                                // 목적지/도로명 라벨을 그대로 둬서 화살표(nTBTTurnType)와
-                                // 안 헷갈리게 함. #문제시 원복
-                                val isImminentTurn = kr.tbtTurnType in setOf(12, 13, 14, 6, 7, 101, 102)
-                                if (!isImminentTurn && kakaoTbtDist in 1..8000) {
-                                    if (kakaoTbtDist >= 1000) "%.1fkm 직진".format(kakaoTbtDist / 1000f)
-                                    else "${kakaoTbtDist}m 직진"
-                                } else if (kr.destinationName.isNotBlank() && kr.destinationName != "목적지") {
-                                    // v3.6: 현재 도로명(kr.roadName) 대신 목적지 이름을 표시 -
-                                    // "지산동(현재위치) 말고 대구광역시청(목적지)이 떠야지" (사용자 지적 6번). #문제시 원복
-                                    kr.destinationName
-                                } else if (kr.roadName.isNotEmpty()) kr.roadName
-                                else "카카오안내"
-                            }
+                        // v: 사용자 요청(2026-08-08) - 상단 라벨("신호단속 | GPS: ..")이 카메라
+                        // 종류에 따라 계속 바뀌던 걸, 이제 최종 목적지명으로 고정. 카메라/방지턱
+                        // 종류·거리는 openpilot HUD 쪽에 별도 아이콘으로 새로 추가하기로 해서
+                        // (hud_renderer.py 쪽 작업), 상단 라벨은 더 이상 안전이벤트 종류를 안
+                        // 보여줘도 됨 - 항상 목적지명 우선, 없으면 도로명, 그것도 없으면
+                        // "카카오안내". #문제시 원복
+                        val kakaoPrefix = if (kr.destinationName.isNotBlank() && kr.destinationName != "목적지") {
+                            kr.destinationName
+                        } else if (kr.roadName.isNotEmpty()) {
+                            kr.roadName
+                        } else {
+                            "카카오안내"
                         }
                         json.put("szTBTMainText", "$kakaoPrefix | GPS: $currentGpsStatusText")
-                        // v5.1: 사용자 지적 - "Tmap에 안전정보 있고 카카오에 없을 수도, 반대일
-                        // 수도, 둘 다 있을 수도 있으니 Tmap을 1순위로 두고 카카오를 2순위
-                        // 폴백으로 쓸 수 있다고 했잖아, 근데 안 되는 거야?" - 확인해보니
-                        // 맞는 지적이었음. 지금까지는 KAKAO_SAFETY_LIVE 하나로 "전부 로그만"
-                        // 아니면 "카카오가 무조건 덮어씀" 둘 중 하나였지, 진짜 "Tmap 우선,
-                        // 없을 때만 카카오"라는 순위 판단 로직 자체가 없었음. 이제 진짜로
-                        // 구현: Tmap이 이미 뭔가 잡고 있으면(nSdiType!=0 또는 nSdiDist>0)
-                        // 절대 안 건드리고, Tmap이 아무것도 없을 때만 - 그리고 카카오 값이
-                        // 검증된(safetyDistTrusted=getRemainDist() 기반) 경우에만 - 카카오
-                        // 값으로 채움. 미검증(카메라형) 카카오 데이터는 여전히 로그로만. #문제시 원복
-                        val tmapHasSdi = json.optInt("nSdiType", 0) != 0 || json.optInt("nSdiDist", 0) > 0
-                        if (!tmapHasSdi && kr.safetyType >= 0 && kr.safetySpeedLimit > 0 && kr.safetyDist > 0) {
-                            if (kr.safetyDistTrusted) {
-                                json.put("nSdiType", kr.safetyType)
-                                json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
-                                json.put("nSdiDist", kr.safetyDist)
-                                NavLogger.d(this@UdpSenderService, "[안전정보 우선순위] Tmap 없음 -> 검증된 카카오값으로 폴백: type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}")
-                            } else {
-                                NavLogger.d(this@UdpSenderService, "[카카오 안전정보 검증용][실제전송안함 - 미검증 폴백] type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}")
-                            }
+                        // v: 사용자 제안(2026-08-08) - "Tmap 우선순위 + 카카오 폴백"이라는
+                        // 하이브리드 판단 자체가 문제였음. 실제 로그로 확인됨: safetyDistTrusted
+                        // (카카오 SDK의 getRemainDist() 기반 검증)가 거의 항상 false로 나와서
+                        // 카카오 안전정보가 사실상 거의 다 막히고 있었음(재억 로그 기준 검증됨=0,
+                        // 미검증=417). 구조를 단순하게 바꿈: "카카오 길안내 중이면 카카오
+                        // 안전정보만 사용, 길안내 안 하면 Tmap 안전정보만 사용"으로 명확히 분리.
+                        // 이 블록 자체가 이미 KakaoRouteDataRepository.isFresh()(=카카오
+                        // 길안내 중) 안에 있으므로, 여기 도달했다는 것 자체가 "카카오 길안내
+                        // 중"이라는 뜻 - Tmap이 뭘 잡았든 상관없이 카카오 값으로 덮어씀.
+                        // trusted 여부와 무관하게 카메라/방지턱/구간단속 다 그대로 전송
+                        // (geoDist 기반 추정치도 충분히 쓸만하다고 판단). 길안내 안 할 때는
+                        // 이 블록 자체가 안 돌아서 Tmap 원본값이 자동으로 그대로 유지됨. #문제시 원복
+                        if (kr.safetyType >= 0 && kr.safetySpeedLimit > 0 && kr.safetyDist > 0) {
+                            json.put("nSdiType", kr.safetyType)
+                            json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
+                            json.put("nSdiDist", kr.safetyDist)
+                            NavLogger.d(this@UdpSenderService, "[안전정보] 카카오 길안내 중 - 카카오값 사용: type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist} trusted=${kr.safetyDistTrusted}")
                         }
                         NavLogger.d(this@UdpSenderService, "[카카오->openpilot] UDP 페이로드 카카오 데이터로 덮어씀: nGoPosDist=${kr.remainDist} nTBTDist=$kakaoTbtDist turnType=${kr.tbtTurnType}")
                     }
