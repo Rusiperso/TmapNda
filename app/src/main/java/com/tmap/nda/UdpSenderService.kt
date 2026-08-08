@@ -449,7 +449,7 @@ class UdpSenderService : Service() {
                     // 이벤트가 없으면(=lastSdiJsonStr가 null이거나 sdiSpeedLimit이 이번엔 안 들어왔으면)
                     // 8초 기다리지 말고 즉시 generalRoadLimitSpeed로 되돌림. #문제시 원복
                     if (lastSdiJsonStr == null && generalRoadLimitSpeed > 0 && roadLimitSpeed != generalRoadLimitSpeed) {
-                        NavLogger.d(this, "[도로제한] 카메라 이벤트 없음 - roadLimitSpeed($roadLimitSpeed)를 generalRoadLimitSpeed($generalRoadLimitSpeed)로 즉시 복귀")
+                        NavLogger.d(this@UdpSenderService, "[도로제한] 카메라 이벤트 없음 - roadLimitSpeed($roadLimitSpeed)를 generalRoadLimitSpeed($generalRoadLimitSpeed)로 즉시 복귀")
                         roadLimitSpeed = generalRoadLimitSpeed
                     }
 
