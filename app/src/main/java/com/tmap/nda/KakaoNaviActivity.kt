@@ -630,17 +630,17 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#FFA726"))
                 }
                 state.displayActive -> {
-                    binding.tvActiveStatus?.text = "OP ON"
+                    binding.tvActiveStatus?.text = "크루즈 작동중"
                     binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#4FC3F7"))
                 }
                 else -> {
-                    binding.tvActiveStatus?.text = "OP OFF"
+                    binding.tvActiveStatus?.text = "크루즈 대기중"
                     binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#555555"))
                 }
             }
             val connected = state.ip.isNotEmpty() && state.ip != "-"
             if (connected) {
-                binding.tvConnectionStatus?.text = "통신중"
+                binding.tvConnectionStatus?.text = "콤마 연결됨"
                 binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
                 binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_green)
                 opConnectionLastGoodStateTime = 0L
@@ -702,7 +702,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 }
                 // v4.13: 연결대기 상태일 때 경과시간 표시(사용자 6번) - MapActivity와 동일. #문제시 원복
                 if (opConnectionLastGoodStateTime <= 0L) {
-                    binding.tvConnectionStatus?.text = "연결 대기"
+                    binding.tvConnectionStatus?.text = "콤마 대기중"
                 } else {
                     val elapsedSec = (System.currentTimeMillis() - opConnectionLastGoodStateTime) / 1000
                     binding.tvConnectionStatus?.text = "연결 대기 (${elapsedSec}초)"
