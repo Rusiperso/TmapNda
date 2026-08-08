@@ -441,6 +441,18 @@ class UdpSenderService : Service() {
                         generalRoadLimitSpeed = 0
                     }
 
+                    // v: 사용자 제보 - "60도로인데 80으로 잡고 간다". 원인 추정: sdiSpeedLimit(카메라
+                    // 개별 제한속도, 예: 구간단속 80)이 roadLimitSpeed(=openpilot에 nRoadLimitSpeed로
+                    // 나가는 값)를 덮어쓰는데, 그 직후 Tmap 엔진 리플렉션(realRoadLimit)이 그 프레임에
+                    // 유효값을 못 주면 카메라값(80)이 그대로 최대 8초간 남아있음 - 실제 도로 기본
+                    // 제한속도(60)가 있는데도 openpilot한텐 80이 나감. 지금 이 프레임에 카메라
+                    // 이벤트가 없으면(=lastSdiJsonStr가 null이거나 sdiSpeedLimit이 이번엔 안 들어왔으면)
+                    // 8초 기다리지 말고 즉시 generalRoadLimitSpeed로 되돌림. #문제시 원복
+                    if (lastSdiJsonStr == null && generalRoadLimitSpeed > 0 && roadLimitSpeed != generalRoadLimitSpeed) {
+                        NavLogger.d(this, "[도로제한] 카메라 이벤트 없음 - roadLimitSpeed($roadLimitSpeed)를 generalRoadLimitSpeed($generalRoadLimitSpeed)로 즉시 복귀")
+                        roadLimitSpeed = generalRoadLimitSpeed
+                    }
+
                     json.put("nRoadLimitSpeed", roadLimitSpeed)
 
                     // 3. secondSDIInfo (GRT47과 동일하게 nSdiPlus... 접두어로 추가)
