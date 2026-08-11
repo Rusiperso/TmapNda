@@ -127,10 +127,16 @@ TmapNda는 Tmap과 카카오 양쪽에서 안전정보(과속카메라·구간�
 
 최신 버전은 [Releases 페이지](https://github.com/Rusiperso/TmapNda/releases)에서 APK로 받을 수 있습니다.
 
-| 버전 | 주요 내용 |
-|---|---|
-| v7.0 | 상단 상태 표시줄 개편(크루즈/콤마 연결 상태 완전 분리) · 화면 깜빡임 완화 로직 원복 · 카카오 화면 차선 표시 제거 |
-| v5.0 | 상세 내역은 [Releases 페이지](https://github.com/Rusiperso/TmapNda/releases)에서 각 버전별로 확인 가능합니다 |
+1. km 표시 옵션을 초기화면에서 설정 메뉴로 이동
+2. 차선 오버레이를 카카오 SDK 공식 컴포넌트(KNDriveLaneView)로 교체 → 좌회전/우회전/직진/유턴 화살표까지 정확 표시
+3. 클러스터(계기판) 세션 분기: displayType별로 별도 화면/ActionStrip 적용
+4. 클러스터 템플릿에서 RoutingInfo 제거, gearhead 쿼리 추가, foreground service 관련 수정
+5. UdpSenderService(콤마 통신) 시작 실패 시 재시도 로직 강화: 1회→최대 5회, 백오프(2s→4s→8s→16s→32s)로 강화. 실제 사용자 제보(2분간 20번 연속 강제종료) 대응
+6. Wi-Fi + 모바일데이터 동시 활성 시 UDP 패킷이 모바일 쪽으로 새는 문제 수정: ConnectivityManager로 Wi-Fi 네트워크 명시적으로 찾아서 소켓 바인딩 고정
+7. UdpSenderService 생명주기(onCreate/onStartCommand/onDestroy)에 로그 추가 - 서비스가 조용히 죽는 원인 진단용
+8. UDP 수신 루프가 일시적 IOException 한 번에 영구 종료되던 버그 수정 - 소켓이 진짜 닫힌 경우(EBADF)만 종료하고, 그 외 일시적 오류는 2초 쉬었다 재시도하는 자가치유 처리로 변경. soTimeout 실제 적용값도 로그로 확인 가능하게 추가
+9. 네트워크 진단 로그에 Wi-Fi SSID 표시 추가 (클라이언트 모드/호스트 모드 구분 명확히 하기 위해)
+10. 콤마 연결 표시 로직 수정 - 메인 채널(7705)만 보고 판단하던 걸, 구형 NDA 채널 연결도 함께 인식하도록 개선
 
 ---
 
