@@ -215,15 +215,11 @@ object PanelDragHelper {
         // 있게(사용자 설명: 티맵 ON+카카오 OFF → 티맵 오버레이만, 티맵 OFF+카카오 ON →
         // 카카오 오버레이만, 둘 다 ON → 둘 다 가능 - 화면에 뜨는 오버레이 자체는 하나).
         // #문제시 원복
+        // v: 사용자 요청(2026-08-10) - 카카오 화면에는 차선 오버레이를 아예 안 띄우기로 해서,
+        // 이 체크박스(카카오용)는 UI에서 제거. Tmap용만 남김. #문제시 원복
         val showLaneOverlayTmapCheckBox = android.widget.CheckBox(context).apply {
-            text = "티맵 차선 안내 오버레이 표시"
+            text = "차선 안내 오버레이 표시 (Tmap 화면 한정)"
             isChecked = pref.getBoolean("lane_overlay_tmap_enabled", true)
-            setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
-        }
-        val showLaneOverlayKakaoCheckBox = android.widget.CheckBox(context).apply {
-            text = "카카오 차선 안내 오버레이 표시"
-            isChecked = pref.getBoolean("lane_overlay_kakao_enabled", true)
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
@@ -251,7 +247,6 @@ object PanelDragHelper {
             addView(disableMobileCamCheckBox)
             addView(showTopBarEventCheckBox)
             addView(showLaneOverlayTmapCheckBox)
-            addView(showLaneOverlayKakaoCheckBox)
             addView(distanceFormatKmCheckBox)
             unlockMapTouchCheckBox?.let { addView(it) }
         }
@@ -264,7 +259,6 @@ object PanelDragHelper {
                     .putBoolean("mobile_cam_slowdown_disabled", disableMobileCamCheckBox.isChecked)
                     .putBoolean("topbar_event_enabled", showTopBarEventCheckBox.isChecked)
                     .putBoolean("lane_overlay_tmap_enabled", showLaneOverlayTmapCheckBox.isChecked)
-                    .putBoolean("lane_overlay_kakao_enabled", showLaneOverlayKakaoCheckBox.isChecked)
                     .putBoolean("USE_KM_DISTANCE_FORMAT", distanceFormatKmCheckBox.isChecked)
                     .apply {
                         if (unlockMapTouchCheckBox != null) {

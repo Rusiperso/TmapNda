@@ -84,9 +84,11 @@ fun renderLaneSignalBar(
     // 실제로 이 함수를 부르는 화면(MapActivity/KakaoNaviActivity)을 나타내고, 데이터
     // 자체는 거의 항상 카카오산이어도 티맵 화면에서 그대로 보여줌. #문제시 원복
     val prefs = context.getSharedPreferences("TmapNdaPrefs", android.content.Context.MODE_PRIVATE)
+    // v: 사용자 요청(2026-08-10) - 카카오 화면에서는 차선 안내 오버레이를 아예 안 띄우기로 함.
+    // Tmap 화면에서만 켜고 끌 수 있게 남겨둠. #문제시 원복
     val overlayEnabled = when (screenName) {
         "tmap" -> prefs.getBoolean("lane_overlay_tmap_enabled", true)
-        "kakao" -> prefs.getBoolean("lane_overlay_kakao_enabled", true)
+        "kakao" -> false
         else -> false
     }
     if (!overlayEnabled) {
