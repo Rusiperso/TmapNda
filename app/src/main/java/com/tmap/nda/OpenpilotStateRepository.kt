@@ -59,14 +59,18 @@ object OpenpilotStateRepository {
     // v4.23: displayActive 안정화용 상태. #문제시 원복
     // v: 실사용 로그로 확인됨(2026-08-08) - 12분 동안 active가 397번 바뀌고 그중 94%가
     // 1초 이내 재전환. 크루즈를 직접 몇 번 껐다 켠 것도 있었지만, 그것만으론 설명 안 되는
-    // 훨씬 잦은 잔물결이 같이 섞여있었음. 원인 자체(openpilot이 보내는 controls_active
-    // 원본값)는 우리 쪽에서 못 건드리므로, 화면 표시용 안정화 유지시간을 1초→2.5초로
-    // 늘려서 짧은 잔물결에는 화면 텍스트가 덜 흔들리게 함. #문제시 원복
+    // 훨씬 잦은 잔물결이 같이 섞여있었음.
+    // v: 사용자 재지적(2026-08-10) - 위 이유로 유지시간을 1초->2.5초로 늘렸었는데, 오히려
+    // 역효과였음. 신호가 1초 미만 간격으로 계속 흔들리는 구간에서는 2.5초짜리 "안 흔들리는
+    // 창"을 아예 못 채워서 stableDisplayActive가 영영 못 바뀌고, 그 사이 "불안정" 판정은
+    // 여전히 쉽게 걸려서 오히려 "불안정"에 갇혀있는 시간이 더 길어짐 - "UI 변경 전엔
+    // ON/OFF가 그래도 자주 바뀌었는데 지금은 계속 불안정으로만 뜬다"는 정확한 지적이었음.
+    // 1초로 되돌림. #문제시 원복
     private var pendingActive: Boolean = false
     private var pendingActiveSince: Long = 0L
     private var stableDisplayActive: Boolean = false
     private val recentTransitionTimes = ArrayDeque<Long>()
-    private const val STABLE_HOLD_MS = 2500L
+    private const val STABLE_HOLD_MS = 1000L
     private const val FLICKER_WINDOW_MS = 3000L
     private const val FLICKER_THRESHOLD = 4
 
