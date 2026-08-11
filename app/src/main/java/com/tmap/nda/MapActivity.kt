@@ -112,33 +112,6 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    // v4.13: openpilot 연결대기 상태에서 "n초 전" 경과시간을 1초마다 갱신해서 표시하기 위한
-    // 타이머. onDestroy에서 반드시 제거해야 함(안 그러면 Activity 누수). #문제시 원복
-    private var opConnectionLastGoodStateTime = 0L
-    private val opConnectionTickHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private val opConnectionTickRunnable = object : Runnable {
-        override fun run() {
-            updateOpConnectionWaitingText()
-            opConnectionTickHandler.postDelayed(this, 1000)
-        }
-    }
-    private fun updateOpConnectionWaitingText() {
-        // v: 사용자 제보(2026-08-08) - v6.8에서 NDA 연결도 "콤마 연결됨"으로 뜨게 고쳤는데도
-        // 계속 "대기중"으로만 보인다고 함. 원인 파악: 이 함수가 1초마다 도는 타이머
-        // (opConnectionTickRunnable)에서 NDA 연결 여부는 전혀 안 보고 무조건 텍스트를
-        // 덮어쓰고 있었음 - updateConnectionUi()가 잠깐 "연결됨"으로 바꿔놔도 1초 안에
-        // 이 함수가 다시 "대기중"으로 되돌려버리는 구조였음. NDA로 연결돼있으면 이 함수가
-        // 아예 손 대지 않도록 수정. #문제시 원복
-        if (OpenpilotStateRepository.ndaConnected.value == true) return
-        if (opConnectionLastGoodStateTime <= 0L) {
-            binding.tvConnectionStatus.text = "콤마 대기중"
-        } else {
-            val elapsedSec = (System.currentTimeMillis() - opConnectionLastGoodStateTime) / 1000
-            binding.tvConnectionStatus.text = "연결 대기 (${elapsedSec}초)"
-        }
-        binding.tvConnectionStatus.setTextColor(android.graphics.Color.parseColor("#555555"))
-    }
-
     // 음성 검색 결과 수신용 런처. 안드로이드 표준 음성인식 액티비티(RecognizerIntent)를 위임 호출하는 방식이라
     // 별도의 RECORD_AUDIO 런타임 권한 요청 없이 동작함 (인식은 시스템 음성입력 앱이 수행).
     // 로그 공유 화면(이메일 앱 등)에서 돌아왔을 때, 방금 보낸 로그 파일들을 삭제하기 위한 목록.
@@ -411,8 +384,6 @@ class MapActivity : AppCompatActivity() {
                 .getBoolean("map_touch_unlocked", false)
         )
 
-        opConnectionTickHandler.post(opConnectionTickRunnable)
-
         // v: 사용자 제보(2026-08-08) - 옛날 프로토콜(NDA)만 지원하는 openpilot 포크를 쓰는
         // 사용자는 NDA로 실제 잘 연결돼있어도 화면엔 계속 "대기중"만 떴음(메인 채널만 보던
         // 버그). 이제 메인 채널 또는 NDA 채널, 둘 중 하나라도 연결되면 "연결됨"으로 표시.
@@ -422,18 +393,15 @@ class MapActivity : AppCompatActivity() {
             val mainConnected = state != null && state.ip.isNotEmpty() && state.ip != "-"
             val ndaConnected = OpenpilotStateRepository.ndaConnected.value == true
 
+            // v: 사용자 최종 확정(2026-08-10) - 화면에 뜨는 문구는 딱 4개만:
+            // "Cruise On"/"Cruise Off"(위 줄), "콤마 연결 중"/"콤마 연결 대기"(아래 줄).
+            // "콤마 연결됨"이나 빈 칸 상태는 없음 - 연결됐으면 그냥 "콤마 연결 중"으로 표시. #문제시 원복
             if (mainConnected || ndaConnected) {
                 binding.vConnectionDot.setBackgroundResource(R.drawable.shape_circle_green)
-                binding.tvConnectionStatus.text = if (mainConnected) "콤마 연결됨" else "콤마 연결됨(NDA)"
-                binding.tvConnectionStatus.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
-                opConnectionLastGoodStateTime = 0L
+                binding.tvConnectionStatus.text = "콤마 연결 중"
             } else {
                 binding.vConnectionDot.setBackgroundResource(R.drawable.shape_circle_gray)
-                // v4.13: "연결 대기에서 변화가 없어 앱이 멈춘 것처럼 보인다"(사용자 6번) -
-                // 마지막 수신 이후 경과시간을 같이 보여줘서, 앱이 멈춘 게 아니라 계속
-                // 재시도만 하고 있다는 걸 눈으로 확인 가능하게 함. #문제시 원복
-                opConnectionLastGoodStateTime = state?.lastUpdateTime ?: 0L
-                updateOpConnectionWaitingText()
+                binding.tvConnectionStatus.text = "연결 대기"
             }
         }
 
@@ -451,17 +419,17 @@ class MapActivity : AppCompatActivity() {
             // 실제 불안정 상태를 숨기지 않으면서도 화면이 초당 2번 깜빡이진 않게 함. #문제시 원복
             when {
                 state.isFlickering -> {
-                    binding.tvActiveStatus.text = "OP 불안정"
+                    binding.tvActiveStatus.text = "Cruise 불안정"
                     binding.tvActiveStatus.setTextColor(android.graphics.Color.parseColor("#FFA726"))
                     binding.tvActiveStatus.background = null
                 }
                 state.displayActive -> {
-                    binding.tvActiveStatus.text = "크루즈 작동중"
+                    binding.tvActiveStatus.text = "Cruise On"
                     binding.tvActiveStatus.setTextColor(android.graphics.Color.parseColor("#4FC3F7"))
                     binding.tvActiveStatus.background = null
                 }
                 else -> {
-                    binding.tvActiveStatus.text = "크루즈 대기중"
+                    binding.tvActiveStatus.text = "Cruise Off"
                     binding.tvActiveStatus.setTextColor(android.graphics.Color.parseColor("#555555"))
                     binding.tvActiveStatus.background = null
                 }
@@ -1053,7 +1021,7 @@ class MapActivity : AppCompatActivity() {
             // 실제 limit/speedKph 값을 못 남기고 있어서 원인 특정이 안 됐음. 트리거되는
             // 바로 그 순간의 값을 남겨서 다음 로그로 어떤 limit이 실제로 쓰였는지
             // 확정할 수 있게 함. #문제시 원복
-            NavLogger.e(this, "[과속경고음발생] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1})")
+            NavLogger.e(this, "[과속경고음발생][Tmap화면] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1})")
             try {
                 val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 100)
                 tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
@@ -2661,7 +2629,6 @@ class MapActivity : AppCompatActivity() {
         // 카메라 감속 안 되던 문제 조사 때 아쉬웠던 부분) - 추가함. #문제시 원복
         NavLogger.d(this, "[MapActivity lifecycle] onDestroy (isFinishing=$isFinishing, isChangingConfigurations=$isChangingConfigurations)")
 
-        opConnectionTickHandler.removeCallbacks(opConnectionTickRunnable)
         laneDataObserver?.let { observableLaneDataLiveData?.removeObserver(it) }
 
         // v4.23: "티맵 화면에선 카메라 반응 감속이 되는데 카카오맵에선 안 된다"(사용자 지적) -

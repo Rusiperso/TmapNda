@@ -618,22 +618,18 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // MapActivity와 동일한 앱 전역 싱글턴(OpenpilotStateRepository/SdiDataRepository)을
     // 그대로 관찰해서 자체 미니 HUD로 복제하는 방식으로 해결. #문제시 원복
     private val hudPollHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    // v4.13: MapActivity와 동일하게, 연결대기 중 경과시간을 표시하기 위한 상태(사용자 6번). #문제시 원복
-    private var opConnectionLastGoodStateTime = 0L
     private fun startMiniHudBinding() {
-        // v: MapActivity와 동일 - 메인 채널 또는 NDA 채널, 둘 중 하나라도 연결되면
-        // "콤마 연결됨"으로 표시. #문제시 원복
+        // v: 사용자 최종 확정(2026-08-10) - 화면 문구는 딱 4개만: "Cruise On"/"Cruise Off",
+        // "콤마 연결 중"/"콤마 연결 대기". "콤마 연결됨"이나 빈 칸 상태는 없음. #문제시 원복
         fun updateConnectionUi() {
             val state = OpenpilotStateRepository.state.value
             val mainConnected = state != null && state.ip.isNotEmpty() && state.ip != "-"
             val ndaConnected = OpenpilotStateRepository.ndaConnected.value == true
             if (mainConnected || ndaConnected) {
-                binding.tvConnectionStatus?.text = if (mainConnected) "콤마 연결됨" else "콤마 연결됨(NDA)"
-                binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
+                binding.tvConnectionStatus?.text = "콤마 연결 중"
                 binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_green)
-                opConnectionLastGoodStateTime = 0L
             } else {
-                opConnectionLastGoodStateTime = state?.lastUpdateTime ?: 0L
+                binding.tvConnectionStatus?.text = "연결 대기"
                 binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#555555"))
                 binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_gray)
             }
@@ -645,15 +641,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             // 진동이 심하면 "OP 불안정"으로 표시. #문제시 원복
             when {
                 state.isFlickering -> {
-                    binding.tvActiveStatus?.text = "OP 불안정"
+                    binding.tvActiveStatus?.text = "Cruise 불안정"
                     binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#FFA726"))
                 }
                 state.displayActive -> {
-                    binding.tvActiveStatus?.text = "크루즈 작동중"
+                    binding.tvActiveStatus?.text = "Cruise On"
                     binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#4FC3F7"))
                 }
                 else -> {
-                    binding.tvActiveStatus?.text = "크루즈 대기중"
+                    binding.tvActiveStatus?.text = "Cruise Off"
                     binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#555555"))
                 }
             }
@@ -709,16 +705,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     binding.tvSdiDescr?.text = "--"
                     updateTopBarEventDisplay(null, null)
                 }
-                // v4.13: 연결대기 상태일 때 경과시간 표시(사용자 6번) - MapActivity와 동일. #문제시 원복
-                // v: MapActivity와 동일한 이유로 NDA 연결 시엔 건드리지 않음. #문제시 원복
-                if (OpenpilotStateRepository.ndaConnected.value != true) {
-                    if (opConnectionLastGoodStateTime <= 0L) {
-                        binding.tvConnectionStatus?.text = "콤마 대기중"
-                    } else {
-                        val elapsedSec = (System.currentTimeMillis() - opConnectionLastGoodStateTime) / 1000
-                        binding.tvConnectionStatus?.text = "연결 대기 (${elapsedSec}초)"
-                    }
-                }
+                // v: 사용자 최종 확정(2026-08-10)으로 연결 상태 텍스트는 updateConnectionUi()가
+                // 상태 변경 즉시 처리하므로, 여기서 1초마다 따로 갱신할 필요가 없어짐(중복
+                // 갱신은 예전에 실제로 버그를 냈던 패턴이라 아예 제거). #문제시 원복
                 hudPollHandler.postDelayed(this, 1000)
                 renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "kakao")
                 updateNavNotification()
@@ -1326,7 +1315,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
         if (speedKph > limit * 1.1 && now - SdiDataRepository.lastOverSpeedWarningTime > 8000L) {
             SdiDataRepository.lastOverSpeedWarningTime = now
-            NavLogger.e(this, "[과속경고음발생] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1})")
+            NavLogger.e(this, "[과속경고음발생][카카오화면] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1})")
             try {
                 val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 100)
                 tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
