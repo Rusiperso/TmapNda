@@ -127,7 +127,9 @@ TmapNda는 Tmap과 카카오 양쪽에서 안전정보(과속카메라·구간�
 
 최신 버전은 [Releases 페이지](https://github.com/Rusiperso/TmapNda/releases)에서 APK로 받을 수 있습니다.
 
-| 버전 | 주요 내용 
+| 버전 | 주요 내용 |
+|---|---|
+| v7.0 | 상단 상태 표시줄 개편(크루즈/콤마 연결 상태 완전 분리) · 화면 깜빡임 완화 로직 원복 · 카카오 화면 차선 표시 제거 |
 | v5.0 | 상세 내역은 [Releases 페이지](https://github.com/Rusiperso/TmapNda/releases)에서 각 버전별로 확인 가능합니다 |
 
 ---
