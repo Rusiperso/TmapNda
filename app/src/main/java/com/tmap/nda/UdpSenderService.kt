@@ -312,6 +312,7 @@ class UdpSenderService : Service() {
                 "차선(source=${LaneSignalRepository.source}, 개수=${LaneSignalRepository.lanes.size}, fresh=${LaneSignalRepository.isFresh()}) " +
                 "볼륨(저장%=$volumePercent, STREAM_MUSIC=$musicVol/$musicMax) " +
                 "HUD(everConnected=${com.tmap.nda.hud.TmapNdaCarAppService.everConnected} - AndroidAuto Cluster용, 이 구조에선 항상 false가 정상) " +
+                "AA연결방식(${OpenpilotStateRepository.carConnectionTypeLabel}) " +
                 "구형NDA비콘(addr=${ndaRemoteAddr}, GPS=${ndaGps?.hasFix} - openpilot 포크에 따라 지원 여부가 다름, 재억 본인 차량은 미지원이 정상) " +
                 "폰IP=${getLocalIpAddressesSummary()} " +
                 "배터리=${batteryPct}% 메모리여유=${memInfo.availMem / 1024 / 1024}MB/${memInfo.totalMem / 1024 / 1024}MB lowMemory=${memInfo.lowMemory} " +
@@ -636,6 +637,26 @@ class UdpSenderService : Service() {
                             }
                         }
                         NavLogger.d(this@UdpSenderService, "[카카오->openpilot] UDP 페이로드 카카오 데이터로 덮어씀: nGoPosDist=${kr.remainDist} nTBTDist=$kakaoTbtDist turnType=${kr.tbtTurnType}")
+                    }
+
+                    // v: 2026-08-12 - carrot_serv.py의 update() 코드를 직접 확인해서 찾은 기능:
+                    // "latitude"/"longitude"/"heading"/"accuracy"/"gps_speed" 필드를 보내면,
+                    // openpilot 자체 내비 GPS가 3초 이상 안 들어올 때(터널/실내주차장 등) 자동으로
+                    // 우리 폰 GPS로 대체해줌(GPS 백업 기능). 지금까지 이 필드들을 한 번도 안 보내고
+                    // 있었어서 이 기능이 전혀 활용이 안 되고 있었음 - 추가함. #문제시 원복
+                    try {
+                        val locationManager = getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
+                        val phoneLoc = locationManager?.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                            ?: locationManager?.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                        if (phoneLoc != null) {
+                            json.put("latitude", phoneLoc.latitude)
+                            json.put("longitude", phoneLoc.longitude)
+                            json.put("heading", phoneLoc.bearing)
+                            json.put("accuracy", phoneLoc.accuracy)
+                            json.put("gps_speed", phoneLoc.speed)
+                        }
+                    } catch (e: Exception) {
+                        NavLogger.e(this@UdpSenderService, "[GPS 백업] 폰 위치 조회 실패: ${e.message}")
                     }
 
                     latestPayload = json.toString()
