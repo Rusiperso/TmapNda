@@ -185,6 +185,32 @@ class UdpSenderService : Service() {
     @Volatile
     private var currentGpsStatusText = "탐색 중"
 
+    // v: 재억 실사용 로그로 확인됨(2026-08-12) - v7.0에서 소켓을 특정 Wi-Fi 네트워크에
+    // 명시적으로 바인딩(Network.bindSocket())하기 시작했는데, 그 네트워크 연결이 중간에
+    // 바뀌거나 무효화되면 소켓이 죽은 네트워크에 영원히 묶인 채로 남아서 그 뒤로
+    // ENETUNREACH만 계속 반복됨(로그 확인: 1시간 15분 동안 26,619번 연속 실패, 단 한
+    // 번도 자연 복구 안 됨). 이 함수를 별도로 빼서, sendSdiData()에서 ENETUNREACH
+    // 감지되면 소켓을 통째로 버리고 새로 만들어 재바인딩하도록 함(자가치유). #문제시 원복
+    private fun createUdpSendSocket() {
+        try {
+            udpSocket?.close()
+        } catch (e: Exception) {
+            // 이미 죽은 소켓 닫다가 나는 예외는 무시
+        }
+        try {
+            val socket = DatagramSocket(null)
+            val bindSucceeded = bindSendSocketToLocalNetwork(socket, "openpilot 전송용")
+            if (!bindSucceeded) {
+                socket.bind(java.net.InetSocketAddress(0))
+            }
+            socket.broadcast = true
+            udpSocket = socket
+            NavLogger.d(this, "openpilot 전송용 UDP 소켓 생성 성공 (port=$UDP_PORT)")
+        } catch (e: Exception) {
+            NavLogger.e(this, "openpilot 전송용 UDP 소켓 생성 실패: ${e.message}")
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         NavLogger.d(this, "===== UdpSenderService.onCreate() 호출됨 - 서비스 생성됨 =====")
@@ -214,21 +240,7 @@ class UdpSenderService : Service() {
             }
         }
 
-        try {
-            val socket = DatagramSocket(null)
-            val bindSucceeded = bindSendSocketToLocalNetwork(socket, "openpilot 전송용")
-            if (!bindSucceeded) {
-                // 둘 다(Wi-Fi 네트워크 바인딩/로컬 인터페이스 직접 바인딩) 실패했을 때만
-                // wildcard bind. bindSucceeded=true인 경우 이미 묶인 소켓에 또 bind()를
-                // 시도하지 않음(v5.0->v7.0 사이 연결 안 되던 버그의 원인). #문제시 원복
-                socket.bind(java.net.InetSocketAddress(0))
-            }
-            socket.broadcast = true
-            udpSocket = socket
-            NavLogger.d(this, "openpilot 전송용 UDP 소켓 생성 성공 (port=$UDP_PORT)")
-        } catch (e: Exception) {
-            NavLogger.e(this, "openpilot 전송용 UDP 소켓 생성 실패: ${e.message}")
-        }
+        createUdpSendSocket()
 
         try {
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -346,6 +358,7 @@ class UdpSenderService : Service() {
 
     private var fullBundleDumped = false
     private var lastSendErrorLogTime = 0L
+    private var lastSocketRecreateTime = 0L
 
     private val edcObserver = Observer<Bundle> { bundle ->
         if (bundle != null && isRunning.get()) {
@@ -848,6 +861,16 @@ class UdpSenderService : Service() {
                 lastSendErrorLogTime = now
                 NavLogger.e(this, "openpilot UDP 전송 실패: ${e.message}")
             }
+            // v: ENETUNREACH가 뜨면 소켓이 죽은 네트워크에 묶여서 다시는 자연 복구가
+            // 안 되는 걸로 확인됨(1시간 15분 26,619번 연속 실패 사례). 너무 자주 재생성하면
+            // 오히려 부담이 되니 5초에 한 번씩만 시도. #문제시 원복
+            if ((e.message?.contains("ENETUNREACH") == true || e.message?.contains("ENETDOWN") == true) &&
+                now - lastSocketRecreateTime > 5000
+            ) {
+                lastSocketRecreateTime = now
+                NavLogger.d(this, "[자가치유] ENETUNREACH 감지 - 전송 소켓 재생성 시도")
+                createUdpSendSocket()
+            }
         }
     }
 
@@ -1011,25 +1034,36 @@ class UdpSenderService : Service() {
      * (UDP send()는 상대가 없어도 거의 예외를 안 던짐), 5초 요약 로그로 "포트별 sendto 시도/실패 횟수"만
      * 확인 가능. 실제 도달 여부 확인은 openpilot 쪽 수신 로그가 있어야 함.
      */
+    private fun createNdaSendSocket(): Boolean {
+        try {
+            ndaSendSocket?.close()
+        } catch (e: Exception) {
+            // 이미 죽은 소켓 닫다가 나는 예외는 무시
+        }
+        return try {
+            val socket = DatagramSocket(null)
+            val bindSucceeded = bindSendSocketToLocalNetwork(socket, "NDA 송신용")
+            if (!bindSucceeded) {
+                socket.bind(java.net.InetSocketAddress(0))
+            }
+            ndaSendSocket = socket
+            socket.broadcast = true
+            true
+        } catch (e: Exception) {
+            NavLogger.e(this, "[NDA] 송신 소켓 생성 실패: ${e.message}")
+            false
+        }
+    }
+
     private fun startNdaSendLoop() {
         serviceScope.launch(Dispatchers.IO) {
-            try {
-                val socket = DatagramSocket(null)
-                val bindSucceeded = bindSendSocketToLocalNetwork(socket, "NDA 송신용")
-                if (!bindSucceeded) {
-                    socket.bind(java.net.InetSocketAddress(0))
-                }
-                ndaSendSocket = socket
-                socket.broadcast = true
-            } catch (e: Exception) {
-                NavLogger.e(this@UdpSenderService, "[NDA] 송신 소켓 생성 실패: ${e.message}")
-                return@launch
-            }
+            if (!createNdaSendSocket()) return@launch
 
             // 포트별 성공/실패 카운트 (순서: NDA_SEND_PORTS와 동일)
             val successCount = IntArray(NDA_SEND_PORTS.size)
             val failCount = IntArray(NDA_SEND_PORTS.size)
             var lastNdaSendLogTime = 0L
+            var lastNdaSocketRecreateTime = 0L
 
             while (isActive && isRunning.get()) {
                 // v: 사용자 지적(2026-08-08) - 지금까지 "비콘을 받아서 상대 주소를 알기 전엔
@@ -1074,6 +1108,14 @@ class UdpSenderService : Service() {
                         } catch (e: Exception) {
                             failCount[idx]++
                             NavLogger.e(this@UdpSenderService, "[NDA] 송신 실패 target=$addr:$port: ${e.message}")
+                            val nowRecreate = System.currentTimeMillis()
+                            if ((e.message?.contains("ENETUNREACH") == true || e.message?.contains("ENETDOWN") == true) &&
+                                nowRecreate - lastNdaSocketRecreateTime > 5000
+                            ) {
+                                lastNdaSocketRecreateTime = nowRecreate
+                                NavLogger.d(this@UdpSenderService, "[자가치유] NDA 송신 소켓 ENETUNREACH 감지 - 재생성 시도")
+                                createNdaSendSocket()
+                            }
                         }
                     }
 
