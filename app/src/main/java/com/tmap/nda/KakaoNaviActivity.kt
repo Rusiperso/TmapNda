@@ -626,7 +626,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             val mainConnected = state != null && state.ip.isNotEmpty() && state.ip != "-"
             val ndaConnected = OpenpilotStateRepository.ndaConnected.value == true
             if (mainConnected || ndaConnected) {
-                binding.tvConnectionStatus?.text = "콤마 연결 중"
+                binding.tvConnectionStatus?.text = "콤마 연결됨"
                 binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_green)
             } else {
                 binding.tvConnectionStatus?.text = "연결 대기"

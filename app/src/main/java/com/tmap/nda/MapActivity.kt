@@ -398,7 +398,7 @@ class MapActivity : AppCompatActivity() {
             // "콤마 연결됨"이나 빈 칸 상태는 없음 - 연결됐으면 그냥 "콤마 연결 중"으로 표시. #문제시 원복
             if (mainConnected || ndaConnected) {
                 binding.vConnectionDot.setBackgroundResource(R.drawable.shape_circle_green)
-                binding.tvConnectionStatus.text = "콤마 연결 중"
+                binding.tvConnectionStatus.text = "콤마 연결됨"
             } else {
                 binding.vConnectionDot.setBackgroundResource(R.drawable.shape_circle_gray)
                 binding.tvConnectionStatus.text = "연결 대기"
