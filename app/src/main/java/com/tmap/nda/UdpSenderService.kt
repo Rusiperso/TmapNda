@@ -346,6 +346,7 @@ class UdpSenderService : Service() {
             startNdaListenLoop()
             startNdaSendLoop()
             startCommaHttpNaviLoop()
+            startMainConnectionWatchdog()
         }
 
         return START_STICKY
@@ -358,6 +359,14 @@ class UdpSenderService : Service() {
 
     private var fullBundleDumped = false
     private var lastSendErrorLogTime = 0L
+    // v: 재억 실사용 로그로 확인됨(2026-08-12) - 콤마를 물리적으로 뗀 뒤 3분 넘게 데이터가
+    // 안 왔는데도 "5초간 UDP 수신 없음" 로그가 단 한 번도 안 찍힘 = socket.soTimeout(5000)이
+    // 실제로는 전혀 작동을 안 하고 있었음(이 기기/커스텀 ROM에서 Network.bindSocket() 이후
+    // soTimeout이 무시되는 걸로 추정). 소켓 타임아웃에 의존하지 않고, 마지막으로 실제 패킷을
+    // 받은 시각을 직접 기록해뒀다가 별도의 감시 타이머(startMainConnectionWatchdog)가
+    // 독립적으로 체크하도록 변경 - socket.receive()가 블로킹된 채로 안 풀려도 이 감시는
+    // 정상 작동함. #문제시 원복
+    @Volatile private var lastPacketReceivedTime = 0L
     private var lastSocketRecreateTime = 0L
 
     private val edcObserver = Observer<Bundle> { bundle ->
@@ -818,6 +827,7 @@ class UdpSenderService : Service() {
                         }
 
                         OpenpilotStateRepository.updateState(carrot2, ip, trafficState, xState, active)
+                        lastPacketReceivedTime = System.currentTimeMillis()
                     } catch (e: Exception) {
                         NavLogger.e(this@UdpSenderService, "openpilot UDP 패킷 파싱 실패: ${e.message}, raw=$data")
                     }
@@ -878,6 +888,23 @@ class UdpSenderService : Service() {
 
     /** openpilot이 5초마다 뿌리는 비콘("EON:ROAD_LIMIT_SERVICE:v1")과, request_gps=1 응답으로 오는
      *  GPS 위치 JSON({"location":[lat,lon,alt,speed,bearing,acc,time,vAcc,bAcc,sAcc]})을 같은 2899 포트에서 수신. */
+    private fun startMainConnectionWatchdog() {
+        serviceScope.launch(Dispatchers.IO) {
+            while (isActive && isRunning.get()) {
+                delay(1000)
+                val elapsed = System.currentTimeMillis() - lastPacketReceivedTime
+                // lastPacketReceivedTime이 0L이면 아직 한 번도 안 받은 초기 상태 - 그 경우는
+                // 굳이 로그 안 남기고 조용히 대기(어차피 이미 "-" 상태).
+                if (lastPacketReceivedTime > 0L && elapsed > 5000 &&
+                    OpenpilotStateRepository.state.value?.ip?.let { it != "-" && it.isNotEmpty() } == true
+                ) {
+                    NavLogger.e(this@UdpSenderService, "[감시타이머] ${elapsed}ms 동안 openpilot 패킷 없음 - 소켓 타임아웃이 안 걸려서 직접 강제 리셋함")
+                    OpenpilotStateRepository.updateState("-", "-", 0, 0, false)
+                }
+            }
+        }
+    }
+
     private fun startNdaListenLoop() {
         serviceScope.launch(Dispatchers.IO) {
             try {
