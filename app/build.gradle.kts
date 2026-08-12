@@ -12,8 +12,8 @@ android {
         applicationId = "com.tmap.nda"
         minSdk = 26
         targetSdk = 36
-        versionCode = 184
-        versionName = "7.6"
+        versionCode = 185
+        versionName = "7.7"
     }
 
     signingConfigs {
@@ -103,7 +103,7 @@ dependencies {
   implementation("com.google.android.material:material:1.11.0")
 
   // TMapUISDK
-  implementation("com.tmapmobility.tmap:tmap-ui-sdk:1.0.0.0146")
+  implementation("com.tmapmobility.tmap:tmap-ui-sdk:1.0.0.0155")
   // 카카오내비 SDK - 검색/경로계산/실시간안내를 카카오로 우회 (Tmap 화면 위에 오버레이로 얹음)
   implementation("com.kakaomobility.knsdk:knsdk_ui:1.12.8-hotfix02")
 
