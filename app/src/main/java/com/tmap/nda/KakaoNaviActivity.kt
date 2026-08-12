@@ -626,13 +626,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             val mainConnected = state != null && state.ip.isNotEmpty() && state.ip != "-"
             val ndaConnected = OpenpilotStateRepository.ndaConnected.value == true
             if (mainConnected || ndaConnected) {
-                binding.tvConnectionStatus?.text = "콤마 연결됨"
+                binding.tvConnectionStatus?.text = "Comma 연결됨"
                 // v: 사용자 요청(재억, 2026-08-12) - MapActivity와 동일하게 연결됨 상태를
                 // 초록색으로 강조(Cruise On의 파란색 #4FC3F7과 구분). #문제시 원복
                 binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
                 binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_green)
             } else {
-                binding.tvConnectionStatus?.text = "연결 대기"
+                binding.tvConnectionStatus?.text = "Comma 연결 대기"
                 binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#555555"))
                 binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_gray)
             }

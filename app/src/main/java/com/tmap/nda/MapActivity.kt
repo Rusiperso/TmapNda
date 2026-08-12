@@ -398,13 +398,13 @@ class MapActivity : AppCompatActivity() {
             // "콤마 연결됨"이나 빈 칸 상태는 없음 - 연결됐으면 그냥 "콤마 연결 중"으로 표시. #문제시 원복
             if (mainConnected || ndaConnected) {
                 binding.vConnectionDot.setBackgroundResource(R.drawable.shape_circle_green)
-                binding.tvConnectionStatus.text = "콤마 연결됨"
+                binding.tvConnectionStatus.text = "Comma 연결됨"
                 // v: 사용자 요청(재억, 2026-08-12) - 연결됨 상태를 위쪽 Cruise
                 // 표시(파란색 #4FC3F7)와 구분되게 초록색으로 강조. #문제시 원복
                 binding.tvConnectionStatus.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
             } else {
                 binding.vConnectionDot.setBackgroundResource(R.drawable.shape_circle_gray)
-                binding.tvConnectionStatus.text = "연결 대기"
+                binding.tvConnectionStatus.text = "Comma 연결 대기"
                 binding.tvConnectionStatus.setTextColor(android.graphics.Color.parseColor("#555555"))
             }
         }
