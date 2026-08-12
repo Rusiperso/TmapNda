@@ -68,6 +68,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         dumpTmapAudioSettings()
+        observeCarConnectionType()
         
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -260,6 +261,28 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             NavLogger.e(this, "[배터리 최적화] 요청 실패: ${e.message}")
+        }
+    }
+
+    // v: 사용자 요청(2026-08-12) - "다들 Android Auto 유선으로 쓰지 않냐"는 질문에 실제
+    // 데이터로 답하기 위해 추가. CONNECTION_TYPE_PROJECTED가 뜨면 진짜 AA로 연결된 사용자,
+    // NOT_CONNECTED면 재억처럼 헤드유닛에 직접 설치해서 쓰는 경우로 추정 가능. 다음 로그
+    // 수집 때 실제 분포를 확인할 수 있음. #문제시 원복
+    private fun observeCarConnectionType() {
+        try {
+            androidx.car.app.connection.CarConnection(this).type.observe(this) { type ->
+                val label = when (type) {
+                    androidx.car.app.connection.CarConnection.CONNECTION_TYPE_NOT_CONNECTED -> "미연결(폰 단독 실행 또는 헤드유닛 직접설치)"
+                    androidx.car.app.connection.CarConnection.CONNECTION_TYPE_NATIVE -> "네이티브(헤드유닛에 직접 설치된 앱으로 실행 중)"
+                    androidx.car.app.connection.CarConnection.CONNECTION_TYPE_PROJECTION -> "프로젝션(진짜 Android Auto로 연결됨 - 유선/무선 구분은 API로 불가)"
+                    else -> "알수없음($type)"
+                }
+                OpenpilotStateRepository.carConnectionType = type
+                OpenpilotStateRepository.carConnectionTypeLabel = label
+                NavLogger.d(this, "[AA연결감지] $label")
+            }
+        } catch (e: Exception) {
+            NavLogger.e(this, "[AA연결감지] 관찰 시작 실패: ${e.message}")
         }
     }
 }

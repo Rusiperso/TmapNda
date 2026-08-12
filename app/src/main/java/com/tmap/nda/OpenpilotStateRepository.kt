@@ -36,6 +36,14 @@ data class NdaGpsState(
 )
 
 object OpenpilotStateRepository {
+    // v: 사용자 요청(2026-08-12) - "다들 유선으로 Android Auto 쓰는 거 아니냐"는 질문에
+    // 추측 대신 실제 로그로 확인하기 위해 추가. androidx.car.app.connection.CarConnection로
+    // 감지 가능한 값: 0=연결안됨, 1=네이티브(차량 자체 안드로이드, 헤드유닛에 직접 설치된
+    // 우리 케이스), 2=프로젝션(진짜 Android Auto로 폰이 차에 투사되는 경우, 유선/무선
+    // 둘 다 이 값으로 잡힘 - AA 자체는 유선/무선을 구분해서 알려주는 공개 API가 없음).
+    // #문제시 원복
+    @Volatile var carConnectionType: Int = -1
+    @Volatile var carConnectionTypeLabel: String = "미확인"
     private val _state = MutableLiveData(OpenpilotState())
     val state: LiveData<OpenpilotState> get() = _state
 
