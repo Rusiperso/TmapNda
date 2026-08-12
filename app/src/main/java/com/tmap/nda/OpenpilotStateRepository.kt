@@ -95,9 +95,16 @@ object OpenpilotStateRepository {
             pendingActive = active
             pendingActiveSince = now
             recentTransitionTimes.addLast(now)
-            while (recentTransitionTimes.isNotEmpty() && now - recentTransitionTimes.first() > FLICKER_WINDOW_MS) {
-                recentTransitionTimes.removeFirst()
-            }
+        }
+        // v: 사용자 제보(2026-08-12) - 전환이 몰려서 "불안정"이 한 번 뜨면, 그 뒤로 더 이상
+        // 전환이 안 일어나도(=실제로는 안정된 상태인데도) 화면엔 "불안정"이 계속 남아있는
+        // 버그가 있었음. 원인은 recentTransitionTimes의 오래된 타임스탬프 정리(prune)가
+        // "새 전환이 들어올 때만" 실행돼서, 다음 전환이 한참 뒤에 와야만 큐가 비워졌기
+        // 때문. 전환 여부와 무관하게 매 업데이트마다(=매 UDP 수신마다) 3초 지난 타임스탬프를
+        // 지우도록 밖으로 빼서, 실제로 흔들림이 멈추면 최대 FLICKER_WINDOW_MS 안에 "불안정"
+        // 표시가 자동으로 풀리게 함. On/Off 판정(pendingActive/STABLE_HOLD_MS)에는 영향 없음. #문제시 원복
+        while (recentTransitionTimes.isNotEmpty() && now - recentTransitionTimes.first() > FLICKER_WINDOW_MS) {
+            recentTransitionTimes.removeFirst()
         }
         // 새 값이 STABLE_HOLD_MS 이상 유지됐을 때만 화면표시용 값을 실제로 갱신
         if (pendingActive != stableDisplayActive && now - pendingActiveSince >= STABLE_HOLD_MS) {
