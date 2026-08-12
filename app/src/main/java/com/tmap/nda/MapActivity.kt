@@ -1204,8 +1204,8 @@ class MapActivity : AppCompatActivity() {
                     val json = JSONObject(it.body?.string() ?: "{}")
                     val documents = json.optJSONArray("documents")
                     if (documents == null || documents.length() == 0) {
-                        NavLogger.d(this@MapActivity, "카카오 검색 결과 없음: query=$query")
-                        runOnUiThread { binding.tvSearchStatus?.text = "검색 결과 없음: $query" }
+                        NavLogger.d(this@MapActivity, "카카오 키워드검색 결과 없음, 주소검색으로 재시도: query=$query")
+                        performAddressSearchFallback(query, restKey)
                         return@use
                     }
                     // v1.7: "S Oil 검색하면 평택시 지산동 Soil 00점, 000점처럼 여러개 나와야 하는데
@@ -1222,35 +1222,87 @@ class MapActivity : AppCompatActivity() {
                     }
                     NavLogger.d(this@MapActivity, "카카오 검색 결과 ${hits.size}건: query=$query")
 
-                    runOnUiThread {
-                        binding.llSearchPanel?.visibility = View.VISIBLE
-                        binding.tvSearchStatus?.text = "검색 결과 ${hits.size}건 - 목적지를 선택하세요"
-                        // v2.1: 카카오 화면과 동일하게 결과 목록을 인라인 대신 팝업 다이얼로그로
-                        // 표시 - 인라인 리스트가 지도 화면을 가리던 문제(1·6번) 해결. #문제시 원복
-                        val listView = android.widget.ListView(this@MapActivity)
-                        val labels = hits.map { h -> if (h.addr.isNotBlank()) "${h.name}\n${h.addr}" else h.name }
-                        listView.adapter = darkTextAdapter(labels)
-                        listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
-                        listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
-                        listView.dividerHeight = 1
-                        val dialog = android.app.AlertDialog.Builder(this@MapActivity, android.R.style.Theme_Material_Dialog_Alert)
-                            .setTitle("검색 결과 ${hits.size}건")
-                            .setView(listView)
-                            .setNegativeButton("취소", null)
-                            .create()
-                        listView.setOnItemClickListener { _, _, position, _ ->
-                            val picked = hits[position]
-                            dialog.dismiss()
-                            binding.tvSearchStatus?.text = "찾음: ${picked.name} (${picked.lat}, ${picked.lon}) - 경로요청 시도"
-                            saveSearchHistory(picked)
-                            startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon)
-                        }
-                        dialog.show()
-                        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
-                    }
+                    runOnUiThread { showSearchResultsDialog(hits) }
                 }
             }
         })
+    }
+
+    // v7.8: "지산동 838-20 검색하면 그 번지가 안 나오고 송탄로 361번길 29처럼 엉뚱한
+    // 다른 지점이 나옴" 지적(재억) - 키워드검색(/v2/local/search/keyword.json)은
+    // 상호명/장소명 위주로 매칭돼서 순수 지번(번지) 주소는 잘 못 찾는 경우가 많음.
+    // 카카오가 주소 전용으로 제공하는 /v2/local/search/address.json으로 한 번 더
+    // 시도해서 지번/도로명 주소 정확도를 보강. #문제시 원복
+    private fun performAddressSearchFallback(query: String, restKey: String) {
+        val url = "https://dapi.kakao.com/v2/local/search/address.json?query=" +
+            java.net.URLEncoder.encode(query, "UTF-8")
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", "KakaoAK $restKey")
+            .build()
+
+        httpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                NavLogger.e(this@MapActivity, "카카오 주소검색 요청 실패: ${e.message}")
+                runOnUiThread { binding.tvSearchStatus?.text = "검색 결과 없음: $query" }
+            }
+
+            override fun onResponse(call: Call, response: okhttp3.Response) {
+                response.use {
+                    if (!it.isSuccessful) {
+                        NavLogger.e(this@MapActivity, "카카오 주소검색 실패 code=${it.code}")
+                        runOnUiThread { binding.tvSearchStatus?.text = "검색 결과 없음: $query" }
+                        return@use
+                    }
+                    val json = JSONObject(it.body?.string() ?: "{}")
+                    val documents = json.optJSONArray("documents")
+                    if (documents == null || documents.length() == 0) {
+                        NavLogger.d(this@MapActivity, "카카오 주소검색도 결과 없음: query=$query")
+                        runOnUiThread { binding.tvSearchStatus?.text = "검색 결과 없음: $query" }
+                        return@use
+                    }
+                    val hits = (0 until documents.length()).map { idx ->
+                        val d = documents.getJSONObject(idx)
+                        val roadAddr = d.optJSONObject("road_address")
+                        HistoryEntry(
+                            d.optString("address_name", query),
+                            roadAddr?.optString("address_name").orEmpty(),
+                            d.optDouble("y"),
+                            d.optDouble("x")
+                        )
+                    }
+                    NavLogger.d(this@MapActivity, "카카오 주소검색 결과 ${hits.size}건: query=$query")
+                    runOnUiThread { showSearchResultsDialog(hits) }
+                }
+            }
+        })
+    }
+
+    private fun showSearchResultsDialog(hits: List<HistoryEntry>) {
+        binding.llSearchPanel?.visibility = View.VISIBLE
+        binding.tvSearchStatus?.text = "검색 결과 ${hits.size}건 - 목적지를 선택하세요"
+        // v2.1: 카카오 화면과 동일하게 결과 목록을 인라인 대신 팝업 다이얼로그로
+        // 표시 - 인라인 리스트가 지도 화면을 가리던 문제(1·6번) 해결. #문제시 원복
+        val listView = android.widget.ListView(this@MapActivity)
+        val labels = hits.map { h -> if (h.addr.isNotBlank()) "${h.name}\n${h.addr}" else h.name }
+        listView.adapter = darkTextAdapter(labels)
+        listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
+        listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
+        listView.dividerHeight = 1
+        val dialog = android.app.AlertDialog.Builder(this@MapActivity, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("검색 결과 ${hits.size}건")
+            .setView(listView)
+            .setNegativeButton("취소", null)
+            .create()
+        listView.setOnItemClickListener { _, _, position, _ ->
+            val picked = hits[position]
+            dialog.dismiss()
+            binding.tvSearchStatus?.text = "찾음: ${picked.name} (${picked.lat}, ${picked.lon}) - 경로요청 시도"
+            saveSearchHistory(picked)
+            startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon)
+        }
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
     }
 
     // ===== 카카오내비 오버레이 길안내 =====

@@ -1121,7 +1121,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     val json = JSONObject(it.body?.string() ?: "{}")
                     val documents = json.optJSONArray("documents")
                     if (documents == null || documents.length() == 0) {
-                        runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
+                        NavLogger.d(this@KakaoNaviActivity, "카카오 키워드검색 결과 없음, 주소검색으로 재시도: query=$query")
+                        performAddressSearchFallback(query, restKey)
                         return@use
                     }
                     // v2.5: 이력은 검색 시도가 아니라 실제로 고른 결과에만 저장(아래 클릭 시). #문제시 원복
@@ -1138,43 +1139,92 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         )
                     }
                     NavLogger.d(this@KakaoNaviActivity, "인라인 재검색 결과 ${hits.size}건: query=$query")
-                    runOnUiThread {
-                        val labels = hits.map { h -> if (h.addr.isNotBlank()) "${h.name}\n${h.addr}" else h.name }
-                        val listView = android.widget.ListView(this@KakaoNaviActivity)
-                        listView.adapter = darkTextAdapter(labels)
-                        listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
-                        listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
-                        listView.dividerHeight = 1
-                        val pickDialog = android.app.AlertDialog.Builder(this@KakaoNaviActivity, android.R.style.Theme_Material_Dialog_Alert)
-                            .setTitle("검색 결과 ${hits.size}건 - 목적지를 선택하세요")
-                            .setView(listView)
-                            .setNegativeButton("취소", null)
-                            .create()
-                        listView.setOnItemClickListener { _, _, position, _ ->
-                            val picked = hits[position]
-                            pickDialog.dismiss()
-                            // v4.13: 카카오 화면 인라인 검색도 티맵 화면과 같은 커서 잔류
-                            // 문제가 있었음(사용자 8번) - 동일한 방식으로 포커스 강제 정리. #문제시 원복
-                            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
-                            currentFocus?.let { imm?.hideSoftInputFromWindow(it.windowToken, 0) }
-                            binding.etDestination?.apply {
-                                isFocusable = false
-                                isFocusableInTouchMode = false
-                                clearFocus()
-                                isFocusable = true
-                                isFocusableInTouchMode = true
-                                setText("")
-                            }
-                            SearchHistoryStore.save(this@KakaoNaviActivity, picked)
-                            renderRecentDestinationsPanel()
-                            KakaoRouteDataRepository.reset()
-                            resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
-                        }
-                        pickDialog.show()
-                    }
+                    runOnUiThread { showInPlaceSearchResultsDialog(hits) }
                 }
             }
         })
+    }
+
+    // v7.8: Tmap 화면(MapActivity)과 동일한 이유·로직 - 키워드검색이 지번(번지) 주소를
+    // 잘 못 찾는 문제 대응. 결과 0건이면 주소 전용 API로 재시도. #문제시 원복
+    private fun performAddressSearchFallback(query: String, restKey: String) {
+        val url = "https://dapi.kakao.com/v2/local/search/address.json?query=" +
+            java.net.URLEncoder.encode(query, "UTF-8")
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", "KakaoAK $restKey")
+            .build()
+
+        searchHttpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                NavLogger.e(this@KakaoNaviActivity, "카카오 주소검색 요청 실패: ${e.message}")
+                runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
+            }
+
+            override fun onResponse(call: Call, response: okhttp3.Response) {
+                response.use {
+                    if (!it.isSuccessful) {
+                        NavLogger.e(this@KakaoNaviActivity, "카카오 주소검색 실패 code=${it.code}")
+                        runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
+                        return@use
+                    }
+                    val json = JSONObject(it.body?.string() ?: "{}")
+                    val documents = json.optJSONArray("documents")
+                    if (documents == null || documents.length() == 0) {
+                        NavLogger.d(this@KakaoNaviActivity, "카카오 주소검색도 결과 없음: query=$query")
+                        runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
+                        return@use
+                    }
+                    val hits = (0 until documents.length()).map { idx ->
+                        val d = documents.getJSONObject(idx)
+                        val roadAddr = d.optJSONObject("road_address")
+                        HistoryEntry(
+                            d.optString("address_name", query),
+                            roadAddr?.optString("address_name").orEmpty(),
+                            d.optDouble("y"),
+                            d.optDouble("x")
+                        )
+                    }
+                    NavLogger.d(this@KakaoNaviActivity, "카카오 주소검색 결과 ${hits.size}건: query=$query")
+                    runOnUiThread { showInPlaceSearchResultsDialog(hits) }
+                }
+            }
+        })
+    }
+
+    private fun showInPlaceSearchResultsDialog(hits: List<HistoryEntry>) {
+        val labels = hits.map { h -> if (h.addr.isNotBlank()) "${h.name}\n${h.addr}" else h.name }
+        val listView = android.widget.ListView(this@KakaoNaviActivity)
+        listView.adapter = darkTextAdapter(labels)
+        listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
+        listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
+        listView.dividerHeight = 1
+        val pickDialog = android.app.AlertDialog.Builder(this@KakaoNaviActivity, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("검색 결과 ${hits.size}건 - 목적지를 선택하세요")
+            .setView(listView)
+            .setNegativeButton("취소", null)
+            .create()
+        listView.setOnItemClickListener { _, _, position, _ ->
+            val picked = hits[position]
+            pickDialog.dismiss()
+            // v4.13: 카카오 화면 인라인 검색도 티맵 화면과 같은 커서 잔류
+            // 문제가 있었음(사용자 8번) - 동일한 방식으로 포커스 강제 정리. #문제시 원복
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+            currentFocus?.let { imm?.hideSoftInputFromWindow(it.windowToken, 0) }
+            binding.etDestination?.apply {
+                isFocusable = false
+                isFocusableInTouchMode = false
+                clearFocus()
+                isFocusable = true
+                isFocusableInTouchMode = true
+                setText("")
+            }
+            SearchHistoryStore.save(this@KakaoNaviActivity, picked)
+            renderRecentDestinationsPanel()
+            KakaoRouteDataRepository.reset()
+            resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
+        }
+        pickDialog.show()
     }
 
     private fun finishGuidance() {
