@@ -325,6 +325,9 @@ class UdpSenderService : Service() {
                 "볼륨(저장%=$volumePercent, STREAM_MUSIC=$musicVol/$musicMax) " +
                 "HUD(everConnected=${com.tmap.nda.hud.TmapNdaCarAppService.everConnected} - AndroidAuto Cluster용, 이 구조에선 항상 false가 정상) " +
                 "AA연결방식(${OpenpilotStateRepository.carConnectionTypeLabel}) " +
+                // v: 사용자 요청(재억, 2026-08-12) - AutoWatchHelper 검증용. 사용정보 접근
+                // 권한 없으면 항상 false로 찍힘(정상) - 설정에서 허용 후 재확인 필요. #문제시 원복
+                "AA포그라운드(권한=${AutoWatchHelper.hasUsageAccessPermission(ctx)}, foreground=${AutoWatchHelper.isAndroidAutoForeground(ctx)}) " +
                 "구형NDA비콘(addr=${ndaRemoteAddr}, GPS=${ndaGps?.hasFix} - openpilot 포크에 따라 지원 여부가 다름, 재억 본인 차량은 미지원이 정상) " +
                 "폰IP=${getLocalIpAddressesSummary()} " +
                 "배터리=${batteryPct}% 메모리여유=${memInfo.availMem / 1024 / 1024}MB/${memInfo.totalMem / 1024 / 1024}MB lowMemory=${memInfo.lowMemory} " +
@@ -461,12 +464,25 @@ class UdpSenderService : Service() {
                     }
 
                     // 1.5. Reflection을 통한 도로 기본 제한속도 추출 (TMAP 코어 엔진)
+                    // v: 사용자 제보(재억, 2026-08-12) - "과속경고음이 10% 안 넘었는데도 울림".
+                    // 원인: sdiSpeedLimit 경로는 generalRoadLimitSpeed를 안 건드리게
+                    // 분리해뒀는데(v4.13), 바로 이 리플렉션 값(realRoadLimit)이 조건 없이
+                    // generalRoadLimitSpeed까지 같이 덮어쓰고 있었음. Tmap 엔진이 카메라
+                    // 근처에서 "현재 표시 제한속도"를 카메라 개별값으로 리턴하는 경우가 있어서,
+                    // 그 값이 그대로 도로 기본 제한속도인 것처럼 오인식돼 과속경고음 임계값
+                    // 계산이 틀어졌음. 이번 프레임에 카메라 이벤트(sdiSpeedLimit)가 있었으면
+                    // realRoadLimit로 generalRoadLimitSpeed를 갱신하지 않음(roadLimitSpeed는
+                    // 계속 갱신 - openpilot 카메라 감속용이라 문제 없음). #문제시 원복
                     val realRoadLimit = getRoadLimitSpeedFromEngine()
                     if (realRoadLimit >= 30) {
                         roadLimitSpeed = realRoadLimit
                         lastRoadLimitUpdateTime = System.currentTimeMillis()
-                        generalRoadLimitSpeed = realRoadLimit
-                        lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
+                        val cameraEventThisFrame = lastSdiJsonStr != null &&
+                            JSONObject(lastSdiJsonStr).optInt("nSdiSpeedLimit", 0) >= 30
+                        if (!cameraEventThisFrame) {
+                            generalRoadLimitSpeed = realRoadLimit
+                            lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
+                        }
                     }
 
                     // v4.2: roadLimitSpeed가 한 번 값이 들어오면(예: 고속도로 100) 그 뒤로
