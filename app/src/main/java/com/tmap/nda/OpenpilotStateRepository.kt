@@ -79,8 +79,11 @@ object OpenpilotStateRepository {
     private var stableDisplayActive: Boolean = false
     private val recentTransitionTimes = ArrayDeque<Long>()
     private const val STABLE_HOLD_MS = 1000L
-    private const val FLICKER_WINDOW_MS = 3000L
-    private const val FLICKER_THRESHOLD = 4
+    // v: 사용자 요청(재억, 2026-08-12) - "불안정" 판정이 너무 예민해서(저속/정차 구간에서
+    // 자주 뜸) 좀 더 루즈하게 완화. 4회/3초 -> 6회/4초로. 값을 늘릴수록 실제로 더 오래,
+    // 더 여러 번 튀어야만 "불안정"으로 뜨게 됨(=덜 예민해짐). #문제시 원복
+    private const val FLICKER_WINDOW_MS = 4000L
+    private const val FLICKER_THRESHOLD = 6
 
     fun updateState(
         carrot2: String,
