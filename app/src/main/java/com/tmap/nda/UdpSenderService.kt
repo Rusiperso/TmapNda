@@ -752,7 +752,14 @@ class UdpSenderService : Service() {
                     try {
                         val json = JSONObject(data)
                         val carrot2 = json.optString("Carrot2", "-")
-                        val ip = json.optString("ip", "-")
+                        // v: 재억 제보(2026-08-12) - "Cruise On인데 콤마 연결 중이라니 말이
+                        // 안 된다"는 정확한 지적. 원인: ip를 openpilot이 JSON 본문 안에 자기가
+                        // 적어넣은 "ip" 필드값으로 판단하고 있었는데, 이 필드가 아직 안 채워져서
+                        // "-"로 오는 경우가 있었음 - 그러면 active=true(Cruise On)는 정상 수신했는데
+                        // ip="-"(연결 안 됨 판정)가 동시에 성립하는 모순이 생김. 패킷이 도착했다는
+                        // 것 자체가 이미 "연결됨"의 증거이므로, 본문 필드 대신 실제 패킷 발신자
+                        // 주소(packet.address)를 신뢰하도록 변경. #문제시 원복
+                        val ip = packet.address?.hostAddress ?: json.optString("ip", "-")
                         val trafficState = json.optInt("trafficState", 0)
                         val xState = json.optInt("xState", 0)
                         val active = json.optBoolean("active", false)
