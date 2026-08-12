@@ -230,7 +230,7 @@
         android:layout_height="match_parent"
         android:visibility="gone"
         android:elevation="50dp"
-        android:background="#000000">
+        android:background="@android:color/transparent">
 
         <ViewStub
             android:id="@+id/naviViewStub"
