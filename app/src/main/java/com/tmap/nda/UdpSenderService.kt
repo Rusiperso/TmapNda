@@ -27,6 +27,11 @@ import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicBoolean
 import android.net.wifi.WifiManager
 import android.os.PowerManager
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.concurrent.TimeUnit
 
 class UdpSenderService : Service() {
 
@@ -71,7 +76,15 @@ class UdpSenderService : Service() {
 
     // 송신 소켓 전용 - 클라이언트/호스트 모드 둘 다 커버(위 주석 참고). 호출 전에 소켓이
     // 아직 아무 데도 안 묶인 상태(DatagramSocket(null))여야 함.
-    private fun bindSendSocketToLocalNetwork(socket: DatagramSocket, label: String) {
+    // v: 재억 제보(2026-08-12) - v5.0에선 연결 정상, v7.0에서 연결 안 됨. 원인 확정:
+    // Network.bindSocket()은 "어느 네트워크로 내보낼지"만 지정하고 실제 로컬 포트를
+    // 할당하지 않아서, 호출 후에도 socket.localPort가 여전히 -1(안 묶인 것처럼) 나올 수
+    // 있음. 그러면 호출부의 "if (socket.localPort <= 0)" 체크가 "아직 안 묶였다"고
+    // 오판해서, 이미 Network.bindSocket()으로 묶인 소켓에 또 bind()를 시도 - 이게
+    // 기기/안드로이드 버전에 따라 SocketException("already bound")을 던져서 송신
+    // 소켓 자체가 깨진 채로 남을 수 있었음. localPort로 성공 여부를 추측하지 않고
+    // 함수가 직접 Boolean으로 성공 여부를 반환하도록 변경. #문제시 원복
+    private fun bindSendSocketToLocalNetwork(socket: DatagramSocket, label: String): Boolean {
         try {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
             val wifiNetwork = cm?.allNetworks?.firstOrNull { net ->
@@ -81,7 +94,7 @@ class UdpSenderService : Service() {
             if (wifiNetwork != null) {
                 wifiNetwork.bindSocket(socket)
                 NavLogger.d(this, "[네트워크] $label: Wi-Fi 네트워크(클라이언트 모드)에 바인딩함")
-                return
+                return true
             }
         } catch (e: Exception) {
             NavLogger.e(this, "[네트워크] $label Wi-Fi 네트워크 바인딩 시도 실패: ${e.message}")
@@ -102,7 +115,7 @@ class UdpSenderService : Service() {
                     if (addr is java.net.Inet4Address) {
                         socket.bind(java.net.InetSocketAddress(addr, 0))
                         NavLogger.d(this, "[네트워크] $label: 로컬 인터페이스(${iface.name}=${addr.hostAddress})에 직접 바인딩함 (핫스팟 호스트 모드 추정)")
-                        return
+                        return true
                     }
                 }
             }
@@ -110,6 +123,7 @@ class UdpSenderService : Service() {
         } catch (e: Exception) {
             NavLogger.e(this, "[네트워크] $label 로컬 인터페이스 바인딩 실패: ${e.message}")
         }
+        return false
     }
 
     // ===== NDA(EON:ROAD_LIMIT_SERVICE:v1) 호환 브릿지 관련 상수 =====
@@ -202,9 +216,11 @@ class UdpSenderService : Service() {
 
         try {
             val socket = DatagramSocket(null)
-            bindSendSocketToLocalNetwork(socket, "openpilot 전송용")
-            if (socket.localPort <= 0) {
-                // 위에서 아무 데도 못 묶었으면(둘 다 실패) 그냥 기본 라우팅으로라도 동작하게 wildcard bind
+            val bindSucceeded = bindSendSocketToLocalNetwork(socket, "openpilot 전송용")
+            if (!bindSucceeded) {
+                // 둘 다(Wi-Fi 네트워크 바인딩/로컬 인터페이스 직접 바인딩) 실패했을 때만
+                // wildcard bind. bindSucceeded=true인 경우 이미 묶인 소켓에 또 bind()를
+                // 시도하지 않음(v5.0->v7.0 사이 연결 안 되던 버그의 원인). #문제시 원복
                 socket.bind(java.net.InetSocketAddress(0))
             }
             socket.broadcast = true
@@ -316,6 +332,7 @@ class UdpSenderService : Service() {
             startReceivingLoop()
             startNdaListenLoop()
             startNdaSendLoop()
+            startCommaHttpNaviLoop()
         }
 
         return START_STICKY
@@ -904,6 +921,62 @@ class UdpSenderService : Service() {
         }
     }
 
+    // v: 2026-08-12 - comma.ai 공식 코드(Naver Map 카풀비타/bin9208 openpilot 브랜치 리버스엔지니어링으로
+    // 확인)에 이미 존재하는 HTTP 네비게이션 API를 활용. carrot_man.py의 carrot_navi_http_server(포트
+    // 7713)가 POST /api/navi/{tmap_version}로 {"rgdata": <지금 UDP로 843/2843/3843에 보내는 것과
+    // 동일한 페이로드>} 형태를 받으면 carrot_serv.update(rgdata)로 그대로 넘겨줌 - 즉 우리가 이미
+    // 만들고 있는 latestPayload를 그대로 감싸서 보내기만 하면 됨. UDP 브로드캐스트는 패킷 유실
+    // 가능성이 있는데, HTTP(TCP 기반)는 전송 성공/실패를 명확히 알 수 있고 재시도도 쉬워서, 기존
+    // UDP 경로는 그대로 두고 이 HTTP 경로를 "보험"으로 병행 전송함(둘 중 하나만 도착해도 됨).
+    // 콤마 IP는 이미 메인 채널(7705)에서 확보한 값을 그대로 재사용. #문제시 원복
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(800, TimeUnit.MILLISECONDS)
+        .writeTimeout(800, TimeUnit.MILLISECONDS)
+        .readTimeout(800, TimeUnit.MILLISECONDS)
+        .build()
+    private var httpNaviSuccessCount = 0
+    private var httpNaviFailCount = 0
+    private var lastHttpNaviLogTime = 0L
+
+    private fun startCommaHttpNaviLoop() {
+        serviceScope.launch(Dispatchers.IO) {
+            while (isActive && isRunning.get()) {
+                try {
+                    val commaIp = OpenpilotStateRepository.state.value?.ip?.takeIf { it.isNotEmpty() && it != "-" }
+                        ?: ndaRemoteAddr?.hostAddress
+                    if (commaIp != null && latestPayload != "{}") {
+                        val bodyJson = JSONObject().apply {
+                            put("rgdata", JSONObject(latestPayload))
+                            put("timestamp_ms", System.currentTimeMillis())
+                        }
+                        val body = bodyJson.toString().toRequestBody("application/json".toMediaTypeOrNull())
+                        val request = Request.Builder()
+                            .url("http://$commaIp:7713/api/navi/tmapnda")
+                            .post(body)
+                            .build()
+                        try {
+                            httpClient.newCall(request).execute().use { resp ->
+                                if (resp.isSuccessful) httpNaviSuccessCount++ else httpNaviFailCount++
+                            }
+                        } catch (e: Exception) {
+                            httpNaviFailCount++
+                        }
+                    }
+                } catch (e: Exception) {
+                    NavLogger.e(this@UdpSenderService, "[콤마 HTTP API] 전송 루프 예외: ${e.message}")
+                }
+
+                if (System.currentTimeMillis() - lastHttpNaviLogTime > 5000) {
+                    NavLogger.d(this@UdpSenderService, "[콤마 HTTP API] 5초 요약: 성공=$httpNaviSuccessCount 실패=$httpNaviFailCount")
+                    httpNaviSuccessCount = 0
+                    httpNaviFailCount = 0
+                    lastHttpNaviLogTime = System.currentTimeMillis()
+                }
+                delay(1000) // 1Hz - UDP(2Hz)보다 느리게, 보험 채널이라 부담 최소화
+            }
+        }
+    }
+
     /**
      * 발견된 openpilot IP의 843/2843/3843 세 포트 모두에 매 사이클 동시 송신 (fork마다 리슨 포트가
      * 다를 수 있어 "가능성을 전부 열어놓는" 방식). 어느 포트가 실제로 살아있는지는 여기서 알 수 없고
@@ -914,8 +987,8 @@ class UdpSenderService : Service() {
         serviceScope.launch(Dispatchers.IO) {
             try {
                 val socket = DatagramSocket(null)
-                bindSendSocketToLocalNetwork(socket, "NDA 송신용")
-                if (socket.localPort <= 0) {
+                val bindSucceeded = bindSendSocketToLocalNetwork(socket, "NDA 송신용")
+                if (!bindSucceeded) {
                     socket.bind(java.net.InetSocketAddress(0))
                 }
                 ndaSendSocket = socket
