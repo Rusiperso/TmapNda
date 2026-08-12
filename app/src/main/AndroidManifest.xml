@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -20,6 +21,11 @@
          백그라운드 네트워크(UDP)가 한동안 잘 되다가 조용히 조여질 수 있었음("연결 한 번
          되고 다시는 안 됨" 미스터리의 추가 원인 후보). #문제시 원복 -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- v: 사용자 요청(재억, 2026-08-12) - Android Auto 포그라운드 감지(클러스터 세션 기능
+         조사용). 런타임 권한이 아니라 설정 앱에서 "사용정보 접근"을 수동으로 허용해야
+         동작함(AutoWatchHelper.hasUsageAccessPermission() 참고). #문제시 원복 -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES" />
     <uses-permission android:name="androidx.car.app.MAP_TEMPLATES" />
     <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
