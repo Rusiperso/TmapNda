@@ -677,8 +677,7 @@ class MapActivity : AppCompatActivity() {
         binding.btnStopGuidance?.setOnClickListener {
             stopGuidance()
         }
-        binding.btnShareLog?.setOnClickListener {
-            binding.svSecondaryPanel?.visibility = View.GONE
+        binding.btnShareLogTopBar?.setOnClickListener {
             shareNavLog()
         }
     }

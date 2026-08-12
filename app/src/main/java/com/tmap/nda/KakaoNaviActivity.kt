@@ -898,8 +898,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             showFullSearchHistoryDialog()
         }
 
-        binding.btnShareLog?.setOnClickListener {
-            binding.svSecondaryPanel?.visibility = View.GONE
+        binding.btnShareLogTopBar?.setOnClickListener {
             val result = NavLogger.buildShareIntent(this)
             if (result == null) {
                 Toast.makeText(this, "저장된 로그가 없어.", Toast.LENGTH_SHORT).show()

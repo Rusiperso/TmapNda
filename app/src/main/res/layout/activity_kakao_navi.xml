@@ -259,6 +259,17 @@
             <!-- 검색창을 고정폭으로 줄인 만큼, 오른쪽(도착정보/메뉴)을 끝까지 밀어내는 spacer -->
             <View android:layout_width="20dp" android:layout_height="0dp"/>
 
+            <!-- v7.9: 로그전송을 더보기(≡) 메뉴 밖으로 빼서 상단바 고정 버튼으로 - 메뉴
+                 바로 왼쪽에 배치, 나머지 순서는 그대로 유지 (재억 요청). #문제시 원복 -->
+            <ImageButton
+                android:id="@+id/btnShareLogTopBar"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:layout_marginEnd="8dp"
+                android:src="@android:drawable/ic_menu_upload"
+                android:background="@drawable/shape_circle_gray"
+                android:scaleType="center"/>
+
             <!-- v4.1: 순서를 검색창 -> 메뉴 -> 안내종료 -> 이벤트로 재배치 (사용자 요청).
                  이벤트는 생겼다 없어졌다 하는 항목이라 맨 끝에 둬서 다른 요소를 계속
                  밀어내지 않게 함. #문제시 원복 -->
@@ -323,20 +334,8 @@
                 android:orientation="vertical"
                 android:padding="14dp">
 
-                <Button
-                    android:id="@+id/btnShareLog"
-                    android:layout_width="match_parent"
-                    android:layout_height="38dp"
-                    android:text="로그 전송"
-                    android:textSize="12sp"
-                    android:textColor="#CCCCCC"
-                    android:gravity="center_vertical|start"
-                    android:paddingStart="10dp"
-                    android:drawableStart="@drawable/ic_send_paperplane"
-                    android:drawableTint="#CCCCCC"
-                    android:drawablePadding="10dp"
-                    android:backgroundTint="#111111"
-                    android:layout_marginBottom="4dp"/>
+                <!-- v7.9: "로그 전송"은 상단바 고정 버튼(btnShareLogTopBar)으로 이동됨 -
+                     메뉴 밖으로 뺌 (재억 요청). #문제시 원복 -->
 
                 <!-- v4.23: "일부 모바일 폰에서 메뉴에 UI편집/설정이 안보임"(사용자 지적) -
                      예전엔 "티맵 전용 상태와 얽혀있어 보류"라고 남겨뒀었는데, 확인해보니

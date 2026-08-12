@@ -386,6 +386,17 @@
                 android:background="@drawable/shape_circle_gray"
                 android:scaleType="center"/>
 
+            <!-- v7.9: 로그전송을 더보기(≡) 메뉴 밖으로 빼서 상단바 고정 버튼으로 - 메뉴
+                 바로 왼쪽에 배치 (재억 요청). #문제시 원복 -->
+            <ImageButton
+                android:id="@+id/btnShareLogTopBar"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginEnd="6dp"
+                android:src="@android:drawable/ic_menu_upload"
+                android:background="@drawable/shape_circle_gray"
+                android:scaleType="center"/>
+
             <ImageButton
                 android:id="@+id/btnMoreMenu"
                 android:layout_width="36dp"
@@ -434,21 +445,8 @@
             android:orientation="vertical"
                 android:padding="14dp">
 
-                <!-- v3.3: 아이콘+짧은 라벨 한 줄 스타일로 축소 -->
-                <Button
-                    android:id="@+id/btnShareLog"
-                    android:layout_width="match_parent"
-                    android:layout_height="38dp"
-                    android:text="로그 전송"
-                    android:textSize="12sp"
-                    android:textColor="#CCCCCC"
-                    android:gravity="center_vertical|start"
-                    android:paddingStart="10dp"
-                    android:drawableStart="@drawable/ic_send_paperplane"
-                    android:drawableTint="#CCCCCC"
-                    android:drawablePadding="10dp"
-                    android:backgroundTint="#111111"
-                    android:layout_marginBottom="4dp"/>
+                <!-- v7.9: "로그 전송"은 상단바 고정 버튼(btnShareLogTopBar)으로 이동됨 -
+                     메뉴 밖으로 뺌 (재억 요청). #문제시 원복 -->
 
                 <Button
                     android:id="@+id/btnEditPanelPosition"
