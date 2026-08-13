@@ -766,23 +766,64 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 if (sdiType > 0 || (sdiSpeedLimit > 0 && sdiDist > 0)) {
                     binding.tvSdiSpeedLimit?.text = if (sdiSpeedLimit > 0) "${sdiSpeedLimit}km" else "-"
                     binding.tvSdiDist?.text = if (sdiDist >= 1000) String.format("%.1fkm", sdiDist / 1000.0) else "${sdiDist}m"
+                    // v: MapActivity(티맵 화면)와 동일한 버그 수정 + 타입/아이콘 확장 - 두
+                    // 화면 항상 동일하게 유지하는 원칙에 따라 그대로 반영. #문제시 원복
                     val typeName = when (sdiType) {
+                        0 -> "신호+과속 단속"
                         1 -> "과속 단속"
                         2 -> "구간단속 시작"
                         3 -> "구간단속 종료"
                         4 -> "구간단속 중"
+                        6 -> "신호 단속"
                         7 -> "이동식 단속"
+                        8 -> "과속위험구간"
+                        9 -> "버스전용차로"
+                        11 -> "갓길감시"
+                        12 -> "끼어들기 금지"
+                        13 -> "교통정보수집"
+                        15 -> "과적차량 단속"
+                        16 -> "적재불량 단속"
+                        17 -> "주차단속"
+                        19 -> "철길건널목"
+                        20 -> "어린이보호구역"
                         22 -> "과속방지턱"
-                        33 -> "어린이보호구역"
+                        25 -> "휴게소"
+                        26 -> "톨게이트"
+                        27 -> "안개주의"
+                        29 -> "사고다발구간"
+                        30 -> "급커브 주의"
+                        32 -> "급경사 주의"
+                        33 -> "야생동물 사고구간"
                         else -> if (sdiSpeedLimit > 0) "단속 카메라" else "주의 구간"
                     }
+                    val iconRes = when (sdiType) {
+                        0, 1, 7, 2, 3, 4, 8 -> R.drawable.ic_event_camera
+                        6 -> R.drawable.ic_event_traffic_lights
+                        9 -> R.drawable.ic_event_bus
+                        11 -> R.drawable.ic_event_shoulder
+                        12 -> R.drawable.ic_event_cutin
+                        13 -> R.drawable.ic_event_antenna
+                        15, 16 -> R.drawable.ic_event_truck
+                        17 -> R.drawable.ic_event_parking
+                        19 -> R.drawable.ic_event_railroad
+                        20 -> R.drawable.ic_event_school_zone
+                        22 -> R.drawable.ic_event_hump
+                        25 -> R.drawable.ic_event_rest_area
+                        26 -> R.drawable.ic_event_toll
+                        27 -> R.drawable.ic_event_fog
+                        29 -> R.drawable.ic_event_accident
+                        30 -> R.drawable.ic_event_curve
+                        32 -> R.drawable.ic_event_downhill
+                        33 -> R.drawable.ic_event_animal
+                        else -> null
+                    }
                     binding.tvSdiDescr?.text = typeName
-                    updateTopBarEventDisplay(typeName, binding.tvSdiDist?.text?.toString())
+                    updateTopBarEventDisplay(typeName, binding.tvSdiDist?.text?.toString(), iconRes)
                 } else {
                     binding.tvSdiSpeedLimit?.text = ""
                     binding.tvSdiDist?.text = "--"
                     binding.tvSdiDescr?.text = "--"
-                    updateTopBarEventDisplay(null, null)
+                    updateTopBarEventDisplay(null, null, null)
                 }
                 // v: 사용자 최종 확정(2026-08-10)으로 연결 상태 텍스트는 updateConnectionUi()가
                 // 상태 변경 즉시 처리하므로, 여기서 1초마다 따로 갱신할 필요가 없어짐(중복
@@ -1156,15 +1197,22 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     // v4.0: 상단바 이벤트(카메라/구간단속/방지턱) 표시 - 설정에서 끄면 안 보이게 함
     // (사용자 지적 5·6번, 티맵과 동일). #문제시 원복
-    private fun updateTopBarEventDisplay(typeName: String?, distText: String?) {
+    private fun updateTopBarEventDisplay(typeName: String?, distText: String?, iconRes: Int? = null) {
         val enabled = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             .getBoolean("topbar_event_enabled", true)
         if (!enabled || typeName == null) {
             binding.tvTopBarEvent?.visibility = View.GONE
+            binding.ivTopBarEvent?.visibility = View.GONE
             return
         }
         binding.tvTopBarEvent?.text = "$typeName $distText"
         binding.tvTopBarEvent?.visibility = View.VISIBLE
+        if (iconRes != null) {
+            binding.ivTopBarEvent?.setImageResource(iconRes)
+            binding.ivTopBarEvent?.visibility = View.VISIBLE
+        } else {
+            binding.ivTopBarEvent?.visibility = View.GONE
+        }
     }
 
     private fun performInPlaceSearch(query: String) {
