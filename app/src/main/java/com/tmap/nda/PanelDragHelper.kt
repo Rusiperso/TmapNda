@@ -234,7 +234,7 @@ object PanelDragHelper {
         }
         val unlockMapTouchCheckBox = if (touchLockOverlay != null) {
             android.widget.CheckBox(context).apply {
-                text = "지도 터치 잠금 해제 (핀치줌/드래그 허용)"
+                text = "티맵 터치 잠금 해제 (핀치줌/드래그 허용)"
                 isChecked = pref.getBoolean("map_touch_unlocked", false)
                 setTextColor(android.graphics.Color.WHITE)
                 setPadding(40, 0, 40, 30)
