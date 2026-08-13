@@ -115,26 +115,36 @@ object PanelDragHelper {
     // (사용자 지적: "메뉴 옆에 붙이라니까 화면 구석에 떠있다"). 버튼을 누르는 그
     // 순간의 실제 화면 좌표를 계산해서 팝업을 거기 맞춰 이동시킴. #문제시 원복
     fun positionPopupNearAnchor(root: View, anchor: View, popup: View) {
-        val anchorLoc = IntArray(2)
-        val rootLoc = IntArray(2)
-        anchor.getLocationOnScreen(anchorLoc)
-        root.getLocationOnScreen(rootLoc)
+        // v8.8: 로그 전송 버튼이 메뉴 왼쪽에 추가되면서 팝업이 버튼 아래가 아니라 살짝
+        // 왼쪽에 뜨는 문제 제보(재억) - popup.post{} 한 번만으로는 팝업이 GONE에서
+        // VISIBLE로 막 전환된 직후라 measuredWidth가 실제 최종 레이아웃 폭과 다를 수
+        // 있었음(특히 ScrollView는 UNSPECIFIED 측정 시 내부 LinearLayout 폭을 그대로
+        // 못 반영하는 경우가 있음). doOnPreDraw로 실제 레이아웃이 한 번 더 확정된
+        // 뒤의 진짜 width/height를 쓰도록 변경. #문제시 원복
+        popup.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                popup.viewTreeObserver.removeOnPreDrawListener(this)
+                val anchorLoc = IntArray(2)
+                val rootLoc = IntArray(2)
+                anchor.getLocationOnScreen(anchorLoc)
+                root.getLocationOnScreen(rootLoc)
 
-        // 팝업을 먼저 measure해서 실제 크기를 알아야 화면 밖으로 안 나가게 clamp 가능
-        popup.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
-        val popupWidth = popup.measuredWidth.takeIf { it > 0 } ?: popup.width
-        val popupHeight = popup.measuredHeight.takeIf { it > 0 } ?: popup.height
+                val popupWidth = popup.width.takeIf { it > 0 } ?: popup.measuredWidth
+                val popupHeight = popup.height.takeIf { it > 0 } ?: popup.measuredHeight
 
-        var targetX = (anchorLoc[0] - rootLoc[0] + anchor.width - popupWidth).toFloat()
-        var targetY = (anchorLoc[1] - rootLoc[1] + anchor.height + 8).toFloat()
+                var targetX = (anchorLoc[0] - rootLoc[0] + anchor.width - popupWidth).toFloat()
+                var targetY = (anchorLoc[1] - rootLoc[1] + anchor.height + 8).toFloat()
 
-        val maxX = (root.width - popupWidth).toFloat().coerceAtLeast(0f)
-        val maxY = (root.height - popupHeight).toFloat().coerceAtLeast(0f)
-        targetX = targetX.coerceIn(0f, maxX)
-        targetY = targetY.coerceIn(0f, maxY)
+                val maxX = (root.width - popupWidth).toFloat().coerceAtLeast(0f)
+                val maxY = (root.height - popupHeight).toFloat().coerceAtLeast(0f)
+                targetX = targetX.coerceIn(0f, maxX)
+                targetY = targetY.coerceIn(0f, maxY)
 
-        popup.x = targetX
-        popup.y = targetY
+                popup.x = targetX
+                popup.y = targetY
+                return true
+            }
+        })
     }
 
     fun wireEditToggleButton(
