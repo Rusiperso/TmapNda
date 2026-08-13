@@ -630,13 +630,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     finishGuidance()
                 }
                 // v8.8: 텍스트 자체 크기만큼만 터치 영역이 잡혀서 인식 범위가 좁다는 제보(재억) -
-                // TouchDelegate로 부모 View 기준 터치 판정 영역을 사방 40dp씩 넓힘. 실제 그려지는
-                // 버튼 크기는 안 건드리고 "그 근처를 눌러도 인식되게"만 확장. #문제시 원복
+                // TouchDelegate로 부모 View 기준 터치 판정 영역을 사방 80dp씩 넓힘(40dp에서 확대,
+                // 실차 테스트 후 크면 다시 줄일 예정). 실제 그려지는 버튼 크기는 안 건드리고
+                // "그 근처를 눌러도 인식되게"만 확장. #문제시 원복
                 (view.parent as? android.view.View)?.let { parent ->
                     parent.post {
                         val rect = android.graphics.Rect()
                         view.getHitRect(rect)
-                        val extraPx = (40 * resources.displayMetrics.density).toInt()
+                        val extraPx = (80 * resources.displayMetrics.density).toInt()
                         rect.inset(-extraPx, -extraPx)
                         parent.touchDelegate = android.view.TouchDelegate(rect, view)
                     }
