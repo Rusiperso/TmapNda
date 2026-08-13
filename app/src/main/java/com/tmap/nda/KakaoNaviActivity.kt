@@ -629,7 +629,19 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     NavLogger.d(this, "[안내종료훅] 내장 안내종료 버튼 클릭 감지 - finishGuidance() 직접 호출")
                     finishGuidance()
                 }
-                NavLogger.d(this, "[안내종료훅] 내장 안내종료 View 찾아서 클릭리스너 부착 완료")
+                // v8.8: 텍스트 자체 크기만큼만 터치 영역이 잡혀서 인식 범위가 좁다는 제보(재억) -
+                // TouchDelegate로 부모 View 기준 터치 판정 영역을 사방 40dp씩 넓힘. 실제 그려지는
+                // 버튼 크기는 안 건드리고 "그 근처를 눌러도 인식되게"만 확장. #문제시 원복
+                (view.parent as? android.view.View)?.let { parent ->
+                    parent.post {
+                        val rect = android.graphics.Rect()
+                        view.getHitRect(rect)
+                        val extraPx = (40 * resources.displayMetrics.density).toInt()
+                        rect.inset(-extraPx, -extraPx)
+                        parent.touchDelegate = android.view.TouchDelegate(rect, view)
+                    }
+                }
+                NavLogger.d(this, "[안내종료훅] 내장 안내종료 View 찾아서 클릭리스너 부착 완료(터치영역 확장)")
             }
         }
 
