@@ -319,6 +319,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             return
         }
         hookSurfaceViewLifecycle(naviView)
+        // v1.0.95: KNNaviView 내장 설정 팝업의 "안내종료" 버튼이 눌러도 반응이 없다는
+        // 제보(재억) - v1.0.89 델리게이트 하이재킹(attachExitHook, 바로 아래 주석)이 지도
+        // 렌더링을 통째로 멈추게 했던 전례가 있어서, 이번엔 델리게이트는 절대 안 건드리고
+        // 화면에 "안내종료" 문구로 그려지는 View 자체를 찾아 우리 finishGuidance()를 클릭
+        // 리스너로 얹기만 함. SDK 팝업은 필요할 때(사용자가 설정 아이콘을 눌렀을 때)에만
+        // 새로 그려지므로, naviView 루트에 GlobalLayoutListener를 걸어 레이아웃이 바뀔
+        // 때마다(팝업이 뜰 때마다) 가볍게 재스캔. 이미 훅 붙인 View는 태그로 표시해서
+        // 중복 스캔해도 리스너를 다시 걸지 않게 함. #문제시 원복
+        attachNativeExitButtonHook(naviView)
         // v1.0.89: attachExitHook()이 naviView.setStateDelegate/setGuideStateDelegate/
         // setMapEventDelegate/setScaleDelegate 전부를 리플렉션으로 찾아 "로그만 찍고 아무
         // 실제 동작도 안 하는" 더미 Proxy로 덮어쓰고 있었음. CarrotNavi 실제 코드를 보면
@@ -629,6 +638,51 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
         } catch (e: Exception) {
             NavLogger.e(this, "hookSurfaceViewLifecycle 예외: ${e.message}")
+        }
+    }
+
+    // v1.0.95: 델리게이트는 안 건드리고 View 트리에서 "안내종료" 텍스트를 가진 클릭 가능한
+    // View만 찾아서 finishGuidance()를 추가로 걸어줌(기존 SDK 내부 클릭 동작을 대체 -
+    // 눌러도 반응이 없던 버튼이라 대체해도 기존 동작을 깨뜨릴 게 없음). #문제시 원복
+    private val nativeExitHookTagKey = "tmapnda_exit_hooked".hashCode()
+    private fun attachNativeExitButtonHook(naviView: KNNaviView) {
+        try {
+            naviView.viewTreeObserver.addOnGlobalLayoutListener {
+                try {
+                    scanAndHookExitButton(naviView)
+                } catch (e: Exception) {
+                    NavLogger.e(this, "[안내종료훅] 스캔 예외: ${e.message}")
+                }
+            }
+        } catch (e: Exception) {
+            NavLogger.e(this, "[안내종료훅] 리스너 등록 예외: ${e.message}")
+        }
+    }
+
+    private fun scanAndHookExitButton(view: View) {
+        val text = try {
+            when (view) {
+                is android.widget.TextView -> view.text?.toString()
+                else -> null
+            }
+        } catch (e: Exception) { null }
+
+        if (text != null && (text == "안내종료" || text == "안내 종료")) {
+            if (view.getTag(nativeExitHookTagKey) == null) {
+                view.setTag(nativeExitHookTagKey, true)
+                view.isClickable = true
+                view.setOnClickListener {
+                    NavLogger.d(this, "[안내종료훅] 내장 안내종료 버튼 클릭 감지 - finishGuidance() 직접 호출")
+                    finishGuidance()
+                }
+                NavLogger.d(this, "[안내종료훅] 내장 안내종료 View 찾아서 클릭리스너 부착 완료")
+            }
+        }
+
+        if (view is android.view.ViewGroup) {
+            for (i in 0 until view.childCount) {
+                scanAndHookExitButton(view.getChildAt(i))
+            }
         }
     }
 
