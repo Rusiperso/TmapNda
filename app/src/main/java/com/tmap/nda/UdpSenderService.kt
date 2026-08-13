@@ -93,7 +93,25 @@ class UdpSenderService : Service() {
             }
             if (wifiNetwork != null) {
                 wifiNetwork.bindSocket(socket)
-                NavLogger.d(this, "[네트워크] $label: Wi-Fi 네트워크(클라이언트 모드)에 바인딩함")
+                // v: 재억 제보(2026-08-13) - ENETUNREACH 자가치유(소켓 재생성)를 계속 반복해도
+                // 안 풀리는 사례 확인(50분간 574회 실패, 재생성 580회 다 무의미). "죽은 네트워크
+                // 객체에 한 번 묶인 뒤 안 풀리는" 기존 케이스라면 재생성 한 번으로 회복됐어야
+                // 하는데 안 됐다는 건, 매번 다시 잡히는 Wi-Fi 네트워크 자체가 콤마로 가는
+                // 경로를 못 찾고 있다는 뜻(AP 격리, 잘못된 서브넷, 이 기기 특유의 멀티
+                // 네트워크 스택 등 후보). 재생성 성공 로그에 "성공했다"는 것만 남고 정작
+                // 어느 네트워크(인터페이스/링크주소/netId)에 묶였는지가 없어서 원인 후보를
+                // 못 좁혔음 - LinkProperties와 netId를 실제로 찍어서 다음 로그에서 매번
+                // 같은 죽은 네트워크에 묶이는지 vs 다른 Wi-Fi를 찾아도 다 막히는지 구분
+                // 가능하게 함. #문제시 원복
+                val linkProps = cm.getLinkProperties(wifiNetwork)
+                val ifaceName = linkProps?.interfaceName ?: "알수없음"
+                val linkAddrs = linkProps?.linkAddresses?.joinToString(", ") { it.address.hostAddress ?: "?" } ?: "없음"
+                val netId = try {
+                    val f = wifiNetwork.javaClass.getDeclaredField("netId")
+                    f.isAccessible = true
+                    f.getInt(wifiNetwork)
+                } catch (e: Exception) { -1 }
+                NavLogger.d(this, "[네트워크] $label: Wi-Fi 네트워크(클라이언트 모드)에 바인딩함 (netId=$netId, iface=$ifaceName, 주소=$linkAddrs)")
                 return true
             }
         } catch (e: Exception) {
@@ -205,7 +223,7 @@ class UdpSenderService : Service() {
             }
             socket.broadcast = true
             udpSocket = socket
-            NavLogger.d(this, "openpilot 전송용 UDP 소켓 생성 성공 (port=$UDP_PORT)")
+            NavLogger.d(this, "openpilot 전송용 UDP 소켓 생성 성공 (port=$UDP_PORT, 실제바인딩=${socket.localAddress?.hostAddress}:${socket.localPort})")
         } catch (e: Exception) {
             NavLogger.e(this, "openpilot 전송용 UDP 소켓 생성 실패: ${e.message}")
         }
@@ -819,9 +837,25 @@ class UdpSenderService : Service() {
                         // 것 자체가 이미 "연결됨"의 증거이므로, 본문 필드 대신 실제 패킷 발신자
                         // 주소(packet.address)를 신뢰하도록 변경. #문제시 원복
                         val ip = packet.address?.hostAddress ?: json.optString("ip", "-")
-                        val trafficState = json.optInt("trafficState", 0)
-                        val xState = json.optInt("xState", 0)
-                        val active = json.optBoolean("active", false)
+
+                        // v: 재억 제보(2026-08-13, "불안정 또 뜸") - 판정 기준(4회/3초→6회/4초)을
+                        // 아무리 완화해도 "불안정"이 계속 뜨는 근본 원인을 로그로 확인함. 콤마가
+                        // 이 포트로 두 종류 패킷을 섞어 보냄: 1) {"ip":..,"navi_debug":1} 같은
+                        // active 키 자체가 없는 ping성 패킷, 2) active 키가 있는 진짜 상태 패킷.
+                        // json.optBoolean("active", false)가 키 없을 때 기본값 false를 리턴해서,
+                        // ping 패킷이 올 때마다 "active가 true->false로 바뀜"으로 오인되고 바로
+                        // 다음 진짜 패킷에서 다시 true로 바뀌는 가짜 전환이 패킷 사이클마다(초당
+                        // 여러 번) 반복되고 있었음. 이게 실제 크루즈 흔들림과 무관하게 불안정
+                        // 판정 문턱을 기계적으로 계속 넘기고 있었던 것. active 키가 아예 없는
+                        // 패킷(=상태 정보가 없는 ping)은 상태 갱신 자체를 건너뛰도록 수정.
+                        // 단 lastPacketReceivedTime(연결 끊김 감시용)은 패킷이 온 것 자체는
+                        // 맞으므로 그대로 갱신함. #문제시 원복
+                        if (!json.has("active")) {
+                            lastPacketReceivedTime = System.currentTimeMillis()
+                        } else {
+                            val trafficState = json.optInt("trafficState", 0)
+                            val xState = json.optInt("xState", 0)
+                            val active = json.optBoolean("active", false)
 
                         if (lastActive != active) {
                             NavLogger.d(this@UdpSenderService, "openpilot 연결 상태 변경: active=$active, ip=${packet.address?.hostAddress}, carrot2=$carrot2")
@@ -844,6 +878,7 @@ class UdpSenderService : Service() {
 
                         OpenpilotStateRepository.updateState(carrot2, ip, trafficState, xState, active)
                         lastPacketReceivedTime = System.currentTimeMillis()
+                        }
                     } catch (e: Exception) {
                         NavLogger.e(this@UdpSenderService, "openpilot UDP 패킷 파싱 실패: ${e.message}, raw=$data")
                     }
