@@ -725,12 +725,35 @@ class UdpSenderService : Service() {
                         // 문제였던 게 아니라 trusted 판정 로직이 버그였던 거라(DistFromS
                         // 뺄셈으로 이미 고침), 하이브리드로 되돌려도 이제는 정상 작동해야 함.
                         // 방지턱 speedLimit 예외는 그대로 유지. #문제시 원복
+                        // v: 사용자 요청(2026-08-12) - 우선순위를 다시 반전: 카카오 길안내
+                        // 중일 땐 카카오값이 검증됐으면(trusted) 카카오를 우선 채택하고, Tmap은
+                        // 카카오가 못 잡았을 때(트러스트 안 됐거나 카카오 자체에 정보가 없을 때)만
+                        // 백업으로 사용. 기존엔 반대로 Tmap이 항상 우선이고 카카오는 Tmap이
+                        // 아무것도 못 잡았을 때만 백업이었음. Tmap 대기화면(길안내 안 할 때) 동작은
+                        // 이 블록 자체가 kr.isFresh() 안에서만 도니까 안 건드림. #문제시 원복
                         val tmapHasSdi = json.optInt("nSdiType", 0) != 0 || json.optInt("nSdiDist", 0) > 0
-                        if (!tmapHasSdi && kr.safetyType >= 0 && kr.safetyDist > 0 && (kr.safetySpeedLimit > 0 || kr.safetyType == 22)) {
+                        val kakaoHasSdi = kr.safetyType >= 0 && kr.safetyDist > 0 && (kr.safetySpeedLimit > 0 || kr.safetyType == 22)
+                        if (kakaoHasSdi && kr.safetyDistTrusted) {
+                            json.put("nSdiType", kr.safetyType)
+                            json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
+                            json.put("nSdiDist", kr.safetyDist)
+                            // v: roadcate 버그 수정 - Tmap 자체 감지 분기(방지턱 sdiType==22일 때
+                            // roadcate=8 채움)와 동일하게, 카카오 폴백으로 방지턱 정보가 채워질
+                            // 때도 roadcate를 같이 채워야 함. carrot_serv.py 규격상 roadcate>=2가
+                            // 없으면 방지턱 감속 자체가 자동 생략되는데, 지금까지 이 필드가
+                            // 비어있었음. #문제시 원복
+                            if (kr.safetyType == 22) {
+                                json.put("roadcate", 8)
+                            }
+                            NavLogger.d(this@UdpSenderService, "[안전정보 우선순위] 검증된 카카오값 우선 채택: type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}")
+                        } else if (!tmapHasSdi && kakaoHasSdi) {
                             if (kr.safetyDistTrusted) {
                                 json.put("nSdiType", kr.safetyType)
                                 json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
                                 json.put("nSdiDist", kr.safetyDist)
+                                if (kr.safetyType == 22) {
+                                    json.put("roadcate", 8)
+                                }
                                 NavLogger.d(this@UdpSenderService, "[안전정보 우선순위] Tmap 없음 -> 검증된 카카오값으로 폴백: type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}")
                             } else {
                                 NavLogger.d(this@UdpSenderService, "[카카오 안전정보 검증용][실제전송안함 - 미검증 폴백] type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}")
