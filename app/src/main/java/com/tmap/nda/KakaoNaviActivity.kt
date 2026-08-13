@@ -520,10 +520,19 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 )
                 naviView.requestLayout()
                 naviView.invalidate()
+                // 카카오 SDK가 guideNewDestinations()로 새 길안내를 시작할 때 내부 음량을
+                // 자체적으로 기본값(100%)으로 되돌리는 것으로 보임(사용자: "안내 종료하고
+                // 다시 안내하면 조절해둔 음량이 아니라 임의로 조절됨") - initWithGuidance()
+                // 시점 1회만 적용하던 걸, 새 길안내 시작 직후에도 저장된 값으로 한 번 더
+                // 덮어써서 유지되게 함. #문제시 원복
+                applyKakaoSdkVolume()
                 logNaviViewDiagnostics("guideNewDestinations 직후")
                 naviView.postDelayed({
                     naviView.requestLayout()
                     naviView.invalidate()
+                    // 300ms 뒤에도 한 번 더 - SDK가 route 진입 애니메이션/초기화 과정에서
+                    // 음량을 뒤늦게 재설정하는 케이스까지 커버. #문제시 원복
+                    applyKakaoSdkVolume()
                     logNaviViewDiagnostics("guideNewDestinations 300ms 후")
                 }, 300)
                 startNaviStateDiagnosticLoop()
