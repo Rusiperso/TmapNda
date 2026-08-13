@@ -460,13 +460,29 @@ class UdpSenderService : Service() {
                     // 1. limitSpeed 처리
                     val limitSpeedStr = bundle.getString("limitSpeed", bundle.getInt("limitSpeed", 0).toString())
                     val currentLimitSpeed = limitSpeedStr.toIntOrNull() ?: 0
+                    // v8.8: 사용자 재제보(2026-08-13) - "10% 초과 옵션 켜도 여전히 계속 울림".
+                    // v4.13에서 realRoadLimit(엔진 리플렉션) 경로는 카메라 근처면 도로 기본값으로
+                    // 안 덮어쓰게 고쳤는데, 이 EDCData bundle의 "limitSpeed" 필드도 똑같이 카메라
+                    // 근처에서 카메라 개별 제한속도를 리턴하는 경우가 있다는 걸 놓쳤음(같은 종류의
+                    // 버그가 다른 통로로 남아있었음). 이번 프레임에 카메라 제한속도(firstSDIInfo의
+                    // nSdiSpeedLimit)가 있으면 여기서도 generalRoadLimitSpeed는 안 건드림
+                    // (roadLimitSpeed는 openpilot 카메라 감속용이라 그대로 반영해도 무방). #문제시 원복
+                    val cameraLimitPeekThisFrame = try {
+                        val sdiObjPeek = bundle.get("firstSDIInfo")
+                        val sdiJsonPeek = when {
+                            sdiObjPeek is String -> JSONObject(sdiObjPeek)
+                            sdiObjPeek != null -> JSONObject(gson.toJson(sdiObjPeek))
+                            else -> null
+                        }
+                        (sdiJsonPeek?.optInt("nSdiSpeedLimit", 0) ?: 0) >= 30
+                    } catch (e: Exception) { false }
                     if (currentLimitSpeed >= 30) {
                         roadLimitSpeed = currentLimitSpeed
                         lastRoadLimitUpdateTime = System.currentTimeMillis()
-                        // v4.13: 이건 카메라가 아니라 도로 자체의 기본 제한속도이므로
-                        // generalRoadLimitSpeed에도 반영. #문제시 원복
-                        generalRoadLimitSpeed = currentLimitSpeed
-                        lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
+                        if (!cameraLimitPeekThisFrame) {
+                            generalRoadLimitSpeed = currentLimitSpeed
+                            lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
+                        }
                     }
 
                     // 2. firstSDIInfo (GRT47과 동일하게 모든 key를 최상위로 복사)
