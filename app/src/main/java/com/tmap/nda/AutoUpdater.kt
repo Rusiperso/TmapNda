@@ -26,7 +26,31 @@ object AutoUpdater {
     private const val TAG = "AutoUpdater"
     private const val GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/Rusiperso/TmapNda/releases/latest"
 
-    fun checkForUpdates(context: Context) {
+    // v8.8: 사용자 요청(재억) - 실행 중에도 새 업데이트가 뜨면 바로 반응하게. GitHub이
+    // 우리한테 먼저 알려주는 방법(푸시)은 없어서, 5분 간격으로 조용히 폴링. 시간당
+    // 12번이라 GitHub API 무인증 제한(시간당 60번)에도 여유 있음. #문제시 원복
+    private const val POLL_INTERVAL_MS = 5 * 60 * 1000L
+    private val pollHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var pollRunnable: Runnable? = null
+
+    fun startPeriodicCheck(context: Context) {
+        if (pollRunnable != null) return // 이미 돌고 있으면 중복 등록 방지
+        val runnable = object : Runnable {
+            override fun run() {
+                checkForUpdates(context, isManual = false)
+                pollHandler.postDelayed(this, POLL_INTERVAL_MS)
+            }
+        }
+        pollRunnable = runnable
+        pollHandler.postDelayed(runnable, POLL_INTERVAL_MS)
+    }
+
+    fun stopPeriodicCheck() {
+        pollRunnable?.let { pollHandler.removeCallbacks(it) }
+        pollRunnable = null
+    }
+
+    fun checkForUpdates(context: Context, isManual: Boolean = false) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val url = URL(GITHUB_LATEST_RELEASE_URL)
@@ -59,11 +83,28 @@ object AutoUpdater {
                                 }
                             }
                         }
+                    } else if (isManual) {
+                        // v8.8: "업데이트 확인" 눌러도 최신버전이면 지금까지 아무 반응이 없어서
+                        // "버튼이 비어있나?" 오해할 수 있었음(재억 지적) - 수동으로 눌렀을 때만
+                        // 최신버전 안내 토스트를 추가. 자동/백그라운드 체크(isManual=false)는
+                        // 기존처럼 조용히 넘어감. #문제시 원복
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "이미 최신 버전입니다 (v$currentVersion)", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } else if (isManual) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "업데이트 확인 실패 (HTTP ${connection.responseCode})", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Update check failed", e)
                 NavLogger.e(context, "Update check failed: ${e.message}")
+                if (isManual) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "업데이트 확인 실패: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
         }
     }
@@ -82,6 +123,12 @@ object AutoUpdater {
     }
 
     private fun showUpdateDialog(context: Context, newVersion: String, downloadUrl: String) {
+        // v8.8: 주기적 백그라운드 체크 결과가 늦게 돌아왔을 때 Activity가 이미 종료된
+        // 상태면 다이얼로그를 못 띄우게(WindowLeaked 크래시 방지). #문제시 원복
+        if (context is android.app.Activity && (context.isFinishing || context.isDestroyed)) {
+            NavLogger.d(context, "showUpdateDialog: Activity 이미 종료됨 - 스킵")
+            return
+        }
         AlertDialog.Builder(context)
             .setTitle("새로운 업데이트 발견")
             .setMessage("최신 버전($newVersion)이 등록되었습니다.\n지금 업데이트 하시겠습니까?")

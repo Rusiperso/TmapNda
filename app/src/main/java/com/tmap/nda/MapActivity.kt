@@ -215,6 +215,9 @@ class MapActivity : AppCompatActivity() {
 
         // 자동 업데이트 체크
         AutoUpdater.checkForUpdates(this)
+        // v8.8: 실행 중에도 새 업데이트가 뜨면 반응하도록 5분 간격 백그라운드 폴링 시작
+        // (사용자 요청: "실행 중에 업데이트 뜨면 바로 반응하게"). #문제시 원복
+        AutoUpdater.startPeriodicCheck(this)
 
         // 카카오 개발자콘솔 "네이티브 앱 키"에 등록할 키 해시 확인용 - 세션당 1회만 로그로 남김.
         // keystore 비밀번호 없이도 "실제 폰에 설치되어 서명 검증되는 그 앱"의 정확한 해시를 얻기 위함.
@@ -288,7 +291,7 @@ class MapActivity : AppCompatActivity() {
         binding.btnCheckUpdate.setOnClickListener {
             binding.svSecondaryPanel?.visibility = View.GONE
             Toast.makeText(this, "업데이트 확인 중...", Toast.LENGTH_SHORT).show()
-            AutoUpdater.checkForUpdates(this)
+            AutoUpdater.checkForUpdates(this, isManual = true)
         }
 
         // v3.10: GitHub 브라우저로 여는 대신 앱 안 팝업으로 바로 보여줌
@@ -2726,6 +2729,9 @@ class MapActivity : AppCompatActivity() {
         // 강제 종료됐는지"를 로그로 직접 확인할 방법이 없었음(사용자: 카카오 화면 중
         // 카메라 감속 안 되던 문제 조사 때 아쉬웠던 부분) - 추가함. #문제시 원복
         NavLogger.d(this, "[MapActivity lifecycle] onDestroy (isFinishing=$isFinishing, isChangingConfigurations=$isChangingConfigurations)")
+        // v8.8: MapActivity가 완전히 종료될 때(=앱 자체가 꺼질 때)만 폴링도 같이 정지.
+        // 카카오 화면으로 넘어가는 것만으로는 MapActivity가 destroy 안 되니 계속 돌아감. #문제시 원복
+        AutoUpdater.stopPeriodicCheck()
 
         laneDataObserver?.let { observableLaneDataLiveData?.removeObserver(it) }
 

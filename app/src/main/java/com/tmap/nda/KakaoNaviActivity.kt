@@ -894,7 +894,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         binding.btnCheckUpdate?.setOnClickListener {
             binding.svSecondaryPanel?.visibility = View.GONE
             Toast.makeText(this, "업데이트 확인 중...", Toast.LENGTH_SHORT).show()
-            AutoUpdater.checkForUpdates(this)
+            AutoUpdater.checkForUpdates(this, isManual = true)
         }
         // v3.10: GitHub 브라우저 대신 앱 안 팝업으로 (사용자 지적 2번). #문제시 원복
         binding.btnHelp?.setOnClickListener {
