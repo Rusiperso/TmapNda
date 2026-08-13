@@ -92,27 +92,45 @@ class UdpSenderService : Service() {
                 caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
             }
             if (wifiNetwork != null) {
-                wifiNetwork.bindSocket(socket)
-                // v: 재억 제보(2026-08-13) - ENETUNREACH 자가치유(소켓 재생성)를 계속 반복해도
-                // 안 풀리는 사례 확인(50분간 574회 실패, 재생성 580회 다 무의미). "죽은 네트워크
-                // 객체에 한 번 묶인 뒤 안 풀리는" 기존 케이스라면 재생성 한 번으로 회복됐어야
-                // 하는데 안 됐다는 건, 매번 다시 잡히는 Wi-Fi 네트워크 자체가 콤마로 가는
-                // 경로를 못 찾고 있다는 뜻(AP 격리, 잘못된 서브넷, 이 기기 특유의 멀티
-                // 네트워크 스택 등 후보). 재생성 성공 로그에 "성공했다"는 것만 남고 정작
-                // 어느 네트워크(인터페이스/링크주소/netId)에 묶였는지가 없어서 원인 후보를
-                // 못 좁혔음 - LinkProperties와 netId를 실제로 찍어서 다음 로그에서 매번
-                // 같은 죽은 네트워크에 묶이는지 vs 다른 Wi-Fi를 찾아도 다 막히는지 구분
-                // 가능하게 함. #문제시 원복
                 val linkProps = cm.getLinkProperties(wifiNetwork)
                 val ifaceName = linkProps?.interfaceName ?: "알수없음"
-                val linkAddrs = linkProps?.linkAddresses?.joinToString(", ") { it.address.hostAddress ?: "?" } ?: "없음"
-                val netId = try {
-                    val f = wifiNetwork.javaClass.getDeclaredField("netId")
-                    f.isAccessible = true
-                    f.getInt(wifiNetwork)
-                } catch (e: Exception) { -1 }
-                NavLogger.d(this, "[네트워크] $label: Wi-Fi 네트워크(클라이언트 모드)에 바인딩함 (netId=$netId, iface=$ifaceName, 주소=$linkAddrs)")
-                return true
+                // v: 재억 제보(2026-08-13, SM-S711N "iPhone" 핫스팟 사례) - 폰이 자기
+                // 핫스팟을 직접 켠 "호스트 모드"인데도, 이 기기(삼성 커스텀 롬 일부 기종)는
+                // ConnectivityManager가 그 자기 핫스팟을 마치 일반 Wi-Fi 클라이언트 연결인 것
+                // 처럼 TRANSPORT_WIFI 네트워크로 노출함. 그래서 Network.bindSocket()이
+                // EPERM 없이 "성공"까지 하지만, 실제로는 그 네트워크 객체에 브로드캐스트
+                // (255.255.255.255) 라우트가 없어서 매번 ENETUNREACH로 이어짐 - 50분간
+                // 574회 반복 확인. 호스트 모드 인터페이스 이름(swlan0/ap0/softap류)이면
+                // 아예 Network.bindSocket()을 쓰지 말고, 원래 EPERM일 때만 타던 아래
+                // "로컬 인터페이스 직접 bind" 폴백으로 바로 넘어가도록 변경. 그쪽은 실제
+                // 인터페이스의 커널 라우팅 테이블을 그대로 쓰기 때문에 브로드캐스트가
+                // 정상적으로 나감. #문제시 원복
+                val looksLikeHostMode = ifaceName.lowercase().let {
+                    it.contains("swlan") || it.contains("softap") || it.startsWith("ap")
+                }
+                if (looksLikeHostMode) {
+                    NavLogger.d(this, "[네트워크] $label: Wi-Fi 네트워크가 호스트모드 인터페이스($ifaceName)로 보여 Network.bindSocket() 건너뛰고 로컬 인터페이스 직접 바인딩으로 폴백")
+                } else {
+                    wifiNetwork.bindSocket(socket)
+                    // v: 재억 제보(2026-08-13) - ENETUNREACH 자가치유(소켓 재생성)를 계속 반복해도
+                    // 안 풀리는 사례 확인(50분간 574회 실패, 재생성 580회 다 무의미). "죽은 네트워크
+                    // 객체에 한 번 묶인 뒤 안 풀리는" 기존 케이스라면 재생성 한 번으로 회복됐어야
+                    // 하는데 안 됐다는 건, 매번 다시 잡히는 Wi-Fi 네트워크 자체가 콤마로 가는
+                    // 경로를 못 찾고 있다는 뜻(AP 격리, 잘못된 서브넷, 이 기기 특유의 멀티
+                    // 네트워크 스택 등 후보). 재생성 성공 로그에 "성공했다"는 것만 남고 정작
+                    // 어느 네트워크(인터페이스/링크주소/netId)에 묶였는지가 없어서 원인 후보를
+                    // 못 좁혔음 - LinkProperties와 netId를 실제로 찍어서 다음 로그에서 매번
+                    // 같은 죽은 네트워크에 묶이는지 vs 다른 Wi-Fi를 찾아도 다 막히는지 구분
+                    // 가능하게 함. #문제시 원복
+                    val linkAddrs = linkProps?.linkAddresses?.joinToString(", ") { it.address.hostAddress ?: "?" } ?: "없음"
+                    val netId = try {
+                        val f = wifiNetwork.javaClass.getDeclaredField("netId")
+                        f.isAccessible = true
+                        f.getInt(wifiNetwork)
+                    } catch (e: Exception) { -1 }
+                    NavLogger.d(this, "[네트워크] $label: Wi-Fi 네트워크(클라이언트 모드)에 바인딩함 (netId=$netId, iface=$ifaceName, 주소=$linkAddrs)")
+                    return true
+                }
             }
         } catch (e: Exception) {
             NavLogger.e(this, "[네트워크] $label Wi-Fi 네트워크 바인딩 시도 실패: ${e.message}")
