@@ -121,21 +121,47 @@ class UdpSenderService : Service() {
         // 클라이언트로 잡히는 Wi-Fi 네트워크가 없으면(=내 폰이 핫스팟을 켜고 있는 호스트
         // 모드일 가능성) 모바일 데이터가 아닌 로컬 인터페이스를 직접 찾아서 그쪽으로 바인딩.
         try {
+            val candidates = mutableListOf<Pair<java.net.NetworkInterface, java.net.Inet4Address>>()
             val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
             while (interfaces.hasMoreElements()) {
                 val iface = interfaces.nextElement()
                 if (!iface.isUp || iface.isLoopback) continue
                 val name = iface.name.lowercase()
-                if (name.startsWith("rmnet") || name.startsWith("ccmni") || name.startsWith("wwan")) continue
+                // v: 재억 제보(2026-08-13, 다른 차량 "NAV 안 뜸") - Wi-Fi 네트워크에는
+                // 있는데(netId 207) Network.bindSocket()이 EPERM으로 거부됨(안드로이드가
+                // 앱이 자기 폰의 핫스팟 호스트 네트워크에 직접 바인딩하는 걸 막는 정책 -
+                // 코드로 우회 불가, 정상적인 OS 동작). 그래서 이 폴백(로컬 인터페이스 직접
+                // 탐색)으로 넘어오는데, 여기서 모바일 인터페이스를 걸러내려던
+                // startsWith("rmnet") 체크가 "v4-rmnet_data0" 같은 이름은 못 걸러냄 -
+                // IPv6-only 통신사 회선에서 커널이 CLAT(464xlat) 변환용 가상 인터페이스에
+                // "v4-" 접두어를 붙이기 때문. 그 결과 모바일데이터가 그대로 선택돼서 콤마
+                // (Wi-Fi 대역)로 영원히 도달 못 하는 ENETUNREACH가 반복됐음. startsWith
+                // 대신 contains로 바꿔서 "v4-" 접두어가 붙어도 걸러지게 함. 같은 로그에서
+                // VPN(tun0)도 같이 떠있는 게 확인돼서, 순서상 tun0이 먼저 잡히면 똑같은
+                // 문제가 재발할 수 있어 VPN류도 제외. #문제시 원복
+                if (name.contains("rmnet") || name.contains("ccmni") || name.contains("wwan") ||
+                    name.contains("tun") || name.contains("ppp") || name.contains("clat")
+                ) continue
                 val addrs = iface.inetAddresses
                 while (addrs.hasMoreElements()) {
                     val addr = addrs.nextElement()
                     if (addr is java.net.Inet4Address) {
-                        socket.bind(java.net.InetSocketAddress(addr, 0))
-                        NavLogger.d(this, "[네트워크] $label: 로컬 인터페이스(${iface.name}=${addr.hostAddress})에 직접 바인딩함 (핫스팟 호스트 모드 추정)")
-                        return true
+                        candidates.add(iface to addr)
                     }
                 }
+            }
+            // Wi-Fi/핫스팟으로 보이는 이름(wlan/swlan/ap0 등)을 우선 선택하고, 없으면
+            // 후보 중 첫 번째로 폴백.
+            val wifiLike = candidates.firstOrNull { (iface, _) ->
+                val n = iface.name.lowercase()
+                n.contains("wlan") || n.contains("softap") || n.startsWith("ap")
+            }
+            val chosen = wifiLike ?: candidates.firstOrNull()
+            if (chosen != null) {
+                val (iface, addr) = chosen
+                socket.bind(java.net.InetSocketAddress(addr, 0))
+                NavLogger.d(this, "[네트워크] $label: 로컬 인터페이스(${iface.name}=${addr.hostAddress})에 직접 바인딩함 (핫스팟 호스트 모드 추정, 후보 ${candidates.size}개 중 선택)")
+                return true
             }
             NavLogger.d(this, "[네트워크] $label: 바인딩 가능한 Wi-Fi/핫스팟 인터페이스를 못 찾음 - 기본 라우팅 사용")
         } catch (e: Exception) {
