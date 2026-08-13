@@ -408,6 +408,14 @@
 
             <!-- v4.1: 이벤트는 스크롤 행 안, 메뉴 바로 뒤(맨 끝)에 위치 - 생겼다 없어졌다
                  하는 항목이라 다른 요소를 계속 밀어내지 않게 함 (사용자 요청). #문제시 원복 -->
+            <ImageView
+                android:id="@+id/ivTopBarEvent"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:layout_marginEnd="3dp"
+                android:visibility="gone"
+                android:contentDescription="@null"/>
+
             <TextView
                 android:id="@+id/tvTopBarEvent"
                 android:layout_width="wrap_content"

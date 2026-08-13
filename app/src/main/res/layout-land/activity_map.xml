@@ -402,6 +402,14 @@
                 android:layout_marginEnd="10dp"/>
 
             <!-- 카메라/구간단속/방지턱 등 이벤트 - 항상 맨 끝 -->
+            <ImageView
+                android:id="@+id/ivTopBarEvent"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:layout_marginEnd="3dp"
+                android:visibility="gone"
+                android:contentDescription="@null"/>
+
             <TextView
                 android:id="@+id/tvTopBarEvent"
                 android:layout_width="wrap_content"
