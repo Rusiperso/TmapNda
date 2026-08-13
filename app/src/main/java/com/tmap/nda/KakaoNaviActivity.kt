@@ -357,6 +357,53 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             KNRoutePriority.KNRoutePriority_Recommand,
             KNRouteAvoidOption.KNRouteAvoidOption_None.value
         )
+
+        // v8.5: [위성지도 조사] 카카오 쪽도 티맵처럼 지도 종류(위성지도 등) 전환 API가
+        // 있는지 확인하기 위한 전수 덤프. KNNaviView/KNSDK 전체 + "map"이 이름에 들어간
+        // 접근자의 리턴 타입까지 재귀적으로 한 단계 더 파고듦. #문제시 원복
+        try {
+            fun dumpKakaoClass(tag: String, clazz: Class<*>) {
+                NavLogger.e(this, "===== [카카오위성지도조사] $tag (${clazz.name}) =====")
+                for (m in clazz.methods) {
+                    NavLogger.e(this, "[카카오위성지도조사] $tag method: ${m.name}(${m.parameterTypes.joinToString { it.simpleName }}): ${m.returnType.simpleName}")
+                }
+                for (f in clazz.declaredFields) {
+                    NavLogger.e(this, "[카카오위성지도조사] $tag field: ${f.name} : ${f.type.simpleName}")
+                }
+                if (clazz.isEnum) {
+                    clazz.enumConstants?.forEach {
+                        NavLogger.e(this, "[카카오위성지도조사] $tag enum 상수: $it")
+                    }
+                }
+            }
+
+            dumpKakaoClass("KNNaviView", KNNaviView::class.java)
+            dumpKakaoClass("KNSDK", KNSDK::class.java)
+
+            // "map" 또는 "layer" 또는 "type"이 이름에 들어간 KNNaviView/KNSDK 메서드의
+            // 리턴/파라미터 타입을 한 단계 더 따라가서 지도 종류 관련 클래스가 있으면 같이 덤프
+            val candidateMethods = KNNaviView::class.java.methods.toList() + KNSDK::class.java.methods.toList()
+            val seen = mutableSetOf<String>()
+            for (m in candidateMethods) {
+                val nameLower = m.name.lowercase()
+                if (nameLower.contains("map") || nameLower.contains("layer") || nameLower.contains("theme") || nameLower.contains("type")) {
+                    NavLogger.e(this, "[카카오위성지도조사] 후보 메서드: ${m.declaringClass.simpleName}.${m.name}(${m.parameterTypes.joinToString { it.simpleName }}): ${m.returnType.simpleName}")
+                    val rt = m.returnType
+                    if (!rt.isPrimitive && rt != Void.TYPE && rt.name !in seen && !rt.name.startsWith("java.")) {
+                        seen.add(rt.name)
+                        try { dumpKakaoClass(rt.simpleName, rt) } catch (e: Exception) { e.printStackTrace() }
+                    }
+                    for (pt in m.parameterTypes) {
+                        if (!pt.isPrimitive && pt.name !in seen && !pt.name.startsWith("java.")) {
+                            seen.add(pt.name)
+                            try { dumpKakaoClass(pt.simpleName, pt) } catch (e: Exception) { e.printStackTrace() }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         // v4.16: [볼륨API스캔]으로도 확인됐지만, 카카오모빌리티 공식 문서
         // (사용자 맞춤 설정하기)에 명시된 공개 API였음 - KNNaviView.sndVolume(Float,
         // 0.0~1.0, 기본값 1f)이 내비게이션 음성 안내 음량을 직접 조정하는 진짜 방법.
