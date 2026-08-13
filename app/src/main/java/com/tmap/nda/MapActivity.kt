@@ -544,6 +544,30 @@ class MapActivity : AppCompatActivity() {
                             val getVsmMapViewMethod = NavigationFragment::class.java.methods.firstOrNull { it.name == "getVsmMapView" }
                             getVsmMapViewMethod?.returnType?.let { dumpClass("VsmSdkMapView", it) }
                         } catch (e: Exception) { e.printStackTrace() }
+
+                        // v8.5: [위성지도 조사] setMapLayerTypeSetting(Context, MapLayerType)이
+                        // NavigationFragment에 확인됐으나 MapLayerType 자체가 어떤 값들(일반/위성/
+                        // 하이브리드 등)을 갖는지는 안 찍혀서, getMapLayerTypeSetting 리턴 타입을
+                        // 가져와 enum이면 상수 이름을 전부 로그로 남김. #문제시 원복
+                        try {
+                            val getLayerTypeMethod = NavigationFragment::class.java.methods.firstOrNull { it.name == "getMapLayerTypeSetting" }
+                            val layerTypeClass = getLayerTypeMethod?.returnType
+                            if (layerTypeClass != null) {
+                                dumpClass("MapLayerType", layerTypeClass)
+                                if (layerTypeClass.isEnum) {
+                                    val constants = layerTypeClass.enumConstants
+                                    if (constants != null) {
+                                        for (c in constants) {
+                                            NavLogger.e(this@MapActivity, "[위성지도조사] MapLayerType enum 상수: $c")
+                                        }
+                                    }
+                                } else {
+                                    NavLogger.e(this@MapActivity, "[위성지도조사] MapLayerType은 enum이 아님: ${layerTypeClass.name}")
+                                }
+                            } else {
+                                NavLogger.e(this@MapActivity, "[위성지도조사] getMapLayerTypeSetting 메서드를 못 찾음")
+                            }
+                        } catch (e: Exception) { e.printStackTrace() }
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
