@@ -29,6 +29,7 @@ import com.tmapmobility.tmap.tmapsdk.ui.util.TmapUISDK
 import com.tmapmobility.tmap.tmapsdk.ui.util.TmapUISDK.Companion.getFragment
 import com.tmapmobility.tmap.tmapsdk.ui.util.TmapUISDK.Companion.initialize
 import com.tmapmobility.tmap.tmapsdk.ui.fragment.NavigationFragment
+import com.tmapmobility.tmap.tmapsdk.ui.data.MapLayerType
 import androidx.lifecycle.Observer
 import android.content.res.Configuration
 import android.view.MotionEvent
@@ -999,7 +1000,24 @@ class MapActivity : AppCompatActivity() {
 
     // v1.6: 속도가 도로 제한속도의 110%를 넘으면 경고음 - 기본 꺼짐, 이 다이얼로그에서 토글. #문제시 원복
     private fun showAppSettingsDialog() {
-        PanelDragHelper.showAppSettingsDialog(this, binding.vTouchLockOverlay)
+        PanelDragHelper.showAppSettingsDialog(this, binding.vTouchLockOverlay) {
+            applyTmapSatelliteViewSetting()
+        }
+    }
+
+    // v8.7: v8.5 조사에서 확인된 Tmap SDK 자체 API - NavigationFragment.setMapLayerTypeSetting()에
+    // MapLayerType.Default(일반)/Aerial(위성사진)을 넘기면 실제로 지도 종류가 바뀜(카카오 쪽은
+    // 이런 API 자체가 없어서 Tmap 화면 한정). 저장된 설정값을 읽어 현재 상태에 반영. #문제시 원복
+    private fun applyTmapSatelliteViewSetting() {
+        try {
+            val enabled = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .getBoolean("tmap_satellite_view_enabled", false)
+            val layerType = if (enabled) MapLayerType.Aerial else MapLayerType.Default
+            navigationFragment?.setMapLayerTypeSetting(this, layerType)
+            NavLogger.d(this, "[티맵위성지도] 적용됨: $layerType")
+        } catch (e: Exception) {
+            NavLogger.e(this, "[티맵위성지도] 적용 예외: ${e.message}")
+        }
     }
 
     // v2.0: 잠금 해제 상태면 오버레이가 터치를 그냥 통과시켜서(false 리턴) 지도가 핀치줌/드래그를 받게 함.
@@ -2296,6 +2314,7 @@ class MapActivity : AppCompatActivity() {
         setupDestinationSearchUi()
         updateRecentSearchPanel()
         dumpNavigationApiCandidates()
+        applyTmapSatelliteViewSetting()
 
         // v3.4: 스티어링휠 마이크 버튼 대응 - 헤드유닛이 음성비서 인텐트로 앱을 띄운
         // 경우, UI가 다 셋업된 뒤에 처리

@@ -188,7 +188,7 @@ object PanelDragHelper {
 
     // v3.9: 앱 설정 다이얼로그도 공용화. touchLockOverlay는 Tmap 화면에만 있는
     // 개념(카카오 화면은 자체 지도 제스처를 씀)이라 null이면 그 체크박스만 건너뜀. #문제시 원복
-    fun showAppSettingsDialog(context: android.app.Activity, touchLockOverlay: View?) {
+    fun showAppSettingsDialog(context: android.app.Activity, touchLockOverlay: View?, onSaved: (() -> Unit)? = null) {
         val pref = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         val checkBox = android.widget.CheckBox(context).apply {
             text = "속도 10% 초과 시 경고음"
@@ -241,6 +241,15 @@ object PanelDragHelper {
             }
         } else null
 
+        // v8.7: v8.5 조사로 확인된 Tmap MapLayerType(Default/Aerial) API를 사용자가 켜고 끌 수
+        // 있게 노출. 카카오 화면엔 이런 API 자체가 없어서 Tmap 화면 한정 문구를 명시. #문제시 원복
+        val satelliteViewCheckBox = android.widget.CheckBox(context).apply {
+            text = "티맵 위성지도 보기"
+            isChecked = pref.getBoolean("tmap_satellite_view_enabled", false)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
+
         val container = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             addView(checkBox)
@@ -249,6 +258,7 @@ object PanelDragHelper {
             addView(showLaneOverlayTmapCheckBox)
             addView(distanceFormatKmCheckBox)
             unlockMapTouchCheckBox?.let { addView(it) }
+            addView(satelliteViewCheckBox)
         }
         android.app.AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("앱 설정")
@@ -260,6 +270,7 @@ object PanelDragHelper {
                     .putBoolean("topbar_event_enabled", showTopBarEventCheckBox.isChecked)
                     .putBoolean("lane_overlay_tmap_enabled", showLaneOverlayTmapCheckBox.isChecked)
                     .putBoolean("USE_KM_DISTANCE_FORMAT", distanceFormatKmCheckBox.isChecked)
+                    .putBoolean("tmap_satellite_view_enabled", satelliteViewCheckBox.isChecked)
                     .apply {
                         if (unlockMapTouchCheckBox != null) {
                             putBoolean("map_touch_unlocked", unlockMapTouchCheckBox.isChecked)
@@ -274,6 +285,7 @@ object PanelDragHelper {
                     }
                 }
                 android.widget.Toast.makeText(context, "저장됨", android.widget.Toast.LENGTH_SHORT).show()
+                onSaved?.invoke()
             }
             .setNegativeButton("취소", null)
             .show()
