@@ -3180,6 +3180,7 @@ class MapActivity : AppCompatActivity() {
     private var aheadLaneInfoDataField: java.lang.reflect.Field? = null
     private var laneFieldLookupFailed = false
     private var aheadLaneInfoDataDumped = false
+    private var lastLaneDiagLogTime = 0L
 
     // v4.13: Tmap 자체 안내 시엔 지금까지 차선정보가 아예 안 나왔던 문제(사용자 2·3·4번) -
     // Tmap의 EDCData 번들(얕은 경로)엔 차선 필드가 없지만, getRecentRGData()로 얻는
@@ -3224,6 +3225,20 @@ class MapActivity : AppCompatActivity() {
 
             val laneCount = (nLaneCountField?.getInt(rgData)) ?: 0
             val laneActive = (bLaneField?.get(rgData) as? Boolean) ?: false
+
+            // v9.1: "목적지 없는 안전운전 모드에서도 티맵 엔진이 차선 데이터를 주는지" 확인용
+            // 진단 로그. 10초에 한 번만 남겨서 로그 도배 방지. 카카오가 실제 길안내 중인지
+            // (isKakaoRouteGuideActive)도 같이 남겨서, "차선 데이터가 안 나오는 게 목적지가
+            // 없어서인지 다른 이유인지" 나중에 로그만 보고 구분 가능하게 함. #문제시 원복
+            val now = System.currentTimeMillis()
+            if (now - lastLaneDiagLogTime > 10000L) {
+                lastLaneDiagLogTime = now
+                NavLogger.d(
+                    this,
+                    "[차선진단] 티맵엔진 nLaneCount=$laneCount bLane=$laneActive " +
+                        "(카카오길안내중=$isKakaoRouteGuideActive, LaneSignalRepository.source=${LaneSignalRepository.source})"
+                )
+            }
 
             if (laneCount > 0 && laneActive) {
                 // 정확한 추천차선 판정 불가 - 우선 개수만 정직하게 표시 (전부 미추천으로)
