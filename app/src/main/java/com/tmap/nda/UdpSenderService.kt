@@ -39,6 +39,10 @@ class UdpSenderService : Service() {
     private val UDP_PORT = 7706
     private var targetIp = "255.255.255.255"
 
+    // v9.3: 정지 시 남은시간 0 되는 문제 우회용 - 직전 유효 남은시간(초)과 그 시각. #문제시 원복
+    private var lastValidGoPosTime = 0
+    private var lastValidGoPosTimeAt = 0L
+
     // v: 사용자 요청 - "내 폰이 남의 핫스팟에 붙는 경우"랑 "내 폰이 직접 핫스팟을 켜고
     // 콤마가 거기 붙는 경우" 둘 다 항상 되게 해달라고 함. 이 둘은 안드로이드 입장에서
     // 완전히 다르게 인식됨:
@@ -614,26 +618,47 @@ class UdpSenderService : Service() {
                     }
 
                     // 목적지까지 남은 거리(m)와 남은 시간(초)
-                    // 실제 경로값이 없으면 0을 보내 콤마의 도착정보 창이 숨겨지도록 함
-                    val nGoPosDist = bundle.getInt(
+                    // v9.3: 재억 지적 - 차가 멈추면(속도 0) 티맵이 "남은시간"을 0으로 줘버려서
+                    // (거리÷속도 계산이라 정지시 0), 지금까지는 "시간이 0이면 거리도 0으로 지워서
+                    // 보낸다"는 로직 때문에 콤마 화면의 목적지 정보(핀/거리)가 정지할 때마다
+                    // 통째로 사라졌었음. 콤마 쪽(openpilot my 브랜치)은 "거리 AND 시간 둘 다 있어야
+                    // 그린다"는 조건이 고정돼 있는데, 이건 openpilot 저장소를 고쳐야 해서 기기마다
+                    // 따로 반영해야 하는 문제가 있음(사용자 3번: "Nda 쪽만 고쳐서 다른 사람도 다
+                    // 적용되게"). 그래서 콤마 쪽은 그대로 두고, 대신 여기서 "시간이 순간적으로
+                    // 0이 나오면 직전에 유효했던 남은시간 값을 대신 채워 보냄"으로 우회 - 거리는
+                    // 항상 정확한 실시간 값 그대로 보내고, 시간만 약간 부정확(정지 직전 값 유지)할
+                    // 뿐이라 화면이 사라지는 것보단 훨씬 나음. 다시 출발하면 티맵이 다시 정상적인
+                    // 시간을 주므로 자동으로 갱신됨. #문제시 원복
+                    val rawGoPosDist = bundle.getInt(
                         "nGoPosDist",
                         bundle.getInt("remainDistanceToGoPositionInMeter", 0)
                     )
-
-                    val nGoPosTime = bundle.getInt(
+                    val rawGoPosTime = bundle.getInt(
                         "nGoPosTime",
                         bundle.getInt("remainTimeToGoPositionInSec", 0)
                     )
 
-                    json.put(
-                        "nGoPosDist",
-                        if (nGoPosDist > 0 && nGoPosTime > 0) nGoPosDist else 0
-                    )
+                    val nGoPosDist: Int
+                    val nGoPosTime: Int
+                    if (rawGoPosDist > 0 && rawGoPosTime > 0) {
+                        nGoPosDist = rawGoPosDist
+                        nGoPosTime = rawGoPosTime
+                        lastValidGoPosTime = rawGoPosTime
+                        lastValidGoPosTimeAt = System.currentTimeMillis()
+                    } else if (rawGoPosDist > 0 && lastValidGoPosTime > 0 &&
+                        System.currentTimeMillis() - lastValidGoPosTimeAt < 5 * 60 * 1000L
+                    ) {
+                        // 경로는 살아있는데(거리>0) 정지 등으로 시간만 순간 0 - 5분 이내 직전 값 유지
+                        nGoPosDist = rawGoPosDist
+                        nGoPosTime = lastValidGoPosTime
+                    } else {
+                        // 경로 자체가 없거나(거리도 0), 5분 넘게 정지해서 직전 값을 더는 못 믿을 때
+                        nGoPosDist = 0
+                        nGoPosTime = 0
+                    }
 
-                    json.put(
-                        "nGoPosTime",
-                        if (nGoPosDist > 0 && nGoPosTime > 0) nGoPosTime else 0
-                    )
+                    json.put("nGoPosDist", nGoPosDist)
+                    json.put("nGoPosTime", nGoPosTime)
 
                     // 상시 안내 텍스트 표시를 위한 필수 TBT 더미 값 주입
                     var tbtDist = json.optInt("nSdiDist", 0)
