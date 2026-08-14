@@ -703,11 +703,20 @@ class UdpSenderService : Service() {
                         val blockTime = json.optInt("nSdiBlockTime", 0)
                         val blockAvgSpeed = json.optInt("nSdiBlockAverageSpeed", 0)
                         val isBlockSection = sdiType == 2 || sdiType == 3 || sdiType == 4 || json.optBoolean("bSdiBlockSection", false)
-                        // v4.13: 카메라 개별 제한속도(roadLimitSpeed)가 아니라 도로 기본
-                        // 제한속도(generalRoadLimitSpeed)만 전달 - 과속경고음/HUD 표시가
-                        // 카메라 제한값을 도로 제한값으로 오인하지 않도록. #문제시 원복
+                        // v9.4: 사용자 제보(재억, 2026-08-14) - "100 도로인데 101에서 경고음".
+                        // 원인: SdiDataRepository.roadLimitSpeed를 여기(UdpSenderService의
+                        // generalRoadLimitSpeed)랑 MapActivity(lastValidRoadLimit, 화면에 찍는
+                        // 바로 그 숫자)가 각자 따로 튀는값 거르기를 거쳐서 동시에 같은 칸에
+                        // 덮어쓰고 있었음. 두 필터링 타이밍이 어긋나는 순간엔 화면엔 100이
+                        // 떠 있어도 실제 경고음 판정엔 다른(주로 더 낮은) 값이 쓰여서, 화면
+                        // 숫자 기준 10% 안 넘었는데도 경고음이 울리는 것처럼 보였음.
+                        // 여기서는 더 이상 이 칸을 안 건드리고 MapActivity가 화면에 찍는
+                        // 값(lastValidRoadLimit)만 이 칸의 유일한 출처로 남김 - 경고음이
+                        // 보는 숫자 = 화면에 뜨는 숫자가 항상 같아지도록. generalRoadLimitSpeed
+                        // 자체는 openpilot 전송(nRoadLimitSpeed)엔 계속 그대로 쓰임, 영향 없음.
+                        // #문제시 원복
                         SdiDataRepository.updateCurrentSdiState(
-                            limitSpeed = generalRoadLimitSpeed,
+                            limitSpeed = SdiDataRepository.roadLimitSpeed,
                             type = sdiType,
                             speedLimit = sdiSpeedLimit,
                             distance = sdiDist,
