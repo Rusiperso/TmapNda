@@ -1023,6 +1023,47 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
+    // v9.2: [교통정보 조사] 재억 요청 - 도로 위 초록/주황/빨강 정체 색깔(실시간 교통정보)
+    // 표시를 껐다 켰다 하는 버튼을 설정에 추가하고 싶어함. 위성지도 때(v8.5)와 같은 방식으로,
+    // 실제로 그런 스위치가 SDK 안에 있는지부터 먼저 확인. "api_candidates_dumped"(전체 조사)와는
+    // 별도 플래그를 써서, 이미 예전에 전체 조사를 끝낸 기기에서도 이번 조사는 새로 한 번 찍히게 함. #문제시 원복
+    private fun dumpTrafficApiCandidates() {
+        val prefs = getSharedPreferences("nav_diag", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("traffic_api_dumped", false)) return
+        try {
+            val keywords = listOf("traffic", "congestion", "jam", "layer", "roadevent", "roadinfo")
+            fun dump(label: String, clazz: Class<*>) {
+                for (m in clazz.methods) {
+                    val n = m.name.lowercase()
+                    if (keywords.any { n.contains(it) }) {
+                        NavLogger.e(
+                            this@MapActivity,
+                            "[교통정보조사] $label: ${m.name}(${m.parameterTypes.joinToString { it.simpleName }}) -> ${m.returnType.simpleName}"
+                        )
+                    }
+                }
+            }
+            dump("NavigationFragment", NavigationFragment::class.java)
+            dump("TmapUISDK", TmapUISDK::class.java)
+            dump("TmapUISDK.Companion", TmapUISDK.Companion::class.java)
+            dump("MapLayerType", MapLayerType::class.java)
+            try {
+                val sdkManagerClass = Class.forName("com.skt.tmap.engine.navigation.SDKManager")
+                dump("SDKManager", sdkManagerClass)
+                val companion = sdkManagerClass.getField("Companion").get(null)
+                if (companion != null) {
+                    dump("SDKManager.Companion", companion.javaClass)
+                }
+            } catch (e: Exception) {
+                NavLogger.e(this, "[교통정보조사] SDKManager dump error: ${e.message}")
+            }
+            NavLogger.e(this, "[교통정보조사] 조사 완료 - 위 목록에 후보가 없으면 SDK에 켜고끄는 스위치 자체가 없을 가능성이 높음")
+            prefs.edit().putBoolean("traffic_api_dumped", true).apply()
+        } catch (e: Exception) {
+            NavLogger.e(this, "[교통정보조사] 예외: ${e.message}")
+        }
+    }
+
     // v2.0: 잠금 해제 상태면 오버레이가 터치를 그냥 통과시켜서(false 리턴) 지도가 핀치줌/드래그를 받게 함.
     // 잠금 상태(기본값)면 오버레이가 계속 터치를 소비(true)해서 지도 조작을 차단. #문제시 원복
     // v4.0: 상단바 이벤트(카메라/구간단속/방지턱) 표시 - 설정에서 끄면 안 보이게 함
@@ -2324,6 +2365,7 @@ class MapActivity : AppCompatActivity() {
         setupDestinationSearchUi()
         updateRecentSearchPanel()
         dumpNavigationApiCandidates()
+        dumpTrafficApiCandidates()
         applyTmapSatelliteViewSetting()
 
         // v3.4: 스티어링휠 마이크 버튼 대응 - 헤드유닛이 음성비서 인텐트로 앱을 띄운

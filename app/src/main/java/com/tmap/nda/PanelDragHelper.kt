@@ -260,6 +260,16 @@ object PanelDragHelper {
             setPadding(40, 0, 40, 30)
         }
 
+        // v9.2: 재억 요청 - 도로 위 초록/주황/빨강 실시간 정체 표시 켜고 끄기. SDK 안에 실제
+        // 스위치가 있는지는 아직 조사 중이라(dumpTrafficApiCandidates), 우선 체크박스와 저장값만
+        // 만들어둠 - 조사 결과 나오면 applyTmapSatelliteViewSetting()처럼 실제로 연결 예정. #문제시 원복
+        val trafficInfoCheckBox = android.widget.CheckBox(context).apply {
+            text = "티맵 교통 정보 (도로 정체 색깔 표시)"
+            isChecked = pref.getBoolean("tmap_traffic_info_enabled", true)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
+
         val container = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             addView(checkBox)
@@ -269,6 +279,7 @@ object PanelDragHelper {
             addView(distanceFormatKmCheckBox)
             unlockMapTouchCheckBox?.let { addView(it) }
             addView(satelliteViewCheckBox)
+            addView(trafficInfoCheckBox)
         }
         android.app.AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("앱 설정")
@@ -281,6 +292,7 @@ object PanelDragHelper {
                     .putBoolean("lane_overlay_tmap_enabled", showLaneOverlayTmapCheckBox.isChecked)
                     .putBoolean("USE_KM_DISTANCE_FORMAT", distanceFormatKmCheckBox.isChecked)
                     .putBoolean("tmap_satellite_view_enabled", satelliteViewCheckBox.isChecked)
+                    .putBoolean("tmap_traffic_info_enabled", trafficInfoCheckBox.isChecked)
                     .apply {
                         if (unlockMapTouchCheckBox != null) {
                             putBoolean("map_touch_unlocked", unlockMapTouchCheckBox.isChecked)
