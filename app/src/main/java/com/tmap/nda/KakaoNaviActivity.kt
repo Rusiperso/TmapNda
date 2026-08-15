@@ -643,18 +643,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                             cursor = cursor.parent
                             depth++
                         }
-                        val btnRect = android.graphics.Rect()
-                        view.getGlobalVisibleRect(btnRect)
-                        val hostRect = android.graphics.Rect()
-                        host.getGlobalVisibleRect(hostRect)
-                        val localRect = android.graphics.Rect(
-                            btnRect.left - hostRect.left,
-                            btnRect.top - hostRect.top,
-                            btnRect.right - hostRect.left,
-                            btnRect.bottom - hostRect.top
-                        )
-                        val extraPx = (160 * resources.displayMetrics.density).toInt()
-                        localRect.inset(-extraPx, 0)
+                        // v9.7: 글씨(view) rect에 가로만 넓혀서 세로(위아래)는 그대로였던 게 문제 -
+                        // 재억 실차 확인 결과 배경(파란/빨간 박스) 전체가 안 눌림. host를 찾은
+                        // 이상 host 자체의 전체 영역(가로+세로 다)을 그대로 터치범위로 사용. #문제시 원복
+                        val localRect = android.graphics.Rect(0, 0, host.width, host.height)
                         host.touchDelegate = android.view.TouchDelegate(localRect, view)
                         NavLogger.d(this, "[안내종료훅] 델리게이트 호스트=${host.javaClass.simpleName}(w=${host.width}) rect=$localRect")
                     } catch (e: Exception) {
