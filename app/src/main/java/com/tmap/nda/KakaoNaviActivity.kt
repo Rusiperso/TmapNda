@@ -1215,6 +1215,22 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
+    // v9.5: 검색 결과 거리순 정렬용 현재 위치(WGS84 위도/경도) 조회.
+    // resolveCurrentPositionThenRequestRoute()와 동일한 우선순위(KNSDK GPS →
+    // 시스템 LocationManager)로 재사용하되, KNSDK GPS는 KATEC 좌표라 역변환
+    // 함수가 없어 검색용으론 LocationManager 값만 사용. #문제시 원복
+    private fun resolveCurrentWgs84LatLonForSearch(): Pair<Double?, Double?> {
+        return try {
+            val lm = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+            val loc = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                ?: lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+            if (loc != null) Pair(loc.latitude, loc.longitude) else Pair(null, null)
+        } catch (e: SecurityException) {
+            NavLogger.e(this, "위치 권한 없음(검색 거리순 정렬용): ${e.message}")
+            Pair(null, null)
+        }
+    }
+
     private fun performInPlaceSearch(query: String) {
         val restKey = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             .getString("kakao_rest_api_key", "") ?: ""
@@ -1223,8 +1239,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             return
         }
         Toast.makeText(this, "검색 중: $query", Toast.LENGTH_SHORT).show()
+        // v9.5: 재억 요청 - MapActivity(Tmap화면)와 동일한 이유로 현재 위치 기준
+        // 거리순 정렬 추가. 위치를 못 구하면 좌표 없이 기존처럼 검색. #문제시 원복
+        val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
+        val locationParams = if (curLat != null && curLon != null) {
+            "&x=$curLon&y=$curLat&radius=20000&sort=distance"
+        } else {
+            ""
+        }
         val url = "https://dapi.kakao.com/v2/local/search/keyword.json?query=" +
-            java.net.URLEncoder.encode(query, "UTF-8")
+            java.net.URLEncoder.encode(query, "UTF-8") + locationParams
         val request = Request.Builder()
             .url(url)
             .header("Authorization", "KakaoAK $restKey")
