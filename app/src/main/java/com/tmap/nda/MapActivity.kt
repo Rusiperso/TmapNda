@@ -1229,8 +1229,18 @@ class MapActivity : AppCompatActivity() {
         restKey: String,
         allowNativeFieldFallback: Boolean
     ) {
+        // v9.5: 재억 요청 - "스타벅스" 검색하면 내 위치(예: 지산동 838-20)와
+        // 무관하게 카카오가 자기네 인기순으로 아무 지역 결과나 던져줌.
+        // 현재 위치(x=경도,y=위도)를 넘기고 sort=distance로 거리순 정렬해서
+        // 실제로 가까운 곳부터 나오게 함. 위치를 못 구하면 좌표 없이 기존처럼 검색. #문제시 원복
+        val (curLat, curLon) = resolveCurrentWgs84LatLon()
+        val locationParams = if (curLat != null && curLon != null) {
+            "&x=$curLon&y=$curLat&radius=20000&sort=distance"
+        } else {
+            ""
+        }
         val url = "https://dapi.kakao.com/v2/local/search/keyword.json?query=" +
-            java.net.URLEncoder.encode(query, "UTF-8")
+            java.net.URLEncoder.encode(query, "UTF-8") + locationParams
         val request = Request.Builder()
             .url(url)
             .header("Authorization", "KakaoAK $restKey")
@@ -1947,6 +1957,26 @@ class MapActivity : AppCompatActivity() {
                 isRequestingKakaoRoute = false
                 hideKakaoOverlay()
             }
+        }
+    }
+
+    // v9.5: 검색 결과 거리순 정렬용 현재 위치(WGS84 위도/경도) 조회.
+    // requestKakaoRoute()와 동일한 우선순위(실시간 캐시 → 시스템 LocationManager)로
+    // 재사용하되, 여기선 KATEC 변환 없이 위도/경도 그대로 반환. #문제시 원복
+    private fun resolveCurrentWgs84LatLon(): Pair<Double?, Double?> {
+        val cachedLat = lastKnownLat
+        val cachedLon = lastKnownLon
+        if (cachedLat != null && cachedLon != null) {
+            return Pair(cachedLat, cachedLon)
+        }
+        return try {
+            val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+            val loc = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                ?: locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+            if (loc != null) Pair(loc.latitude, loc.longitude) else Pair(null, null)
+        } catch (e: SecurityException) {
+            NavLogger.e(this, "위치 권한 없음(검색 거리순 정렬용): ${e.message}")
+            Pair(null, null)
         }
     }
 
