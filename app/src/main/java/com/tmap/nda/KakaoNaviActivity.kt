@@ -629,16 +629,36 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     NavLogger.d(this, "[안내종료훅] 내장 안내종료 버튼 클릭 감지 - finishGuidance() 직접 호출")
                     finishGuidance()
                 }
-                // v9.1: 세로(위아래)는 다른경로/전체경로 버튼과 가까워서 그대로 두고,
-                // 가로(좌우)만 160dp 넓힘. 실제 그려지는 버튼 크기는 안 건드리고
-                // "그 근처를 눌러도 인식되게"만 확장. #문제시 원복
-                (view.parent as? android.view.View)?.let { parent ->
-                    parent.post {
-                        val rect = android.graphics.Rect()
-                        view.getHitRect(rect)
+                // v9.6: 160dp까지 늘려도 실제로는 안 넓어진다는 재억 실차 영상 확인 결과 -
+                // 원인은 "바로 위 부모"가 원래 버튼만큼만 작아서, 그 부모 자체의 원래 테두리
+                // 바깥은 애초에 터치가 전달되지 않았던 것. 더 큰 조상(패널 폭만큼 넓은 View)을
+                // 찾아서 그쪽에 델리게이트를 걸어야 실제로 넓어짐. #문제시 원복
+                view.post {
+                    try {
+                        var host: android.view.View = view
+                        var cursor = view.parent
+                        var depth = 0
+                        while (cursor is android.view.View && depth < 6) {
+                            if (cursor.width > host.width) host = cursor
+                            cursor = cursor.parent
+                            depth++
+                        }
+                        val btnRect = android.graphics.Rect()
+                        view.getGlobalVisibleRect(btnRect)
+                        val hostRect = android.graphics.Rect()
+                        host.getGlobalVisibleRect(hostRect)
+                        val localRect = android.graphics.Rect(
+                            btnRect.left - hostRect.left,
+                            btnRect.top - hostRect.top,
+                            btnRect.right - hostRect.left,
+                            btnRect.bottom - hostRect.top
+                        )
                         val extraPx = (160 * resources.displayMetrics.density).toInt()
-                        rect.inset(-extraPx, 0)
-                        parent.touchDelegate = android.view.TouchDelegate(rect, view)
+                        localRect.inset(-extraPx, 0)
+                        host.touchDelegate = android.view.TouchDelegate(localRect, view)
+                        NavLogger.d(this, "[안내종료훅] 델리게이트 호스트=${host.javaClass.simpleName}(w=${host.width}) rect=$localRect")
+                    } catch (e: Exception) {
+                        NavLogger.e(this, "[안내종료훅] 델리게이트 재계산 예외: ${e.message}")
                     }
                 }
                 NavLogger.d(this, "[안내종료훅] 내장 안내종료 View 찾아서 클릭리스너 부착 완료(터치영역 확장)")
