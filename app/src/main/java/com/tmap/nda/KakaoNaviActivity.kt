@@ -1254,11 +1254,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // v9.5: 재억 요청 - MapActivity(Tmap화면)와 동일한 이유로 현재 위치 기준
         // 거리순 정렬 추가. 위치를 못 구하면 좌표 없이 기존처럼 검색. #문제시 원복
         // v9.9: radius=20000이 검색 "범위"까지 20km로 제한해버려서 먼 지역이
-        // 아예 검색 결과에서 빠지는 문제 발견. radius 제거하여 전국 대상으로 검색하되
-        // sort=distance는 유지해서 가까운 곳부터 정렬만 되도록 수정.
+        // 아예 검색 결과에서 빠지는 문제 발견. radius 제거하여 전국 대상으로 검색.
+        // v9.9-2: sort=distance만 쓰면 이름 일치 여부와 무관하게 가까운 순으로만 나열돼서
+        // 정작 검색한 이름의 장소가 목록 아래로 밀리는 문제(재억 지적) - sort=accuracy로
+        // 바꾸고, 이름 일치+거리 기반 재정렬은 아래에서 처리.
         val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
         val locationParams = if (curLat != null && curLon != null) {
-            "&x=$curLon&y=$curLat&sort=distance"
+            "&x=$curLon&y=$curLat"
         } else {
             ""
         }
@@ -1291,15 +1293,30 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     // v1.8: "성심당 검색하면 성심당 본점/대전역점/케익부띠끄/롯데백화점점 처럼
                     // 여러 지점이 나와야 하는데 documents[0]으로 바로 안내가 시작됨" 지적(3번) -
                     // 결과 목록을 다이얼로그로 보여주고 사용자가 직접 골라서 시작하도록 변경. #문제시 원복
-                    val hits = (0 until documents.length()).map { idx ->
+                    // v9.9-2: MapActivity와 동일 - 이름이 검색어와 정확히/거의 일치하는 결과를
+                    // 최상단으로, 그 안에서는 가까운 순, 나머지는 거리순으로 재정렬.
+                    val normalizedQuery = query.trim().replace(" ", "")
+                    val rawHits = (0 until documents.length()).map { idx ->
                         val d = documents.getJSONObject(idx)
-                        HistoryEntry(
-                            d.optString("place_name", query),
-                            d.optString("road_address_name", d.optString("address_name", "")),
-                            d.optDouble("y"),
-                            d.optDouble("x")
+                        val placeName = d.optString("place_name", query)
+                        val distance = d.optString("distance").toDoubleOrNull() ?: Double.MAX_VALUE
+                        val normalizedName = placeName.trim().replace(" ", "")
+                        val exactMatch = normalizedName == normalizedQuery ||
+                            normalizedName.startsWith(normalizedQuery)
+                        Triple(
+                            HistoryEntry(
+                                placeName,
+                                d.optString("road_address_name", d.optString("address_name", "")),
+                                d.optDouble("y"),
+                                d.optDouble("x")
+                            ),
+                            exactMatch,
+                            distance
                         )
                     }
+                    val hits = rawHits
+                        .sortedWith(compareBy({ !it.second }, { it.third }))
+                        .map { it.first }
                     NavLogger.d(this@KakaoNaviActivity, "인라인 재검색 결과 ${hits.size}건: query=$query")
                     runOnUiThread { showInPlaceSearchResultsDialog(hits) }
                 }
