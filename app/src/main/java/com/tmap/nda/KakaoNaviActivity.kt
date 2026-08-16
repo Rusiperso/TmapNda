@@ -667,12 +667,29 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                             cursor = c.parent
                             depth++
                         }
-                        // v9.7: 글씨(view) rect에 가로만 넓혀서 세로(위아래)는 그대로였던 게 문제 -
-                        // 재억 실차 확인 결과 배경(파란/빨간 박스) 전체가 안 눌림. host를 찾은
-                        // 이상 host 자체의 전체 영역(가로+세로 다)을 그대로 터치범위로 사용. #문제시 원복
-                        val localRect = android.graphics.Rect(0, 0, host.width, host.height)
-                        host.touchDelegate = android.view.TouchDelegate(localRect, view)
-                        NavLogger.d(this, "[안내종료훅] 델리게이트 호스트=${host.javaClass.simpleName}(w=${host.width},h=${host.height}) rect=$localRect")
+                        // v10.2: "160dp로 넓혀도 여전히 글자에서만 눌린다"는 재억 실차 재확인 -
+                        // 원인 재파악: android.view.TouchDelegate는 "타겟 뷰의 바로 위 부모"에
+                        // 걸어야만 내부 좌표 변환(view.left/top 기준 단순 오프셋)이 맞게 동작함.
+                        // host는 여러 단계 위 조상이라 이 좌표 변환 자체가 어긋나서, 겉보기엔
+                        // 넓은 rect가 잡혀도 실제로는 원래 글자 부근만 반응했던 것. TouchDelegate의
+                        // 좌표 변환에 기대지 않고, host에 직접 터치리스너를 달아 "host 영역 안에서
+                        // 손을 뗐으면(ACTION_UP) view.performClick() 직접 호출"로 대체 - 몇 단계
+                        // 위 조상이든 좌표 오차 없이 확실하게 클릭이 전달됨. #문제시 원복
+                        host.setOnTouchListener { _, event ->
+                            when (event.action) {
+                                android.view.MotionEvent.ACTION_DOWN -> true
+                                android.view.MotionEvent.ACTION_UP -> {
+                                    if (event.x >= 0 && event.x <= host.width &&
+                                        event.y >= 0 && event.y <= host.height
+                                    ) {
+                                        view.performClick()
+                                    }
+                                    true
+                                }
+                                else -> true
+                            }
+                        }
+                        NavLogger.d(this, "[안내종료훅] 델리게이트 호스트=${host.javaClass.simpleName}(w=${host.width},h=${host.height}) - OnTouchListener 직접클릭 방식으로 전환")
                     } catch (e: Exception) {
                         NavLogger.e(this, "[안내종료훅] 델리게이트 재계산 예외: ${e.message}")
                     }
