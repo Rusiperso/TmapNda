@@ -1253,9 +1253,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         Toast.makeText(this, "검색 중: $query", Toast.LENGTH_SHORT).show()
         // v9.5: 재억 요청 - MapActivity(Tmap화면)와 동일한 이유로 현재 위치 기준
         // 거리순 정렬 추가. 위치를 못 구하면 좌표 없이 기존처럼 검색. #문제시 원복
+        // v9.9: radius=20000이 검색 "범위"까지 20km로 제한해버려서 먼 지역이
+        // 아예 검색 결과에서 빠지는 문제 발견. radius 제거하여 전국 대상으로 검색하되
+        // sort=distance는 유지해서 가까운 곳부터 정렬만 되도록 수정.
         val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
         val locationParams = if (curLat != null && curLon != null) {
-            "&x=$curLon&y=$curLat&radius=20000&sort=distance"
+            "&x=$curLon&y=$curLat&sort=distance"
         } else {
             ""
         }
