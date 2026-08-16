@@ -63,6 +63,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private var locationManager: LocationManager? = null
     private val originalTopMargins = mutableMapOf<Int, Int>()
 
+    // v10.1: "전송된 로그가 삭제 안 되고 계속 쌓인다"(재억 요청) - MapActivity(Tmap 화면)와
+    // 동일하게, 로그 공유 화면(이메일 앱 등)에서 앱으로 돌아오면 그 시점을 "보냈다"로
+    // 간주하고 저장된 로그를 삭제. #문제시 원복
+    private val shareLogLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        NavLogger.deleteAllLogFiles(this)
+        Toast.makeText(this, "로그 전송 완료 - 저장된 로그를 삭제했어.", Toast.LENGTH_SHORT).show()
+    }
+
     private fun applyTopPanelExpansion(view: View?, expandedHeight: Int) {
         if (view == null) return
         val params = view.layoutParams as? ViewGroup.MarginLayoutParams ?: return
@@ -1047,7 +1057,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 Toast.makeText(this, "저장된 로그가 없어.", Toast.LENGTH_SHORT).show()
             } else {
                 val (shareIntent, paths) = result
-                startActivity(android.content.Intent.createChooser(shareIntent, "로그 공유 (${paths.size}개 파일)"))
+                shareLogLauncher.launch(android.content.Intent.createChooser(shareIntent, "로그 공유 (${paths.size}개 파일)"))
             }
         }
 

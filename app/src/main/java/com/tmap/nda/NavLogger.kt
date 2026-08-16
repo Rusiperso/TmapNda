@@ -109,8 +109,8 @@ object NavLogger {
     }
 
     /** 로그 파일(들)을 이메일로 공유하는 Intent 생성. 회전되어 쌓여있던 로그가 있으면 전부 한번에 첨부함.
-     *  공유해도 파일은 삭제되지 않음 - 로그는 앱 실행 중 계속 쌓이고(10MB 넘으면 회전),
-     *  앱 종료(deleteAllLogFiles) 시에만 전체 삭제됨. */
+     *  v10.1: 공유 화면에서 돌아오면 MapActivity/KakaoNaviActivity의 shareLogLauncher가
+     *  deleteAllLogFiles를 호출해서 삭제함(재억 재요청으로 원복). #문제시 원복 */
     fun buildShareIntent(context: Context): Pair<Intent, List<String>>? {
         val files = allLogFiles(context)
         if (files.isEmpty()) return null

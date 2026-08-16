@@ -117,13 +117,15 @@ class MapActivity : AppCompatActivity() {
     // 별도의 RECORD_AUDIO 런타임 권한 요청 없이 동작함 (인식은 시스템 음성입력 앱이 수행).
     // 로그 공유 화면(이메일 앱 등)에서 돌아왔을 때, 방금 보낸 로그 파일들을 삭제하기 위한 목록.
     // ACTION_SEND_MULTIPLE은 "진짜 전송됨"까지는 확인 못 하고 "공유 화면에서 돌아옴"까지만 알 수 있어서
-    // 그 시점을 "보냈다"로 간주하고 삭제함.
-    // 로그 공유 화면(이메일 앱 등)에서 돌아왔을 때 쓰던 삭제 로직은 제거함.
-    // 이제 로그는 공유해도 지워지지 않고(계속 쌓임, 10MB 넘으면 회전), 앱 종료 시에만
-    // 전체 삭제됨 (btnExitApp 참고). #문제시 원복
+    // v10.1: "전송된 로그가 삭제 안 되고 계속 쌓인다"(재억 재요청) - 이전에 "공유해도
+    // 안 지워지게" 바꿨던 걸 다시 원복. 공유 화면(이메일 앱 등)에서 앱으로 돌아오면
+    // 그 시점을 "보냈다"로 간주하고 삭제함. #문제시 원복
     private val shareLogLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) { /* no-op: 공유해도 로그 유지 */ }
+    ) {
+        NavLogger.deleteAllLogFiles(this)
+        Toast.makeText(this, "로그 전송 완료 - 저장된 로그를 삭제했어.", Toast.LENGTH_SHORT).show()
+    }
 
     private val voiceSearchLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
