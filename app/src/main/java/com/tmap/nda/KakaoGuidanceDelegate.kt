@@ -181,6 +181,26 @@ class KakaoGuidanceDelegate(
                 val myDistFromS = findGetterInt(currentLocation, "DistFromS")
                 if (myDistFromS > 0) {
                     KakaoRouteDataRepository.currentDistFromS = myDistFromS
+
+                    // v10.2: 실주행 로그로 확인된 버그 수정 - 안전정보 거리는 새 이벤트가
+                    // 잡힐 때만(뜸하게) 갱신됐어서, 그 사이엔 UdpSenderService가 계속 옛날
+                    // 값을 그대로 반복 전송함(카메라 앞에서 dist가 18초간 안 줄어듦 ->
+                    // openpilot 감속 안 함). 여기서 위치 갱신마다(훨씬 자주) 저장해둔 이벤트의
+                    // 절대거리에서 현재 위치를 빼서 실시간으로 다시 계산해줌. #문제시 원복
+                    val eventDistFromS = KakaoRouteDataRepository.safetyEventDistFromS
+                    if (eventDistFromS > 0 && KakaoRouteDataRepository.safetyDistTrusted) {
+                        val liveDist = eventDistFromS - myDistFromS
+                        if (liveDist >= 0) {
+                            KakaoRouteDataRepository.safetyDist = liveDist
+                        } else {
+                            // 이미 지나침 - 정리해서 openpilot이 옛날 카메라를 계속
+                            // "감속 대상"으로 오인하지 않게 함
+                            KakaoRouteDataRepository.safetyType = -1
+                            KakaoRouteDataRepository.safetyDist = 0
+                            KakaoRouteDataRepository.safetyDistTrusted = false
+                            KakaoRouteDataRepository.safetyEventDistFromS = -1
+                        }
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -515,6 +535,9 @@ class KakaoGuidanceDelegate(
             var nearestDist = Int.MAX_VALUE
             var nearestIsTrusted = false
             var nearestGeoDist = -1
+            // v10.2: routeBasedDist로 채택된 경우, 이벤트의 "절대" DistFromS도 같이
+            // 저장해둠 - guidanceDidUpdateLocation()이 매번 재계산할 때 씀(위 버그 수정 참고)
+            var nearestEventDistFromS = -1
 
             // v5.2: 사용자 요청("2번 경우도 완성") - 카메라형(단일지점)은 SDK에 "남은 거리"
             // getter가 없어서, 안전정보 위치(getPos())와 현재 GPS 위치로 직접 유클리드
@@ -577,6 +600,7 @@ class KakaoGuidanceDelegate(
                     nearest = item
                     nearestIsTrusted = remainDist != null || routeBasedDist != null
                     nearestGeoDist = geoDist
+                    nearestEventDistFromS = if (routeBasedDist != null) distFromS else -1
                 }
             }
             if (nearest != null) {
@@ -592,6 +616,7 @@ class KakaoGuidanceDelegate(
                 KakaoRouteDataRepository.safetySpeedLimit = speedLimit
                 KakaoRouteDataRepository.safetyDist = nearestDist
                 KakaoRouteDataRepository.safetyDistTrusted = nearestIsTrusted
+                KakaoRouteDataRepository.safetyEventDistFromS = nearestEventDistFromS
                 if (sdiType == -1 && System.currentTimeMillis() - lastUnmappedSafetyCodeLogTime > 15000L) {
                     lastUnmappedSafetyCodeLogTime = System.currentTimeMillis()
                     NavLogger.d(context, "[카카오 안전정보코드 수집] 미매핑 code=$codeName(value=$codeValue) speedLimit=$speedLimit dist=$nearestDist")
@@ -601,6 +626,7 @@ class KakaoGuidanceDelegate(
                 KakaoRouteDataRepository.safetyType = -1
                 KakaoRouteDataRepository.safetyDist = 0
                 KakaoRouteDataRepository.safetyDistTrusted = false
+                KakaoRouteDataRepository.safetyEventDistFromS = -1
             }
         } catch (e: Exception) {
             NavLogger.e(context, "안전정보 반영 예외: ${e.message}")

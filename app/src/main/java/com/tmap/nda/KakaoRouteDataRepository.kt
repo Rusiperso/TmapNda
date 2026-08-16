@@ -64,6 +64,14 @@ object KakaoRouteDataRepository {
     // 구했는지 표시. UdpSenderService가 "믿을 수 있는 카카오 값만 Tmap 폴백으로 쓴다"를
     // 판단하는 데 씀. #문제시 원복
     @Volatile var safetyDistTrusted: Boolean = false
+    // v10.2: 실주행 로그로 확인된 버그 - safetyDist는 guidanceDidUpdateSafetyGuide()가
+    // 새 안전정보 이벤트를 받을 때만 계산되는데(뜸하게 호출됨), UdpSenderService는 훨씬
+    // 자주(초당 2회) 그 캐시값을 그대로 반복 전송해서 접근 중에도 거리가 하나도 안
+    // 줄어드는 문제가 있었음(카메라 앞 18초 동안 dist=1053 고정 -> openpilot 감속 시작
+    // 안 함). routeBasedDist로 구한 경우에 한해 이벤트의 "절대" DistFromS를 따로 저장해두고,
+    // guidanceDidUpdateLocation()이 매번 currentDistFromS를 갱신할 때마다 safetyDist =
+    // safetyEventDistFromS - currentDistFromS로 실시간 재계산함. #문제시 원복
+    @Volatile var safetyEventDistFromS: Int = -1
 
     private val listeners = CopyOnWriteArraySet<(KakaoRouteSnapshot) -> Unit>()
 
@@ -82,6 +90,8 @@ object KakaoRouteDataRepository {
         safetyType = -1
         safetySpeedLimit = 0
         safetyDist = 0
+        safetyDistTrusted = false
+        safetyEventDistFromS = -1
         notifyListeners(snapshot())
     }
 
