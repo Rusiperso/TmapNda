@@ -783,8 +783,13 @@ class UdpSenderService : Service() {
                         // 이 블록 자체가 kr.isFresh() 안에서만 도니까 안 건드림. #문제시 원복
                         val tmapHasSdi = json.optInt("nSdiType", 0) != 0 || json.optInt("nSdiDist", 0) > 0
                         val kakaoHasSdi = kr.safetyType >= 0 && kr.safetyDist > 0 && (kr.safetySpeedLimit > 0 || kr.safetyType == 22)
+                        // v10.1: Tmap 분기(위쪽)엔 "sdiType==0인데 speedLimit/dist는 있으면 1로
+                        // 강제"하는 안전장치가 있는데 여기(카카오 채택 분기)엔 없어서, 향후 또
+                        // 다른 카카오 안전코드가 실수로 0에 매핑되면 여기서도 똑같이 조용히
+                        // 무시(=카메라없음으로 오인식)될 수 있음. 동일한 안전장치를 걸어둠. #문제시 원복
+                        val safeKakaoSdiType = if (kr.safetyType == 0 && kr.safetySpeedLimit > 0 && kr.safetyDist > 0) 1 else kr.safetyType
                         if (kakaoHasSdi && kr.safetyDistTrusted) {
-                            json.put("nSdiType", kr.safetyType)
+                            json.put("nSdiType", safeKakaoSdiType)
                             json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
                             json.put("nSdiDist", kr.safetyDist)
                             // v: roadcate 버그 수정 - Tmap 자체 감지 분기(방지턱 sdiType==22일 때
@@ -798,7 +803,7 @@ class UdpSenderService : Service() {
                             NavLogger.d(this@UdpSenderService, "[안전정보 우선순위] 검증된 카카오값 우선 채택: type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}")
                         } else if (!tmapHasSdi && kakaoHasSdi) {
                             if (kr.safetyDistTrusted) {
-                                json.put("nSdiType", kr.safetyType)
+                                json.put("nSdiType", safeKakaoSdiType)
                                 json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
                                 json.put("nSdiDist", kr.safetyDist)
                                 if (kr.safetyType == 22) {
