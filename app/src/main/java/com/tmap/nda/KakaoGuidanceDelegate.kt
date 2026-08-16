@@ -470,8 +470,15 @@ class KakaoGuidanceDelegate(
             "KNSafetyCode_SpeedViolationSectionHalf" -> 4
             "KNSafetyCode_MovableSpeedViolationCamera" -> 7   // 과속(이동식)
             "KNSafetyCode_BoxedSpeedViolationCamera" -> 8     // 고정식 과속위험구간(박스형)
+            // v10.1: "신호과속" 카메라를 nSdiType=0으로 매핑해뒀었는데, openpilot 쪽에서
+            // 0은 "카메라 없음"으로 해석됨(UdpSenderService.kt의 Tmap측 "sdiType==0인데
+            // speedLimit/dist는 있으면 1로 강제" 로직이 그 증거 - 이미 알려진 문제였음).
+            // 근데 그 강제보정은 Tmap 분기에만 있고 카카오 우선채택 분기엔 없어서, 신호+과속
+            // 동시단속 카메라를 만날 때만 조용히 감속이 안 됐음(재억 로그로 확인:
+            // KNSafetyCode_SignalAndSpeedViolationCamera -> nSdiType=0). 속도단속이 핵심이니
+            // 고정식 과속카메라(1)와 동일하게 매핑. #문제시 원복
             "KNSafetyCode_SignalAndSpeedViolationCamera",
-            "KNSafetyCode_SignalAndSpeedViolationBackwardCamera" -> 0 // 신호과속
+            "KNSafetyCode_SignalAndSpeedViolationBackwardCamera" -> 1 // 신호과속(속도단속 기준 적용)
             "KNSafetyCode_SignalViolationCamera" -> 6         // 신호단속
             "KNSafetyCode_BuslaneViolationCamera",
             "KNSafetyCode_BuslaneAndSpeedViolationCamera" -> 9 // 버스전용차로
