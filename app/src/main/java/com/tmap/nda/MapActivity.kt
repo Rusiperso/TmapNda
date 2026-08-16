@@ -1233,9 +1233,12 @@ class MapActivity : AppCompatActivity() {
         // 무관하게 카카오가 자기네 인기순으로 아무 지역 결과나 던져줌.
         // 현재 위치(x=경도,y=위도)를 넘기고 sort=distance로 거리순 정렬해서
         // 실제로 가까운 곳부터 나오게 함. 위치를 못 구하면 좌표 없이 기존처럼 검색. #문제시 원복
+        // v9.9: radius=20000이 검색 "범위"까지 20km로 제한해버려서 먼 지역(예: 예산시장)이
+        // 아예 검색 결과에서 빠지는 문제 발견. radius 제거하여 전국 대상으로 검색하되
+        // sort=distance는 유지해서 가까운 곳부터 정렬만 되도록 수정.
         val (curLat, curLon) = resolveCurrentWgs84LatLon()
         val locationParams = if (curLat != null && curLon != null) {
-            "&x=$curLon&y=$curLat&radius=20000&sort=distance"
+            "&x=$curLon&y=$curLat&sort=distance"
         } else {
             ""
         }
