@@ -850,6 +850,19 @@ class UdpSenderService : Service() {
                         NavLogger.e(this@UdpSenderService, "[GPS 백업] 폰 위치 조회 실패: ${e.message}")
                     }
 
+                    // v9.9: "이동식카메라 감속 끄기" 옵션이 카카오 길안내 중엔 안 먹힌다는
+                    // 제보(재억) - 원인은 이 필터가 메인 전송 경로(포트 7706, latestPayload를
+                    // 그대로 내보내는 carrot 프로토콜)엔 안 걸려 있고 buildNdaRoadLimitJson()
+                    // (보조 프로토콜 전용)에만 걸려 있었기 때문. json이 최종 완성되는 이 지점
+                    // (Tmap이든 카카오 폴백이든 nSdiType이 여기서 다 확정된 뒤) 딱 한 곳에서
+                    // 공통으로 걸어서 두 경로 모두 동일하게 적용되게 함. #문제시 원복
+                    val mobileCamSlowdownDisabled = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                        .getBoolean("mobile_cam_slowdown_disabled", false)
+                    if (mobileCamSlowdownDisabled && json.optInt("nSdiType", 0) == 7) {
+                        json.put("nSdiType", 0)
+                        json.put("nSdiSpeedLimit", 0)
+                    }
+
                     latestPayload = json.toString()
                 } catch (e: Exception) {
                     e.printStackTrace()
