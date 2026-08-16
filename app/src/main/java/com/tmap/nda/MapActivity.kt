@@ -1234,11 +1234,14 @@ class MapActivity : AppCompatActivity() {
         // 현재 위치(x=경도,y=위도)를 넘기고 sort=distance로 거리순 정렬해서
         // 실제로 가까운 곳부터 나오게 함. 위치를 못 구하면 좌표 없이 기존처럼 검색. #문제시 원복
         // v9.9: radius=20000이 검색 "범위"까지 20km로 제한해버려서 먼 지역(예: 예산시장)이
-        // 아예 검색 결과에서 빠지는 문제 발견. radius 제거하여 전국 대상으로 검색하되
-        // sort=distance는 유지해서 가까운 곳부터 정렬만 되도록 수정.
+        // 아예 검색 결과에서 빠지는 문제 발견. radius 제거하여 전국 대상으로 검색.
+        // v9.9-2: sort=distance만 쓰면 이름이 검색어와 무관해도 그냥 가까운 순으로만 나열돼서
+        // "예산시장" 검색해도 진짜 예산시장은 저 아래로 밀려버림(재억 지적).
+        // sort=accuracy(카카오 기본 정확도순)로 바꾸고, x/y는 계속 넘겨서 documents의
+        // distance 필드는 그대로 받도록 함. 실제 정렬은 아래에서 이름 정확도+거리로 재구성.
         val (curLat, curLon) = resolveCurrentWgs84LatLon()
         val locationParams = if (curLat != null && curLon != null) {
-            "&x=$curLon&y=$curLat&sort=distance"
+            "&x=$curLon&y=$curLat"
         } else {
             ""
         }
@@ -1316,15 +1319,32 @@ class MapActivity : AppCompatActivity() {
                     // v1.7: "S Oil 검색하면 평택시 지산동 Soil 00점, 000점처럼 여러개 나와야 하는데
                     // 첫번째 결과로 바로 꽂힘" 지적 - 항상 documents[0]으로 바로 길안내를 시작하던
                     // 걸 없애고, 결과 목록을 보여준 뒤 사용자가 직접 골라서 시작하도록 변경. #문제시 원복
-                    val hits = (0 until documents.length()).map { idx ->
+                    // v9.9-2: "예산시장" 검색했는데 이름 일치 정도와 무관하게 그냥 가까운 순으로만
+                    // 나와서 진짜 "예산시장"이 목록 아래로 밀리던 문제(재억 지적) - 장소명이
+                    // 검색어와 정확히/거의 일치하는 결과를 최상단으로 올리고, 그 안에서는 가까운
+                    // 순으로, 나머지는 거리순으로 배치하도록 재정렬.
+                    val normalizedQuery = query.trim().replace(" ", "")
+                    val rawHits = (0 until documents.length()).map { idx ->
                         val d = documents.getJSONObject(idx)
-                        HistoryEntry(
-                            d.optString("place_name", query),
-                            d.optString("road_address_name", d.optString("address_name", "")),
-                            d.optDouble("y"),
-                            d.optDouble("x")
+                        val placeName = d.optString("place_name", query)
+                        val distance = d.optString("distance").toDoubleOrNull() ?: Double.MAX_VALUE
+                        val normalizedName = placeName.trim().replace(" ", "")
+                        val exactMatch = normalizedName == normalizedQuery ||
+                            normalizedName.startsWith(normalizedQuery)
+                        Triple(
+                            HistoryEntry(
+                                placeName,
+                                d.optString("road_address_name", d.optString("address_name", "")),
+                                d.optDouble("y"),
+                                d.optDouble("x")
+                            ),
+                            exactMatch,
+                            distance
                         )
                     }
+                    val hits = rawHits
+                        .sortedWith(compareBy({ !it.second }, { it.third }))
+                        .map { it.first }
                     NavLogger.d(this@MapActivity, "카카오 검색 결과 ${hits.size}건: query=$query")
 
                     runOnUiThread { showSearchResultsDialog(hits) }
