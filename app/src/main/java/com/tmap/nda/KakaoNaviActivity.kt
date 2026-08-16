@@ -635,12 +635,26 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // 찾아서 그쪽에 델리게이트를 걸어야 실제로 넓어짐. #문제시 원복
                 view.post {
                     try {
+                        // v10.1: depth<6, "너비만 넓으면 채택" 조건이 실제 파란 배경 전체를
+                        // 감싸는 부모(6단계보다 더 위)에 못 닿아서, 여전히 글씨 근처 좁은 영역만
+                        // host로 잡히던 문제(재억 실차 영상 확인) - 탐색 깊이를 늘리되, 높이가
+                        // 원래 버튼 높이보다 과도하게 커지면(=음량조절/야간모드 등 다른 항목까지
+                        // 포함된 것) 그 직전 단계에서 멈추도록 안전장치 추가. #문제시 원복
                         var host: android.view.View = view
                         var cursor = view.parent
                         var depth = 0
-                        while (cursor is android.view.View && depth < 6) {
-                            if (cursor.width > host.width) host = cursor
-                            cursor = cursor.parent
+                        val maxAcceptableHeight = (view.height * 1.8f).toInt()
+                            .coerceAtLeast(view.height + 60)
+                        while (cursor is android.view.View && depth < 15) {
+                            val c = cursor
+                            if (c.height > maxAcceptableHeight) {
+                                // 다른 항목(음량바 등)까지 포함할 만큼 커진 시점 - 더 올라가지 않고 멈춤
+                                break
+                            }
+                            if (c.width > host.width || c.height > host.height) {
+                                host = c
+                            }
+                            cursor = c.parent
                             depth++
                         }
                         // v9.7: 글씨(view) rect에 가로만 넓혀서 세로(위아래)는 그대로였던 게 문제 -
@@ -648,7 +662,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         // 이상 host 자체의 전체 영역(가로+세로 다)을 그대로 터치범위로 사용. #문제시 원복
                         val localRect = android.graphics.Rect(0, 0, host.width, host.height)
                         host.touchDelegate = android.view.TouchDelegate(localRect, view)
-                        NavLogger.d(this, "[안내종료훅] 델리게이트 호스트=${host.javaClass.simpleName}(w=${host.width}) rect=$localRect")
+                        NavLogger.d(this, "[안내종료훅] 델리게이트 호스트=${host.javaClass.simpleName}(w=${host.width},h=${host.height}) rect=$localRect")
                     } catch (e: Exception) {
                         NavLogger.e(this, "[안내종료훅] 델리게이트 재계산 예외: ${e.message}")
                     }
