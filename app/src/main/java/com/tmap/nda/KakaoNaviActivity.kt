@@ -655,27 +655,40 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // 바깥은 애초에 터치가 전달되지 않았던 것. 더 큰 조상(패널 폭만큼 넓은 View)을
                 // 찾아서 그쪽에 델리게이트를 걸어야 실제로 넓어짐. #문제시 원복
                 try {
-                    // v10.1: depth<6, "너비만 넓으면 채택" 조건이 실제 파란 배경 전체를
-                    // 감싸는 부모(6단계보다 더 위)에 못 닿아서, 여전히 글씨 근처 좁은 영역만
-                    // host로 잡히던 문제(재억 실차 영상 확인) - 탐색 깊이를 늘리되, 높이가
-                    // 원래 버튼 높이보다 과도하게 커지면(=음량조절/야간모드 등 다른 항목까지
-                    // 포함된 것) 그 직전 단계에서 멈추도록 안전장치 추가. #문제시 원복
+                    // v10.5: 높이 제한으로 확장을 멈추는 방식(v10.1~10.4)은 파란 배경을
+                    // 감싸는 실제 부모의 높이를 예측해서 맞춰야 해서 여전히 부정확했음
+                    // (재억 확인 - host가 글씨 크기 그대로 찍힘). 대신 "배경이 파란색인
+                    // View"를 직접 찾아 그걸 host로 채택 - 화면에 보이는 파란 버튼 영역과
+                    // 터치 영역이 정확히 일치하게 됨. 파란색 판정은 ColorDrawable의 RGB에서
+                    // 파란색 성분(B)이 확실히 우세한 경우로 판단(카카오 SDK 팔레트 기준
+                    // 여유있게 판별). 못 찾으면 기존 방식(글자 자신)으로 안전하게 폴백. #문제시 원복
                     var host: android.view.View = view
+                    var blueHost: android.view.View? = null
                     var cursor = view.parent
                     var depth = 0
-                    val maxAcceptableHeight = (view.height * 1.8f).toInt()
-                        .coerceAtLeast(view.height + 60)
                     while (cursor is android.view.View && depth < 15) {
                         val c = cursor
-                        if (c.height > maxAcceptableHeight) {
-                            // 다른 항목(음량바 등)까지 포함할 만큼 커진 시점 - 더 올라가지 않고 멈춤
-                            break
+                        val bg = c.background
+                        if (bg is android.graphics.drawable.ColorDrawable) {
+                            val color = bg.color
+                            val r = android.graphics.Color.red(color)
+                            val g = android.graphics.Color.green(color)
+                            val b = android.graphics.Color.blue(color)
+                            val a = android.graphics.Color.alpha(color)
+                            // 파란색 우세 + 불투명(투명/거의 투명 배경 제외) 조건
+                            if (a > 40 && b > r + 20 && b > g + 20 && b > 60) {
+                                blueHost = c
+                                break
+                            }
                         }
                         if (c.width > host.width || c.height > host.height) {
                             host = c
                         }
                         cursor = c.parent
                         depth++
+                    }
+                    if (blueHost != null) {
+                        host = blueHost
                     }
                     // v10.2: "160dp로 넓혀도 여전히 글자에서만 눌린다"는 재억 실차 재확인 -
                     // 원인 재파악: android.view.TouchDelegate는 "타겟 뷰의 바로 위 부모"에
@@ -699,7 +712,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                             else -> true
                         }
                     }
-                    NavLogger.d(this, "[안내종료훅] 델리게이트 호스트=${host.javaClass.simpleName}(w=${host.width},h=${host.height}) - OnTouchListener 직접클릭 방식으로 전환")
+                    NavLogger.d(this, "[안내종료훅] 델리게이트 호스트=${host.javaClass.simpleName}(w=${host.width},h=${host.height}, 파란배경탐지=${blueHost != null}) - OnTouchListener 직접클릭 방식으로 전환")
                 } catch (e: Exception) {
                     NavLogger.e(this, "[안내종료훅] 델리게이트 재계산 예외: ${e.message}")
                 }
