@@ -639,62 +639,70 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     NavLogger.d(this, "[안내종료훅] 내장 안내종료 버튼 클릭 감지 - finishGuidance() 직접 호출")
                     finishGuidance()
                 }
+            }
+            // v10.4: 로그로 실제 확인됨(재억, 2026-08-16) - "호스트=MaterialTextView(w=0,h=0)".
+            // 즉 host 탐색 로직이 글자(view) 자신에서 전혀 확장을 못 했고, 그 이유는 이 블록
+            // 전체가 view.getTag(...)==null 가드 안에 있어서 GlobalLayoutListener가 처음
+            // 호출된 딱 그 순간(=아직 하위 View들이 측정 전이라 width/height가 0)에만 실행되고
+            // 그 뒤로 레이아웃이 실제 최종 크기로 다 잡혀도 다시는 안 돌았기 때문. 클릭리스너
+            // 부착(한 번만 해도 되는 것)과 host 재탐색+터치리스너 부착(레이아웃 바뀔 때마다
+            // 최신 크기로 다시 계산해야 하는 것)을 분리 - 아래 블록은 태그 가드 밖으로 빼서
+            // GlobalLayoutListener가 부를 때마다(=레이아웃이 안정된 이후를 포함해) 매번
+            // 재계산하도록 함. setOnTouchListener는 그냥 덮어쓰기라 여러 번 걸어도 무해함. #문제시 원복
+            if (view.height > 0) {
                 // v9.6: 160dp까지 늘려도 실제로는 안 넓어진다는 재억 실차 영상 확인 결과 -
                 // 원인은 "바로 위 부모"가 원래 버튼만큼만 작아서, 그 부모 자체의 원래 테두리
                 // 바깥은 애초에 터치가 전달되지 않았던 것. 더 큰 조상(패널 폭만큼 넓은 View)을
                 // 찾아서 그쪽에 델리게이트를 걸어야 실제로 넓어짐. #문제시 원복
-                view.post {
-                    try {
-                        // v10.1: depth<6, "너비만 넓으면 채택" 조건이 실제 파란 배경 전체를
-                        // 감싸는 부모(6단계보다 더 위)에 못 닿아서, 여전히 글씨 근처 좁은 영역만
-                        // host로 잡히던 문제(재억 실차 영상 확인) - 탐색 깊이를 늘리되, 높이가
-                        // 원래 버튼 높이보다 과도하게 커지면(=음량조절/야간모드 등 다른 항목까지
-                        // 포함된 것) 그 직전 단계에서 멈추도록 안전장치 추가. #문제시 원복
-                        var host: android.view.View = view
-                        var cursor = view.parent
-                        var depth = 0
-                        val maxAcceptableHeight = (view.height * 1.8f).toInt()
-                            .coerceAtLeast(view.height + 60)
-                        while (cursor is android.view.View && depth < 15) {
-                            val c = cursor
-                            if (c.height > maxAcceptableHeight) {
-                                // 다른 항목(음량바 등)까지 포함할 만큼 커진 시점 - 더 올라가지 않고 멈춤
-                                break
-                            }
-                            if (c.width > host.width || c.height > host.height) {
-                                host = c
-                            }
-                            cursor = c.parent
-                            depth++
+                try {
+                    // v10.1: depth<6, "너비만 넓으면 채택" 조건이 실제 파란 배경 전체를
+                    // 감싸는 부모(6단계보다 더 위)에 못 닿아서, 여전히 글씨 근처 좁은 영역만
+                    // host로 잡히던 문제(재억 실차 영상 확인) - 탐색 깊이를 늘리되, 높이가
+                    // 원래 버튼 높이보다 과도하게 커지면(=음량조절/야간모드 등 다른 항목까지
+                    // 포함된 것) 그 직전 단계에서 멈추도록 안전장치 추가. #문제시 원복
+                    var host: android.view.View = view
+                    var cursor = view.parent
+                    var depth = 0
+                    val maxAcceptableHeight = (view.height * 1.8f).toInt()
+                        .coerceAtLeast(view.height + 60)
+                    while (cursor is android.view.View && depth < 15) {
+                        val c = cursor
+                        if (c.height > maxAcceptableHeight) {
+                            // 다른 항목(음량바 등)까지 포함할 만큼 커진 시점 - 더 올라가지 않고 멈춤
+                            break
                         }
-                        // v10.2: "160dp로 넓혀도 여전히 글자에서만 눌린다"는 재억 실차 재확인 -
-                        // 원인 재파악: android.view.TouchDelegate는 "타겟 뷰의 바로 위 부모"에
-                        // 걸어야만 내부 좌표 변환(view.left/top 기준 단순 오프셋)이 맞게 동작함.
-                        // host는 여러 단계 위 조상이라 이 좌표 변환 자체가 어긋나서, 겉보기엔
-                        // 넓은 rect가 잡혀도 실제로는 원래 글자 부근만 반응했던 것. TouchDelegate의
-                        // 좌표 변환에 기대지 않고, host에 직접 터치리스너를 달아 "host 영역 안에서
-                        // 손을 뗐으면(ACTION_UP) view.performClick() 직접 호출"로 대체 - 몇 단계
-                        // 위 조상이든 좌표 오차 없이 확실하게 클릭이 전달됨. #문제시 원복
-                        host.setOnTouchListener { _, event ->
-                            when (event.action) {
-                                android.view.MotionEvent.ACTION_DOWN -> true
-                                android.view.MotionEvent.ACTION_UP -> {
-                                    if (event.x >= 0 && event.x <= host.width &&
-                                        event.y >= 0 && event.y <= host.height
-                                    ) {
-                                        view.performClick()
-                                    }
-                                    true
-                                }
-                                else -> true
-                            }
+                        if (c.width > host.width || c.height > host.height) {
+                            host = c
                         }
-                        NavLogger.d(this, "[안내종료훅] 델리게이트 호스트=${host.javaClass.simpleName}(w=${host.width},h=${host.height}) - OnTouchListener 직접클릭 방식으로 전환")
-                    } catch (e: Exception) {
-                        NavLogger.e(this, "[안내종료훅] 델리게이트 재계산 예외: ${e.message}")
+                        cursor = c.parent
+                        depth++
                     }
+                    // v10.2: "160dp로 넓혀도 여전히 글자에서만 눌린다"는 재억 실차 재확인 -
+                    // 원인 재파악: android.view.TouchDelegate는 "타겟 뷰의 바로 위 부모"에
+                    // 걸어야만 내부 좌표 변환(view.left/top 기준 단순 오프셋)이 맞게 동작함.
+                    // host는 여러 단계 위 조상이라 이 좌표 변환 자체가 어긋나서, 겉보기엔
+                    // 넓은 rect가 잡혀도 실제로는 원래 글자 부근만 반응했던 것. TouchDelegate의
+                    // 좌표 변환에 기대지 않고, host에 직접 터치리스너를 달아 "host 영역 안에서
+                    // 손을 뗐으면(ACTION_UP) view.performClick() 직접 호출"로 대체 - 몇 단계
+                    // 위 조상이든 좌표 오차 없이 확실하게 클릭이 전달됨. #문제시 원복
+                    host.setOnTouchListener { _, event ->
+                        when (event.action) {
+                            android.view.MotionEvent.ACTION_DOWN -> true
+                            android.view.MotionEvent.ACTION_UP -> {
+                                if (event.x >= 0 && event.x <= host.width &&
+                                    event.y >= 0 && event.y <= host.height
+                                ) {
+                                    view.performClick()
+                                }
+                                true
+                            }
+                            else -> true
+                        }
+                    }
+                    NavLogger.d(this, "[안내종료훅] 델리게이트 호스트=${host.javaClass.simpleName}(w=${host.width},h=${host.height}) - OnTouchListener 직접클릭 방식으로 전환")
+                } catch (e: Exception) {
+                    NavLogger.e(this, "[안내종료훅] 델리게이트 재계산 예외: ${e.message}")
                 }
-                NavLogger.d(this, "[안내종료훅] 내장 안내종료 View 찾아서 클릭리스너 부착 완료(터치영역 확장)")
             }
         }
 
