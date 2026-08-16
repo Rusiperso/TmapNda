@@ -715,6 +715,19 @@ class UdpSenderService : Service() {
                         // 보는 숫자 = 화면에 뜨는 숫자가 항상 같아지도록. generalRoadLimitSpeed
                         // 자체는 openpilot 전송(nRoadLimitSpeed)엔 계속 그대로 쓰임, 영향 없음.
                         // #문제시 원복
+                        // v10.2: "60도로 65 주행(10% 안넘음)인데도 경고음"(재억 제보) - 원인은
+                        // 여기서 limitSpeed를 SdiDataRepository.roadLimitSpeed 자기 자신을 그대로
+                        // 되읽어와서 넣고 있었다는 것(=실질적으로 갱신이 전혀 안 되고 MapActivity가
+                        // 마지막으로 써넣은 값에 계속 고정). MapActivity 쪽 갱신은 observe(this@MapActivity,
+                        // ...)라 카카오 화면이 위로 뜨면(=MapActivity가 화면 밖으로 밀리면) 아예
+                        // 멈춰버려서, 그 순간의 낮은 값(예: 카메라 개별 제한속도)에 고정된 채로
+                        // 실제 도로 제한속도가 올라가도 안 따라감. 이 블록(edcObserver)은
+                        // observeForever라 화면 전환과 무관하게 항상 도는 유일한 경로이므로,
+                        // 여기서 이미 안정화 로직(8초 타임아웃 등)을 거친 generalRoadLimitSpeed를
+                        // 진짜 출처로 써서 SdiDataRepository.roadLimitSpeed를 직접 갱신함. #문제시 원복
+                        if (generalRoadLimitSpeed >= 30) {
+                            SdiDataRepository.roadLimitSpeed = generalRoadLimitSpeed
+                        }
                         SdiDataRepository.updateCurrentSdiState(
                             limitSpeed = SdiDataRepository.roadLimitSpeed,
                             type = sdiType,
