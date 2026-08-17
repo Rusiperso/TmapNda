@@ -655,38 +655,80 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // 바깥은 애초에 터치가 전달되지 않았던 것. 더 큰 조상(패널 폭만큼 넓은 View)을
                 // 찾아서 그쪽에 델리게이트를 걸어야 실제로 넓어짐. #문제시 원복
                 try {
-                    // v10.5: 높이 제한으로 확장을 멈추는 방식(v10.1~10.4)은 파란 배경을
-                    // 감싸는 실제 부모의 높이를 예측해서 맞춰야 해서 여전히 부정확했음
-                    // (재억 확인 - host가 글씨 크기 그대로 찍힘). 대신 "배경이 파란색인
-                    // View"를 직접 찾아 그걸 host로 채택 - 화면에 보이는 파란 버튼 영역과
-                    // 터치 영역이 정확히 일치하게 됨. 파란색 판정은 ColorDrawable의 RGB에서
-                    // 파란색 성분(B)이 확실히 우세한 경우로 판단(카카오 SDK 팔레트 기준
-                    // 여유있게 판별). 못 찾으면 기존 방식(글자 자신)으로 안전하게 폴백. #문제시 원복
+                    // v10.6: v10.5에서 "배경이 ColorDrawable(단색)인지"만 검사했더니 실차
+                    // 로그에서 파란배경탐지=false만 계속 찍힘(재억 확인) - 카카오 SDK가
+                    // 버튼 배경을 단색이 아니라 GradientDrawable(둥근모서리 도형)이나
+                    // RippleDrawable/LayerDrawable/InsetDrawable(선택효과 포함 배경) 같은
+                    // 감싸는 형태로 그리고 있을 가능성이 높음. 이런 래퍼 안쪽까지 벗겨서
+                    // 실제 단색을 찾도록 unwrapColor()를 추가. 파란색을 끝내 못 찾은 경우엔
+                    // 안전장치 없이 화면 전체까지 올라가버리던 v10.5 폴백 버그도 같이 고쳐서,
+                    // 예전처럼 적당한 크기 제한을 다시 둠(최소한 지금보다 나빠지진 않게).
+                    // 그리고 각 단계별 배경 타입을 로그로 남겨서, 이번에도 못 찾으면 다음
+                    // 로그에서 정확히 무슨 타입인지 바로 알 수 있게 함. #문제시 원복
+                    fun unwrapColor(d: android.graphics.drawable.Drawable?, depthLimit: Int = 5): Int? {
+                        if (d == null || depthLimit <= 0) return null
+                        return when (d) {
+                            is android.graphics.drawable.ColorDrawable -> d.color
+                            is android.graphics.drawable.GradientDrawable -> {
+                                try {
+                                    val f = android.graphics.drawable.GradientDrawable::class.java.getDeclaredField("mFillPaint")
+                                    f.isAccessible = true
+                                    (f.get(d) as? android.graphics.Paint)?.color
+                                } catch (e: Exception) { null }
+                            }
+                            is android.graphics.drawable.RippleDrawable -> {
+                                (0 until d.numberOfLayers).firstNotNullOfOrNull { unwrapColor(d.getDrawable(it), depthLimit - 1) }
+                            }
+                            is android.graphics.drawable.LayerDrawable -> {
+                                (0 until d.numberOfLayers).firstNotNullOfOrNull { unwrapColor(d.getDrawable(it), depthLimit - 1) }
+                            }
+                            is android.graphics.drawable.InsetDrawable -> unwrapColor(d.drawable, depthLimit - 1)
+                            is android.graphics.drawable.StateListDrawable -> {
+                                try {
+                                    val m = android.graphics.drawable.DrawableContainer::class.java.getDeclaredMethod("getCurrent")
+                                    unwrapColor(m.invoke(d) as? android.graphics.drawable.Drawable, depthLimit - 1)
+                                } catch (e: Exception) { null }
+                            }
+                            else -> null
+                        }
+                    }
+                    fun isBlue(color: Int): Boolean {
+                        val r = android.graphics.Color.red(color)
+                        val g = android.graphics.Color.green(color)
+                        val b = android.graphics.Color.blue(color)
+                        val a = android.graphics.Color.alpha(color)
+                        return a > 40 && b > r + 20 && b > g + 20 && b > 60
+                    }
                     var host: android.view.View = view
                     var blueHost: android.view.View? = null
                     var cursor = view.parent
                     var depth = 0
+                    // v10.5 폴백 버그 수정: 파란색을 못 찾았을 때 화면 전체까지 올라가버리는 것을
+                    // 막기 위한 안전장치(원래 버튼 크기의 6배, 최소 250px)
+                    val maxFallbackSize = (view.height * 6).coerceAtLeast(250)
+                    val diagLog = StringBuilder()
                     while (cursor is android.view.View && depth < 15) {
                         val c = cursor
                         val bg = c.background
-                        if (bg is android.graphics.drawable.ColorDrawable) {
-                            val color = bg.color
-                            val r = android.graphics.Color.red(color)
-                            val g = android.graphics.Color.green(color)
-                            val b = android.graphics.Color.blue(color)
-                            val a = android.graphics.Color.alpha(color)
-                            // 파란색 우세 + 불투명(투명/거의 투명 배경 제외) 조건
-                            if (a > 40 && b > r + 20 && b > g + 20 && b > 60) {
+                        val color = unwrapColor(bg)
+                        diagLog.append("[$depth]${c.javaClass.simpleName}/${bg?.javaClass?.simpleName}")
+                        if (color != null) {
+                            diagLog.append("(#${Integer.toHexString(color)})")
+                            if (isBlue(color)) {
                                 blueHost = c
+                                diagLog.append("★파란색채택")
                                 break
                             }
                         }
-                        if (c.width > host.width || c.height > host.height) {
+                        diagLog.append(" ")
+                        if ((c.width > host.width || c.height > host.height) &&
+                            c.width <= maxFallbackSize && c.height <= maxFallbackSize) {
                             host = c
                         }
                         cursor = c.parent
                         depth++
                     }
+                    NavLogger.d(this, "[안내종료훅][진단] 배경탐색경로: $diagLog")
                     if (blueHost != null) {
                         host = blueHost
                     }
