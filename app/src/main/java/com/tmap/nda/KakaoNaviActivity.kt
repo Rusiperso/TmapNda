@@ -68,9 +68,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 간주하고 저장된 로그를 삭제. #문제시 원복
     private val shareLogLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) {
-        NavLogger.deleteAllLogFiles(this)
-        Toast.makeText(this, "로그 전송 완료 - 저장된 로그를 삭제했어.", Toast.LENGTH_SHORT).show()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            NavLogger.deleteAllLogFiles(this)
+            Toast.makeText(this, "로그 전송 완료 - 저장된 로그를 삭제했어.", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "로그 전송이 취소됐어 - 로그는 그대로 남아있어.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun applyTopPanelExpansion(view: View?, expandedHeight: Int) {
