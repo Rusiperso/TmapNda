@@ -8,6 +8,7 @@
          실제 연결된 Wi-Fi 이름(SSID)까지 로그에 정확히 남길 수 있음 - 클라이언트
          모드(남의 핫스팟에 붙음)/호스트 모드(내가 핫스팟 켬) 구분이 훨씬 확실해짐. #문제시 원복 -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
