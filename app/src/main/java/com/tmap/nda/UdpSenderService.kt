@@ -218,6 +218,7 @@ class UdpSenderService : Service() {
 
     private var packetIndex = 0
     private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: android.net.wifi.WifiManager.WifiLock? = null
 
     // NDA 브릿지 상태
     private var ndaListenSocket: DatagramSocket? = null
@@ -314,6 +315,23 @@ class UdpSenderService : Service() {
             wakeLock?.acquire()
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+
+        // v10.7: 사용자 제보(재억, 2026-08-17) - "카메라/방지턱 없는데 갑자기 감속하려 함".
+        // 로그 분석 결과 openpilot과의 UDP 비콘 연결이 3~4분마다 8초 넘게 완전히 끊겼다
+        // 재연결되는 패턴이 반복됨(전체 40분 주행에 재연결 11회) - 재연결 시점마다 크루즈
+        // 상태가 리셋되면서 순간적으로 이상한 목표속도가 잡히는 것으로 추정. CPU
+        // WakeLock만 걸려있고 와이파이 절전모드 방지는 안 되어 있어서, 와이파이 라디오가
+        // 주기적으로 저전력모드로 빠지며 짧은 UDP 비콘 패킷을 놓치는 게 원인일 가능성이
+        // 높음. WifiLock(FULL_HIGH_PERF)을 추가로 걸어서 와이파이가 절전모드로 안 빠지게
+        // 막음 - 재연결 자체가 줄어들길 기대. #문제시 원복
+        try {
+            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            wifiLock = wifiManager.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "TmapNda::UdpSenderWifiLock")
+            wifiLock?.acquire()
+            NavLogger.d(this, "[전원관리] WifiLock(FULL_HIGH_PERF) 획득 성공 - 와이파이 절전모드 방지")
+        } catch (e: Exception) {
+            NavLogger.e(this, "[전원관리] WifiLock 획득 실패: ${e.message}")
         }
 
         // GPS 상태 모니터링 등록
@@ -1464,6 +1482,14 @@ class UdpSenderService : Service() {
         try {
             if (wakeLock?.isHeld == true) {
                 wakeLock?.release()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        try {
+            if (wifiLock?.isHeld == true) {
+                wifiLock?.release()
             }
         } catch (e: Exception) {
             e.printStackTrace()
