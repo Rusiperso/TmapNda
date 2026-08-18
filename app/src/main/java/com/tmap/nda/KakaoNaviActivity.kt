@@ -1369,12 +1369,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // v11.3: MapActivity와 동일 - 집/회사/즐겨찾기1/2/3 다섯 칸 빠른등록 아이콘 행. #문제시 원복
         fun buildQuickSlotButton(slot: String, emoji: String): Pair<View, android.widget.TextView> {
             val etaText = android.widget.TextView(this).apply {
-                textSize = 10f
+                textSize = 9f
                 gravity = android.view.Gravity.CENTER
                 setTextColor(android.graphics.Color.parseColor("#FFD54F"))
-                maxLines = 1
-                setSingleLine(true)
-                ellipsize = android.text.TextUtils.TruncateAt.END
+                // v13.0-3: MapActivity와 동일 - 시간 잘리던 문제(재억 지적), 최대 2줄로
+                // 자연스럽게 줄바꿈, 말줄임표 없음. #문제시 원복
+                maxLines = 2
             }
             // v12.2: MapActivity와 동일 - 등록된 즐겨찾기 칸은 하트 대신 등록된 장소
             // 이름을 보여줌(재억 요청). #문제시 원복
@@ -1395,7 +1395,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             if (registeredEntry == null) {
                 etaText.text = "미등록"
                 etaText.setTextColor(android.graphics.Color.parseColor("#555555"))
-                etaText.textSize = 10f
+                etaText.textSize = 9f
             }
             val container = android.widget.LinearLayout(this).apply {
                 orientation = android.widget.LinearLayout.VERTICAL
@@ -1454,7 +1454,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
             etaText.text = "검색 중"
             etaText.setTextColor(android.graphics.Color.parseColor("#FFD54F"))
-            etaText.textSize = 10f
+            etaText.textSize = 9f
             val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
             if (curLat == null || curLon == null) {
                 etaText.text = ""

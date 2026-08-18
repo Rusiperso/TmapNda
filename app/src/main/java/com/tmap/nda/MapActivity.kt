@@ -1030,12 +1030,14 @@ class MapActivity : AppCompatActivity() {
         // 다이얼로그 제목(setTitle) 자리에 이 행까지 포함한 커스텀 뷰를 넣음. #문제시 원복
         fun buildQuickSlotButton(slot: String, emoji: String): Pair<View, android.widget.TextView> {
             val etaText = android.widget.TextView(this).apply {
-                textSize = 10f
+                textSize = 9f
                 gravity = android.view.Gravity.CENTER
                 setTextColor(android.graphics.Color.parseColor("#FFD54F"))
-                maxLines = 1
-                setSingleLine(true)
-                ellipsize = android.text.TextUtils.TruncateAt.END
+                // v13.0-3: 재억 지적 - "2시간 52분"처럼 긴 시간을 한 줄+말줄임표로 억지로
+                // 우겨넣었더니 뒷부분이 "..."로 잘려서 몇 시간 몇 분인지 안 보였음.
+                // 숫자가 안 잘리는 게 우선이라, 글자를 더 줄이고 최대 2줄까지 자연스럽게
+                // 줄바꿈되도록 함(말줄임표 없음 - 다 보이는 게 목적). #문제시 원복
+                maxLines = 2
             }
             // v12.2: 등록된 즐겨찾기 칸은 하트 대신 등록된 장소 이름을 보여줌(재억 요청 -
             // "서울역 검색해서 등록했으면 하트 대신 서울역으로 표시"). 이름이 길면 한 줄로
@@ -1057,7 +1059,7 @@ class MapActivity : AppCompatActivity() {
             if (registeredEntry == null) {
                 etaText.text = "미등록"
                 etaText.setTextColor(android.graphics.Color.parseColor("#555555"))
-                etaText.textSize = 10f
+                etaText.textSize = 9f
             }
             val container = android.widget.LinearLayout(this).apply {
                 orientation = android.widget.LinearLayout.VERTICAL
@@ -1116,7 +1118,7 @@ class MapActivity : AppCompatActivity() {
             }
             etaText.text = "검색 중"
             etaText.setTextColor(android.graphics.Color.parseColor("#FFD54F"))
-            etaText.textSize = 10f
+            etaText.textSize = 9f
             val (curLat, curLon) = resolveCurrentWgs84LatLon()
             if (curLat == null || curLon == null) {
                 etaText.text = ""
