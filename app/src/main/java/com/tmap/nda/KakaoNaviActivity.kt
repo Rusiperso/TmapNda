@@ -1148,6 +1148,46 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         renderRecentDestinationsPanel()
     }
 
+    // v12.3: MapActivity와 동일 - 등록된 칸을 길게 누르면 바로 재검색하지 않고
+    // "다시 검색 / 이름 변경 / 삭제 / 취소" 선택창을 먼저 보여줌. #문제시 원복
+    private fun showQuickSlotLongPressMenu(slot: String) {
+        val existing = QuickSlotStore.get(this, slot)
+        if (existing == null) {
+            pendingQuickSlotRegistration = slot
+            showInPlaceSearchDialog()
+            return
+        }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle(existing.name)
+            .setItems(arrayOf("다시 검색", "이름 변경", "삭제", "취소")) { _, which ->
+                when (which) {
+                    0 -> {
+                        pendingQuickSlotRegistration = slot
+                        showInPlaceSearchDialog()
+                    }
+                    1 -> {
+                        val input = android.widget.EditText(this).apply {
+                            setText(existing.name)
+                            setTextColor(android.graphics.Color.WHITE)
+                        }
+                        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                            .setTitle("이름 변경")
+                            .setView(input)
+                            .setPositiveButton("저장") { _, _ ->
+                                val newName = input.text.toString().trim()
+                                if (newName.isNotEmpty()) {
+                                    QuickSlotStore.save(this, slot, existing.copy(name = newName))
+                                }
+                            }
+                            .setNegativeButton("취소", null)
+                            .show()
+                    }
+                    2 -> QuickSlotStore.delete(this, slot)
+                }
+            }
+            .show()
+    }
+
     private fun wireTopBarQuickSlotButton(button: View?, slot: String) {
         button?.setOnClickListener {
             val existing = QuickSlotStore.get(this, slot)
@@ -1160,8 +1200,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
         }
         button?.setOnLongClickListener {
-            pendingQuickSlotRegistration = slot
-            showInPlaceSearchDialog()
+            showQuickSlotLongPressMenu(slot)
             true
         }
     }
@@ -1325,8 +1364,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 }
                 setOnLongClickListener {
                     dialog.dismiss()
-                    pendingQuickSlotRegistration = slot
-                    showInPlaceSearchDialog()
+                    showQuickSlotLongPressMenu(slot)
                     true
                 }
             }

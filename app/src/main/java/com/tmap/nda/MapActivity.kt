@@ -724,6 +724,47 @@ class MapActivity : AppCompatActivity() {
         wireTopBarQuickSlotButton(binding.btnWorkQuickSlot, QuickSlotStore.SLOT_WORK)
     }
 
+    // v12.3: 재억 요청 - 등록된 칸을 길게 누르면 예전처럼 바로 재검색하지 않고,
+    // "다시 검색 / 이름 변경 / 삭제 / 취소" 선택창을 먼저 보여줌. 등록 안 된 칸은
+    // 예전처럼 바로 검색창으로 감. 집/회사/즐겨찾기 전부 이 함수 하나로 공용 처리. #문제시 원복
+    private fun showQuickSlotLongPressMenu(slot: String) {
+        val existing = QuickSlotStore.get(this, slot)
+        if (existing == null) {
+            pendingQuickSlotRegistration = slot
+            showTmapTextSearchDialog()
+            return
+        }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle(existing.name)
+            .setItems(arrayOf("다시 검색", "이름 변경", "삭제", "취소")) { _, which ->
+                when (which) {
+                    0 -> {
+                        pendingQuickSlotRegistration = slot
+                        showTmapTextSearchDialog()
+                    }
+                    1 -> {
+                        val input = android.widget.EditText(this).apply {
+                            setText(existing.name)
+                            setTextColor(android.graphics.Color.WHITE)
+                        }
+                        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                            .setTitle("이름 변경")
+                            .setView(input)
+                            .setPositiveButton("저장") { _, _ ->
+                                val newName = input.text.toString().trim()
+                                if (newName.isNotEmpty()) {
+                                    QuickSlotStore.save(this, slot, existing.copy(name = newName))
+                                }
+                            }
+                            .setNegativeButton("취소", null)
+                            .show()
+                    }
+                    2 -> QuickSlotStore.delete(this, slot)
+                }
+            }
+            .show()
+    }
+
     private fun wireTopBarQuickSlotButton(button: View?, slot: String) {
         button?.setOnClickListener {
             val existing = QuickSlotStore.get(this, slot)
@@ -735,8 +776,7 @@ class MapActivity : AppCompatActivity() {
             }
         }
         button?.setOnLongClickListener {
-            pendingQuickSlotRegistration = slot
-            showTmapTextSearchDialog()
+            showQuickSlotLongPressMenu(slot)
             true
         }
     }
@@ -1004,8 +1044,7 @@ class MapActivity : AppCompatActivity() {
                 }
                 setOnLongClickListener {
                     dialog.dismiss()
-                    pendingQuickSlotRegistration = slot
-                    showTmapTextSearchDialog()
+                    showQuickSlotLongPressMenu(slot)
                     true
                 }
             }

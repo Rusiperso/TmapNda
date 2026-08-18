@@ -44,4 +44,9 @@ object QuickSlotStore {
         obj.put("lon", entry.lon)
         prefs(context).edit().putString(slot, obj.toString()).apply()
     }
+
+    // v12.3: 재억 요청 - 등록 해제(삭제) 기능. #문제시 원복
+    fun delete(context: Context, slot: String) {
+        prefs(context).edit().remove(slot).apply()
+    }
 }
