@@ -1395,7 +1395,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             if (entry == null) {
                 return@forEach
             }
-            etaText.text = "계산중"
+            etaText.text = "검색 중"
             etaText.setTextColor(android.graphics.Color.parseColor("#5B9BFF"))
             etaText.textSize = 11f
             val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
@@ -1790,17 +1790,43 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             val start = currentPage * pageSize
             val end = minOf(start + pageSize, hits.size)
             val pageHits = hits.subList(start, end)
-            // v11.1: MapActivity와 동일 - 검색 결과 각 항목 옆에 거리도 같이 보여줌(재억 요청). #문제시 원복
-            val labels = pageHits.map { h ->
+            // v11.1: MapActivity와 동일 - 검색 결과 각 항목 옆에 거리도 같이 보여줌(재억 요청).
+            // v12.7: MapActivity와 동일 - 거리 옆에 소요시간도 같이 표시(재억 요청).
+            // 지금 페이지에 보이는 것만 계산. #문제시 원복
+            fun buildLabel(h: HistoryEntry, etaText: String?): String {
                 val distanceText = SearchRanking.formatDistance(h.distanceMeters)
-                val nameWithDistance = if (distanceText != null) "${h.name} · $distanceText" else h.name
-                if (h.addr.isNotBlank()) "$nameWithDistance\n${h.addr}" else nameWithDistance
+                val distanceAndEta = listOfNotNull(distanceText, etaText).joinToString(" · ")
+                val nameWithExtra = if (distanceAndEta.isNotEmpty()) "${h.name} · $distanceAndEta" else h.name
+                return if (h.addr.isNotBlank()) "$nameWithExtra\n${h.addr}" else nameWithExtra
             }
-            listView.adapter = darkTextAdapter(labels)
+            val currentLabels = pageHits.map { buildLabel(it, "검색 중") }.toMutableList()
+            val adapter = darkTextAdapter(currentLabels)
+            listView.adapter = adapter
             listView.setOnItemClickListener { _, _, position, _ -> pickEntry(pageHits[position]) }
             pickDialog.setTitle("검색 결과 ${hits.size}건 (${start + 1}-$end) - 목적지를 선택하세요")
             pickDialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL)?.isEnabled = currentPage > 0
             pickDialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.isEnabled = currentPage < lastPage
+
+            val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
+            if (curLat != null && curLon != null) {
+                pageHits.forEachIndexed { index, h ->
+                    KakaoSdkState.computeEta(this@KakaoNaviActivity, curLat, curLon, h.lat, h.lon) { minutes, _ ->
+                        runOnUiThread {
+                            currentLabels[index] = buildLabel(h, SearchRanking.formatEtaMinutes(minutes))
+                            adapter.clear()
+                            adapter.addAll(currentLabels)
+                            adapter.notifyDataSetChanged()
+                        }
+                    }
+                }
+            } else {
+                pageHits.forEachIndexed { index, h ->
+                    currentLabels[index] = buildLabel(h, null)
+                }
+                adapter.clear()
+                adapter.addAll(currentLabels)
+                adapter.notifyDataSetChanged()
+            }
         }
 
         pickDialog.show()

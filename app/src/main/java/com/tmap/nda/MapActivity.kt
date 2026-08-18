@@ -1076,7 +1076,7 @@ class MapActivity : AppCompatActivity() {
             if (entry == null) {
                 return@forEach
             }
-            etaText.text = "계산중"
+            etaText.text = "검색 중"
             etaText.setTextColor(android.graphics.Color.parseColor("#5B9BFF"))
             etaText.textSize = 11f
             val (curLat, curLon) = resolveCurrentWgs84LatLon()
@@ -1826,16 +1826,43 @@ class MapActivity : AppCompatActivity() {
             // v11.1: 검색 결과 각 항목 옆에 거리도 같이 보여줌(재억 요청). 이름 뒤에 붙여서
             // "스타벅스 평택송탄점 · 850m" 처럼 표시. 거리 정보가 없으면(주소검색 결과 등)
             // 이름만 그대로 표시. #문제시 원복
-            val labels = pageHits.map { h ->
+            // v12.7: 재억 요청 - 거리 옆에 소요시간도 같이("850m · 12분"). 지금 페이지에
+            // 보이는 것만(최대 10개) 계산해서 부담을 줄이고, 페이지 넘기면 그 페이지 것만
+            // 새로 계산함. 계산 중엔 "검색 중"으로 표시. #문제시 원복
+            fun buildLabel(h: HistoryEntry, etaText: String?): String {
                 val distanceText = SearchRanking.formatDistance(h.distanceMeters)
-                val nameWithDistance = if (distanceText != null) "${h.name} · $distanceText" else h.name
-                if (h.addr.isNotBlank()) "$nameWithDistance\n${h.addr}" else nameWithDistance
+                val distanceAndEta = listOfNotNull(distanceText, etaText).joinToString(" · ")
+                val nameWithExtra = if (distanceAndEta.isNotEmpty()) "${h.name} · $distanceAndEta" else h.name
+                return if (h.addr.isNotBlank()) "$nameWithExtra\n${h.addr}" else nameWithExtra
             }
-            listView.adapter = darkTextAdapter(labels)
+            val currentLabels = pageHits.map { buildLabel(it, "검색 중") }.toMutableList()
+            val adapter = darkTextAdapter(currentLabels)
+            listView.adapter = adapter
             listView.setOnItemClickListener { _, _, position, _ -> pickEntry(pageHits[position]) }
             dialog.setTitle("검색 결과 ${hits.size}건 (${start + 1}-$end)")
             dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL)?.isEnabled = currentPage > 0
             dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.isEnabled = currentPage < lastPage
+
+            val (curLat, curLon) = resolveCurrentWgs84LatLon()
+            if (curLat != null && curLon != null) {
+                pageHits.forEachIndexed { index, h ->
+                    KakaoSdkState.computeEta(this@MapActivity, curLat, curLon, h.lat, h.lon) { minutes, _ ->
+                        runOnUiThread {
+                            currentLabels[index] = buildLabel(h, SearchRanking.formatEtaMinutes(minutes))
+                            adapter.clear()
+                            adapter.addAll(currentLabels)
+                            adapter.notifyDataSetChanged()
+                        }
+                    }
+                }
+            } else {
+                pageHits.forEachIndexed { index, h ->
+                    currentLabels[index] = buildLabel(h, null)
+                }
+                adapter.clear()
+                adapter.addAll(currentLabels)
+                adapter.notifyDataSetChanged()
+            }
         }
 
         dialog.show()
