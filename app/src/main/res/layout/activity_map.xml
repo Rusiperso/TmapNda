@@ -394,7 +394,7 @@
                 android:layout_width="36dp"
                 android:layout_height="36dp"
                 android:layout_marginEnd="6dp"
-                android:src="@android:drawable/ic_menu_recent_history"
+                android:src="@drawable/ic_history_topbar"
                 android:background="@drawable/shape_circle_gray"
                 android:scaleType="center"/>
 
