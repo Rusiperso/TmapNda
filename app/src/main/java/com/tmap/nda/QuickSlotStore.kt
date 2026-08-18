@@ -15,8 +15,9 @@ object QuickSlotStore {
     const val SLOT_FAV1 = "fav1"
     const val SLOT_FAV2 = "fav2"
     const val SLOT_FAV3 = "fav3"
+    const val SLOT_FAV4 = "fav4"
 
-    val ALL_SLOTS = listOf(SLOT_HOME, SLOT_WORK, SLOT_FAV1, SLOT_FAV2, SLOT_FAV3)
+    val ALL_SLOTS = listOf(SLOT_HOME, SLOT_WORK, SLOT_FAV1, SLOT_FAV2, SLOT_FAV3, SLOT_FAV4)
 
     private fun prefs(context: Context) =
         context.getSharedPreferences("TmapNdaQuickSlots", Context.MODE_PRIVATE)

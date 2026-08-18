@@ -1053,7 +1053,8 @@ class MapActivity : AppCompatActivity() {
         val quickSlotButtons = listOf(
             QuickSlotStore.SLOT_FAV1 to "\u2764\uFE0F",
             QuickSlotStore.SLOT_FAV2 to "\u2764\uFE0F",
-            QuickSlotStore.SLOT_FAV3 to "\u2764\uFE0F"
+            QuickSlotStore.SLOT_FAV3 to "\u2764\uFE0F",
+            QuickSlotStore.SLOT_FAV4 to "\u2764\uFE0F"
         ).map { (slot, emoji) -> slot to buildQuickSlotButton(slot, emoji) }
         // v11.9: 집/회사는 상단바 고정 버튼으로 빠져서 여기 팝업엔 즐겨찾기 3칸만 남음.
         // 카드 하나당 너비를 고정폭(52dp)으로 줄여서, 제목("검색 이력 전체")과 같은 줄
@@ -1061,7 +1062,7 @@ class MapActivity : AppCompatActivity() {
         val quickSlotRow = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             quickSlotButtons.forEach { (_, pair) ->
-                pair.first.layoutParams = android.widget.LinearLayout.LayoutParams(140, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                pair.first.layoutParams = android.widget.LinearLayout.LayoutParams(115, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                     marginStart = 8
                 }
                 addView(pair.first)

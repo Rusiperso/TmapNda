@@ -1373,14 +1373,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val quickSlotButtons = listOf(
             QuickSlotStore.SLOT_FAV1 to "\u2764\uFE0F",
             QuickSlotStore.SLOT_FAV2 to "\u2764\uFE0F",
-            QuickSlotStore.SLOT_FAV3 to "\u2764\uFE0F"
+            QuickSlotStore.SLOT_FAV3 to "\u2764\uFE0F",
+            QuickSlotStore.SLOT_FAV4 to "\u2764\uFE0F"
         ).map { (slot, emoji) -> slot to buildQuickSlotButton(slot, emoji) }
         // v11.9: MapActivity와 동일 - 집/회사는 상단바로 빠져서 즐겨찾기 3칸만 남음,
         // 제목과 같은 줄 오른쪽에 고정폭으로 배치(재억 요청). #문제시 원복
         val quickSlotRow = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             quickSlotButtons.forEach { (_, pair) ->
-                pair.first.layoutParams = android.widget.LinearLayout.LayoutParams(140, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                pair.first.layoutParams = android.widget.LinearLayout.LayoutParams(115, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                     marginStart = 8
                 }
                 addView(pair.first)
