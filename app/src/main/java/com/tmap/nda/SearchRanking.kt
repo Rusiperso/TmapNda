@@ -77,4 +77,18 @@ object SearchRanking {
         val extraLength = normalizedName.length - normalizedQuery.length
         return Triple(nameTier, dtPreferred, extraLength)
     }
+
+    /**
+     * v11.1: 검색 결과 목록에 거리도 같이 보여줌(재억 요청). 1km 미만은 미터로,
+     * 1km 이상은 소수점 한 자리 킬로미터로 표시. 거리 정보가 없으면(위치를 못 구했거나
+     * 카카오가 안 줬을 때) null.
+     */
+    fun formatDistance(distanceMeters: Double?): String? {
+        if (distanceMeters == null || distanceMeters == Double.MAX_VALUE) return null
+        return if (distanceMeters < 1000) {
+            "${distanceMeters.toInt()}m"
+        } else {
+            String.format("%.1fkm", distanceMeters / 1000)
+        }
+    }
 }

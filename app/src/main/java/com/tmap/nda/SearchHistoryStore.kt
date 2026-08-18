@@ -11,7 +11,10 @@ import android.content.Context
  * 그대로("{"name":"서울역",...}") 찍히는 버그가 났음(사용자 제보). 두 Activity가 완전히
  * 같은 코드를 쓰도록 여기 하나로 합쳐서, 한쪽만 바뀌고 다른 쪽이 안 바뀌는 일을 방지. #문제시 원복
  */
-data class HistoryEntry(val name: String, val addr: String, val lat: Double, val lon: Double)
+// v11.1: 검색 결과 목록에 거리도 같이 보여주고 싶어함(재억 요청) - 검색 이력 저장/불러오기
+// 쪽은 그대로 쓰되, 화면에 표시할 때만 쓰는 값이라 기본값 null로 둬서 기존 저장 로직에는
+// 영향 없게 함. #문제시 원복
+data class HistoryEntry(val name: String, val addr: String, val lat: Double, val lon: Double, val distanceMeters: Double? = null)
 
 object SearchHistoryStore {
     private const val KEY = "search_history_json"

@@ -1328,7 +1328,8 @@ class MapActivity : AppCompatActivity() {
                             d.optString("place_name", "이름 없음"),
                             d.optString("road_address_name", d.optString("address_name", "")),
                             d.optDouble("y"),
-                            d.optDouble("x")
+                            d.optDouble("x"),
+                            d.optString("distance").toDoubleOrNull()
                         )
                     }
                     NavLogger.d(this@MapActivity, "카카오 종류검색 결과 ${hits.size}건: category=$categoryCode")
@@ -1478,7 +1479,8 @@ class MapActivity : AppCompatActivity() {
                                 placeName,
                                 d.optString("road_address_name", d.optString("address_name", "")),
                                 d.optDouble("y"),
-                                d.optDouble("x")
+                                d.optDouble("x"),
+                                d.optString("distance").toDoubleOrNull()
                             ),
                             SearchRanking.rankKey(query, placeName),
                             distance
@@ -1558,7 +1560,14 @@ class MapActivity : AppCompatActivity() {
         // v2.1: 카카오 화면과 동일하게 결과 목록을 인라인 대신 팝업 다이얼로그로
         // 표시 - 인라인 리스트가 지도 화면을 가리던 문제(1·6번) 해결. #문제시 원복
         val listView = android.widget.ListView(this@MapActivity)
-        val labels = hits.map { h -> if (h.addr.isNotBlank()) "${h.name}\n${h.addr}" else h.name }
+        // v11.1: 검색 결과 각 항목 옆에 거리도 같이 보여줌(재억 요청). 이름 뒤에 붙여서
+        // "스타벅스 평택송탄점 · 850m" 처럼 표시. 거리 정보가 없으면(주소검색 결과 등)
+        // 이름만 그대로 표시. #문제시 원복
+        val labels = hits.map { h ->
+            val distanceText = SearchRanking.formatDistance(h.distanceMeters)
+            val nameWithDistance = if (distanceText != null) "${h.name} · $distanceText" else h.name
+            if (h.addr.isNotBlank()) "$nameWithDistance\n${h.addr}" else nameWithDistance
+        }
         listView.adapter = darkTextAdapter(labels)
         listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))

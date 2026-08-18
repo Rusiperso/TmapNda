@@ -1451,7 +1451,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                                 placeName,
                                 d.optString("road_address_name", d.optString("address_name", "")),
                                 d.optDouble("y"),
-                                d.optDouble("x")
+                                d.optDouble("x"),
+                                d.optString("distance").toDoubleOrNull()
                             ),
                             SearchRanking.rankKey(query, placeName),
                             distance
@@ -1507,7 +1508,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                             d.optString("place_name", "이름 없음"),
                             d.optString("road_address_name", d.optString("address_name", "")),
                             d.optDouble("y"),
-                            d.optDouble("x")
+                            d.optDouble("x"),
+                            d.optString("distance").toDoubleOrNull()
                         )
                     }
                     NavLogger.d(this@KakaoNaviActivity, "카카오 종류검색 결과 ${hits.size}건: category=$categoryCode")
@@ -1565,7 +1567,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     }
 
     private fun showInPlaceSearchResultsDialog(hits: List<HistoryEntry>) {
-        val labels = hits.map { h -> if (h.addr.isNotBlank()) "${h.name}\n${h.addr}" else h.name }
+        // v11.1: MapActivity와 동일 - 검색 결과 각 항목 옆에 거리도 같이 보여줌(재억 요청). #문제시 원복
+        val labels = hits.map { h ->
+            val distanceText = SearchRanking.formatDistance(h.distanceMeters)
+            val nameWithDistance = if (distanceText != null) "${h.name} · $distanceText" else h.name
+            if (h.addr.isNotBlank()) "$nameWithDistance\n${h.addr}" else nameWithDistance
+        }
         val listView = android.widget.ListView(this@KakaoNaviActivity)
         listView.adapter = darkTextAdapter(labels)
         listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
