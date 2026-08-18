@@ -388,7 +388,22 @@ object KakaoSdkState {
                                 NavLogger.e(context, "[소요시간계산] guessTime이 0이고 summary도 못 찾음(route=${firstRoute.javaClass.name})")
                             }
                         } else {
-                            NavLogger.e(context, "[소요시간계산] guessTime이 0이고 routes도 못 찾음")
+                            // v11.8: guessTime/routes 둘 다 비어있다는 건 makeTripWithStart가
+                            // 돌려주는 trip이 "출발지/도착지만 담긴 빈 그릇"이고, 실제 경로
+                            // 계산은 trip.routeWithPriority(...)를 따로 불러야 시작되는 구조로
+                            // 보임(재억 지적으로 재확인). 근데 이 함수가 콜백을 어떤 모양으로
+                            // 받는지 문서가 없어서, 무작정 추측해서 호출하면 크래시 위험이 있음
+                            // - 이번엔 그 함수의 정확한 파라미터 개수/타입만 안전하게(호출은
+                            // 안 하고) 로그로 찍어서, 다음 버전에서 정확히 맞춰 부를 수 있게 함. #문제시 원복
+                            val routeMethods = trip.javaClass.methods.filter { it.name.startsWith("routeWithPriority") }
+                            if (routeMethods.isEmpty()) {
+                                NavLogger.e(context, "[소요시간계산] guessTime이 0이고 routes도 못 찾음, routeWithPriority 함수도 없음")
+                            } else {
+                                routeMethods.forEach { m ->
+                                    val paramTypes = m.parameterTypes.joinToString(", ") { it.name }
+                                    NavLogger.e(context, "[소요시간계산] guessTime이 0이고 routes도 못 찾음. routeWithPriority 후보: ${m.name}(${paramTypes})")
+                                }
+                            }
                         }
                     }
                     NavLogger.d(context, "[소요시간계산] 최종: durationSeconds=$durationSeconds distanceMeters=$distanceMeters")

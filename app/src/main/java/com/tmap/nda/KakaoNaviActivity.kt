@@ -63,17 +63,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private var locationManager: LocationManager? = null
     private val originalTopMargins = mutableMapOf<Int, Int>()
 
-    // v10.1: "전송된 로그가 삭제 안 되고 계속 쌓인다"(재억 요청) - MapActivity(Tmap 화면)와
-    // 동일하게, 로그 공유 화면(이메일 앱 등)에서 앱으로 돌아오면 그 시점을 "보냈다"로
-    // 간주하고 저장된 로그를 삭제. #문제시 원복
+    // v11.8: MapActivity와 동일 - ACTION_SEND는 진짜 보내졌는지 확인할 방법이 없어서
+    // 실제로 잘 보내졌어도 대부분 "취소됐다"는 문구가 뜨던 부작용이 있었음(재억 지적) -
+    // 성공/취소 문구 자체를 안 띄우기로 함. #문제시 원복
     private val shareLogLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == RESULT_OK) {
             NavLogger.deleteAllLogFiles(this)
-            Toast.makeText(this, "로그 전송 완료 - 저장된 로그를 삭제했어.", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, "로그 전송이 취소됐어 - 로그는 그대로 남아있어.", Toast.LENGTH_SHORT).show()
         }
     }
 
