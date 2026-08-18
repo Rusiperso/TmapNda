@@ -1032,7 +1032,7 @@ class MapActivity : AppCompatActivity() {
             val etaText = android.widget.TextView(this).apply {
                 textSize = 10f
                 gravity = android.view.Gravity.CENTER
-                setTextColor(android.graphics.Color.parseColor("#5B9BFF"))
+                setTextColor(android.graphics.Color.parseColor("#FFD54F"))
                 maxLines = 1
                 setSingleLine(true)
                 ellipsize = android.text.TextUtils.TruncateAt.END
@@ -1115,7 +1115,7 @@ class MapActivity : AppCompatActivity() {
                 return@forEach
             }
             etaText.text = "검색 중"
-            etaText.setTextColor(android.graphics.Color.parseColor("#5B9BFF"))
+            etaText.setTextColor(android.graphics.Color.parseColor("#FFD54F"))
             etaText.textSize = 10f
             val (curLat, curLon) = resolveCurrentWgs84LatLon()
             if (curLat == null || curLon == null) {
@@ -1241,7 +1241,7 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    // v12.9: 이름/거리 뒤에 "· N분"(소요시간) 부분만 파란색(#5B9BFF, 즐겨찾기 시간 색과
+    // v12.9: 이름/거리 뒤에 "· N분"(소요시간) 부분만 노란색(#FFD54F, 즐겨찾기 시간 색과
     // 통일)으로 강조. etaText가 없으면(계산 실패) 그냥 일반 텍스트. #문제시 원복
     private fun highlightEta(label: String, etaText: String?): CharSequence {
         if (etaText.isNullOrBlank()) return label
@@ -1250,7 +1250,7 @@ class MapActivity : AppCompatActivity() {
         if (start < 0) return label
         val spannable = android.text.SpannableString(label)
         spannable.setSpan(
-            android.text.style.ForegroundColorSpan(android.graphics.Color.parseColor("#5B9BFF")),
+            android.text.style.ForegroundColorSpan(android.graphics.Color.parseColor("#FFD54F")),
             start + 3, start + marker.length,
             android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
         )

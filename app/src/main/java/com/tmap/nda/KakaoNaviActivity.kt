@@ -1337,7 +1337,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             val etaText = android.widget.TextView(this).apply {
                 textSize = 10f
                 gravity = android.view.Gravity.CENTER
-                setTextColor(android.graphics.Color.parseColor("#5B9BFF"))
+                setTextColor(android.graphics.Color.parseColor("#FFD54F"))
                 maxLines = 1
                 setSingleLine(true)
                 ellipsize = android.text.TextUtils.TruncateAt.END
@@ -1419,7 +1419,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 return@forEach
             }
             etaText.text = "검색 중"
-            etaText.setTextColor(android.graphics.Color.parseColor("#5B9BFF"))
+            etaText.setTextColor(android.graphics.Color.parseColor("#FFD54F"))
             etaText.textSize = 10f
             val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
             if (curLat == null || curLon == null) {
@@ -1530,7 +1530,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         if (start < 0) return label
         val spannable = android.text.SpannableString(label)
         spannable.setSpan(
-            android.text.style.ForegroundColorSpan(android.graphics.Color.parseColor("#5B9BFF")),
+            android.text.style.ForegroundColorSpan(android.graphics.Color.parseColor("#FFD54F")),
             start + 3, start + marker.length,
             android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
         )
