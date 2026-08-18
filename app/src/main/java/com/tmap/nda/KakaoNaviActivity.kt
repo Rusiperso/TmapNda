@@ -1351,14 +1351,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
-    private fun performInPlaceSearch(query: String) {
+    private fun performInPlaceSearch(query: String, page: Int = 1, accumulatedDocuments: MutableList<JSONObject> = mutableListOf()) {
         val restKey = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             .getString("kakao_rest_api_key", "") ?: ""
         if (restKey.isBlank()) {
             Toast.makeText(this, "카카오 REST API 키가 없어 - 티맵 화면에서 검색을 한 번 먼저 설정해줘.", Toast.LENGTH_LONG).show()
             return
         }
-        Toast.makeText(this, "검색 중: $query", Toast.LENGTH_SHORT).show()
+        if (page == 1) {
+            Toast.makeText(this, "검색 중: $query", Toast.LENGTH_SHORT).show()
+        }
         // v9.5: 재억 요청 - MapActivity(Tmap화면)와 동일한 이유로 현재 위치 기준
         // 거리순 정렬 추가. 위치를 못 구하면 좌표 없이 기존처럼 검색. #문제시 원복
         // v9.9: radius=20000이 검색 "범위"까지 20km로 제한해버려서 먼 지역이
@@ -1367,13 +1369,24 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // 정작 검색한 이름의 장소가 목록 아래로 밀리는 문제(재억 지적) - sort=accuracy로
         // 바꾸고, 이름 일치+거리 기반 재정렬은 아래에서 처리.
         val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
+
+        // v10.9-4: MapActivity와 동일 - "편의점", "주유소"처럼 종류로 찾는 검색은 카카오
+        // 종류 전용 검색으로 대체(재억 요청). #문제시 원복
+        if (page == 1) {
+            val categoryCode = SearchRanking.categoryGroupCodeFor(query)
+            if (categoryCode != null && curLat != null && curLon != null) {
+                performInPlaceCategorySearch(categoryCode, restKey, curLat, curLon)
+                return
+            }
+        }
+
         val locationParams = if (curLat != null && curLon != null) {
             "&x=$curLon&y=$curLat"
         } else {
             ""
         }
         val url = "https://dapi.kakao.com/v2/local/search/keyword.json?query=" +
-            java.net.URLEncoder.encode(query, "UTF-8") + locationParams
+            java.net.URLEncoder.encode(query, "UTF-8") + locationParams + "&page=$page"
         val request = Request.Builder()
             .url(url)
             .header("Authorization", "KakaoAK $restKey")
@@ -1392,25 +1405,36 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     }
                     val json = JSONObject(it.body?.string() ?: "{}")
                     val documents = json.optJSONArray("documents")
-                    if (documents == null || documents.length() == 0) {
+                    if ((documents == null || documents.length() == 0) && accumulatedDocuments.isEmpty()) {
                         NavLogger.d(this@KakaoNaviActivity, "카카오 키워드검색 결과 없음, 주소검색으로 재시도: query=$query")
                         performAddressSearchFallback(query, restKey)
+                        return@use
+                    }
+
+                    // v10.9-4: MapActivity와 동일 - 카카오가 한 번에 최대 15건만 주는데,
+                    // 원하는 곳이 16번째 이후 순위면 후보에도 못 들어오던 문제(재억 지적) -
+                    // 더 있으면 최대 3쪽(45건)까지 자동으로 더 받아와서 합침. #문제시 원복
+                    if (documents != null) {
+                        for (i in 0 until documents.length()) {
+                            accumulatedDocuments.add(documents.getJSONObject(i))
+                        }
+                    }
+                    val meta = json.optJSONObject("meta")
+                    val isEnd = meta?.optBoolean("is_end", true) ?: true
+                    if (!isEnd && page < 3) {
+                        performInPlaceSearch(query, page + 1, accumulatedDocuments)
                         return@use
                     }
                     // v2.5: 이력은 검색 시도가 아니라 실제로 고른 결과에만 저장(아래 클릭 시). #문제시 원복
                     // v1.8: "성심당 검색하면 성심당 본점/대전역점/케익부띠끄/롯데백화점점 처럼
                     // 여러 지점이 나와야 하는데 documents[0]으로 바로 안내가 시작됨" 지적(3번) -
                     // 결과 목록을 다이얼로그로 보여주고 사용자가 직접 골라서 시작하도록 변경. #문제시 원복
-                    // v9.9-2: MapActivity와 동일 - 이름이 검색어와 정확히/거의 일치하는 결과를
-                    // 최상단으로, 그 안에서는 가까운 순, 나머지는 거리순으로 재정렬.
-                    val normalizedQuery = query.trim().replace(" ", "")
-                    val rawHits = (0 until documents.length()).map { idx ->
-                        val d = documents.getJSONObject(idx)
+                    // v10.9-4: MapActivity와 동일 - 정렬 규칙은 SearchRanking.kt로 모아서
+                    // 공통으로 씀(완전일치/부속시설류/순서만지키며포함/그외 4단계 + DT 우선).
+                    // #문제시 원복
+                    val rawHits = accumulatedDocuments.map { d ->
                         val placeName = d.optString("place_name", query)
                         val distance = d.optString("distance").toDoubleOrNull() ?: Double.MAX_VALUE
-                        val normalizedName = placeName.trim().replace(" ", "")
-                        val exactMatch = normalizedName == normalizedQuery ||
-                            normalizedName.startsWith(normalizedQuery)
                         Triple(
                             HistoryEntry(
                                 placeName,
@@ -1418,14 +1442,64 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                                 d.optDouble("y"),
                                 d.optDouble("x")
                             ),
-                            exactMatch,
+                            SearchRanking.rankKey(query, placeName),
                             distance
                         )
                     }
                     val hits = rawHits
-                        .sortedWith(compareBy({ !it.second }, { it.third }))
+                        .sortedWith(
+                            compareBy(
+                                { it.second.first },
+                                { it.second.second },
+                                { it.second.third },
+                                { it.third }
+                            )
+                        )
                         .map { it.first }
                     NavLogger.d(this@KakaoNaviActivity, "인라인 재검색 결과 ${hits.size}건: query=$query")
+                    runOnUiThread { showInPlaceSearchResultsDialog(hits) }
+                }
+            }
+        })
+    }
+
+    // v10.9-4: MapActivity와 동일 - 카카오 종류 전용 검색. 이미 sort=distance로 가까운
+    // 순 정렬돼서 오므로 재정렬 없이 그대로 보여줌. #문제시 원복
+    private fun performInPlaceCategorySearch(categoryCode: String, restKey: String, lat: Double, lon: Double) {
+        val url = "https://dapi.kakao.com/v2/local/search/category.json?category_group_code=$categoryCode" +
+            "&x=$lon&y=$lat&radius=20000&sort=distance"
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", "KakaoAK $restKey")
+            .build()
+        searchHttpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                NavLogger.e(this@KakaoNaviActivity, "카카오 종류검색 요청 실패: ${e.message}")
+                runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 실패: ${e.message}", Toast.LENGTH_SHORT).show() }
+            }
+
+            override fun onResponse(call: Call, response: okhttp3.Response) {
+                response.use {
+                    if (!it.isSuccessful) {
+                        runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 실패(${it.code})", Toast.LENGTH_SHORT).show() }
+                        return@use
+                    }
+                    val json = JSONObject(it.body?.string() ?: "{}")
+                    val documents = json.optJSONArray("documents")
+                    if (documents == null || documents.length() == 0) {
+                        runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 결과 없음", Toast.LENGTH_SHORT).show() }
+                        return@use
+                    }
+                    val hits = (0 until documents.length()).map { idx ->
+                        val d = documents.getJSONObject(idx)
+                        HistoryEntry(
+                            d.optString("place_name", "이름 없음"),
+                            d.optString("road_address_name", d.optString("address_name", "")),
+                            d.optDouble("y"),
+                            d.optDouble("x")
+                        )
+                    }
+                    NavLogger.d(this@KakaoNaviActivity, "카카오 종류검색 결과 ${hits.size}건: category=$categoryCode")
                     runOnUiThread { showInPlaceSearchResultsDialog(hits) }
                 }
             }
