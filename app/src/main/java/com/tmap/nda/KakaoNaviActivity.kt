@@ -1208,8 +1208,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 val entry = history[position]
                 val row = android.widget.LinearLayout(this@KakaoNaviActivity).apply {
                     orientation = android.widget.LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
                     setBackgroundColor(android.graphics.Color.parseColor("#181818"))
-                    setPadding(24, 24, 12, 24)
+                    setPadding(24, 20, 16, 20)
                 }
                 val nameText = android.widget.TextView(this@KakaoNaviActivity).apply {
                     text = if (entry.addr.isNotBlank()) "${entry.name}\n${entry.addr}" else entry.name
@@ -1218,10 +1219,20 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
                     )
                 }
+                // v10.9-5: MapActivity와 동일 - "✕" 작은 글자 대신 배경 있는 "삭제" 버튼으로
+                // 바꾸고 누르는 영역도 넓힘(재억 지적). #문제시 원복
                 val deleteText = android.widget.TextView(this@KakaoNaviActivity).apply {
-                    text = "✕"
-                    setTextColor(android.graphics.Color.parseColor("#AAAAAA"))
-                    setPadding(24, 0, 24, 0)
+                    text = "삭제"
+                    textSize = 14f
+                    setTextColor(android.graphics.Color.parseColor("#F0A0A0"))
+                    setBackgroundColor(android.graphics.Color.parseColor("#3A2323"))
+                    setPadding(36, 20, 36, 20)
+                    val marginParams = android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    marginParams.marginStart = 16
+                    layoutParams = marginParams
                     setOnClickListener {
                         SearchHistoryStore.delete(this@KakaoNaviActivity, entry)
                         renderRecentDestinationsPanel()
