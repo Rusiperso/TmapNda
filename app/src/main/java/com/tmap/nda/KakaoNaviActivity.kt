@@ -350,7 +350,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // attachExitHook(naviView)
         val delegate = KakaoGuidanceDelegate(
             this,
-            onGuideEnded = { finishGuidance(arrivedNaturally = true) },
+            onGuideEnded = { finishGuidance() },
             onGuideStarted = {},
             isRouteGuideActive = { !kakaoMuted }
         ).also { kakaoGuidanceDelegate = it }
@@ -510,7 +510,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 }
                 NavLogger.d(this, "카카오 경로요청 성공, 안내 시작: $destName")
                 // v12.9: 안내 이어가기 - 안내가 실제로 시작되는 이 시점에 목적지를 저장.
-                // 정상 도착하면 finishGuidance(arrivedNaturally=true)에서 지워짐. #문제시 원복
+                // 정상 도착 또는 안내종료 버튼 - 어느 쪽이든 finishGuidance()에서 지워짐. #문제시 원복
                 ResumeGuidanceStore.save(this, HistoryEntry(destName, "", destLat, destLon))
                 // naviView는 setupContentAndStart()에서 이미 initWithGuidance(trip=null)로
                 // 초기화돼있는 상태(idle map) - 여기서 또 initWithGuidance()를 부르면 안 되고
@@ -1926,10 +1926,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // v12.9: 안내 이어가기 - 정상 도착(SDK가 스스로 안내종료를 알려줄 때)일 때만
     // 저장된 이어가기 목적지를 지움. 사용자가 "안내종료" 버튼으로 중간에 끈 경우는
     // 계속 남겨둬서 다음에 앱 열 때 "이어서 안내할까요?" 물어볼 수 있게 함(재억 요청). #문제시 원복
-    private fun finishGuidance(arrivedNaturally: Boolean = false) {
-        if (arrivedNaturally) {
-            ResumeGuidanceStore.clear(this)
-        }
+    // v12.9-2: 재억 지적 - "안내종료" 버튼으로 끈 것도 명백히 "그만 가겠다"는 의사라서,
+    // 정상 도착이든 수동 종료든 상관없이 finishGuidance()가 불리는 모든 경우에 이어가기
+    // 저장값을 지움. 앱이 강제종료/업데이트로 finishGuidance()를 거치지 않고 죽는
+    // 경우에만 저장값이 남아서 다음에 "이어서 안내할까요?"가 뜸(이게 진짜 의도한
+    // 시나리오). #문제시 원복
+    private fun finishGuidance() {
+        ResumeGuidanceStore.clear(this)
         KakaoRouteDataRepository.reset()
         cancelNavNotification()
         try {
