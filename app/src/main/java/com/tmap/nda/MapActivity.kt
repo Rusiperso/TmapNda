@@ -662,12 +662,10 @@ class MapActivity : AppCompatActivity() {
             showTmapTextSearchDialog()
             true
         }
-        binding.etDestination?.setOnFocusChangeListener { _, hasFocus ->
-            // v3.13: 검색창 탭했을 때도 삭제 기능(개별 ✕ / 전체 삭제) 있는 dialog로
-            // 통일 - 예전엔 삭제 기능 없는 showSearchHistory()를 불러서, 아이콘으로
-            // 열 때(삭제 됨)와 검색창 탭으로 열 때(삭제 안 됨)가 서로 달랐음. #문제시 원복
-            if (hasFocus) showFullSearchHistoryDialog()
-        }
+        // v11.2: 검색창을 직접 눌러서 타이핑하려고 할 때도 이력 팝업이 키보드랑 같이 떠서
+        // 헷갈리던 문제(재억 지적) - v3.13 때 "검색창 탭 = 이력 다이얼로그"로 통일했던 걸
+        // 되돌림. 이제 검색창을 직접 누르면 키보드만 뜨고, 이력은 "최근검색" 아이콘을
+        // 눌렀을 때만 뜬다(아래 btnVoiceSearch). #문제시 원복
         // 텍스트로 직접 치고 싶을 때를 위해 입력창을 길게 누르면 키보드 포커스로 전환.
         binding.etDestination?.setOnLongClickListener {
             binding.etDestination?.requestFocus()
