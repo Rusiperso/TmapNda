@@ -340,29 +340,58 @@ object KakaoSdkState {
                     return@makeTripWithStart
                 }
                 try {
-                    // v11.6: 실제 로그로 확인한 정확한 원인 - getRoutes()는 코틀린 internal
-                    // 함수라 실제 이름 뒤에 "$app_knsdk_publicKnsdk_uiRelease" 꼬리표가 붙어서
-                    // (예: getRoutes$app_knsdk_publicKnsdk_uiRelease) 정확히 일치하는 이름만
-                    // 찾던 기존 코드가 못 찾았음. 근데 trip 안에 훨씬 간단한 remainTime(남은
-                    // 시간, 초)/remainDist(남은 거리, m) 함수가 이미 바로 있어서, 그걸로
-                    // 대체함 - routes/summary까지 파고들 필요가 아예 없었음. #문제시 원복
-                    val remainTimeMethod = trip.javaClass.methods.firstOrNull {
-                        it.name == "remainTime" && it.parameterCount == 0
+                    // v11.7: 로그로 다시 확인한 원인 - remainTime/remainDist는 "이미 안내를
+                    // 시작한 상태에서 운전하며 실시간으로 남은 시간/거리"를 추적하는 값이라,
+                    // 안내를 시작 안 하고 계산만 한 이 흐름에서는 계속 0으로 남아있었음
+                    // (로그: remainTime(raw)=0 remainDist(raw)=0). trip 함수 목록에 있던
+                    // getGuessTime/getGuessDist(예상 시간/거리)로 교체 - 이름 그대로 안내
+                    // 시작 전 미리 계산되는 예상치일 가능성이 높음. 이것도 internal
+                    // 함수라 실제 이름 뒤에 꼬리표가 붙어있을 수 있어서 startsWith로 찾음.
+                    // 혹시 이것도 0이면(예상 밖 케이스 대비), routes 안의 개별 경로 요약값도
+                    // 같이 시도해서 둘 중 값이 있는 쪽을 씀. #문제시 원복
+                    val guessTimeMethod = trip.javaClass.methods.firstOrNull {
+                        (it.name == "guessTime" || it.name.startsWith("getGuessTime")) && it.parameterCount == 0
                     }
-                    val remainDistMethod = trip.javaClass.methods.firstOrNull {
-                        it.name == "remainDist" && it.parameterCount == 0
+                    val guessDistMethod = trip.javaClass.methods.firstOrNull {
+                        (it.name == "guessDist" || it.name.startsWith("getGuessDist")) && it.parameterCount == 0
                     }
-                    if (remainTimeMethod == null) {
-                        val allMethods = trip.javaClass.methods.joinToString(", ") { it.name }
-                        NavLogger.e(context, "[소요시간계산] trip(${trip.javaClass.name})에서 remainTime 함수 못 찾음. 가진 함수들: $allMethods")
-                        callback(null, null)
-                        return@makeTripWithStart
+                    var durationSeconds = (guessTimeMethod?.invoke(trip) as? Number)?.toInt()
+                    var distanceMeters = (guessDistMethod?.invoke(trip) as? Number)?.toInt()
+                    NavLogger.d(context, "[소요시간계산] guessTime(raw)=${guessTimeMethod?.invoke(trip)} guessDist(raw)=${guessDistMethod?.invoke(trip)}")
+
+                    if (durationSeconds == null || durationSeconds == 0) {
+                        val routesMethod = trip.javaClass.methods.firstOrNull {
+                            it.name.startsWith("getRoutes") && it.parameterCount == 0
+                        }
+                        val routes = routesMethod?.invoke(trip) as? List<*>
+                        val firstRoute = routes?.firstOrNull()
+                        if (firstRoute != null) {
+                            val summaryMethod = firstRoute.javaClass.methods.firstOrNull {
+                                it.name.startsWith("getSummary") && it.parameterCount == 0
+                            }
+                            val summary = summaryMethod?.invoke(firstRoute)
+                            if (summary != null) {
+                                val durationMethod = summary.javaClass.methods.firstOrNull {
+                                    (it.name.startsWith("getDuration") || it.name.startsWith("getTime")) && it.parameterCount == 0
+                                }
+                                val distanceMethod = summary.javaClass.methods.firstOrNull {
+                                    (it.name.startsWith("getDistance") || it.name.startsWith("getDist")) && it.parameterCount == 0
+                                }
+                                val fallbackDuration = (durationMethod?.invoke(summary) as? Number)?.toInt()
+                                val fallbackDistance = (distanceMethod?.invoke(summary) as? Number)?.toInt()
+                                NavLogger.d(context, "[소요시간계산] guessTime이 0이라 routes/summary(${summary.javaClass.name}) 보조 시도: duration=$fallbackDuration distance=$fallbackDistance, summary가진함수들=${summary.javaClass.methods.joinToString(", ") { it.name }}")
+                                if (fallbackDuration != null && fallbackDuration > 0) {
+                                    durationSeconds = fallbackDuration
+                                    distanceMeters = fallbackDistance
+                                }
+                            } else {
+                                NavLogger.e(context, "[소요시간계산] guessTime이 0이고 summary도 못 찾음(route=${firstRoute.javaClass.name})")
+                            }
+                        } else {
+                            NavLogger.e(context, "[소요시간계산] guessTime이 0이고 routes도 못 찾음")
+                        }
                     }
-                    val durationSecondsRaw = remainTimeMethod.invoke(trip)
-                    val distanceMetersRaw = remainDistMethod?.invoke(trip)
-                    val durationSeconds = (durationSecondsRaw as? Number)?.toInt()
-                    val distanceMeters = (distanceMetersRaw as? Number)?.toInt()
-                    NavLogger.d(context, "[소요시간계산] 성공: remainTime(raw)=$durationSecondsRaw remainDist(raw)=$distanceMetersRaw")
+                    NavLogger.d(context, "[소요시간계산] 최종: durationSeconds=$durationSeconds distanceMeters=$distanceMeters")
                     callback(durationSeconds?.let { (it + 30) / 60 }, distanceMeters)
                 } catch (e: Exception) {
                     NavLogger.e(context, "[소요시간계산] 필드 읽기 예외: ${e.message}")
