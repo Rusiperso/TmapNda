@@ -1845,50 +1845,6 @@ class MapActivity : AppCompatActivity() {
             .setPositiveButton("다음", null)
             .create()
 
-        fun pickEntry(picked: HistoryEntry) {
-            didPickEntry = true
-            dialog.dismiss()
-            // v11.3: 집/회사/즐겨찾기 칸 등록을 위해 검색을 연 거였으면, 저장만 하고
-            // 안내는 시작하지 않음(재억 지적 - 등록할 땐 안내까지 필요 없음). #문제시 원복
-            val registeringSlot = pendingQuickSlotRegistration
-            if (registeringSlot != null) {
-                QuickSlotStore.save(this@MapActivity, registeringSlot, picked)
-                pendingQuickSlotRegistration = null
-                Toast.makeText(this@MapActivity, "'${picked.name}' 등록 완료", Toast.LENGTH_SHORT).show()
-                binding.etDestination?.apply {
-                    isFocusable = false
-                    isFocusableInTouchMode = false
-                    clearFocus()
-                    isFocusable = true
-                    isFocusableInTouchMode = true
-                    setText("")
-                }
-                return
-            }
-            binding.tvSearchStatus?.text = "찾음: ${picked.name} (${picked.lat}, ${picked.lon}) - 경로요청 시도"
-            // v10.9: 목적지를 고른 뒤에도 검색창에 입력했던 글자가 그대로 남아있던 문제
-            // (재억 지적) - 카카오 화면(showInPlaceSearchResultsDialog)은 이미 고른 순간
-            // 입력창을 비우고 있었는데, 이 화면만 그 정리 코드가 빠져있었음. 동일하게
-            // 포커스 정리 후 비움. #문제시 원복
-            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
-            currentFocus?.let { imm?.hideSoftInputFromWindow(it.windowToken, 0) }
-            binding.etDestination?.apply {
-                isFocusable = false
-                isFocusableInTouchMode = false
-                clearFocus()
-                isFocusable = true
-                isFocusableInTouchMode = true
-                setText("")
-            }
-            saveSearchHistory(picked)
-            showRoutePriorityDialog(picked)
-        }
-
-        // v13.1-2: 재억 요청 - 검색해서 목적지를 고른 뒤, 바로 안내 시작하지 않고
-        // "추천 경로 / 고속도로 우선 / 무료도로 우선" 중 골라서 안내를 시작하도록 함.
-        // 각각 실제 소요시간을 미리 계산해서 같이 보여줌(계산 중엔 "검색 중").
-        // KNRoutePriority_HighWay(고속도로 우선), KNRouteAvoidOption_Fare(톨게이트/유료
-        // 도로 피하기 = 무료도로 우선)는 로그로 확인된 실제 SDK 값. #문제시 원복
         fun showRoutePriorityDialog(picked: HistoryEntry) {
             val optionLabels = listOf("추천 경로", "고속도로 우선", "무료도로 우선")
             val optionPriorities = listOf(
@@ -1934,6 +1890,50 @@ class MapActivity : AppCompatActivity() {
             }
         }
 
+        fun pickEntry(picked: HistoryEntry) {
+            didPickEntry = true
+            dialog.dismiss()
+            // v11.3: 집/회사/즐겨찾기 칸 등록을 위해 검색을 연 거였으면, 저장만 하고
+            // 안내는 시작하지 않음(재억 지적 - 등록할 땐 안내까지 필요 없음). #문제시 원복
+            val registeringSlot = pendingQuickSlotRegistration
+            if (registeringSlot != null) {
+                QuickSlotStore.save(this@MapActivity, registeringSlot, picked)
+                pendingQuickSlotRegistration = null
+                Toast.makeText(this@MapActivity, "'${picked.name}' 등록 완료", Toast.LENGTH_SHORT).show()
+                binding.etDestination?.apply {
+                    isFocusable = false
+                    isFocusableInTouchMode = false
+                    clearFocus()
+                    isFocusable = true
+                    isFocusableInTouchMode = true
+                    setText("")
+                }
+                return
+            }
+            binding.tvSearchStatus?.text = "찾음: ${picked.name} (${picked.lat}, ${picked.lon}) - 경로요청 시도"
+            // v10.9: 목적지를 고른 뒤에도 검색창에 입력했던 글자가 그대로 남아있던 문제
+            // (재억 지적) - 카카오 화면(showInPlaceSearchResultsDialog)은 이미 고른 순간
+            // 입력창을 비우고 있었는데, 이 화면만 그 정리 코드가 빠져있었음. 동일하게
+            // 포커스 정리 후 비움. #문제시 원복
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+            currentFocus?.let { imm?.hideSoftInputFromWindow(it.windowToken, 0) }
+            binding.etDestination?.apply {
+                isFocusable = false
+                isFocusableInTouchMode = false
+                clearFocus()
+                isFocusable = true
+                isFocusableInTouchMode = true
+                setText("")
+            }
+            saveSearchHistory(picked)
+            showRoutePriorityDialog(picked)
+        }
+
+        // v13.1-2: 재억 요청 - 검색해서 목적지를 고른 뒤, 바로 안내 시작하지 않고
+        // "추천 경로 / 고속도로 우선 / 무료도로 우선" 중 골라서 안내를 시작하도록 함.
+        // 각각 실제 소요시간을 미리 계산해서 같이 보여줌(계산 중엔 "검색 중").
+        // KNRoutePriority_HighWay(고속도로 우선), KNRouteAvoidOption_Fare(톨게이트/유료
+        // 도로 피하기 = 무료도로 우선)는 로그로 확인된 실제 SDK 값. #문제시 원복
         fun renderPage() {
             val start = currentPage * pageSize
             val end = minOf(start + pageSize, hits.size)
