@@ -793,11 +793,18 @@ class MapActivity : AppCompatActivity() {
         button?.setOnClickListener {
             val existing = QuickSlotStore.get(this, slot)
             if (existing != null) {
-                // v13.2-3: 재억 요청 - 저장된 이동 방식으로 팝업 없이 바로 안내 시작. #문제시 원복
-                startKakaoOverlayGuidance(
-                    existing.name, existing.lat, existing.lon,
-                    existing.routePriorityName, existing.routeAvoidOption
-                )
+                // v13.3-2: 재억 지적 - "저장된 이동 방식으로 바로 안내"는 이동 방식을
+                // 한 번이라도 골라서 저장해둔 경우에만 해당함. 아직 한 번도 안 골랐으면
+                // (routePriorityName == null) 등록 직후 상태라, 이때는 매번 물어봐야 함.
+                // #문제시 원복
+                if (existing.routePriorityName == null) {
+                    showRoutePriorityDialog(existing, saveToSlot = slot)
+                } else {
+                    startKakaoOverlayGuidance(
+                        existing.name, existing.lat, existing.lon,
+                        existing.routePriorityName, existing.routeAvoidOption
+                    )
+                }
             } else {
                 pendingQuickSlotRegistration = slot
                 showTmapTextSearchDialog()
@@ -1086,11 +1093,17 @@ class MapActivity : AppCompatActivity() {
                     val existing = QuickSlotStore.get(this@MapActivity, slot)
                     dialog.dismiss()
                     if (existing != null) {
-                        // v13.2-3: 재억 요청 - 저장된 이동 방식으로 팝업 없이 바로 안내 시작. #문제시 원복
-                        startKakaoOverlayGuidance(
-                            existing.name, existing.lat, existing.lon,
-                            existing.routePriorityName, existing.routeAvoidOption
-                        )
+                        // v13.3-2: MapActivity의 wireTopBarQuickSlotButton과 동일 - 이동 방식을
+                        // 아직 안 골랐으면(routePriorityName == null) 물어보고, 골라둔 게
+                        // 있으면 그걸로 바로. #문제시 원복
+                        if (existing.routePriorityName == null) {
+                            showRoutePriorityDialog(existing, saveToSlot = slot)
+                        } else {
+                            startKakaoOverlayGuidance(
+                                existing.name, existing.lat, existing.lon,
+                                existing.routePriorityName, existing.routeAvoidOption
+                            )
+                        }
                     } else {
                         pendingQuickSlotRegistration = slot
                         showTmapTextSearchDialog()

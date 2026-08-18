@@ -1248,15 +1248,20 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         button?.setOnClickListener {
             val existing = QuickSlotStore.get(this, slot)
             if (existing != null) {
-                // v13.2-3: 재억 요청 - 저장된 이동 방식으로 팝업 없이 바로 안내 시작. #문제시 원복
-                activeRoutePriority = try {
-                    if (existing.routePriorityName != null) KNRoutePriority.valueOf(existing.routePriorityName) else KNRoutePriority.KNRoutePriority_Recommand
-                } catch (e: Exception) {
-                    KNRoutePriority.KNRoutePriority_Recommand
+                // v13.3-2: 재억 지적 - 이동 방식을 아직 안 골랐으면(routePriorityName == null)
+                // 물어보고, 골라둔 게 있으면 그걸로 바로. #문제시 원복
+                if (existing.routePriorityName == null) {
+                    showRoutePriorityDialog(existing, saveToSlot = slot)
+                } else {
+                    activeRoutePriority = try {
+                        KNRoutePriority.valueOf(existing.routePriorityName)
+                    } catch (e: Exception) {
+                        KNRoutePriority.KNRoutePriority_Recommand
+                    }
+                    activeRouteAvoidOption = existing.routeAvoidOption
+                    KakaoRouteDataRepository.reset()
+                    resolveCurrentPositionThenRequestRoute(existing.name, existing.lat, existing.lon, finishOnFailure = false)
                 }
-                activeRouteAvoidOption = existing.routeAvoidOption
-                KakaoRouteDataRepository.reset()
-                resolveCurrentPositionThenRequestRoute(existing.name, existing.lat, existing.lon, finishOnFailure = false)
             } else {
                 pendingQuickSlotRegistration = slot
                 showInPlaceSearchDialog()
@@ -1437,15 +1442,20 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     val existing = QuickSlotStore.get(this@KakaoNaviActivity, slot)
                     dialog.dismiss()
                     if (existing != null) {
-                        // v13.2-3: 재억 요청 - 저장된 이동 방식으로 팝업 없이 바로 안내 시작. #문제시 원복
-                        activeRoutePriority = try {
-                            if (existing.routePriorityName != null) KNRoutePriority.valueOf(existing.routePriorityName) else KNRoutePriority.KNRoutePriority_Recommand
-                        } catch (e: Exception) {
-                            KNRoutePriority.KNRoutePriority_Recommand
+                        // v13.3-2: wireTopBarQuickSlotButton과 동일 - 이동 방식을 아직 안
+                        // 골랐으면 물어보고, 골라둔 게 있으면 그걸로 바로. #문제시 원복
+                        if (existing.routePriorityName == null) {
+                            showRoutePriorityDialog(existing, saveToSlot = slot)
+                        } else {
+                            activeRoutePriority = try {
+                                KNRoutePriority.valueOf(existing.routePriorityName)
+                            } catch (e: Exception) {
+                                KNRoutePriority.KNRoutePriority_Recommand
+                            }
+                            activeRouteAvoidOption = existing.routeAvoidOption
+                            KakaoRouteDataRepository.reset()
+                            resolveCurrentPositionThenRequestRoute(existing.name, existing.lat, existing.lon, finishOnFailure = false)
                         }
-                        activeRouteAvoidOption = existing.routeAvoidOption
-                        KakaoRouteDataRepository.reset()
-                        resolveCurrentPositionThenRequestRoute(existing.name, existing.lat, existing.lon, finishOnFailure = false)
                     } else {
                         pendingQuickSlotRegistration = slot
                         showInPlaceSearchDialog()
