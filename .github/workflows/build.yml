@@ -33,11 +33,21 @@ jobs:
       - name: Use RELEASE_NOTES.md as-is
         run: cat RELEASE_NOTES.md
 
+      - name: Extract this version's release notes only
+        run: |
+          VERSION=$(grep 'versionName' app/build.gradle.kts | grep -oP '"\K[^"]*')
+          awk -v ver="## v$VERSION" '
+            $0==ver {flag=1; print; next}
+            /^## v/ && flag {exit}
+            flag {print}
+          ' RELEASE_NOTES.md > THIS_VERSION_RELEASE_NOTES.md
+          cat THIS_VERSION_RELEASE_NOTES.md
+
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
           files: app/build/outputs/apk/debug/TmapNda-*.apk
-          body_path: RELEASE_NOTES.md
+          body_path: THIS_VERSION_RELEASE_NOTES.md
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
