@@ -1446,7 +1446,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     val rawHits = accumulatedDocuments.map { d ->
                         val placeName = d.optString("place_name", query)
                         val distance = d.optString("distance").toDoubleOrNull() ?: Double.MAX_VALUE
-                        Triple(
+                        Pair(
                             HistoryEntry(
                                 placeName,
                                 d.optString("road_address_name", d.optString("address_name", "")),
@@ -1454,19 +1454,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                                 d.optDouble("x"),
                                 d.optString("distance").toDoubleOrNull()
                             ),
-                            SearchRanking.rankKey(query, placeName),
-                            distance
+                            SearchRanking.rankKey(query, placeName, distance)
                         )
                     }
                     val hits = rawHits
-                        .sortedWith(
-                            compareBy(
-                                { it.second.first },
-                                { it.second.second },
-                                { it.second.third },
-                                { it.third }
-                            )
-                        )
+                        .sortedWith(compareBy { it.second })
                         .map { it.first }
                         .take(50)
                     NavLogger.d(this@KakaoNaviActivity, "인라인 재검색 결과 ${hits.size}건: query=$query")

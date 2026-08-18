@@ -64,7 +64,29 @@ object SearchRanking {
      * v10.9-2: "DT"(드라이브스루)가 붙은 이름은 1·2단계 안에서도 길이와 무관하게 항상
      * 먼저 오도록 함(재억: 프랜차이즈는 DT점을 우선하고 싶어함). #문제시 원복
      */
-    fun rankKey(query: String, placeName: String): Triple<Int, Int, Int> {
+    /**
+     * v11.3: DT 우선 규칙이랑 "이름 짧은 쪽 우선"(부속시설류 구분용) 규칙이 같은 칸에
+     * 같이 들어있어서, DT매장들끼리도 거리 무시하고 이름 길이로만 정렬되던 문제가
+     * 있었음(재억 지적 - 11.5km짜리가 1.4km짜리보다 위로 올라옴). DT매장(dtPreferred=0)
+     * 안에서는 이름 길이 무시하고 순수 거리로만, 그 외(dtPreferred=1)는 기존대로 이름
+     * 짧은 쪽(본청 등) 우선 후 거리로 정렬하도록 분리함. 두 경우가 서로 다른 기준을
+     * 세 번째/네 번째 칸에 넣어야 해서 Triple 대신 별도 비교 클래스로 뺌. #문제시 원복
+     */
+    data class RankKey(
+        val nameTier: Int,
+        val dtPreferred: Int,
+        val third: Double,
+        val fourth: Double
+    ) : Comparable<RankKey> {
+        override fun compareTo(other: RankKey): Int {
+            nameTier.compareTo(other.nameTier).let { if (it != 0) return it }
+            dtPreferred.compareTo(other.dtPreferred).let { if (it != 0) return it }
+            third.compareTo(other.third).let { if (it != 0) return it }
+            return fourth.compareTo(other.fourth)
+        }
+    }
+
+    fun rankKey(query: String, placeName: String, distanceMeters: Double): RankKey {
         val normalizedQuery = query.trim().replace(" ", "")
         val normalizedName = placeName.trim().replace(" ", "")
         val nameTier = when {
@@ -74,8 +96,12 @@ object SearchRanking {
             else -> 3
         }
         val dtPreferred = if (normalizedName.contains("DT", ignoreCase = true)) 0 else 1
-        val extraLength = normalizedName.length - normalizedQuery.length
-        return Triple(nameTier, dtPreferred, extraLength)
+        val extraLength = (normalizedName.length - normalizedQuery.length).toDouble()
+        return if (dtPreferred == 0) {
+            RankKey(nameTier, dtPreferred, distanceMeters, 0.0)
+        } else {
+            RankKey(nameTier, dtPreferred, extraLength, distanceMeters)
+        }
     }
 
     /**
