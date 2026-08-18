@@ -1245,6 +1245,20 @@ class MapActivity : AppCompatActivity() {
             return
         }
 
+        // v10.9-4: "편의점", "주유소"처럼 상호명이 아니라 종류로 찾는 검색은, 일반
+        // 키워드검색보다 카카오의 종류 전용 검색이 훨씬 정확함(재억 요청) - 현재 위치를
+        // 알아야 반경 안에서 찾을 수 있어서, 위치를 못 구하면 그냥 기존 키워드검색으로
+        // 넘어감. #문제시 원복
+        val categoryCode = SearchRanking.categoryGroupCodeFor(query)
+        if (categoryCode != null) {
+            val (curLat, curLon) = resolveCurrentWgs84LatLon()
+            if (curLat != null && curLon != null) {
+                performCategorySearch(categoryCode, restKey, curLat, curLon)
+                return
+            }
+            NavLogger.d(this, "[종류검색] 현재 위치 확인 안 됨 - 일반 검색으로 대체: query=$query")
+        }
+
         performDestinationSearchWithRestKey(
             query = query,
             restKey = restKey,
@@ -1252,10 +1266,57 @@ class MapActivity : AppCompatActivity() {
         )
     }
 
+    // v10.9-4: 카카오 종류 전용 검색(category.json) - 이미 sort=distance로 가까운 순 정렬돼서
+    // 오므로, 여기서는 재정렬 없이 그대로 보여줌. #문제시 원복
+    private fun performCategorySearch(categoryCode: String, restKey: String, lat: Double, lon: Double) {
+        val url = "https://dapi.kakao.com/v2/local/search/category.json?category_group_code=$categoryCode" +
+            "&x=$lon&y=$lat&radius=20000&sort=distance"
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", "KakaoAK $restKey")
+            .build()
+
+        httpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                NavLogger.e(this@MapActivity, "카카오 종류검색 요청 실패: ${e.message}")
+                runOnUiThread { binding.tvSearchStatus?.text = "검색 실패(네트워크): ${e.message}" }
+            }
+
+            override fun onResponse(call: Call, response: okhttp3.Response) {
+                response.use {
+                    if (!it.isSuccessful) {
+                        NavLogger.e(this@MapActivity, "카카오 종류검색 실패 code=${it.code}")
+                        runOnUiThread { binding.tvSearchStatus?.text = "검색 실패(${it.code})" }
+                        return@use
+                    }
+                    val json = JSONObject(it.body?.string() ?: "{}")
+                    val documents = json.optJSONArray("documents")
+                    if (documents == null || documents.length() == 0) {
+                        runOnUiThread { binding.tvSearchStatus?.text = "검색 결과 없음" }
+                        return@use
+                    }
+                    val hits = (0 until documents.length()).map { idx ->
+                        val d = documents.getJSONObject(idx)
+                        HistoryEntry(
+                            d.optString("place_name", "이름 없음"),
+                            d.optString("road_address_name", d.optString("address_name", "")),
+                            d.optDouble("y"),
+                            d.optDouble("x")
+                        )
+                    }
+                    NavLogger.d(this@MapActivity, "카카오 종류검색 결과 ${hits.size}건: category=$categoryCode")
+                    runOnUiThread { showSearchResultsDialog(hits) }
+                }
+            }
+        })
+    }
+
     private fun performDestinationSearchWithRestKey(
         query: String,
         restKey: String,
-        allowNativeFieldFallback: Boolean
+        allowNativeFieldFallback: Boolean,
+        page: Int = 1,
+        accumulatedDocuments: MutableList<JSONObject> = mutableListOf()
     ) {
         // v9.5: 재억 요청 - "스타벅스" 검색하면 내 위치(예: 지산동 838-20)와
         // 무관하게 카카오가 자기네 인기순으로 아무 지역 결과나 던져줌.
@@ -1274,7 +1335,7 @@ class MapActivity : AppCompatActivity() {
             ""
         }
         val url = "https://dapi.kakao.com/v2/local/search/keyword.json?query=" +
-            java.net.URLEncoder.encode(query, "UTF-8") + locationParams
+            java.net.URLEncoder.encode(query, "UTF-8") + locationParams + "&page=$page"
         val request = Request.Builder()
             .url(url)
             .header("Authorization", "KakaoAK $restKey")
@@ -1339,9 +1400,32 @@ class MapActivity : AppCompatActivity() {
 
                     val json = JSONObject(it.body?.string() ?: "{}")
                     val documents = json.optJSONArray("documents")
-                    if (documents == null || documents.length() == 0) {
+                    if ((documents == null || documents.length() == 0) && accumulatedDocuments.isEmpty()) {
                         NavLogger.d(this@MapActivity, "카카오 키워드검색 결과 없음, 주소검색으로 재시도: query=$query")
                         performAddressSearchFallback(query, restKey)
+                        return@use
+                    }
+
+                    // v10.9-4: 카카오가 한 번에 최대 15건만 주는데, 진짜 원하는 곳이 16번째
+                    // 이후 순위면 아예 후보에도 못 들어와서 아무리 정렬을 잘해도 소용없던
+                    // 문제(재억 지적) - 결과가 더 있으면(meta.is_end=false) 최대 3쪽(45건)까지
+                    // 자동으로 더 받아와서 합친 뒤에 정렬함. 3쪽 넘게 더 받아오진 않음(카카오
+                    // 쿼터/속도 문제로 무한정 받아오진 않게 상한선을 둠). #문제시 원복
+                    if (documents != null) {
+                        for (i in 0 until documents.length()) {
+                            accumulatedDocuments.add(documents.getJSONObject(i))
+                        }
+                    }
+                    val meta = json.optJSONObject("meta")
+                    val isEnd = meta?.optBoolean("is_end", true) ?: true
+                    if (!isEnd && page < 3) {
+                        performDestinationSearchWithRestKey(
+                            query = query,
+                            restKey = restKey,
+                            allowNativeFieldFallback = allowNativeFieldFallback,
+                            page = page + 1,
+                            accumulatedDocuments = accumulatedDocuments
+                        )
                         return@use
                     }
                     // v1.7: "S Oil 검색하면 평택시 지산동 Soil 00점, 000점처럼 여러개 나와야 하는데
@@ -1351,14 +1435,17 @@ class MapActivity : AppCompatActivity() {
                     // 나와서 진짜 "예산시장"이 목록 아래로 밀리던 문제(재억 지적) - 장소명이
                     // 검색어와 정확히/거의 일치하는 결과를 최상단으로 올리고, 그 안에서는 가까운
                     // 순으로, 나머지는 거리순으로 배치하도록 재정렬.
-                    val normalizedQuery = query.trim().replace(" ", "")
-                    val rawHits = (0 until documents.length()).map { idx ->
-                        val d = documents.getJSONObject(idx)
+                    // v10.9: "대구광역시청" 검색하면 본청이 아니라 별관/주차장/어린이집 같은
+                    // 부속시설이 위로 올라오던 문제(재억 지적) - 이름 일치 정도를 두 단계로만
+                    // 나눠서(딱 맞음/아예 다름) 뒤에 뭐가 붙어있든 전부 "딱 맞음"으로 같이
+                    // 취급했던 게 원인. ①완전히 같은 이름 ②시작은 같은데 뒤에 뭔가 더 붙은
+                    // 이름(부속시설류) ③순서만 지키며 다 포함(붙여쓰기 포함) ④전혀 다른 이름,
+                    // 이렇게 세분화하고 ②③단계 안에서는 이름이 더 짧은 쪽(DT 붙은 건 예외로
+                    // 항상 우선)을 먼저 보이도록 함. 이 정렬 규칙은 SearchRanking.kt로 모아서
+                    // 카카오 화면과 공통으로 씀. #문제시 원복
+                    val rawHits = accumulatedDocuments.map { d ->
                         val placeName = d.optString("place_name", query)
                         val distance = d.optString("distance").toDoubleOrNull() ?: Double.MAX_VALUE
-                        val normalizedName = placeName.trim().replace(" ", "")
-                        val exactMatch = normalizedName == normalizedQuery ||
-                            normalizedName.startsWith(normalizedQuery)
                         Triple(
                             HistoryEntry(
                                 placeName,
@@ -1366,12 +1453,19 @@ class MapActivity : AppCompatActivity() {
                                 d.optDouble("y"),
                                 d.optDouble("x")
                             ),
-                            exactMatch,
+                            SearchRanking.rankKey(query, placeName),
                             distance
                         )
                     }
                     val hits = rawHits
-                        .sortedWith(compareBy({ !it.second }, { it.third }))
+                        .sortedWith(
+                            compareBy(
+                                { it.second.first },
+                                { it.second.second },
+                                { it.second.third },
+                                { it.third }
+                            )
+                        )
                         .map { it.first }
                     NavLogger.d(this@MapActivity, "카카오 검색 결과 ${hits.size}건: query=$query")
 
