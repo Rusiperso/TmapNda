@@ -1553,6 +1553,7 @@ class MapActivity : AppCompatActivity() {
     private fun showSearchResultsDialog(hits: List<HistoryEntry>) {
         binding.llSearchPanel?.visibility = View.VISIBLE
         binding.tvSearchStatus?.text = "검색 결과 ${hits.size}건 - 목적지를 선택하세요"
+        var didPickEntry = false
         val pageSize = 10
         var currentPage = 0
         val lastPage = (hits.size - 1) / pageSize
@@ -1611,6 +1612,15 @@ class MapActivity : AppCompatActivity() {
 
         dialog.show()
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
+        // v11.3: 목록에서 아무것도 안 고르고 "취소" 누르거나 다이얼로그 밖을 눌러서 닫아도
+        // 상태 표시줄에 "검색 결과 45건 - 목적지를 선택하세요"가 그대로 남아있던 문제
+        // (재억 지적) - 다이얼로그가 닫힐 때, 실제로 목적지를 고른 게 아니면 상태
+        // 표시줄을 지움. #문제시 원복
+        dialog.setOnDismissListener {
+            if (!didPickEntry) {
+                binding.tvSearchStatus?.text = ""
+            }
+        }
         dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener {
             if (currentPage > 0) {
                 currentPage--
