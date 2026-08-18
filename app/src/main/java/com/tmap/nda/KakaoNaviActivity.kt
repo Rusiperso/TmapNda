@@ -1426,13 +1426,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
             return Pair(container, etaText)
         }
+        // v13.0-4: MapActivity와 동일 - 설정에서 정한 개수(0~5)만큼만 보여줌(재억 요청). #문제시 원복
+        val favoriteCount = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .getInt("quickslot_favorite_count", 5).coerceIn(0, 5)
         val quickSlotButtons = listOf(
             QuickSlotStore.SLOT_FAV1 to "\u2764\uFE0F",
             QuickSlotStore.SLOT_FAV2 to "\u2764\uFE0F",
             QuickSlotStore.SLOT_FAV3 to "\u2764\uFE0F",
             QuickSlotStore.SLOT_FAV4 to "\u2764\uFE0F",
             QuickSlotStore.SLOT_FAV5 to "\u2764\uFE0F"
-        ).map { (slot, emoji) -> slot to buildQuickSlotButton(slot, emoji) }
+        ).take(favoriteCount).map { (slot, emoji) -> slot to buildQuickSlotButton(slot, emoji) }
         // v11.9: MapActivity와 동일 - 집/회사는 상단바로 빠져서 즐겨찾기 3칸만 남음,
         // 제목과 같은 줄 오른쪽에 고정폭으로 배치(재억 요청). #문제시 원복
         val quickSlotRow = android.widget.LinearLayout(this).apply {

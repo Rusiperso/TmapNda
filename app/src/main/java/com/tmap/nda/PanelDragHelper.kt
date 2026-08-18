@@ -270,6 +270,64 @@ object PanelDragHelper {
             setPadding(40, 0, 40, 30)
         }
 
+        // v13.0-4: 재억 요청 - 즐겨찾기 5칸이 다 필요없는 사람도 있어서, 표시 개수를
+        // -/+ 버튼으로 0~5까지 조절 가능하게 함. 집/회사는 상단바 고정이라 이 설정과
+        // 무관하게 항상 보임. #문제시 원복
+        var favoriteCount = pref.getInt("quickslot_favorite_count", 5).coerceIn(0, 5)
+        val favoriteCountValueText = android.widget.TextView(context).apply {
+            text = favoriteCount.toString()
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 15f
+            gravity = android.view.Gravity.CENTER
+            minWidth = 40
+        }
+        val favoriteMinusButton = android.widget.TextView(context).apply {
+            text = "−"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 16f
+            gravity = android.view.Gravity.CENTER
+            setBackgroundColor(android.graphics.Color.parseColor("#262626"))
+            setPadding(24, 12, 24, 12)
+            setOnClickListener {
+                if (favoriteCount > 0) {
+                    favoriteCount--
+                    favoriteCountValueText.text = favoriteCount.toString()
+                }
+            }
+        }
+        val favoritePlusButton = android.widget.TextView(context).apply {
+            text = "+"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 16f
+            gravity = android.view.Gravity.CENTER
+            setBackgroundColor(android.graphics.Color.parseColor("#262626"))
+            setPadding(24, 12, 24, 12)
+            setOnClickListener {
+                if (favoriteCount < 5) {
+                    favoriteCount++
+                    favoriteCountValueText.text = favoriteCount.toString()
+                }
+            }
+        }
+        val favoriteCountRow = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(40, 10, 40, 30)
+            addView(android.widget.TextView(context).apply {
+                text = "즐겨찾기 표시 개수"
+                setTextColor(android.graphics.Color.WHITE)
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                )
+            })
+            addView(favoriteMinusButton)
+            addView(favoriteCountValueText, android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = 16; marginEnd = 16 })
+            addView(favoritePlusButton)
+        }
+
         val container = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             addView(checkBox)
@@ -280,6 +338,7 @@ object PanelDragHelper {
             unlockMapTouchCheckBox?.let { addView(it) }
             addView(satelliteViewCheckBox)
             addView(trafficInfoCheckBox)
+            addView(favoriteCountRow)
         }
         android.app.AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("앱 설정")
@@ -293,6 +352,7 @@ object PanelDragHelper {
                     .putBoolean("USE_KM_DISTANCE_FORMAT", distanceFormatKmCheckBox.isChecked)
                     .putBoolean("tmap_satellite_view_enabled", satelliteViewCheckBox.isChecked)
                     .putBoolean("tmap_traffic_info_enabled", trafficInfoCheckBox.isChecked)
+                    .putInt("quickslot_favorite_count", favoriteCount)
                     .apply {
                         if (unlockMapTouchCheckBox != null) {
                             putBoolean("map_touch_unlocked", unlockMapTouchCheckBox.isChecked)
