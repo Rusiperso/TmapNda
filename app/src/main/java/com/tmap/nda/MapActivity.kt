@@ -612,6 +612,10 @@ class MapActivity : AppCompatActivity() {
     private var lastKnownLon: Double? = null
 
     private var lastSearchClickAt = 0L
+    // v11.3: 집/회사/즐겨찾기 칸을 등록하려고 검색을 여는 중이면 여기에 어느 칸인지
+    // 담아둠. 검색 결과를 고르는 순간(pickEntry) 이 값이 있으면 그 칸에 저장까지
+    // 같이 해줌. #문제시 원복
+    private var pendingQuickSlotRegistration: String? = null
     private val SEARCH_CLICK_DEBOUNCE_MS = 800L
 
     // 카카오 개발자콘솔 "네이티브 앱 키 > 키 해시"에 등록할 값을 로그로 남김.
@@ -923,8 +927,61 @@ class MapActivity : AppCompatActivity() {
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
 
+        // v11.3: 집/회사/즐겨찾기1/2/3 다섯 칸 빠른등록 아이콘 행 - 짧게 누르면 등록 안
+        // 됐을 땐 검색해서 등록+바로 안내, 등록 됐으면 바로 안내. 길게 누르면 이미
+        // 등록돼 있어도 무시하고 다시 검색해서 덮어씀. 글자 라벨 없이 아이콘만.
+        // 다이얼로그 제목(setTitle) 자리에 이 행까지 포함한 커스텀 뷰를 넣음. #문제시 원복
+        fun buildQuickSlotButton(slot: String, emoji: String): View {
+            return android.widget.TextView(this).apply {
+                text = emoji
+                textSize = 20f
+                gravity = android.view.Gravity.CENTER
+                setBackgroundColor(android.graphics.Color.parseColor("#262626"))
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                ).apply { marginEnd = 12; setPadding(0, 28, 0, 28) }
+                setPadding(0, 28, 0, 28)
+                setOnClickListener {
+                    val existing = QuickSlotStore.get(this@MapActivity, slot)
+                    dialog.dismiss()
+                    if (existing != null) {
+                        startKakaoOverlayGuidance(existing.name, existing.lat, existing.lon)
+                    } else {
+                        pendingQuickSlotRegistration = slot
+                        showTmapTextSearchDialog()
+                    }
+                }
+                setOnLongClickListener {
+                    dialog.dismiss()
+                    pendingQuickSlotRegistration = slot
+                    showTmapTextSearchDialog()
+                    true
+                }
+            }
+        }
+        val quickSlotRow = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            setPadding(24, 0, 24, 20)
+            addView(buildQuickSlotButton(QuickSlotStore.SLOT_HOME, "\uD83C\uDFE0"))
+            addView(buildQuickSlotButton(QuickSlotStore.SLOT_WORK, "\uD83D\uDCBC"))
+            addView(buildQuickSlotButton(QuickSlotStore.SLOT_FAV1, "\u2764\uFE0F"))
+            addView(buildQuickSlotButton(QuickSlotStore.SLOT_FAV2, "\u2764\uFE0F"))
+            addView(buildQuickSlotButton(QuickSlotStore.SLOT_FAV3, "\u2764\uFE0F"))
+        }
+        val titleView = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setBackgroundColor(android.graphics.Color.parseColor("#212121"))
+            addView(android.widget.TextView(this@MapActivity).apply {
+                text = "검색 이력 전체"
+                textSize = 18f
+                setTextColor(android.graphics.Color.WHITE)
+                setPadding(24, 24, 24, 16)
+            })
+            addView(quickSlotRow)
+        }
+
         dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("검색 이력 전체")
+            .setCustomTitle(titleView)
             .setView(listView)
             .setPositiveButton("전체 삭제") { _, _ ->
                 android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
@@ -1571,7 +1628,14 @@ class MapActivity : AppCompatActivity() {
             .create()
 
         fun pickEntry(picked: HistoryEntry) {
+            didPickEntry = true
             dialog.dismiss()
+            // v11.3: 집/회사/즐겨찾기 칸 등록을 위해 검색을 연 거였으면, 이 결과를
+            // 그 칸에도 같이 저장함. #문제시 원복
+            pendingQuickSlotRegistration?.let { slot ->
+                QuickSlotStore.save(this@MapActivity, slot, picked)
+                pendingQuickSlotRegistration = null
+            }
             binding.tvSearchStatus?.text = "찾음: ${picked.name} (${picked.lat}, ${picked.lon}) - 경로요청 시도"
             // v10.9: 목적지를 고른 뒤에도 검색창에 입력했던 글자가 그대로 남아있던 문제
             // (재억 지적) - 카카오 화면(showInPlaceSearchResultsDialog)은 이미 고른 순간

@@ -1256,8 +1256,59 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
 
+        // v11.3: MapActivity와 동일 - 집/회사/즐겨찾기1/2/3 다섯 칸 빠른등록 아이콘 행. #문제시 원복
+        fun buildQuickSlotButton(slot: String, emoji: String): View {
+            return android.widget.TextView(this).apply {
+                text = emoji
+                textSize = 20f
+                gravity = android.view.Gravity.CENTER
+                setBackgroundColor(android.graphics.Color.parseColor("#262626"))
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                ).apply { marginEnd = 12 }
+                setPadding(0, 28, 0, 28)
+                setOnClickListener {
+                    val existing = QuickSlotStore.get(this@KakaoNaviActivity, slot)
+                    dialog.dismiss()
+                    if (existing != null) {
+                        KakaoRouteDataRepository.reset()
+                        resolveCurrentPositionThenRequestRoute(existing.name, existing.lat, existing.lon, finishOnFailure = false)
+                    } else {
+                        pendingQuickSlotRegistration = slot
+                        showInPlaceSearchDialog()
+                    }
+                }
+                setOnLongClickListener {
+                    dialog.dismiss()
+                    pendingQuickSlotRegistration = slot
+                    showInPlaceSearchDialog()
+                    true
+                }
+            }
+        }
+        val quickSlotRow = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            setPadding(24, 0, 24, 20)
+            addView(buildQuickSlotButton(QuickSlotStore.SLOT_HOME, "\uD83C\uDFE0"))
+            addView(buildQuickSlotButton(QuickSlotStore.SLOT_WORK, "\uD83D\uDCBC"))
+            addView(buildQuickSlotButton(QuickSlotStore.SLOT_FAV1, "\u2764\uFE0F"))
+            addView(buildQuickSlotButton(QuickSlotStore.SLOT_FAV2, "\u2764\uFE0F"))
+            addView(buildQuickSlotButton(QuickSlotStore.SLOT_FAV3, "\u2764\uFE0F"))
+        }
+        val titleView = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setBackgroundColor(android.graphics.Color.parseColor("#212121"))
+            addView(android.widget.TextView(this@KakaoNaviActivity).apply {
+                text = "검색 이력 전체"
+                textSize = 18f
+                setTextColor(android.graphics.Color.WHITE)
+                setPadding(24, 24, 24, 16)
+            })
+            addView(quickSlotRow)
+        }
+
         dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("검색 이력 전체")
+            .setCustomTitle(titleView)
             .setView(listView)
             .setPositiveButton("전체 삭제") { _, _ ->
                 android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
@@ -1290,6 +1341,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 안 돌아가고 이 화면 안에서 그대로 재검색하도록 함(Kakao 로컬 검색 API를 MapActivity와
     // 동일한 방식으로 여기서도 직접 호출). #문제시 원복
     private val searchHttpClient by lazy { OkHttpClient() }
+    // v11.3: MapActivity와 동일 - 집/회사/즐겨찾기 칸 등록용 검색을 여는 중이면 어느 칸인지 담아둠. #문제시 원복
+    private var pendingQuickSlotRegistration: String? = null
 
     private fun showInPlaceSearchDialog() {
         // v1.7: 기본 AlertDialog.Builder(this)는 앱 라이트 테마를 상속해서 다이얼로그
@@ -1580,6 +1633,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
         fun pickEntry(picked: HistoryEntry) {
             pickDialog.dismiss()
+            // v11.3: MapActivity와 동일 - 집/회사/즐겨찾기 칸 등록 목적이었으면 같이 저장. #문제시 원복
+            pendingQuickSlotRegistration?.let { slot ->
+                QuickSlotStore.save(this@KakaoNaviActivity, slot, picked)
+                pendingQuickSlotRegistration = null
+            }
             // v4.13: 카카오 화면 인라인 검색도 티맵 화면과 같은 커서 잔류
             // 문제가 있었음(사용자 8번) - 동일한 방식으로 포커스 강제 정리. #문제시 원복
             val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
