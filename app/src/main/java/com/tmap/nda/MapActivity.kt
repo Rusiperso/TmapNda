@@ -1890,13 +1890,14 @@ class MapActivity : AppCompatActivity() {
         // KNRoutePriority_HighWay(고속도로 우선), KNRouteAvoidOption_Fare(톨게이트/유료
         // 도로 피하기 = 무료도로 우선)는 로그로 확인된 실제 SDK 값. #문제시 원복
         fun showRoutePriorityDialog(picked: HistoryEntry) {
-            data class RouteOption(val label: String, val priority: KNRoutePriority, val avoidOption: Int)
-            val options = listOf(
-                RouteOption("추천 경로", KNRoutePriority.KNRoutePriority_Recommand, 0),
-                RouteOption("고속도로 우선", KNRoutePriority.KNRoutePriority_HighWay, 0),
-                RouteOption("무료도로 우선", KNRoutePriority.KNRoutePriority_Recommand, KNRouteAvoidOption.KNRouteAvoidOption_Fare.value)
+            val optionLabels = listOf("추천 경로", "고속도로 우선", "무료도로 우선")
+            val optionPriorities = listOf(
+                KNRoutePriority.KNRoutePriority_Recommand,
+                KNRoutePriority.KNRoutePriority_HighWay,
+                KNRoutePriority.KNRoutePriority_Recommand
             )
-            val labels = options.map { "${it.label}\n검색 중" }.toMutableList()
+            val optionAvoidOptions = listOf(0, 0, KNRouteAvoidOption.KNRouteAvoidOption_Fare.value)
+            val labels = optionLabels.map { "$it\n검색 중" }.toMutableList()
             val listView = android.widget.ListView(this@MapActivity)
             val adapter = darkTextAdapter(ArrayList<CharSequence>(labels))
             listView.adapter = adapter
@@ -1907,19 +1908,24 @@ class MapActivity : AppCompatActivity() {
                 .create()
             listView.setOnItemClickListener { _, _, position, _ ->
                 routeDialog.dismiss()
-                val chosen = options[position]
-                startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon, chosen.priority.name, chosen.avoidOption)
+                startKakaoOverlayGuidance(
+                    picked.name, picked.lat, picked.lon,
+                    optionPriorities[position].name, optionAvoidOptions[position]
+                )
             }
             routeDialog.show()
             routeDialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
 
             val (curLat, curLon) = resolveCurrentWgs84LatLon()
             if (curLat == null || curLon == null) return
-            options.forEachIndexed { index, opt ->
-                KakaoSdkState.computeEta(this@MapActivity, curLat, curLon, picked.lat, picked.lon, priority = opt.priority, avoidOption = opt.avoidOption) { minutes, _ ->
+            for (index in optionLabels.indices) {
+                KakaoSdkState.computeEta(
+                    this@MapActivity, curLat, curLon, picked.lat, picked.lon,
+                    priority = optionPriorities[index], avoidOption = optionAvoidOptions[index]
+                ) { minutes, _ ->
                     runOnUiThread {
                         val etaText = SearchRanking.formatEtaMinutes(minutes) ?: "계산 실패"
-                        labels[index] = "${opt.label}\n$etaText"
+                        labels[index] = "${optionLabels[index]}\n$etaText"
                         adapter.clear()
                         adapter.addAll(ArrayList<CharSequence>(labels))
                         adapter.notifyDataSetChanged()
