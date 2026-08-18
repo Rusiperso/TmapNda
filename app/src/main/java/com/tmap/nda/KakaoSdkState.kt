@@ -371,31 +371,18 @@ object KakaoSdkState {
                             val firstRoute = candidateList?.firstOrNull()
                             NavLogger.d(context, "[소요시간계산] 경로 리스트 크기=${candidateList?.size}")
                             if (firstRoute != null) {
-                                // v12.2: 지난 로그에서 경로 리스트(ArrayList)까지는 진짜로 받아왔는데
-                                // 그 안에서 시간/거리를 꺼내는 데 실패함(duration=null) - getSummary/
-                                // getDuration 이름도 예전 getRoutes처럼 internal 꼬리표가 붙어있을
-                                // 가능성이 높음. 못 찾으면 그 객체가 진짜 가진 함수 목록을 전부
-                                // 로그로 찍어서 다음엔 바로 맞출 수 있게 함(재억 지적으로 재조사). #문제시 원복
-                                val summaryMethod = firstRoute.javaClass.methods.firstOrNull {
-                                    it.name.startsWith("getSummary") && it.parameterCount == 0
+                                // v12.4: 로그로 진짜 정답 찾음 - "summary" 같은 중간 객체는 아예
+                                // 없고, KNRoute(경로) 객체 자체에 getTotalTime(총 시간, 초)/
+                                // getTotalDist(총 거리, m)가 바로 있었음. 괜히 한 단계 더 파고
+                                // 들려던 게 원인(재억 지적으로 재확인). #문제시 원복
+                                val durationMethod = firstRoute.javaClass.methods.firstOrNull {
+                                    it.name == "getTotalTime" && it.parameterCount == 0
                                 }
-                                if (summaryMethod == null) {
-                                    val allMethods = firstRoute.javaClass.methods.joinToString(", ") { it.name }
-                                    NavLogger.e(context, "[소요시간계산] route(${firstRoute.javaClass.name})에서 summary 함수 못 찾음. 가진 함수들: $allMethods")
+                                val distanceMethod = firstRoute.javaClass.methods.firstOrNull {
+                                    it.name == "getTotalDist" && it.parameterCount == 0
                                 }
-                                val summary = summaryMethod?.invoke(firstRoute)
-                                val durationMethod = summary?.javaClass?.methods?.firstOrNull {
-                                    (it.name.startsWith("getDuration") || it.name.startsWith("getTime")) && it.parameterCount == 0
-                                }
-                                val distanceMethod = summary?.javaClass?.methods?.firstOrNull {
-                                    (it.name.startsWith("getDistance") || it.name.startsWith("getDist")) && it.parameterCount == 0
-                                }
-                                if (summary != null && durationMethod == null) {
-                                    val allMethods = summary.javaClass.methods.joinToString(", ") { it.name }
-                                    NavLogger.e(context, "[소요시간계산] summary(${summary.javaClass.name})에서 duration 함수 못 찾음. 가진 함수들: $allMethods")
-                                }
-                                val durationSeconds = (durationMethod?.invoke(summary) as? Number)?.toInt()
-                                val distanceMeters = (distanceMethod?.invoke(summary) as? Number)?.toInt()
+                                val durationSeconds = (durationMethod?.invoke(firstRoute) as? Number)?.toInt()
+                                val distanceMeters = (distanceMethod?.invoke(firstRoute) as? Number)?.toInt()
                                 NavLogger.d(context, "[소요시간계산] routeWithPriority 성공: duration=$durationSeconds distance=$distanceMeters")
                                 callback(durationSeconds?.takeIf { it > 0 }?.let { (it + 30) / 60 }, distanceMeters)
                             } else {
