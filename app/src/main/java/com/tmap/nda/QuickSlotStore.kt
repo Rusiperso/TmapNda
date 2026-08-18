@@ -31,7 +31,9 @@ object QuickSlotStore {
                 obj.optString("name"),
                 obj.optString("addr"),
                 obj.optDouble("lat"),
-                obj.optDouble("lon")
+                obj.optDouble("lon"),
+                routePriorityName = if (obj.has("routePriorityName") && !obj.isNull("routePriorityName")) obj.optString("routePriorityName") else null,
+                routeAvoidOption = obj.optInt("routeAvoidOption", 0)
             )
         } catch (e: Exception) {
             null
@@ -44,7 +46,18 @@ object QuickSlotStore {
         obj.put("addr", entry.addr)
         obj.put("lat", entry.lat)
         obj.put("lon", entry.lon)
+        if (entry.routePriorityName != null) {
+            obj.put("routePriorityName", entry.routePriorityName)
+        }
+        obj.put("routeAvoidOption", entry.routeAvoidOption)
         prefs(context).edit().putString(slot, obj.toString()).apply()
+    }
+
+    // v13.2-3: 재억 요청 - 저장된 이동 방식(추천/고속도로/무료도로)만 따로 바꿀 때
+    // 주소/이름은 그대로 두고 이 두 값만 갱신. #문제시 원복
+    fun updateRoutePreference(context: Context, slot: String, routePriorityName: String, routeAvoidOption: Int) {
+        val existing = get(context, slot) ?: return
+        save(context, slot, existing.copy(routePriorityName = routePriorityName, routeAvoidOption = routeAvoidOption))
     }
 
     // v12.3: 재억 요청 - 등록 해제(삭제) 기능. #문제시 원복

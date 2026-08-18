@@ -14,7 +14,18 @@ import android.content.Context
 // v11.1: 검색 결과 목록에 거리도 같이 보여주고 싶어함(재억 요청) - 검색 이력 저장/불러오기
 // 쪽은 그대로 쓰되, 화면에 표시할 때만 쓰는 값이라 기본값 null로 둬서 기존 저장 로직에는
 // 영향 없게 함. #문제시 원복
-data class HistoryEntry(val name: String, val addr: String, val lat: Double, val lon: Double, val distanceMeters: Double? = null)
+// v13.2-3: 즐겨찾기/집/회사에 "이동 방식"(추천/고속도로/무료도로)도 같이 저장해서
+// 짧게 눌렀을 때 팝업 없이 바로 그 방식으로 안내 시작하도록 함(재억 요청). 기존
+// 생성자(4~5개 인자) 호출부는 전부 그대로 컴파일되도록 기본값으로 둠. #문제시 원복
+data class HistoryEntry(
+    val name: String,
+    val addr: String,
+    val lat: Double,
+    val lon: Double,
+    val distanceMeters: Double? = null,
+    val routePriorityName: String? = null,
+    val routeAvoidOption: Int = 0
+)
 
 object SearchHistoryStore {
     private const val KEY = "search_history_json"

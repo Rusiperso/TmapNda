@@ -757,7 +757,7 @@ class MapActivity : AppCompatActivity() {
         }
         android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(existing.name)
-            .setItems(arrayOf("다시 검색", "이름 변경", "삭제", "취소")) { _, which ->
+            .setItems(arrayOf("다시 검색", "이름 변경", "이동 방식 변경", "삭제", "취소")) { _, which ->
                 when (which) {
                     0 -> {
                         pendingQuickSlotRegistration = slot
@@ -780,7 +780,10 @@ class MapActivity : AppCompatActivity() {
                             .setNegativeButton("취소", null)
                             .show()
                     }
-                    2 -> QuickSlotStore.delete(this, slot)
+                    // v13.2-3: 재억 요청 - 저장해둔 이동 방식(추천/고속도로/무료도로)만 바꾸고
+                    // 싶을 때. 고르면 그 방식으로 저장까지 되고 바로 안내도 시작됨. #문제시 원복
+                    2 -> showRoutePriorityDialog(existing, saveToSlot = slot)
+                    3 -> QuickSlotStore.delete(this, slot)
                 }
             }
             .show()
@@ -790,7 +793,11 @@ class MapActivity : AppCompatActivity() {
         button?.setOnClickListener {
             val existing = QuickSlotStore.get(this, slot)
             if (existing != null) {
-                showRoutePriorityDialog(existing)
+                // v13.2-3: 재억 요청 - 저장된 이동 방식으로 팝업 없이 바로 안내 시작. #문제시 원복
+                startKakaoOverlayGuidance(
+                    existing.name, existing.lat, existing.lon,
+                    existing.routePriorityName, existing.routeAvoidOption
+                )
             } else {
                 pendingQuickSlotRegistration = slot
                 showTmapTextSearchDialog()
@@ -1079,7 +1086,11 @@ class MapActivity : AppCompatActivity() {
                     val existing = QuickSlotStore.get(this@MapActivity, slot)
                     dialog.dismiss()
                     if (existing != null) {
-                        showRoutePriorityDialog(existing)
+                        // v13.2-3: 재억 요청 - 저장된 이동 방식으로 팝업 없이 바로 안내 시작. #문제시 원복
+                        startKakaoOverlayGuidance(
+                            existing.name, existing.lat, existing.lon,
+                            existing.routePriorityName, existing.routeAvoidOption
+                        )
                     } else {
                         pendingQuickSlotRegistration = slot
                         showTmapTextSearchDialog()
@@ -1253,7 +1264,7 @@ class MapActivity : AppCompatActivity() {
     // v13.2-2: 재억 지적 - 검색 결과에서 고를 때만 경로 선택 팝업이 뜨고, 즐겨찾기/집/회사
     // 등록된 칸을 눌렀을 땐 안 뜨던 문제. 클래스 전체에서 쓸 수 있는 메소드로 빼서
     // 검색 결과/즐겨찾기/집/회사 전부 동일하게 이 팝업을 거치도록 함. #문제시 원복
-    private fun showRoutePriorityDialog(picked: HistoryEntry) {
+    private fun showRoutePriorityDialog(picked: HistoryEntry, saveToSlot: String? = null) {
         val optionLabels = listOf("추천 경로", "고속도로 우선", "무료도로 우선")
         val optionPriorities = listOf(
             KNRoutePriority.KNRoutePriority_Recommand,
@@ -1272,6 +1283,11 @@ class MapActivity : AppCompatActivity() {
             .create()
         listView.setOnItemClickListener { _, _, position, _ ->
             routeDialog.dismiss()
+            // v13.2-3: 재억 요청 - 즐겨찾기/집/회사의 "이동 방식 변경"으로 열린 거면,
+            // 고른 방식을 그 칸에 저장까지 해둠(다음부터 짧게 누르면 이 방식으로 바로 감). #문제시 원복
+            if (saveToSlot != null) {
+                QuickSlotStore.updateRoutePreference(this, saveToSlot, optionPriorities[position].name, optionAvoidOptions[position])
+            }
             startKakaoOverlayGuidance(
                 picked.name, picked.lat, picked.lon,
                 optionPriorities[position].name, optionAvoidOptions[position]
