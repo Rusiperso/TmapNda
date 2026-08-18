@@ -1205,8 +1205,10 @@ class MapActivity : AppCompatActivity() {
             dialog.dismiss()
             // v2.1: 재검색이 아니라 저장된 좌표로 바로 길안내 시작 (4번)
             // v4.17: 다시 탭해도 최신순 맨 위로 올라오게. #문제시 원복
+            // v13.6: 재억 지적 - 최근검색 항목도 즐겨찾기와 동일하게 매번 "추천/고속도로/
+            // 무료도로" 경로 선택 팝업을 거치도록 함(예전엔 그냥 추천으로 바로 안내 시작했음). #문제시 원복
             saveSearchHistory(picked)
-            startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon)
+            showRoutePriorityDialog(picked)
         }
         dialog.show()
         // 다이얼로그 창 배경 자체도 명시적으로 지정 (테마 상속으로 까맣게 뜨는 것 방지)
@@ -1310,18 +1312,18 @@ class MapActivity : AppCompatActivity() {
 
         val (curLat, curLon) = resolveCurrentWgs84LatLon()
         if (curLat == null || curLon == null) return
-        for (index in optionLabels.indices) {
-            KakaoSdkState.computeEta(
-                this, curLat, curLon, picked.lat, picked.lon,
-                priority = optionPriorities[index], avoidOption = optionAvoidOptions[index]
-            ) { minutes, _ ->
-                runOnUiThread {
-                    val etaText = SearchRanking.formatEtaMinutes(minutes) ?: "계산 실패"
-                    labels[index] = "${optionLabels[index]}\n$etaText"
-                    adapter.clear()
-                    adapter.addAll(ArrayList<CharSequence>(labels))
-                    adapter.notifyDataSetChanged()
-                }
+        // v13.6: 재억 지적(계산 느림) - "출발-도착 연결"을 3번 따로 안 하고 한 번만 해서
+        // 그 위에서 3개 우선순위만 각각 계산하도록 함(computeEtaForOptions). #문제시 원복
+        KakaoSdkState.computeEtaForOptions(
+            this, curLat, curLon, picked.lat, picked.lon,
+            options = optionPriorities.zip(optionAvoidOptions)
+        ) { index, minutes, _ ->
+            runOnUiThread {
+                val etaText = SearchRanking.formatEtaMinutes(minutes) ?: "계산 실패"
+                labels[index] = "${optionLabels[index]}\n$etaText"
+                adapter.clear()
+                adapter.addAll(ArrayList<CharSequence>(labels))
+                adapter.notifyDataSetChanged()
             }
         }
     }

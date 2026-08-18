@@ -1550,9 +1550,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             dialog.dismiss()
             // v2.5: 재검색이 아니라 저장된 좌표로 바로 길안내 시작
             // v4.17: 다시 탭해도 최신순 맨 위로 올라오게. #문제시 원복
+            // v13.6: MapActivity와 동일 - 최근검색 항목도 경로 선택 팝업을 거치도록 함. #문제시 원복
             SearchHistoryStore.save(this, picked)
-            KakaoRouteDataRepository.reset()
-            resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
+            showRoutePriorityDialog(picked)
         }
         dialog.show()
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
@@ -1642,20 +1642,20 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
         val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
         if (curLat == null || curLon == null) return
-        for (index in optionLabels.indices) {
-            KakaoSdkState.computeEta(
-                this, curLat, curLon, picked.lat, picked.lon,
-                priority = optionPriorities[index], avoidOption = optionAvoidOptions[index]
-            ) { minutes, _ ->
-                runOnUiThread {
-                    val etaText = SearchRanking.formatEtaMinutes(minutes) ?: "계산 실패"
-                    labels[index] = "${optionLabels[index]}\n$etaText"
-                    adapter.clear()
-                    adapter.addAll(ArrayList<CharSequence>(labels))
-                    adapter.notifyDataSetChanged()
+        // v13.6: MapActivity와 동일 - "출발-도착 연결"을 한 번만 하고 그 위에서 3개
+        // 우선순위만 각각 계산(재억 지적 - 계산 느림). #문제시 원복
+        KakaoSdkState.computeEtaForOptions(
+            this, curLat, curLon, picked.lat, picked.lon,
+            options = optionPriorities.zip(optionAvoidOptions)
+        ) { index, minutes, _ ->
+            runOnUiThread {
+                val etaText = SearchRanking.formatEtaMinutes(minutes) ?: "계산 실패"
+                labels[index] = "${optionLabels[index]}\n$etaText"
+                adapter.clear()
+                adapter.addAll(ArrayList<CharSequence>(labels))
+                adapter.notifyDataSetChanged()
                 }
             }
-        }
     }
 
     // v12.9: MapActivity와 동일 - "· N분"(소요시간) 부분만 파란색으로 강조. #문제시 원복

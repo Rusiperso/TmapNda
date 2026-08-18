@@ -320,6 +320,126 @@ object KakaoSdkState {
      * 불확실한 SDK 필드 다룰 때처럼(dumpNavigationApiCandidates 등과 동일한 패턴) 클래스를
      * 직접 참조하지 않고 이름표(리플렉션)로 후보 필드들을 찾아서 시도함. #문제시 원복
      */
+    // v13.6: 재억 지적(계산이 느림) - 예전엔 추천/고속도로/무료도로 3개를 각각 처음부터
+    // (makeTripWithStart부터) 따로 계산해서, "출발-도착 연결"을 3번이나 중복해서 했음.
+    // 이 연결(makeTripWithStart)은 한 번만 하고, 그 위에서 routeWithPriority만 3번
+    // 돌리면 되는 구조라 이 부분(경로 하나 계산하는 부분)을 공용 함수로 뺌. #문제시 원복
+    private fun invokeRouteWithPriority(
+        context: Context,
+        trip: Any,
+        priority: KNRoutePriority,
+        avoidOption: Int,
+        callback: (etaMinutes: Int?, distanceMeters: Int?) -> Unit
+    ) {
+        try {
+            val routeMethod = trip.javaClass.methods.firstOrNull {
+                it.name == "routeWithPriority" && it.parameterCount == 3
+            }
+            if (routeMethod == null) {
+                NavLogger.e(context, "[소요시간계산] routeWithPriority(3개 인자) 함수를 못 찾음")
+                callback(null, null)
+                return
+            }
+            val function2Class = Class.forName("kotlin.jvm.functions.Function2")
+            var callbackFired = false
+            val proxy = java.lang.reflect.Proxy.newProxyInstance(
+                function2Class.classLoader,
+                arrayOf(function2Class)
+            ) { _, method, args ->
+                if (method.name == "invoke" && !callbackFired) {
+                    callbackFired = true
+                    val p1 = args?.getOrNull(0)
+                    val p2 = args?.getOrNull(1)
+                    val candidateList = (p1 as? List<*>) ?: (p2 as? List<*>)
+                    val firstRoute = candidateList?.firstOrNull()
+                    if (firstRoute != null) {
+                        val durationMethod = firstRoute.javaClass.methods.firstOrNull {
+                            it.name == "getTotalTime" && it.parameterCount == 0
+                        }
+                        val distanceMethod = firstRoute.javaClass.methods.firstOrNull {
+                            it.name == "getTotalDist" && it.parameterCount == 0
+                        }
+                        val durationSeconds = (durationMethod?.invoke(firstRoute) as? Number)?.toInt()
+                        val distanceMeters = (distanceMethod?.invoke(firstRoute) as? Number)?.toInt()
+                        callback(durationSeconds?.takeIf { it > 0 }?.let { (it + 30) / 60 }, distanceMeters)
+                    } else {
+                        val guessTimeMethod = trip.javaClass.methods.firstOrNull {
+                            (it.name == "guessTime" || it.name.startsWith("getGuessTime")) && it.parameterCount == 0
+                        }
+                        val guessDistMethod = trip.javaClass.methods.firstOrNull {
+                            (it.name == "guessDist" || it.name.startsWith("getGuessDist")) && it.parameterCount == 0
+                        }
+                        val gt = (guessTimeMethod?.invoke(trip) as? Number)?.toInt()
+                        val gd = (guessDistMethod?.invoke(trip) as? Number)?.toInt()
+                        callback(gt?.takeIf { it > 0 }?.let { (it + 30) / 60 }, gd)
+                    }
+                }
+                null
+            }
+            routeMethod.invoke(trip, priority, avoidOption, proxy)
+        } catch (e: Exception) {
+            NavLogger.e(context, "[소요시간계산] routeWithPriority 호출 예외: ${e.message}")
+            callback(null, null)
+        }
+    }
+
+    /**
+     * v13.6: 추천/고속도로/무료도로처럼 여러 경로를 한 번에 비교할 때 쓰는 함수 -
+     * "출발-도착 연결"(makeTripWithStart)을 딱 한 번만 하고, 그 위에서
+     * routeWithPriority만 옵션 개수만큼 돌림. 계산이 빨라지는 것뿐 아니라, 만들어진
+     * trip 객체를 그대로 돌려줘서(onTripReady) 나중에 안내 시작할 때도 재사용할 수
+     * 있게 함(재억 지적 - 안내 시작 딜레이). #문제시 원복
+     */
+    fun computeEtaForOptions(
+        context: Context,
+        startLat: Double,
+        startLon: Double,
+        destLat: Double,
+        destLon: Double,
+        options: List<Pair<KNRoutePriority, Int>>,
+        retryCount: Int = 0,
+        onTripReady: (Any?) -> Unit = {},
+        callback: (index: Int, etaMinutes: Int?, distanceMeters: Int?) -> Unit
+    ) {
+        if (!initialized) {
+            NavLogger.d(context, "[소요시간계산] KNSDK 아직 초기화 안 됨(재시도 $retryCount/10)")
+            if (retryCount < 10) {
+                Handler(Looper.getMainLooper()).postDelayed({
+                    computeEtaForOptions(context, startLat, startLon, destLat, destLon, options, retryCount + 1, onTripReady, callback)
+                }, 500)
+            } else {
+                NavLogger.e(context, "[소요시간계산] 10번 재시도해도 KNSDK 준비 안 됨 - 포기")
+                onTripReady(null)
+                options.indices.forEach { callback(it, null, null) }
+            }
+            return
+        }
+        try {
+            val startKatec = KNSDK.convertWGS84ToKATEC(startLon, startLat)
+            val destKatec = KNSDK.convertWGS84ToKATEC(destLon, destLat)
+            val startPoi = com.kakaomobility.knsdk.common.objects.KNPOI("현재위치", startKatec.x.toInt(), startKatec.y.toInt(), "")
+            val goalPoi = com.kakaomobility.knsdk.common.objects.KNPOI("목적지", destKatec.x.toInt(), destKatec.y.toInt(), "")
+            KNSDK.makeTripWithStart(startPoi, goalPoi, null) { error, trip ->
+                if (error != null || trip == null) {
+                    NavLogger.e(context, "[소요시간계산] makeTripWithStart 실패: ${error?.msg ?: "trip=null"}")
+                    onTripReady(null)
+                    options.indices.forEach { callback(it, null, null) }
+                    return@makeTripWithStart
+                }
+                onTripReady(trip)
+                options.forEachIndexed { index, (priority, avoidOption) ->
+                    invokeRouteWithPriority(context, trip, priority, avoidOption) { minutes, distanceMeters ->
+                        callback(index, minutes, distanceMeters)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            NavLogger.e(context, "[소요시간계산] 경로계산 요청 자체 예외: ${e.message}")
+            onTripReady(null)
+            options.indices.forEach { callback(it, null, null) }
+        }
+    }
+
     fun computeEta(
         context: Context,
         startLat: Double,
