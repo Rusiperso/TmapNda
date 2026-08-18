@@ -790,7 +790,7 @@ class MapActivity : AppCompatActivity() {
         button?.setOnClickListener {
             val existing = QuickSlotStore.get(this, slot)
             if (existing != null) {
-                startKakaoOverlayGuidance(existing.name, existing.lat, existing.lon)
+                showRoutePriorityDialog(existing)
             } else {
                 pendingQuickSlotRegistration = slot
                 showTmapTextSearchDialog()
@@ -1079,7 +1079,7 @@ class MapActivity : AppCompatActivity() {
                     val existing = QuickSlotStore.get(this@MapActivity, slot)
                     dialog.dismiss()
                     if (existing != null) {
-                        startKakaoOverlayGuidance(existing.name, existing.lat, existing.lon)
+                        showRoutePriorityDialog(existing)
                     } else {
                         pendingQuickSlotRegistration = slot
                         showTmapTextSearchDialog()
@@ -1246,6 +1246,54 @@ class MapActivity : AppCompatActivity() {
                 tv.setTextColor(android.graphics.Color.WHITE)
                 tv.setPadding(24, 20, 24, 20)
                 return view
+            }
+        }
+    }
+
+    // v13.2-2: 재억 지적 - 검색 결과에서 고를 때만 경로 선택 팝업이 뜨고, 즐겨찾기/집/회사
+    // 등록된 칸을 눌렀을 땐 안 뜨던 문제. 클래스 전체에서 쓸 수 있는 메소드로 빼서
+    // 검색 결과/즐겨찾기/집/회사 전부 동일하게 이 팝업을 거치도록 함. #문제시 원복
+    private fun showRoutePriorityDialog(picked: HistoryEntry) {
+        val optionLabels = listOf("추천 경로", "고속도로 우선", "무료도로 우선")
+        val optionPriorities = listOf(
+            KNRoutePriority.KNRoutePriority_Recommand,
+            KNRoutePriority.KNRoutePriority_HighWay,
+            KNRoutePriority.KNRoutePriority_Recommand
+        )
+        val optionAvoidOptions = listOf(0, 0, KNRouteAvoidOption.KNRouteAvoidOption_Fare.value)
+        val labels = optionLabels.map { "$it\n검색 중" }.toMutableList()
+        val listView = android.widget.ListView(this)
+        val adapter = darkTextAdapter(ArrayList<CharSequence>(labels))
+        listView.adapter = adapter
+        val routeDialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("${picked.name}\n어떻게 갈까요?")
+            .setView(listView)
+            .setNegativeButton("취소", null)
+            .create()
+        listView.setOnItemClickListener { _, _, position, _ ->
+            routeDialog.dismiss()
+            startKakaoOverlayGuidance(
+                picked.name, picked.lat, picked.lon,
+                optionPriorities[position].name, optionAvoidOptions[position]
+            )
+        }
+        routeDialog.show()
+        routeDialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
+
+        val (curLat, curLon) = resolveCurrentWgs84LatLon()
+        if (curLat == null || curLon == null) return
+        for (index in optionLabels.indices) {
+            KakaoSdkState.computeEta(
+                this, curLat, curLon, picked.lat, picked.lon,
+                priority = optionPriorities[index], avoidOption = optionAvoidOptions[index]
+            ) { minutes, _ ->
+                runOnUiThread {
+                    val etaText = SearchRanking.formatEtaMinutes(minutes) ?: "계산 실패"
+                    labels[index] = "${optionLabels[index]}\n$etaText"
+                    adapter.clear()
+                    adapter.addAll(ArrayList<CharSequence>(labels))
+                    adapter.notifyDataSetChanged()
+                }
             }
         }
     }
@@ -1844,51 +1892,6 @@ class MapActivity : AppCompatActivity() {
             .setNeutralButton("이전", null)
             .setPositiveButton("다음", null)
             .create()
-
-        fun showRoutePriorityDialog(picked: HistoryEntry) {
-            val optionLabels = listOf("추천 경로", "고속도로 우선", "무료도로 우선")
-            val optionPriorities = listOf(
-                KNRoutePriority.KNRoutePriority_Recommand,
-                KNRoutePriority.KNRoutePriority_HighWay,
-                KNRoutePriority.KNRoutePriority_Recommand
-            )
-            val optionAvoidOptions = listOf(0, 0, KNRouteAvoidOption.KNRouteAvoidOption_Fare.value)
-            val labels = optionLabels.map { "$it\n검색 중" }.toMutableList()
-            val listView = android.widget.ListView(this@MapActivity)
-            val adapter = darkTextAdapter(ArrayList<CharSequence>(labels))
-            listView.adapter = adapter
-            val routeDialog = android.app.AlertDialog.Builder(this@MapActivity, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle("${picked.name}\n어떻게 갈까요?")
-                .setView(listView)
-                .setNegativeButton("취소", null)
-                .create()
-            listView.setOnItemClickListener { _, _, position, _ ->
-                routeDialog.dismiss()
-                startKakaoOverlayGuidance(
-                    picked.name, picked.lat, picked.lon,
-                    optionPriorities[position].name, optionAvoidOptions[position]
-                )
-            }
-            routeDialog.show()
-            routeDialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
-
-            val (curLat, curLon) = resolveCurrentWgs84LatLon()
-            if (curLat == null || curLon == null) return
-            for (index in optionLabels.indices) {
-                KakaoSdkState.computeEta(
-                    this@MapActivity, curLat, curLon, picked.lat, picked.lon,
-                    priority = optionPriorities[index], avoidOption = optionAvoidOptions[index]
-                ) { minutes, _ ->
-                    runOnUiThread {
-                        val etaText = SearchRanking.formatEtaMinutes(minutes) ?: "계산 실패"
-                        labels[index] = "${optionLabels[index]}\n$etaText"
-                        adapter.clear()
-                        adapter.addAll(ArrayList<CharSequence>(labels))
-                        adapter.notifyDataSetChanged()
-                    }
-                }
-            }
-        }
 
         fun pickEntry(picked: HistoryEntry) {
             didPickEntry = true

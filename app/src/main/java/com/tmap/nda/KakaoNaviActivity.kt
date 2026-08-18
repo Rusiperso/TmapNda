@@ -1246,8 +1246,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         button?.setOnClickListener {
             val existing = QuickSlotStore.get(this, slot)
             if (existing != null) {
-                KakaoRouteDataRepository.reset()
-                resolveCurrentPositionThenRequestRoute(existing.name, existing.lat, existing.lon, finishOnFailure = false)
+                showRoutePriorityDialog(existing)
             } else {
                 pendingQuickSlotRegistration = slot
                 showInPlaceSearchDialog()
@@ -1428,8 +1427,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     val existing = QuickSlotStore.get(this@KakaoNaviActivity, slot)
                     dialog.dismiss()
                     if (existing != null) {
-                        KakaoRouteDataRepository.reset()
-                        resolveCurrentPositionThenRequestRoute(existing.name, existing.lat, existing.lon, finishOnFailure = false)
+                        showRoutePriorityDialog(existing)
                     } else {
                         pendingQuickSlotRegistration = slot
                         showInPlaceSearchDialog()
@@ -1576,6 +1574,53 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 tv.setTextColor(android.graphics.Color.WHITE)
                 tv.setPadding(24, 20, 24, 20)
                 return view
+            }
+        }
+    }
+
+    // v13.2-2: MapActivity와 동일 - 즐겨찾기/집/회사 등록된 칸을 눌렀을 때도 검색 결과와
+    // 동일하게 "추천/고속도로우선/무료도로우선" 경로 선택 팝업이 뜨도록 함(재억 지적). #문제시 원복
+    private fun showRoutePriorityDialog(picked: HistoryEntry) {
+        val optionLabels = listOf("추천 경로", "고속도로 우선", "무료도로 우선")
+        val optionPriorities = listOf(
+            KNRoutePriority.KNRoutePriority_Recommand,
+            KNRoutePriority.KNRoutePriority_HighWay,
+            KNRoutePriority.KNRoutePriority_Recommand
+        )
+        val optionAvoidOptions = listOf(0, 0, KNRouteAvoidOption.KNRouteAvoidOption_Fare.value)
+        val labels = optionLabels.map { "$it\n검색 중" }.toMutableList()
+        val listView = android.widget.ListView(this)
+        val adapter = darkTextAdapter(ArrayList<CharSequence>(labels))
+        listView.adapter = adapter
+        val routeDialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("${picked.name}\n어떻게 갈까요?")
+            .setView(listView)
+            .setNegativeButton("취소", null)
+            .create()
+        listView.setOnItemClickListener { _, _, position, _ ->
+            routeDialog.dismiss()
+            activeRoutePriority = optionPriorities[position]
+            activeRouteAvoidOption = optionAvoidOptions[position]
+            KakaoRouteDataRepository.reset()
+            resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
+        }
+        routeDialog.show()
+        routeDialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
+
+        val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
+        if (curLat == null || curLon == null) return
+        for (index in optionLabels.indices) {
+            KakaoSdkState.computeEta(
+                this, curLat, curLon, picked.lat, picked.lon,
+                priority = optionPriorities[index], avoidOption = optionAvoidOptions[index]
+            ) { minutes, _ ->
+                runOnUiThread {
+                    val etaText = SearchRanking.formatEtaMinutes(minutes) ?: "계산 실패"
+                    labels[index] = "${optionLabels[index]}\n$etaText"
+                    adapter.clear()
+                    adapter.addAll(ArrayList<CharSequence>(labels))
+                    adapter.notifyDataSetChanged()
+                }
             }
         }
     }
