@@ -326,8 +326,8 @@ object KakaoSdkState {
         startLon: Double,
         destLat: Double,
         destLon: Double,
-        callback: (etaMinutes: Int?, distanceMeters: Int?) -> Unit,
-        retryCount: Int = 0
+        retryCount: Int = 0,
+        callback: (etaMinutes: Int?, distanceMeters: Int?) -> Unit
     ) {
         // v12.5: 로그로 확인한 새 원인 - 앱을 막 켜서 팝업부터 열면, 카카오 내비 SDK
         // 자체가 아직 초기화되기 전이라 makeTripWithStart가 "SDK has not been
@@ -337,7 +337,7 @@ object KakaoSdkState {
             NavLogger.d(context, "[소요시간계산] KNSDK 아직 초기화 안 됨(재시도 $retryCount/10)")
             if (retryCount < 10) {
                 Handler(Looper.getMainLooper()).postDelayed({
-                    computeEta(context, startLat, startLon, destLat, destLon, callback, retryCount + 1)
+                    computeEta(context, startLat, startLon, destLat, destLon, retryCount + 1, callback)
                 }, 500)
             } else {
                 NavLogger.e(context, "[소요시간계산] 10번 재시도해도 KNSDK 준비 안 됨 - 포기")
