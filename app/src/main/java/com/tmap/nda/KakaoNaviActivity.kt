@@ -1281,10 +1281,26 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 gravity = android.view.Gravity.CENTER
                 setTextColor(android.graphics.Color.parseColor("#5B9BFF"))
             }
+            // v12.2: MapActivity와 동일 - 등록된 즐겨찾기 칸은 하트 대신 등록된 장소
+            // 이름을 보여줌(재억 요청). #문제시 원복
+            val registeredEntry = QuickSlotStore.get(this@KakaoNaviActivity, slot)
             val iconText = android.widget.TextView(this).apply {
-                text = emoji
-                textSize = 20f
+                if (registeredEntry != null) {
+                    text = registeredEntry.name
+                    textSize = 12f
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setTextColor(android.graphics.Color.parseColor("#EEEEEE"))
+                } else {
+                    text = emoji
+                    textSize = 20f
+                }
                 gravity = android.view.Gravity.CENTER
+            }
+            if (registeredEntry == null) {
+                etaText.text = "미등록"
+                etaText.setTextColor(android.graphics.Color.parseColor("#555555"))
+                etaText.textSize = 10f
             }
             val container = android.widget.LinearLayout(this).apply {
                 orientation = android.widget.LinearLayout.VERTICAL
@@ -1293,7 +1309,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 layoutParams = android.widget.LinearLayout.LayoutParams(
                     0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
                 ).apply { marginEnd = 12 }
-                setPadding(0, 20, 0, 20)
+                setPadding(8, 20, 8, 20)
                 addView(iconText)
                 addView(etaText)
                 setOnClickListener {
@@ -1338,10 +1354,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             val etaText = pair.second
             val entry = QuickSlotStore.get(this, slot)
             if (entry == null) {
-                etaText.text = ""
                 return@forEach
             }
             etaText.text = "…"
+            etaText.setTextColor(android.graphics.Color.parseColor("#5B9BFF"))
+            etaText.textSize = 11f
             val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
             if (curLat == null || curLon == null) {
                 etaText.text = ""
