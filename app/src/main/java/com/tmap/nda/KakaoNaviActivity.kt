@@ -1394,7 +1394,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             if (entry == null) {
                 return@forEach
             }
-            etaText.text = "…"
+            etaText.text = "계산중"
             etaText.setTextColor(android.graphics.Color.parseColor("#5B9BFF"))
             etaText.textSize = 11f
             val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
