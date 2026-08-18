@@ -1424,7 +1424,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
                     // v10.9-4: MapActivity와 동일 - 카카오가 한 번에 최대 15건만 주는데,
                     // 원하는 곳이 16번째 이후 순위면 후보에도 못 들어오던 문제(재억 지적) -
-                    // 더 있으면 최대 3쪽(45건)까지 자동으로 더 받아와서 합침. #문제시 원복
+                    // 더 있으면 최대 4쪽(최대 60건)까지 자동으로 더 받아와서 합침. #문제시 원복
                     if (documents != null) {
                         for (i in 0 until documents.length()) {
                             accumulatedDocuments.add(documents.getJSONObject(i))
@@ -1432,7 +1432,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     }
                     val meta = json.optJSONObject("meta")
                     val isEnd = meta?.optBoolean("is_end", true) ?: true
-                    if (!isEnd && page < 3) {
+                    if (!isEnd && page < 4) {
                         performInPlaceSearch(query, page + 1, accumulatedDocuments)
                         return@use
                     }
@@ -1468,6 +1468,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                             )
                         )
                         .map { it.first }
+                        .take(50)
                     NavLogger.d(this@KakaoNaviActivity, "인라인 재검색 결과 ${hits.size}건: query=$query")
                     runOnUiThread { showInPlaceSearchResultsDialog(hits) }
                 }
@@ -1566,25 +1567,26 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         })
     }
 
+    // v11.2: MapActivity와 동일 - 10개씩 페이지로 끊어서 보여주고 "이전/다음/취소" 버튼으로
+    // 넘기도록 함(재억 요청). #문제시 원복
     private fun showInPlaceSearchResultsDialog(hits: List<HistoryEntry>) {
-        // v11.1: MapActivity와 동일 - 검색 결과 각 항목 옆에 거리도 같이 보여줌(재억 요청). #문제시 원복
-        val labels = hits.map { h ->
-            val distanceText = SearchRanking.formatDistance(h.distanceMeters)
-            val nameWithDistance = if (distanceText != null) "${h.name} · $distanceText" else h.name
-            if (h.addr.isNotBlank()) "$nameWithDistance\n${h.addr}" else nameWithDistance
-        }
+        val pageSize = 10
+        var currentPage = 0
+        val lastPage = (hits.size - 1) / pageSize
+
         val listView = android.widget.ListView(this@KakaoNaviActivity)
-        listView.adapter = darkTextAdapter(labels)
         listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
+
         val pickDialog = android.app.AlertDialog.Builder(this@KakaoNaviActivity, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("검색 결과 ${hits.size}건 - 목적지를 선택하세요")
             .setView(listView)
             .setNegativeButton("취소", null)
+            .setNeutralButton("이전", null)
+            .setPositiveButton("다음", null)
             .create()
-        listView.setOnItemClickListener { _, _, position, _ ->
-            val picked = hits[position]
+
+        fun pickEntry(picked: HistoryEntry) {
             pickDialog.dismiss()
             // v4.13: 카카오 화면 인라인 검색도 티맵 화면과 같은 커서 잔류
             // 문제가 있었음(사용자 8번) - 동일한 방식으로 포커스 강제 정리. #문제시 원복
@@ -1603,7 +1605,38 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             KakaoRouteDataRepository.reset()
             resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
         }
+
+        fun renderPage() {
+            val start = currentPage * pageSize
+            val end = minOf(start + pageSize, hits.size)
+            val pageHits = hits.subList(start, end)
+            // v11.1: MapActivity와 동일 - 검색 결과 각 항목 옆에 거리도 같이 보여줌(재억 요청). #문제시 원복
+            val labels = pageHits.map { h ->
+                val distanceText = SearchRanking.formatDistance(h.distanceMeters)
+                val nameWithDistance = if (distanceText != null) "${h.name} · $distanceText" else h.name
+                if (h.addr.isNotBlank()) "$nameWithDistance\n${h.addr}" else nameWithDistance
+            }
+            listView.adapter = darkTextAdapter(labels)
+            listView.setOnItemClickListener { _, _, position, _ -> pickEntry(pageHits[position]) }
+            pickDialog.setTitle("검색 결과 ${hits.size}건 (${start + 1}-$end) - 목적지를 선택하세요")
+            pickDialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL)?.isEnabled = currentPage > 0
+            pickDialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.isEnabled = currentPage < lastPage
+        }
+
         pickDialog.show()
+        pickDialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener {
+            if (currentPage > 0) {
+                currentPage--
+                renderPage()
+            }
+        }
+        pickDialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.setOnClickListener {
+            if (currentPage < lastPage) {
+                currentPage++
+                renderPage()
+            }
+        }
+        renderPage()
     }
 
     private fun finishGuidance() {

@@ -1436,7 +1436,7 @@ class MapActivity : AppCompatActivity() {
 
                     // v10.9-4: 카카오가 한 번에 최대 15건만 주는데, 진짜 원하는 곳이 16번째
                     // 이후 순위면 아예 후보에도 못 들어와서 아무리 정렬을 잘해도 소용없던
-                    // 문제(재억 지적) - 결과가 더 있으면(meta.is_end=false) 최대 3쪽(45건)까지
+                    // 문제(재억 지적) - 결과가 더 있으면(meta.is_end=false) 최대 4쪽(최대 60건)까지
                     // 자동으로 더 받아와서 합친 뒤에 정렬함. 3쪽 넘게 더 받아오진 않음(카카오
                     // 쿼터/속도 문제로 무한정 받아오진 않게 상한선을 둠). #문제시 원복
                     if (documents != null) {
@@ -1446,7 +1446,7 @@ class MapActivity : AppCompatActivity() {
                     }
                     val meta = json.optJSONObject("meta")
                     val isEnd = meta?.optBoolean("is_end", true) ?: true
-                    if (!isEnd && page < 3) {
+                    if (!isEnd && page < 4) {
                         performDestinationSearchWithRestKey(
                             query = query,
                             restKey = restKey,
@@ -1496,6 +1496,7 @@ class MapActivity : AppCompatActivity() {
                             )
                         )
                         .map { it.first }
+                        .take(50)
                     NavLogger.d(this@MapActivity, "카카오 검색 결과 ${hits.size}건: query=$query")
 
                     runOnUiThread { showSearchResultsDialog(hits) }
@@ -1554,31 +1555,31 @@ class MapActivity : AppCompatActivity() {
         })
     }
 
+    // v11.2: 검색 결과가 45건까지 늘어난 뒤로 한 화면에 다 몰아넣으면 스크롤이 너무 길어져서
+    // (재억 요청) 10개씩 페이지로 끊어서 보여주고, 아래 "이전/다음/취소" 버튼으로 넘기도록
+    // 바꿈. AlertDialog는 버튼이 최대 3개까지만 되는데 마침 딱 맞음(왼쪽부터 이전=중립,
+    // 다음=긍정, 취소=부정). 다이얼로그를 다시 만들지 않고, 페이지 넘길 때마다 목록
+    // 내용이랑 버튼 상태만 새로 그림(재생성하면 버튼이 자동으로 닫혀버려서). #문제시 원복
     private fun showSearchResultsDialog(hits: List<HistoryEntry>) {
         binding.llSearchPanel?.visibility = View.VISIBLE
         binding.tvSearchStatus?.text = "검색 결과 ${hits.size}건 - 목적지를 선택하세요"
-        // v2.1: 카카오 화면과 동일하게 결과 목록을 인라인 대신 팝업 다이얼로그로
-        // 표시 - 인라인 리스트가 지도 화면을 가리던 문제(1·6번) 해결. #문제시 원복
+        val pageSize = 10
+        var currentPage = 0
+        val lastPage = (hits.size - 1) / pageSize
+
         val listView = android.widget.ListView(this@MapActivity)
-        // v11.1: 검색 결과 각 항목 옆에 거리도 같이 보여줌(재억 요청). 이름 뒤에 붙여서
-        // "스타벅스 평택송탄점 · 850m" 처럼 표시. 거리 정보가 없으면(주소검색 결과 등)
-        // 이름만 그대로 표시. #문제시 원복
-        val labels = hits.map { h ->
-            val distanceText = SearchRanking.formatDistance(h.distanceMeters)
-            val nameWithDistance = if (distanceText != null) "${h.name} · $distanceText" else h.name
-            if (h.addr.isNotBlank()) "$nameWithDistance\n${h.addr}" else nameWithDistance
-        }
-        listView.adapter = darkTextAdapter(labels)
         listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
+
         val dialog = android.app.AlertDialog.Builder(this@MapActivity, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("검색 결과 ${hits.size}건")
             .setView(listView)
             .setNegativeButton("취소", null)
+            .setNeutralButton("이전", null)
+            .setPositiveButton("다음", null)
             .create()
-        listView.setOnItemClickListener { _, _, position, _ ->
-            val picked = hits[position]
+
+        fun pickEntry(picked: HistoryEntry) {
             dialog.dismiss()
             binding.tvSearchStatus?.text = "찾음: ${picked.name} (${picked.lat}, ${picked.lon}) - 경로요청 시도"
             // v10.9: 목적지를 고른 뒤에도 검색창에 입력했던 글자가 그대로 남아있던 문제
@@ -1598,8 +1599,41 @@ class MapActivity : AppCompatActivity() {
             saveSearchHistory(picked)
             startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon)
         }
+
+        fun renderPage() {
+            val start = currentPage * pageSize
+            val end = minOf(start + pageSize, hits.size)
+            val pageHits = hits.subList(start, end)
+            // v11.1: 검색 결과 각 항목 옆에 거리도 같이 보여줌(재억 요청). 이름 뒤에 붙여서
+            // "스타벅스 평택송탄점 · 850m" 처럼 표시. 거리 정보가 없으면(주소검색 결과 등)
+            // 이름만 그대로 표시. #문제시 원복
+            val labels = pageHits.map { h ->
+                val distanceText = SearchRanking.formatDistance(h.distanceMeters)
+                val nameWithDistance = if (distanceText != null) "${h.name} · $distanceText" else h.name
+                if (h.addr.isNotBlank()) "$nameWithDistance\n${h.addr}" else nameWithDistance
+            }
+            listView.adapter = darkTextAdapter(labels)
+            listView.setOnItemClickListener { _, _, position, _ -> pickEntry(pageHits[position]) }
+            dialog.setTitle("검색 결과 ${hits.size}건 (${start + 1}-$end)")
+            dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL)?.isEnabled = currentPage > 0
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.isEnabled = currentPage < lastPage
+        }
+
         dialog.show()
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
+        dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener {
+            if (currentPage > 0) {
+                currentPage--
+                renderPage()
+            }
+        }
+        dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.setOnClickListener {
+            if (currentPage < lastPage) {
+                currentPage++
+                renderPage()
+            }
+        }
+        renderPage()
     }
 
     // ===== 카카오내비 오버레이 길안내 =====
