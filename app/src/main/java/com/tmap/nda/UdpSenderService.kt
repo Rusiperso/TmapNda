@@ -282,6 +282,9 @@ class UdpSenderService : Service() {
         super.onCreate()
         NavLogger.d(this, "===== UdpSenderService.onCreate() 호출됨 - 서비스 생성됨 =====")
         createNotificationChannel()
+        // v: [초안 - 미커밋] 카카오 길안내 시작을 안드로이드 오토에게 알려서 클러스터/HUD
+        // 세션(TmapNdaCarAppService)이 스스로 깨어나게 함. #문제시 원복
+        com.tmap.nda.hud.TmapNdaCarNotifier.start(this)
         // v4.18: "앱이 실행이 안되고 튕겨" - 영상으로 확인함. startForeground()를
         // FOREGROUND_SERVICE_TYPE_LOCATION으로 부르는데 ACCESS_BACKGROUND_LOCATION 권한
         // 체크가 전혀 없었음 - 이 권한이 없으면 안드로이드 10+에서 SecurityException으로
@@ -1462,6 +1465,8 @@ class UdpSenderService : Service() {
         // 불렸는지(직접 stopService 호출 vs 시스템 강제종료) 알 수 있게 함. #문제시 원복
         val trace = Thread.currentThread().stackTrace.joinToString("\n") { "  at $it" }
         NavLogger.e(this, "===== UdpSenderService.onDestroy() 호출됨 - 서비스 종료됨 =====\n$trace")
+        // v: [초안 - 미커밋] TmapNdaCarNotifier도 같이 정리 (리스너 해제 + 알림 취소). #문제시 원복
+        com.tmap.nda.hud.TmapNdaCarNotifier.stop()
         super.onDestroy()
         // isRunning을 가장 먼저 false로 내려서, 각 수신 루프들이 while(isActive && isRunning.get())
         // 조건에서 스스로 빠져나오도록 신호를 준 뒤 소켓을 닫는다.
