@@ -1404,7 +1404,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
             KakaoSdkState.computeEta(this, curLat, curLon, entry.lat, entry.lon) { minutes, _ ->
                 runOnUiThread {
-                    etaText.text = if (minutes != null) "${minutes}분" else ""
+                    etaText.text = SearchRanking.formatEtaMinutes(minutes) ?: ""
                 }
             }
         }

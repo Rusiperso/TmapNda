@@ -117,4 +117,17 @@ object SearchRanking {
             String.format("%.1fkm", distanceMeters / 1000)
         }
     }
+
+    /**
+     * v12.5: 즐겨찾기/집/회사 예상 소요시간이 "176분"처럼 계속 분 단위로만 나오던 문제
+     * (재억 지적 - 월성주공2단지 같은 먼 곳은 176분보다 "2시간 56분"이 훨씬 알아보기
+     * 쉬움). 60분 넘으면 "N시간 M분"으로, 안 넘으면 지금처럼 "N분"으로. #문제시 원복
+     */
+    fun formatEtaMinutes(totalMinutes: Int?): String? {
+        if (totalMinutes == null) return null
+        if (totalMinutes < 60) return "${totalMinutes}분"
+        val hours = totalMinutes / 60
+        val minutes = totalMinutes % 60
+        return if (minutes == 0) "${hours}시간" else "${hours}시간 ${minutes}분"
+    }
 }
