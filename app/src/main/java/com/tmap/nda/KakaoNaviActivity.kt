@@ -1257,16 +1257,27 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         listView.dividerHeight = 1
 
         // v11.3: MapActivity와 동일 - 집/회사/즐겨찾기1/2/3 다섯 칸 빠른등록 아이콘 행. #문제시 원복
-        fun buildQuickSlotButton(slot: String, emoji: String): View {
-            return android.widget.TextView(this).apply {
+        fun buildQuickSlotButton(slot: String, emoji: String): Pair<View, android.widget.TextView> {
+            val etaText = android.widget.TextView(this).apply {
+                textSize = 11f
+                gravity = android.view.Gravity.CENTER
+                setTextColor(android.graphics.Color.parseColor("#5B9BFF"))
+            }
+            val iconText = android.widget.TextView(this).apply {
                 text = emoji
                 textSize = 20f
+                gravity = android.view.Gravity.CENTER
+            }
+            val container = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
                 gravity = android.view.Gravity.CENTER
                 setBackgroundColor(android.graphics.Color.parseColor("#262626"))
                 layoutParams = android.widget.LinearLayout.LayoutParams(
                     0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
                 ).apply { marginEnd = 12 }
-                setPadding(0, 28, 0, 28)
+                setPadding(0, 20, 0, 20)
+                addView(iconText)
+                addView(etaText)
                 setOnClickListener {
                     val existing = QuickSlotStore.get(this@KakaoNaviActivity, slot)
                     dialog.dismiss()
@@ -1285,15 +1296,40 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     true
                 }
             }
+            return Pair(container, etaText)
         }
+        val quickSlotButtons = listOf(
+            QuickSlotStore.SLOT_HOME to "\uD83C\uDFE0",
+            QuickSlotStore.SLOT_WORK to "\uD83D\uDCBC",
+            QuickSlotStore.SLOT_FAV1 to "\u2764\uFE0F",
+            QuickSlotStore.SLOT_FAV2 to "\u2764\uFE0F",
+            QuickSlotStore.SLOT_FAV3 to "\u2764\uFE0F"
+        ).map { (slot, emoji) -> slot to buildQuickSlotButton(slot, emoji) }
         val quickSlotRow = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             setPadding(24, 0, 24, 20)
-            addView(buildQuickSlotButton(QuickSlotStore.SLOT_HOME, "\uD83C\uDFE0"))
-            addView(buildQuickSlotButton(QuickSlotStore.SLOT_WORK, "\uD83D\uDCBC"))
-            addView(buildQuickSlotButton(QuickSlotStore.SLOT_FAV1, "\u2764\uFE0F"))
-            addView(buildQuickSlotButton(QuickSlotStore.SLOT_FAV2, "\u2764\uFE0F"))
-            addView(buildQuickSlotButton(QuickSlotStore.SLOT_FAV3, "\u2764\uFE0F"))
+            quickSlotButtons.forEach { (_, pair) -> addView(pair.first) }
+        }
+        // v11.4: MapActivity와 동일 - 팝업이 뜨자마자 등록된 칸들만 조용히 카카오
+        // 경로계산을 돌려서 "OO분"으로 채움(재억 요청). #문제시 원복
+        quickSlotButtons.forEach { (slot, pair) ->
+            val etaText = pair.second
+            val entry = QuickSlotStore.get(this, slot)
+            if (entry == null) {
+                etaText.text = ""
+                return@forEach
+            }
+            etaText.text = "…"
+            val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
+            if (curLat == null || curLon == null) {
+                etaText.text = ""
+                return@forEach
+            }
+            KakaoSdkState.computeEta(curLat, curLon, entry.lat, entry.lon) { minutes, _ ->
+                runOnUiThread {
+                    etaText.text = if (minutes != null) "${minutes}분" else ""
+                }
+            }
         }
         val titleView = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL

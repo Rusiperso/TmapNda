@@ -307,5 +307,70 @@ object KakaoSdkState {
             }
         }
     }
+
+    /**
+     * v11.4: 집/회사/즐겨찾기 칸에 "몇 분 걸리는지" 표시하려고(재억 요청), 실제로 안내를
+     * 시작하지는 않고 경로 계산만 조용히 해서 소요시간/거리만 받아옴.
+     * makeTripWithStart()는 원래 길안내 시작 흐름(KakaoNaviActivity.resolveCurrentPositionThenRequestRoute)
+     * 에서도 쓰는 바로 그 함수인데, 그 함수는 계산 결과(trip)를 받은 뒤에 naviView에 얹어서
+     * 화면까지 띄우는 것까지 하는 거고, 여기서는 그 앞 단계(계산)까지만 하고 화면에는
+     * 안 띄움 - 그래서 새 API/키 없이 같은 부품으로 계산만 재사용 가능함.
+     * trip 안에서 소요시간/거리를 꺼내는 정확한 필드명이 문서로 확인 안 된 상태라, 다른
+     * 불확실한 SDK 필드 다룰 때처럼(dumpNavigationApiCandidates 등과 동일한 패턴) 클래스를
+     * 직접 참조하지 않고 이름표(리플렉션)로 후보 필드들을 찾아서 시도함. #문제시 원복
+     */
+    fun computeEta(
+        startLat: Double,
+        startLon: Double,
+        destLat: Double,
+        destLon: Double,
+        callback: (etaMinutes: Int?, distanceMeters: Int?) -> Unit
+    ) {
+        try {
+            val startKatec = KNSDK.convertWGS84ToKATEC(startLon, startLat)
+            val destKatec = KNSDK.convertWGS84ToKATEC(destLon, destLat)
+            val startPoi = com.kakaomobility.knsdk.common.objects.KNPOI("현재위치", startKatec.x.toInt(), startKatec.y.toInt(), "")
+            val goalPoi = com.kakaomobility.knsdk.common.objects.KNPOI("목적지", destKatec.x.toInt(), destKatec.y.toInt(), "")
+            KNSDK.makeTripWithStart(startPoi, goalPoi, null) { error, trip ->
+                if (error != null || trip == null) {
+                    callback(null, null)
+                    return@makeTripWithStart
+                }
+                try {
+                    val routesField = trip.javaClass.methods.firstOrNull {
+                        (it.name == "getRoutes" || it.name == "routes") && it.parameterCount == 0
+                    }
+                    val routes = routesField?.invoke(trip) as? List<*>
+                    val firstRoute = routes?.firstOrNull()
+                    if (firstRoute == null) {
+                        callback(null, null)
+                        return@makeTripWithStart
+                    }
+                    val summaryMethod = firstRoute.javaClass.methods.firstOrNull {
+                        (it.name == "getSummary" || it.name == "summary") && it.parameterCount == 0
+                    }
+                    val summary = summaryMethod?.invoke(firstRoute)
+                    if (summary == null) {
+                        callback(null, null)
+                        return@makeTripWithStart
+                    }
+                    val durationMethod = summary.javaClass.methods.firstOrNull {
+                        (it.name == "getDuration" || it.name == "duration") && it.parameterCount == 0
+                    }
+                    val distanceMethod = summary.javaClass.methods.firstOrNull {
+                        (it.name == "getDistance" || it.name == "distance") && it.parameterCount == 0
+                    }
+                    val durationSeconds = (durationMethod?.invoke(summary) as? Number)?.toInt()
+                    val distanceMeters = (distanceMethod?.invoke(summary) as? Number)?.toInt()
+                    callback(durationSeconds?.let { (it + 30) / 60 }, distanceMeters)
+                } catch (e: Exception) {
+                    callback(null, null)
+                }
+            }
+        } catch (e: Exception) {
+            callback(null, null)
+        }
+    }
 }
+
 
