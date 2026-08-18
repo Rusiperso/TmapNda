@@ -370,6 +370,40 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 "GuideStateDelegate=${naviView is com.kakaomobility.knsdk.guidance.knguidance.KNGuidance_GuideStateDelegate}"
         )
 
+        // v13.0: [조사] 재억 요청 - "고속도로/국도 우선" 선택 기능, "지금 고속도로 위인지"
+        // 표시 기능이 가능한지 확인하려고, 경로 우선순위(KNRoutePriority)/회피 옵션
+        // (KNRouteAvoidOption)에 실제로 어떤 선택지들이 있는지, 그리고 안내 중 도로
+        // 종류를 알려주는 값이 있는지 로그로 찍어봄. 아직 이 값들을 실제로 쓰는 코드는
+        // 없고, 조사만 하는 거라 동작에는 영향 없음. #문제시 원복
+        try {
+            val priorityValues = KNRoutePriority::class.java.enumConstants
+                ?.joinToString(", ") { it.name }
+            NavLogger.d(this, "[조사][경로우선순위] KNRoutePriority 선택지들: $priorityValues")
+        } catch (e: Exception) {
+            NavLogger.e(this, "[조사][경로우선순위] KNRoutePriority 조사 실패: ${e.message}")
+        }
+        try {
+            val avoidValues = KNRouteAvoidOption::class.java.enumConstants
+                ?.joinToString(", ") { "${it.name}(value=${it.value})" }
+            NavLogger.d(this, "[조사][회피옵션] KNRouteAvoidOption 선택지들: $avoidValues")
+        } catch (e: Exception) {
+            NavLogger.e(this, "[조사][회피옵션] KNRouteAvoidOption 조사 실패: ${e.message}")
+        }
+        try {
+            val rgCodeClass = Class.forName("com.kakaomobility.knsdk.guidance.knguidance.common.objects.KNRGCode")
+            val rgCodeValues = rgCodeClass.enumConstants?.joinToString(", ") { (it as Enum<*>).name }
+            NavLogger.d(this, "[조사][도로종류] KNRGCode 선택지들: $rgCodeValues")
+        } catch (e: Exception) {
+            NavLogger.e(this, "[조사][도로종류] KNRGCode 조사 실패: ${e.message}")
+        }
+        try {
+            val summaryClass = Class.forName("com.kakaomobility.knsdk.trip.knroute.KNRoute_Summary")
+            val summaryMethods = summaryClass.methods.joinToString(", ") { it.name }
+            NavLogger.d(this, "[조사][경로요약] KNRoute_Summary가 가진 함수들: $summaryMethods")
+        } catch (e: Exception) {
+            NavLogger.e(this, "[조사][경로요약] KNRoute_Summary 클래스 조사 실패: ${e.message}")
+        }
+
         NavLogger.d(this, "setupContentAndStart: initWithGuidance(trip=null) idle map 선초기화")
         naviView.initWithGuidance(
             guidance,
