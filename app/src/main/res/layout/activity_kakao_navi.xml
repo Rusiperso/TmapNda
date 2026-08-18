@@ -259,6 +259,29 @@
             <!-- 검색창을 고정폭으로 줄인 만큼, 오른쪽(도착정보/메뉴)을 끝까지 밀어내는 spacer -->
             <View android:layout_width="20dp" android:layout_height="0dp"/>
 
+            <!-- v11.9: 집/회사를 최근검색 팝업 안(즐겨찾기와 같이)에서 상단바 고정 버튼으로
+                 이동(재억 요청) - 순서는 검색창 -> 집 -> 회사 -> 업로드 -> 메뉴. 검색창
+                 자체는 지금 크기(220dp 고정폭) 그대로 유지. #문제시 원복 -->
+            <ImageButton
+                android:id="@+id/btnHomeQuickSlot"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:layout_marginEnd="8dp"
+                android:src="@android:drawable/ic_menu_myplaces"
+                android:tint="#F0A0A0"
+                android:background="@drawable/shape_circle_gray"
+                android:scaleType="center"/>
+
+            <ImageButton
+                android:id="@+id/btnWorkQuickSlot"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:layout_marginEnd="8dp"
+                android:src="@android:drawable/ic_menu_agenda"
+                android:tint="#F0A0A0"
+                android:background="@drawable/shape_circle_gray"
+                android:scaleType="center"/>
+
             <!-- v7.9: 로그전송을 더보기(≡) 메뉴 밖으로 빼서 상단바 고정 버튼으로 - 메뉴
                  바로 왼쪽에 배치, 나머지 순서는 그대로 유지 (재억 요청). #문제시 원복 -->
             <ImageButton

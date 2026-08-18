@@ -1141,8 +1141,29 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 shareLogLauncher.launch(android.content.Intent.createChooser(shareIntent, "로그 공유 (${paths.size}개 파일)"))
             }
         }
+        // v11.9: MapActivity와 동일 - 집/회사를 상단바 고정 버튼으로 뺌(재억 요청). #문제시 원복
+        wireTopBarQuickSlotButton(binding.btnHomeQuickSlot, QuickSlotStore.SLOT_HOME)
+        wireTopBarQuickSlotButton(binding.btnWorkQuickSlot, QuickSlotStore.SLOT_WORK)
 
         renderRecentDestinationsPanel()
+    }
+
+    private fun wireTopBarQuickSlotButton(button: View?, slot: String) {
+        button?.setOnClickListener {
+            val existing = QuickSlotStore.get(this, slot)
+            if (existing != null) {
+                KakaoRouteDataRepository.reset()
+                resolveCurrentPositionThenRequestRoute(existing.name, existing.lat, existing.lon, finishOnFailure = false)
+            } else {
+                pendingQuickSlotRegistration = slot
+                showInPlaceSearchDialog()
+            }
+        }
+        button?.setOnLongClickListener {
+            pendingQuickSlotRegistration = slot
+            showInPlaceSearchDialog()
+            true
+        }
     }
 
     // MapActivity가 쓰는 것과 동일한 SharedPreferences 키("search_history_json")를 그대로
@@ -1296,16 +1317,20 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             return Pair(container, etaText)
         }
         val quickSlotButtons = listOf(
-            QuickSlotStore.SLOT_HOME to "\uD83C\uDFE0",
-            QuickSlotStore.SLOT_WORK to "\uD83D\uDCBC",
             QuickSlotStore.SLOT_FAV1 to "\u2764\uFE0F",
             QuickSlotStore.SLOT_FAV2 to "\u2764\uFE0F",
             QuickSlotStore.SLOT_FAV3 to "\u2764\uFE0F"
         ).map { (slot, emoji) -> slot to buildQuickSlotButton(slot, emoji) }
+        // v11.9: MapActivity와 동일 - 집/회사는 상단바로 빠져서 즐겨찾기 3칸만 남음,
+        // 제목과 같은 줄 오른쪽에 고정폭으로 배치(재억 요청). #문제시 원복
         val quickSlotRow = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
-            setPadding(24, 0, 24, 20)
-            quickSlotButtons.forEach { (_, pair) -> addView(pair.first) }
+            quickSlotButtons.forEach { (_, pair) ->
+                pair.first.layoutParams = android.widget.LinearLayout.LayoutParams(140, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    marginStart = 8
+                }
+                addView(pair.first)
+            }
         }
         // v11.4: MapActivity와 동일 - 팝업이 뜨자마자 등록된 칸들만 조용히 카카오
         // 경로계산을 돌려서 "OO분"으로 채움(재억 요청). #문제시 원복
@@ -1329,13 +1354,17 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
         }
         val titleView = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
             setBackgroundColor(android.graphics.Color.parseColor("#212121"))
+            setPadding(24, 24, 24, 20)
             addView(android.widget.TextView(this@KakaoNaviActivity).apply {
                 text = "검색 이력 전체"
                 textSize = 18f
                 setTextColor(android.graphics.Color.WHITE)
-                setPadding(24, 24, 24, 16)
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                )
             })
             addView(quickSlotRow)
         }

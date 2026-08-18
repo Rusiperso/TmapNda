@@ -717,6 +717,28 @@ class MapActivity : AppCompatActivity() {
         binding.btnShareLogTopBar?.setOnClickListener {
             shareNavLog()
         }
+        // v11.9: 집/회사를 상단바 고정 버튼으로 뺌(재억 요청) - 짧게 누르면 등록 안 됐을 땐
+        // 검색해서 등록+바로 안내, 등록 됐으면 검색 없이 바로 안내. 길게 누르면 이미
+        // 등록돼 있어도 무시하고 다시 검색해서 덮어씀. #문제시 원복
+        wireTopBarQuickSlotButton(binding.btnHomeQuickSlot, QuickSlotStore.SLOT_HOME)
+        wireTopBarQuickSlotButton(binding.btnWorkQuickSlot, QuickSlotStore.SLOT_WORK)
+    }
+
+    private fun wireTopBarQuickSlotButton(button: View?, slot: String) {
+        button?.setOnClickListener {
+            val existing = QuickSlotStore.get(this, slot)
+            if (existing != null) {
+                startKakaoOverlayGuidance(existing.name, existing.lat, existing.lon)
+            } else {
+                pendingQuickSlotRegistration = slot
+                showTmapTextSearchDialog()
+            }
+        }
+        button?.setOnLongClickListener {
+            pendingQuickSlotRegistration = slot
+            showTmapTextSearchDialog()
+            true
+        }
     }
 
     // v1.8: 카카오 화면(showInPlaceSearchDialog)과 동일한 스타일의 팝업. #문제시 원복
@@ -973,16 +995,21 @@ class MapActivity : AppCompatActivity() {
             return Pair(container, etaText)
         }
         val quickSlotButtons = listOf(
-            QuickSlotStore.SLOT_HOME to "\uD83C\uDFE0",
-            QuickSlotStore.SLOT_WORK to "\uD83D\uDCBC",
             QuickSlotStore.SLOT_FAV1 to "\u2764\uFE0F",
             QuickSlotStore.SLOT_FAV2 to "\u2764\uFE0F",
             QuickSlotStore.SLOT_FAV3 to "\u2764\uFE0F"
         ).map { (slot, emoji) -> slot to buildQuickSlotButton(slot, emoji) }
+        // v11.9: 집/회사는 상단바 고정 버튼으로 빠져서 여기 팝업엔 즐겨찾기 3칸만 남음.
+        // 카드 하나당 너비를 고정폭(52dp)으로 줄여서, 제목("검색 이력 전체")과 같은 줄
+        // 오른쪽에 나란히 놓이도록 함(재억 요청). #문제시 원복
         val quickSlotRow = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
-            setPadding(24, 0, 24, 20)
-            quickSlotButtons.forEach { (_, pair) -> addView(pair.first) }
+            quickSlotButtons.forEach { (_, pair) ->
+                pair.first.layoutParams = android.widget.LinearLayout.LayoutParams(140, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    marginStart = 8
+                }
+                addView(pair.first)
+            }
         }
         // v11.4: 팝업이 뜨자마자, 등록된 칸들만 조용히 카카오 경로계산을 돌려서
         // "OO분"으로 채움. 계산 중엔 "…", 실패하면 빈 칸으로 둠(재억 요청). #문제시 원복
@@ -1005,14 +1032,19 @@ class MapActivity : AppCompatActivity() {
                 }
             }
         }
+        // v11.9: 제목("검색 이력 전체")과 즐겨찾기 3칸을 같은 줄 좌우로 배치(재억 요청). #문제시 원복
         val titleView = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
             setBackgroundColor(android.graphics.Color.parseColor("#212121"))
+            setPadding(24, 24, 24, 20)
             addView(android.widget.TextView(this@MapActivity).apply {
                 text = "검색 이력 전체"
                 textSize = 18f
                 setTextColor(android.graphics.Color.WHITE)
-                setPadding(24, 24, 24, 16)
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                )
             })
             addView(quickSlotRow)
         }
@@ -1142,7 +1174,7 @@ class MapActivity : AppCompatActivity() {
     // 못 찾아서 컴파일이 깨지는 문제 발견(v11.0 CI 빌드 실패로 확인) - dumpTrafficApiCandidates()
     // 등 기존 코드들이 이럴 때 쓰던 방식과 동일하게, 클래스를 직접 안 쓰고 이름표(리플렉션)로만
     // 찾아서 호출하도록 바꿈. #문제시 원복
-    private fun applyTmapTrafficInfoSetting() {
+    private fun applyTmapTrafficInfoSetting(retryCount: Int = 0) {
         try {
             val enabled = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 .getBoolean("tmap_traffic_info_enabled", true)
@@ -1151,7 +1183,18 @@ class MapActivity : AppCompatActivity() {
             }
             val mapEngine = getMapViewMethod?.invoke(navigationFragment)
             if (mapEngine == null) {
-                NavLogger.d(this, "[티맵교통정보] 지도가 아직 준비 안 됨 - 다음 기회에 다시 적용")
+                // v11.9: 앱을 막 켰을 때 지도가 아직 준비 안 돼서 이 시도가 실패하면, 그 뒤로
+                // 다시 시도를 안 해서 재억이 꺼놓은 설정이 실제로는 반영이 안 되고 계속
+                // 켜진 채로 남아있던 문제(재억 지적) - 지도가 준비될 때까지 최대 10번(1초
+                // 간격, 총 10초)까지 다시 시도함. #문제시 원복
+                NavLogger.d(this, "[티맵교통정보] 지도가 아직 준비 안 됨(재시도 $retryCount/10)")
+                if (retryCount < 10) {
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        applyTmapTrafficInfoSetting(retryCount + 1)
+                    }, 1000)
+                } else {
+                    NavLogger.e(this, "[티맵교통정보] 10번 재시도해도 지도 준비 안 됨 - 포기")
+                }
                 return
             }
             val setShowTrafficInfoMethod = mapEngine.javaClass.methods.firstOrNull {

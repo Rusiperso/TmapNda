@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import com.kakaomobility.knsdk.KNLanguageType
+import com.kakaomobility.knsdk.KNRoutePriority
 import com.kakaomobility.knsdk.KNSDK
 
 /**
@@ -340,76 +341,67 @@ object KakaoSdkState {
                     return@makeTripWithStart
                 }
                 try {
-                    // v11.7: 로그로 다시 확인한 원인 - remainTime/remainDist는 "이미 안내를
-                    // 시작한 상태에서 운전하며 실시간으로 남은 시간/거리"를 추적하는 값이라,
-                    // 안내를 시작 안 하고 계산만 한 이 흐름에서는 계속 0으로 남아있었음
-                    // (로그: remainTime(raw)=0 remainDist(raw)=0). trip 함수 목록에 있던
-                    // getGuessTime/getGuessDist(예상 시간/거리)로 교체 - 이름 그대로 안내
-                    // 시작 전 미리 계산되는 예상치일 가능성이 높음. 이것도 internal
-                    // 함수라 실제 이름 뒤에 꼬리표가 붙어있을 수 있어서 startsWith로 찾음.
-                    // 혹시 이것도 0이면(예상 밖 케이스 대비), routes 안의 개별 경로 요약값도
-                    // 같이 시도해서 둘 중 값이 있는 쪽을 씀. #문제시 원복
-                    val guessTimeMethod = trip.javaClass.methods.firstOrNull {
-                        (it.name == "guessTime" || it.name.startsWith("getGuessTime")) && it.parameterCount == 0
+                    // v11.9: 로그로 정확한 함수 모양까지 확인함 - routeWithPriority(우선순위,
+                    // 옵션값, 콜백함수) 이렇게 3개를 받는 게 확인됨(재억 지적으로 재조사).
+                    // 이 함수를 실제로 불러서 진짜 경로계산을 시작시킴. 콜백이 정확히 어떤
+                    // 모양(몇 번째 인자가 결과고 몇 번째가 오류인지)인지는 문서가 없어서,
+                    // 두 인자 다 받아서 그중 리스트처럼 생긴 쪽을 찾아 씀. 혹시 그래도 못
+                    // 찾으면 이 시점엔 trip 내부 값도 이제 채워졌을 수 있어서 guessTime을
+                    // 한 번 더 확인함. #문제시 원복
+                    val routeMethod = trip.javaClass.methods.firstOrNull {
+                        it.name == "routeWithPriority" && it.parameterCount == 3
                     }
-                    val guessDistMethod = trip.javaClass.methods.firstOrNull {
-                        (it.name == "guessDist" || it.name.startsWith("getGuessDist")) && it.parameterCount == 0
+                    if (routeMethod == null) {
+                        NavLogger.e(context, "[소요시간계산] routeWithPriority(3개 인자) 함수를 못 찾음")
+                        callback(null, null)
+                        return@makeTripWithStart
                     }
-                    var durationSeconds = (guessTimeMethod?.invoke(trip) as? Number)?.toInt()
-                    var distanceMeters = (guessDistMethod?.invoke(trip) as? Number)?.toInt()
-                    NavLogger.d(context, "[소요시간계산] guessTime(raw)=${guessTimeMethod?.invoke(trip)} guessDist(raw)=${guessDistMethod?.invoke(trip)}")
-
-                    if (durationSeconds == null || durationSeconds == 0) {
-                        val routesMethod = trip.javaClass.methods.firstOrNull {
-                            it.name.startsWith("getRoutes") && it.parameterCount == 0
-                        }
-                        val routes = routesMethod?.invoke(trip) as? List<*>
-                        val firstRoute = routes?.firstOrNull()
-                        if (firstRoute != null) {
-                            val summaryMethod = firstRoute.javaClass.methods.firstOrNull {
-                                it.name.startsWith("getSummary") && it.parameterCount == 0
-                            }
-                            val summary = summaryMethod?.invoke(firstRoute)
-                            if (summary != null) {
-                                val durationMethod = summary.javaClass.methods.firstOrNull {
+                    val function2Class = Class.forName("kotlin.jvm.functions.Function2")
+                    var callbackFired = false
+                    val proxy = java.lang.reflect.Proxy.newProxyInstance(
+                        function2Class.classLoader,
+                        arrayOf(function2Class)
+                    ) { _, method, args ->
+                        if (method.name == "invoke" && !callbackFired) {
+                            callbackFired = true
+                            val p1 = args?.getOrNull(0)
+                            val p2 = args?.getOrNull(1)
+                            NavLogger.d(context, "[소요시간계산] routeWithPriority 콜백: p1=${p1?.javaClass?.name} p2=${p2?.javaClass?.name}")
+                            val candidateList = (p1 as? List<*>) ?: (p2 as? List<*>)
+                            val firstRoute = candidateList?.firstOrNull()
+                            if (firstRoute != null) {
+                                val summaryMethod = firstRoute.javaClass.methods.firstOrNull {
+                                    it.name.startsWith("getSummary") && it.parameterCount == 0
+                                }
+                                val summary = summaryMethod?.invoke(firstRoute)
+                                val durationMethod = summary?.javaClass?.methods?.firstOrNull {
                                     (it.name.startsWith("getDuration") || it.name.startsWith("getTime")) && it.parameterCount == 0
                                 }
-                                val distanceMethod = summary.javaClass.methods.firstOrNull {
+                                val distanceMethod = summary?.javaClass?.methods?.firstOrNull {
                                     (it.name.startsWith("getDistance") || it.name.startsWith("getDist")) && it.parameterCount == 0
                                 }
-                                val fallbackDuration = (durationMethod?.invoke(summary) as? Number)?.toInt()
-                                val fallbackDistance = (distanceMethod?.invoke(summary) as? Number)?.toInt()
-                                NavLogger.d(context, "[소요시간계산] guessTime이 0이라 routes/summary(${summary.javaClass.name}) 보조 시도: duration=$fallbackDuration distance=$fallbackDistance, summary가진함수들=${summary.javaClass.methods.joinToString(", ") { it.name }}")
-                                if (fallbackDuration != null && fallbackDuration > 0) {
-                                    durationSeconds = fallbackDuration
-                                    distanceMeters = fallbackDistance
-                                }
+                                val durationSeconds = (durationMethod?.invoke(summary) as? Number)?.toInt()
+                                val distanceMeters = (distanceMethod?.invoke(summary) as? Number)?.toInt()
+                                NavLogger.d(context, "[소요시간계산] routeWithPriority 성공: duration=$durationSeconds distance=$distanceMeters")
+                                callback(durationSeconds?.takeIf { it > 0 }?.let { (it + 30) / 60 }, distanceMeters)
                             } else {
-                                NavLogger.e(context, "[소요시간계산] guessTime이 0이고 summary도 못 찾음(route=${firstRoute.javaClass.name})")
-                            }
-                        } else {
-                            // v11.8: guessTime/routes 둘 다 비어있다는 건 makeTripWithStart가
-                            // 돌려주는 trip이 "출발지/도착지만 담긴 빈 그릇"이고, 실제 경로
-                            // 계산은 trip.routeWithPriority(...)를 따로 불러야 시작되는 구조로
-                            // 보임(재억 지적으로 재확인). 근데 이 함수가 콜백을 어떤 모양으로
-                            // 받는지 문서가 없어서, 무작정 추측해서 호출하면 크래시 위험이 있음
-                            // - 이번엔 그 함수의 정확한 파라미터 개수/타입만 안전하게(호출은
-                            // 안 하고) 로그로 찍어서, 다음 버전에서 정확히 맞춰 부를 수 있게 함. #문제시 원복
-                            val routeMethods = trip.javaClass.methods.filter { it.name.startsWith("routeWithPriority") }
-                            if (routeMethods.isEmpty()) {
-                                NavLogger.e(context, "[소요시간계산] guessTime이 0이고 routes도 못 찾음, routeWithPriority 함수도 없음")
-                            } else {
-                                routeMethods.forEach { m ->
-                                    val paramTypes = m.parameterTypes.joinToString(", ") { it.name }
-                                    NavLogger.e(context, "[소요시간계산] guessTime이 0이고 routes도 못 찾음. routeWithPriority 후보: ${m.name}(${paramTypes})")
+                                val guessTimeMethod = trip.javaClass.methods.firstOrNull {
+                                    (it.name == "guessTime" || it.name.startsWith("getGuessTime")) && it.parameterCount == 0
                                 }
+                                val guessDistMethod = trip.javaClass.methods.firstOrNull {
+                                    (it.name == "guessDist" || it.name.startsWith("getGuessDist")) && it.parameterCount == 0
+                                }
+                                val gt = (guessTimeMethod?.invoke(trip) as? Number)?.toInt()
+                                val gd = (guessDistMethod?.invoke(trip) as? Number)?.toInt()
+                                NavLogger.d(context, "[소요시간계산] routeWithPriority 콜백에 경로 리스트 없음 - trip.guessTime 재확인: $gt")
+                                callback(gt?.takeIf { it > 0 }?.let { (it + 30) / 60 }, gd)
                             }
                         }
+                        null
                     }
-                    NavLogger.d(context, "[소요시간계산] 최종: durationSeconds=$durationSeconds distanceMeters=$distanceMeters")
-                    callback(durationSeconds?.let { (it + 30) / 60 }, distanceMeters)
+                    routeMethod.invoke(trip, KNRoutePriority.KNRoutePriority_Recommand, 0, proxy)
                 } catch (e: Exception) {
-                    NavLogger.e(context, "[소요시간계산] 필드 읽기 예외: ${e.message}")
+                    NavLogger.e(context, "[소요시간계산] routeWithPriority 호출 예외: ${e.message}")
                     callback(null, null)
                 }
             }
