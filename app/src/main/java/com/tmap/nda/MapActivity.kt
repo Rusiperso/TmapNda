@@ -953,6 +953,23 @@ class MapActivity : AppCompatActivity() {
                         0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
                     )
                 }
+                // v12.8: 재억 요청 - 최근검색 이력 목록에도 즐겨찾기/검색결과와 동일하게
+                // 예상 소요시간을 붙여서 보여줌. 계산 중엔 "검색 중". #문제시 원복
+                fun applyHistoryLabel(etaText: String?) {
+                    val base = if (etaText != null) "${entry.name} · $etaText" else entry.name
+                    nameText.text = if (entry.addr.isNotBlank()) "$base\n${entry.addr}" else base
+                }
+                applyHistoryLabel("검색 중")
+                val (curLat, curLon) = resolveCurrentWgs84LatLon()
+                if (curLat != null && curLon != null) {
+                    KakaoSdkState.computeEta(this@MapActivity, curLat, curLon, entry.lat, entry.lon) { minutes, _ ->
+                        runOnUiThread {
+                            applyHistoryLabel(SearchRanking.formatEtaMinutes(minutes))
+                        }
+                    }
+                } else {
+                    applyHistoryLabel(null)
+                }
                 // v10.9-5: 예전엔 "✕" 작은 글자 하나만 있어서 실차 화면에서 눌러야 하는
                 // 위치가 잘 안 보이고 오터치도 잦았음(재억 지적) - 배경이 있는 "삭제" 글자
                 // 버튼으로 바꾸고, 누르는 영역(패딩)도 훨씬 넓게 키움. #문제시 원복
@@ -996,9 +1013,12 @@ class MapActivity : AppCompatActivity() {
         // 다이얼로그 제목(setTitle) 자리에 이 행까지 포함한 커스텀 뷰를 넣음. #문제시 원복
         fun buildQuickSlotButton(slot: String, emoji: String): Pair<View, android.widget.TextView> {
             val etaText = android.widget.TextView(this).apply {
-                textSize = 11f
+                textSize = 10f
                 gravity = android.view.Gravity.CENTER
                 setTextColor(android.graphics.Color.parseColor("#5B9BFF"))
+                maxLines = 1
+                setSingleLine(true)
+                ellipsize = android.text.TextUtils.TruncateAt.END
             }
             // v12.2: 등록된 즐겨찾기 칸은 하트 대신 등록된 장소 이름을 보여줌(재억 요청 -
             // "서울역 검색해서 등록했으면 하트 대신 서울역으로 표시"). 이름이 길면 한 줄로
@@ -1054,7 +1074,8 @@ class MapActivity : AppCompatActivity() {
             QuickSlotStore.SLOT_FAV1 to "\u2764\uFE0F",
             QuickSlotStore.SLOT_FAV2 to "\u2764\uFE0F",
             QuickSlotStore.SLOT_FAV3 to "\u2764\uFE0F",
-            QuickSlotStore.SLOT_FAV4 to "\u2764\uFE0F"
+            QuickSlotStore.SLOT_FAV4 to "\u2764\uFE0F",
+            QuickSlotStore.SLOT_FAV5 to "\u2764\uFE0F"
         ).map { (slot, emoji) -> slot to buildQuickSlotButton(slot, emoji) }
         // v11.9: 집/회사는 상단바 고정 버튼으로 빠져서 여기 팝업엔 즐겨찾기 3칸만 남음.
         // 카드 하나당 너비를 고정폭(52dp)으로 줄여서, 제목("검색 이력 전체")과 같은 줄
@@ -1062,7 +1083,7 @@ class MapActivity : AppCompatActivity() {
         val quickSlotRow = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             quickSlotButtons.forEach { (_, pair) ->
-                pair.first.layoutParams = android.widget.LinearLayout.LayoutParams(115, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                pair.first.layoutParams = android.widget.LinearLayout.LayoutParams(100, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                     marginStart = 8
                 }
                 addView(pair.first)
@@ -1078,7 +1099,7 @@ class MapActivity : AppCompatActivity() {
             }
             etaText.text = "검색 중"
             etaText.setTextColor(android.graphics.Color.parseColor("#5B9BFF"))
-            etaText.textSize = 11f
+            etaText.textSize = 10f
             val (curLat, curLon) = resolveCurrentWgs84LatLon()
             if (curLat == null || curLon == null) {
                 etaText.text = ""
