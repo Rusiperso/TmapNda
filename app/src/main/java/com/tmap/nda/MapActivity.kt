@@ -1898,7 +1898,12 @@ class MapActivity : AppCompatActivity() {
             // currentLabels[index]에 값을 넣으려다 "그런 자리 없음" 오류로 앱이 죽음
             // (재억 지적, 검색 결과에서 크래시). 어댑터한테는 복사본(toList())을 넘겨서
             // currentLabels와 완전히 분리시킴. #문제시 원복
-            val adapter = darkTextAdapter(currentLabels.toList())
+            // v13.0-2: 재발한 크래시 원인 - .toList()는 항목이 0개나 1개일 때 코틀린이
+            // "수정 불가능한" 특수 리스트를 돌려주는 최적화를 함. 검색 결과가 1개뿐인
+            // 페이지에서 나중에 adapter.clear()를 부르면 "수정 불가" 오류로 앱이 죽었음
+            // (재억 지적, UnsupportedOperationException). ArrayList(...)로 명시적으로
+            // 감싸서 항목 개수와 무관하게 항상 진짜 수정 가능한 리스트로 만듦. #문제시 원복
+            val adapter = darkTextAdapter(ArrayList(currentLabels))
             listView.adapter = adapter
             listView.setOnItemClickListener { _, _, position, _ -> pickEntry(pageHits[position]) }
             dialog.setTitle("검색 결과 ${hits.size}건 (${start + 1}-$end)")

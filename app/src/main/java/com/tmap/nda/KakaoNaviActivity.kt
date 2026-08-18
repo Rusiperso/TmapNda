@@ -1877,7 +1877,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             // v12.8: MapActivity와 동일 - ArrayAdapter가 원본 리스트를 그대로 참조해서
             // adapter.clear()가 currentLabels까지 같이 비워버려 크래시나던 문제(재억
             // 지적). 복사본(toList())을 넘겨서 분리. #문제시 원복
-            val adapter = darkTextAdapter(currentLabels.toList())
+            // v13.0-2: MapActivity와 동일 - .toList()가 0/1개일 때 수정불가 리스트를
+            // 돌려줘서 크래시나던 문제(재억 지적). ArrayList(...)로 감싸서 방지. #문제시 원복
+            val adapter = darkTextAdapter(ArrayList(currentLabels))
             listView.adapter = adapter
             listView.setOnItemClickListener { _, _, position, _ -> pickEntry(pageHits[position]) }
             pickDialog.setTitle("검색 결과 ${hits.size}건 (${start + 1}-$end) - 목적지를 선택하세요")
