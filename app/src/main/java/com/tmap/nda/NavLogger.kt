@@ -119,6 +119,13 @@ object NavLogger {
             FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         })
 
+        // v13.0: 재억 요청 - 첨부할 로그 총 용량이 10MB를 넘으면 큰 첨부라 일부 메일
+        // 앱/서버에서 문제가 생길 수 있어서, 받는 주소를 자동으로 바꿈. 10MB 이하면
+        // 기존 iCloud 주소, 넘으면 gmail 주소로. #문제시 원복
+        val totalBytes = files.sumOf { it.length() }
+        val tenMb = 10L * 1024 * 1024
+        val recipient = if (totalBytes > tenMb) "choksa55@gmail.com" else "jaeeok.cho@icloud.com"
+
         // v5.2: 로그 전송 양식 개편(사용자 요청) - "로그 보낸 메일 주소" 항목 제거,
         // "현재 사용 중인 버전"(TmapNda 자체 앱 버전) 항목 추가. "브렌치 이름"은 openpilot
         // 자체 브랜치명을 UDP로 안 받고 있어서 정확히는 못 채우지만, openpilot이 보내는
@@ -131,7 +138,7 @@ object NavLogger {
 
         val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_EMAIL, arrayOf("jaeeok.cho@icloud.com"))
+            putExtra(Intent.EXTRA_EMAIL, arrayOf(recipient))
             putExtra(Intent.EXTRA_SUBJECT, "TmapNda 로그 (${files.size}개 파일)")
             putExtra(
             Intent.EXTRA_TEXT,
