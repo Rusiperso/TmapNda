@@ -757,7 +757,7 @@ class MapActivity : AppCompatActivity() {
         }
         android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(existing.name)
-            .setItems(arrayOf("다시 검색", "이름 변경", "이동 방식 변경", "삭제", "취소")) { _, which ->
+            .setItems(arrayOf("다시 검색", "이름 변경", "이동방식 저장", "삭제", "취소")) { _, which ->
                 when (which) {
                     0 -> {
                         pendingQuickSlotRegistration = slot
@@ -793,12 +793,12 @@ class MapActivity : AppCompatActivity() {
         button?.setOnClickListener {
             val existing = QuickSlotStore.get(this, slot)
             if (existing != null) {
-                // v13.3-2: 재억 지적 - "저장된 이동 방식으로 바로 안내"는 이동 방식을
-                // 한 번이라도 골라서 저장해둔 경우에만 해당함. 아직 한 번도 안 골랐으면
-                // (routePriorityName == null) 등록 직후 상태라, 이때는 매번 물어봐야 함.
-                // #문제시 원복
+                // v13.5: 재억 지적 - 처음 고른 걸 자동으로 영구 저장해버리면 안 됨.
+                // 저장 안 된 상태에서는 매번 물어보되, 그때 고른 건 "이번 한 번만" 쓰고
+                // 저장은 안 함. 진짜로 계속 그 방식 쓰고 싶으면 길게 눌러서 "이동방식
+                // 저장"으로 따로 저장해야 함. #문제시 원복
                 if (existing.routePriorityName == null) {
-                    showRoutePriorityDialog(existing, saveToSlot = slot)
+                    showRoutePriorityDialog(existing)
                 } else {
                     startKakaoOverlayGuidance(
                         existing.name, existing.lat, existing.lon,
@@ -1093,11 +1093,10 @@ class MapActivity : AppCompatActivity() {
                     val existing = QuickSlotStore.get(this@MapActivity, slot)
                     dialog.dismiss()
                     if (existing != null) {
-                        // v13.3-2: MapActivity의 wireTopBarQuickSlotButton과 동일 - 이동 방식을
-                        // 아직 안 골랐으면(routePriorityName == null) 물어보고, 골라둔 게
-                        // 있으면 그걸로 바로. #문제시 원복
+                        // v13.5: wireTopBarQuickSlotButton과 동일 - 저장 안 됐으면 매번
+                        // 물어보되 그 선택은 이번 한 번만, 자동 저장 안 함. #문제시 원복
                         if (existing.routePriorityName == null) {
-                            showRoutePriorityDialog(existing, saveToSlot = slot)
+                            showRoutePriorityDialog(existing)
                         } else {
                             startKakaoOverlayGuidance(
                                 existing.name, existing.lat, existing.lon,
@@ -1296,7 +1295,7 @@ class MapActivity : AppCompatActivity() {
             .create()
         listView.setOnItemClickListener { _, _, position, _ ->
             routeDialog.dismiss()
-            // v13.2-3: 재억 요청 - 즐겨찾기/집/회사의 "이동 방식 변경"으로 열린 거면,
+            // v13.2-3: 재억 요청 - 즐겨찾기/집/회사의 "이동방식 저장"으로 열린 거면,
             // 고른 방식을 그 칸에 저장까지 해둠(다음부터 짧게 누르면 이 방식으로 바로 감). #문제시 원복
             if (saveToSlot != null) {
                 QuickSlotStore.updateRoutePreference(this, saveToSlot, optionPriorities[position].name, optionAvoidOptions[position])

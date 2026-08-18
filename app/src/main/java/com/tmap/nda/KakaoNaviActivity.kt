@@ -1213,7 +1213,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
         android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(existing.name)
-            .setItems(arrayOf("다시 검색", "이름 변경", "이동 방식 변경", "삭제", "취소")) { _, which ->
+            .setItems(arrayOf("다시 검색", "이름 변경", "이동방식 저장", "삭제", "취소")) { _, which ->
                 when (which) {
                     0 -> {
                         pendingQuickSlotRegistration = slot
@@ -1248,10 +1248,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         button?.setOnClickListener {
             val existing = QuickSlotStore.get(this, slot)
             if (existing != null) {
-                // v13.3-2: 재억 지적 - 이동 방식을 아직 안 골랐으면(routePriorityName == null)
-                // 물어보고, 골라둔 게 있으면 그걸로 바로. #문제시 원복
+                // v13.5: 재억 지적 - 저장 안 됐으면 매번 물어보되 그 선택은 이번 한 번만,
+                // 자동 저장 안 함. #문제시 원복
                 if (existing.routePriorityName == null) {
-                    showRoutePriorityDialog(existing, saveToSlot = slot)
+                    showRoutePriorityDialog(existing)
                 } else {
                     activeRoutePriority = try {
                         KNRoutePriority.valueOf(existing.routePriorityName)
@@ -1442,10 +1442,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     val existing = QuickSlotStore.get(this@KakaoNaviActivity, slot)
                     dialog.dismiss()
                     if (existing != null) {
-                        // v13.3-2: wireTopBarQuickSlotButton과 동일 - 이동 방식을 아직 안
-                        // 골랐으면 물어보고, 골라둔 게 있으면 그걸로 바로. #문제시 원복
+                        // v13.5: wireTopBarQuickSlotButton과 동일 - 저장 안 됐으면 매번
+                        // 물어보되 그 선택은 이번 한 번만, 자동 저장 안 함. #문제시 원복
                         if (existing.routePriorityName == null) {
-                            showRoutePriorityDialog(existing, saveToSlot = slot)
+                            showRoutePriorityDialog(existing)
                         } else {
                             activeRoutePriority = try {
                                 KNRoutePriority.valueOf(existing.routePriorityName)
@@ -1627,7 +1627,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             .create()
         listView.setOnItemClickListener { _, _, position, _ ->
             routeDialog.dismiss()
-            // v13.2-3: 재억 요청 - "이동 방식 변경"으로 열린 거면 고른 방식을 그 칸에
+            // v13.2-3: 재억 요청 - "이동방식 저장"으로 열린 거면 고른 방식을 그 칸에
             // 저장까지 해둠(다음부터 짧게 누르면 이 방식으로 바로 감). #문제시 원복
             if (saveToSlot != null) {
                 QuickSlotStore.updateRoutePreference(this, saveToSlot, optionPriorities[position].name, optionAvoidOptions[position])
