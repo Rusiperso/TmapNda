@@ -320,12 +320,14 @@ object KakaoSdkState {
      * 직접 참조하지 않고 이름표(리플렉션)로 후보 필드들을 찾아서 시도함. #문제시 원복
      */
     fun computeEta(
+        context: Context,
         startLat: Double,
         startLon: Double,
         destLat: Double,
         destLon: Double,
         callback: (etaMinutes: Int?, distanceMeters: Int?) -> Unit
     ) {
+        NavLogger.d(context, "[소요시간계산] 시작: start=($startLat,$startLon) dest=($destLat,$destLon)")
         try {
             val startKatec = KNSDK.convertWGS84ToKATEC(startLon, startLat)
             val destKatec = KNSDK.convertWGS84ToKATEC(destLon, destLat)
@@ -333,6 +335,7 @@ object KakaoSdkState {
             val goalPoi = com.kakaomobility.knsdk.common.objects.KNPOI("목적지", destKatec.x.toInt(), destKatec.y.toInt(), "")
             KNSDK.makeTripWithStart(startPoi, goalPoi, null) { error, trip ->
                 if (error != null || trip == null) {
+                    NavLogger.e(context, "[소요시간계산] makeTripWithStart 실패: ${error?.msg ?: "trip=null"}")
                     callback(null, null)
                     return@makeTripWithStart
                 }
@@ -340,17 +343,31 @@ object KakaoSdkState {
                     val routesField = trip.javaClass.methods.firstOrNull {
                         (it.name == "getRoutes" || it.name == "routes") && it.parameterCount == 0
                     }
-                    val routes = routesField?.invoke(trip) as? List<*>
+                    if (routesField == null) {
+                        val allMethods = trip.javaClass.methods.joinToString(", ") { it.name }
+                        NavLogger.e(context, "[소요시간계산] trip(${trip.javaClass.name})에서 routes 계열 함수 못 찾음. 가진 함수들: $allMethods")
+                        callback(null, null)
+                        return@makeTripWithStart
+                    }
+                    val routes = routesField.invoke(trip) as? List<*>
                     val firstRoute = routes?.firstOrNull()
                     if (firstRoute == null) {
+                        NavLogger.e(context, "[소요시간계산] routes가 비어있거나 리스트가 아님: ${routesField.invoke(trip)}")
                         callback(null, null)
                         return@makeTripWithStart
                     }
                     val summaryMethod = firstRoute.javaClass.methods.firstOrNull {
                         (it.name == "getSummary" || it.name == "summary") && it.parameterCount == 0
                     }
-                    val summary = summaryMethod?.invoke(firstRoute)
+                    if (summaryMethod == null) {
+                        val allMethods = firstRoute.javaClass.methods.joinToString(", ") { it.name }
+                        NavLogger.e(context, "[소요시간계산] route(${firstRoute.javaClass.name})에서 summary 계열 함수 못 찾음. 가진 함수들: $allMethods")
+                        callback(null, null)
+                        return@makeTripWithStart
+                    }
+                    val summary = summaryMethod.invoke(firstRoute)
                     if (summary == null) {
+                        NavLogger.e(context, "[소요시간계산] summary가 null임")
                         callback(null, null)
                         return@makeTripWithStart
                     }
@@ -360,14 +377,21 @@ object KakaoSdkState {
                     val distanceMethod = summary.javaClass.methods.firstOrNull {
                         (it.name == "getDistance" || it.name == "distance") && it.parameterCount == 0
                     }
+                    if (durationMethod == null) {
+                        val allMethods = summary.javaClass.methods.joinToString(", ") { it.name }
+                        NavLogger.e(context, "[소요시간계산] summary(${summary.javaClass.name})에서 duration 계열 함수 못 찾음. 가진 함수들: $allMethods")
+                    }
                     val durationSeconds = (durationMethod?.invoke(summary) as? Number)?.toInt()
                     val distanceMeters = (distanceMethod?.invoke(summary) as? Number)?.toInt()
+                    NavLogger.d(context, "[소요시간계산] 성공: durationSeconds=$durationSeconds distanceMeters=$distanceMeters")
                     callback(durationSeconds?.let { (it + 30) / 60 }, distanceMeters)
                 } catch (e: Exception) {
+                    NavLogger.e(context, "[소요시간계산] 필드 읽기 예외: ${e.message}")
                     callback(null, null)
                 }
             }
         } catch (e: Exception) {
+            NavLogger.e(context, "[소요시간계산] 경로계산 요청 자체 예외: ${e.message}")
             callback(null, null)
         }
     }

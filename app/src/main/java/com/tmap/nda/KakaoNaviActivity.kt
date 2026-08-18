@@ -1325,7 +1325,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 etaText.text = ""
                 return@forEach
             }
-            KakaoSdkState.computeEta(curLat, curLon, entry.lat, entry.lon) { minutes, _ ->
+            KakaoSdkState.computeEta(this, curLat, curLon, entry.lat, entry.lon) { minutes, _ ->
                 runOnUiThread {
                     etaText.text = if (minutes != null) "${minutes}분" else ""
                 }
@@ -1669,10 +1669,22 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
         fun pickEntry(picked: HistoryEntry) {
             pickDialog.dismiss()
-            // v11.3: MapActivity와 동일 - 집/회사/즐겨찾기 칸 등록 목적이었으면 같이 저장. #문제시 원복
-            pendingQuickSlotRegistration?.let { slot ->
-                QuickSlotStore.save(this@KakaoNaviActivity, slot, picked)
+            // v11.3: MapActivity와 동일 - 집/회사/즐겨찾기 칸 등록 목적이었으면 저장만 하고
+            // 안내는 시작하지 않음(재억 지적 - 등록할 땐 안내까지 필요 없음). #문제시 원복
+            val registeringSlot = pendingQuickSlotRegistration
+            if (registeringSlot != null) {
+                QuickSlotStore.save(this@KakaoNaviActivity, registeringSlot, picked)
                 pendingQuickSlotRegistration = null
+                Toast.makeText(this@KakaoNaviActivity, "'${picked.name}' 등록 완료", Toast.LENGTH_SHORT).show()
+                binding.etDestination?.apply {
+                    isFocusable = false
+                    isFocusableInTouchMode = false
+                    clearFocus()
+                    isFocusable = true
+                    isFocusableInTouchMode = true
+                    setText("")
+                }
+                return
             }
             // v4.13: 카카오 화면 인라인 검색도 티맵 화면과 같은 커서 잔류
             // 문제가 있었음(사용자 8번) - 동일한 방식으로 포커스 강제 정리. #문제시 원복

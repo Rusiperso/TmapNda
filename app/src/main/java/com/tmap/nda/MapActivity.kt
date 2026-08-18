@@ -998,7 +998,7 @@ class MapActivity : AppCompatActivity() {
                 etaText.text = ""
                 return@forEach
             }
-            KakaoSdkState.computeEta(curLat, curLon, entry.lat, entry.lon) { minutes, _ ->
+            KakaoSdkState.computeEta(this, curLat, curLon, entry.lat, entry.lon) { minutes, _ ->
                 runOnUiThread {
                     etaText.text = if (minutes != null) "${minutes}분" else ""
                 }
@@ -1666,11 +1666,22 @@ class MapActivity : AppCompatActivity() {
         fun pickEntry(picked: HistoryEntry) {
             didPickEntry = true
             dialog.dismiss()
-            // v11.3: 집/회사/즐겨찾기 칸 등록을 위해 검색을 연 거였으면, 이 결과를
-            // 그 칸에도 같이 저장함. #문제시 원복
-            pendingQuickSlotRegistration?.let { slot ->
-                QuickSlotStore.save(this@MapActivity, slot, picked)
+            // v11.3: 집/회사/즐겨찾기 칸 등록을 위해 검색을 연 거였으면, 저장만 하고
+            // 안내는 시작하지 않음(재억 지적 - 등록할 땐 안내까지 필요 없음). #문제시 원복
+            val registeringSlot = pendingQuickSlotRegistration
+            if (registeringSlot != null) {
+                QuickSlotStore.save(this@MapActivity, registeringSlot, picked)
                 pendingQuickSlotRegistration = null
+                Toast.makeText(this@MapActivity, "'${picked.name}' 등록 완료", Toast.LENGTH_SHORT).show()
+                binding.etDestination?.apply {
+                    isFocusable = false
+                    isFocusableInTouchMode = false
+                    clearFocus()
+                    isFocusable = true
+                    isFocusableInTouchMode = true
+                    setText("")
+                }
+                return
             }
             binding.tvSearchStatus?.text = "찾음: ${picked.name} (${picked.lat}, ${picked.lon}) - 경로요청 시도"
             // v10.9: 목적지를 고른 뒤에도 검색창에 입력했던 글자가 그대로 남아있던 문제
