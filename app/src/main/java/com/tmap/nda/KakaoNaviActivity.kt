@@ -177,6 +177,23 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val destLat = intent.getDoubleExtra("dest_lat", Double.NaN)
         val destLon = intent.getDoubleExtra("dest_lon", Double.NaN)
         val nativeAppKey = intent.getStringExtra("kakao_native_app_key").orEmpty()
+        // v13.1-2: 재억 요청 - 검색결과에서 "추천/고속도로우선/무료도로우선" 골랐으면
+        // 그 값을 받아서 실제 안내 시작할 때 반영. 안 넘어오면(즐겨찾기 등 기존 경로는)
+        // 그냥 기본값(추천) 그대로. #문제시 원복
+        val routePriorityName = intent.getStringExtra("route_priority_name")
+        val routeAvoidOption = intent.getIntExtra("route_avoid_option", 0)
+        val chosenRoutePriority: KNRoutePriority = try {
+            if (routePriorityName != null) {
+                KNRoutePriority.valueOf(routePriorityName)
+            } else {
+                KNRoutePriority.KNRoutePriority_Recommand
+            }
+        } catch (e: Exception) {
+            NavLogger.e(this, "[경로선택] KNRoutePriority.valueOf($routePriorityName) 실패: ${e.message}")
+            KNRoutePriority.KNRoutePriority_Recommand
+        }
+        activeRoutePriority = chosenRoutePriority
+        activeRouteAvoidOption = routeAvoidOption
 
         if (destName == null || destLat.isNaN() || destLon.isNaN()) {
             NavLogger.e(this, "KakaoNaviActivity: 목적지 정보 누락됨")
@@ -526,8 +543,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // 로그만으로 구분할 수 있게 함. #문제시 원복
                 naviView.guideNewDestinations(
                     trip,
-                    KNRoutePriority.KNRoutePriority_Recommand,
-                    KNRouteAvoidOption.KNRouteAvoidOption_None.value
+                    activeRoutePriority,
+                    activeRouteAvoidOption
                 )
                 naviView.requestLayout()
                 naviView.invalidate()
@@ -1519,6 +1536,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 안 돌아가고 이 화면 안에서 그대로 재검색하도록 함(Kakao 로컬 검색 API를 MapActivity와
     // 동일한 방식으로 여기서도 직접 호출). #문제시 원복
     private val searchHttpClient by lazy { OkHttpClient() }
+    // v13.1-2: 재억 요청 - 검색결과에서 고른 경로 우선순위/회피옵션을 실제 안내 시작
+    // 시점(guideNewDestinations)까지 들고 있기 위한 클래스 필드. #문제시 원복
+    private var activeRoutePriority: KNRoutePriority = KNRoutePriority.KNRoutePriority_Recommand
+    private var activeRouteAvoidOption: Int = 0
     // v11.3: MapActivity와 동일 - 집/회사/즐겨찾기 칸 등록용 검색을 여는 중이면 어느 칸인지 담아둠. #문제시 원복
     private var pendingQuickSlotRegistration: String? = null
 

@@ -327,6 +327,8 @@ object KakaoSdkState {
         destLat: Double,
         destLon: Double,
         retryCount: Int = 0,
+        priority: KNRoutePriority = KNRoutePriority.KNRoutePriority_Recommand,
+        avoidOption: Int = 0,
         callback: (etaMinutes: Int?, distanceMeters: Int?) -> Unit
     ) {
         // v12.5: 로그로 확인한 새 원인 - 앱을 막 켜서 팝업부터 열면, 카카오 내비 SDK
@@ -337,7 +339,7 @@ object KakaoSdkState {
             NavLogger.d(context, "[소요시간계산] KNSDK 아직 초기화 안 됨(재시도 $retryCount/10)")
             if (retryCount < 10) {
                 Handler(Looper.getMainLooper()).postDelayed({
-                    computeEta(context, startLat, startLon, destLat, destLon, retryCount + 1, callback)
+                    computeEta(context, startLat, startLon, destLat, destLon, retryCount + 1, priority, avoidOption, callback)
                 }, 500)
             } else {
                 NavLogger.e(context, "[소요시간계산] 10번 재시도해도 KNSDK 준비 안 됨 - 포기")
@@ -417,7 +419,7 @@ object KakaoSdkState {
                         }
                         null
                     }
-                    routeMethod.invoke(trip, KNRoutePriority.KNRoutePriority_Recommand, 0, proxy)
+                    routeMethod.invoke(trip, priority, avoidOption, proxy)
                 } catch (e: Exception) {
                     NavLogger.e(context, "[소요시간계산] routeWithPriority 호출 예외: ${e.message}")
                     callback(null, null)

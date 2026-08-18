@@ -737,6 +737,10 @@ class MapActivity : AppCompatActivity() {
         // v11.9: 집/회사를 상단바 고정 버튼으로 뺌(재억 요청) - 짧게 누르면 등록 안 됐을 땐
         // 검색해서 등록+바로 안내, 등록 됐으면 검색 없이 바로 안내. 길게 누르면 이미
         // 등록돼 있어도 무시하고 다시 검색해서 덮어씀. #문제시 원복
+        // v13.1-2: 세로모드 상단바에 새로 넣은 "최근검색" 아이콘 연결(재억 지적). 가로모드/
+        // 카카오 화면엔 이 버튼이 원래 없으므로(검색창 옆 시계 아이콘이 이미 있음)
+        // null 안전 처리(?.)로 세로모드에서만 동작. #문제시 원복
+        binding.btnHistoryTopBar?.setOnClickListener { showFullSearchHistoryDialog() }
         wireTopBarQuickSlotButton(binding.btnHomeQuickSlot, QuickSlotStore.SLOT_HOME)
         wireTopBarQuickSlotButton(binding.btnWorkQuickSlot, QuickSlotStore.SLOT_WORK)
     }
@@ -1877,7 +1881,51 @@ class MapActivity : AppCompatActivity() {
                 setText("")
             }
             saveSearchHistory(picked)
-            startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon)
+            showRoutePriorityDialog(picked)
+        }
+
+        // v13.1-2: 재억 요청 - 검색해서 목적지를 고른 뒤, 바로 안내 시작하지 않고
+        // "추천 경로 / 고속도로 우선 / 무료도로 우선" 중 골라서 안내를 시작하도록 함.
+        // 각각 실제 소요시간을 미리 계산해서 같이 보여줌(계산 중엔 "검색 중").
+        // KNRoutePriority_HighWay(고속도로 우선), KNRouteAvoidOption_Fare(톨게이트/유료
+        // 도로 피하기 = 무료도로 우선)는 로그로 확인된 실제 SDK 값. #문제시 원복
+        fun showRoutePriorityDialog(picked: HistoryEntry) {
+            data class RouteOption(val label: String, val priority: KNRoutePriority, val avoidOption: Int)
+            val options = listOf(
+                RouteOption("추천 경로", KNRoutePriority.KNRoutePriority_Recommand, 0),
+                RouteOption("고속도로 우선", KNRoutePriority.KNRoutePriority_HighWay, 0),
+                RouteOption("무료도로 우선", KNRoutePriority.KNRoutePriority_Recommand, KNRouteAvoidOption.KNRouteAvoidOption_Fare.value)
+            )
+            val labels = options.map { "${it.label}\n검색 중" }.toMutableList()
+            val listView = android.widget.ListView(this@MapActivity)
+            val adapter = darkTextAdapter(ArrayList<CharSequence>(labels))
+            listView.adapter = adapter
+            val routeDialog = android.app.AlertDialog.Builder(this@MapActivity, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("${picked.name}\n어떻게 갈까요?")
+                .setView(listView)
+                .setNegativeButton("취소", null)
+                .create()
+            listView.setOnItemClickListener { _, _, position, _ ->
+                routeDialog.dismiss()
+                val chosen = options[position]
+                startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon, chosen.priority.name, chosen.avoidOption)
+            }
+            routeDialog.show()
+            routeDialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
+
+            val (curLat, curLon) = resolveCurrentWgs84LatLon()
+            if (curLat == null || curLon == null) return
+            options.forEachIndexed { index, opt ->
+                KakaoSdkState.computeEta(this@MapActivity, curLat, curLon, picked.lat, picked.lon, priority = opt.priority, avoidOption = opt.avoidOption) { minutes, _ ->
+                    runOnUiThread {
+                        val etaText = SearchRanking.formatEtaMinutes(minutes) ?: "계산 실패"
+                        labels[index] = "${opt.label}\n$etaText"
+                        adapter.clear()
+                        adapter.addAll(ArrayList<CharSequence>(labels))
+                        adapter.notifyDataSetChanged()
+                    }
+                }
+            }
         }
 
         fun renderPage() {
@@ -2374,7 +2422,11 @@ class MapActivity : AppCompatActivity() {
     private fun startKakaoOverlayGuidance(
         name: String,
         goalLat: Double,
-        goalLon: Double
+        goalLon: Double,
+        // v13.1-2: 재억 요청 - 검색해서 목적지 고른 뒤 "추천/고속도로우선/무료도로우선"
+        // 선택하는 기능 추가. Intent로는 enum을 직접 못 넘기니 이름(String)으로 넘김. #문제시 원복
+        routePriorityName: String? = null,
+        routeAvoidOption: Int = 0
     ) {
         val nativeAppKey = getKakaoNativeAppKey()
 
@@ -2394,6 +2446,10 @@ class MapActivity : AppCompatActivity() {
             putExtra("dest_lat", goalLat)
             putExtra("dest_lon", goalLon)
             putExtra("kakao_native_app_key", nativeAppKey)
+            if (routePriorityName != null) {
+                putExtra("route_priority_name", routePriorityName)
+                putExtra("route_avoid_option", routeAvoidOption)
+            }
         }
 
         startActivity(intent)

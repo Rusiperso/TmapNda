@@ -386,6 +386,18 @@
                 android:background="@drawable/shape_circle_gray"
                 android:scaleType="center"/>
 
+            <!-- v13.1-2: 재억 지적 - 세로모드(휴대폰)에서는 "최근검색" 아이콘이 검색창을
+                 펼쳤을 때만(llSearchPanel 안 btnVoiceSearch) 보이고, 상단바엔 없었음.
+                 가로모드/카카오 화면과 통일해서 상단바에 항상 보이도록 추가. #문제시 원복 -->
+            <ImageButton
+                android:id="@+id/btnHistoryTopBar"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginEnd="6dp"
+                android:src="@android:drawable/ic_menu_recent_history"
+                android:background="@drawable/shape_circle_gray"
+                android:scaleType="center"/>
+
             <!-- v11.9: 카카오 화면과 동일 - 집/회사를 최근검색 팝업 안에서 상단바 고정
                  버튼으로 이동(재억 요청) - 순서는 검색 -> 집 -> 회사 -> 업로드 -> 메뉴. #문제시 원복 -->
             <ImageButton
