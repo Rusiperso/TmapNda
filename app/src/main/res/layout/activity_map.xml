@@ -393,8 +393,7 @@
                 android:layout_width="36dp"
                 android:layout_height="36dp"
                 android:layout_marginEnd="6dp"
-                android:src="@android:drawable/ic_menu_myplaces"
-                android:tint="#F0A0A0"
+                android:src="@drawable/ic_home_quickslot"
                 android:background="@drawable/shape_circle_gray"
                 android:scaleType="center"/>
 
@@ -403,8 +402,7 @@
                 android:layout_width="36dp"
                 android:layout_height="36dp"
                 android:layout_marginEnd="6dp"
-                android:src="@android:drawable/ic_menu_agenda"
-                android:tint="#F0A0A0"
+                android:src="@drawable/ic_work_quickslot"
                 android:background="@drawable/shape_circle_gray"
                 android:scaleType="center"/>
 

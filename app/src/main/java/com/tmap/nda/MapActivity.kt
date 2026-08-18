@@ -1207,7 +1207,22 @@ class MapActivity : AppCompatActivity() {
                 return
             }
             setShowTrafficInfoMethod.invoke(mapEngine, enabled)
-            NavLogger.d(this, "[티맵교통정보] 적용됨: $enabled")
+            NavLogger.d(this, "[티맵교통정보] 적용됨: $enabled (재시도 $retryCount)")
+            // v11.10: 설정 화면에서 껐다 켰다 할 땐 바로 반영되는데, 앱을 막 켰을 때만
+            // 반영이 안 된다고 확인됨(재억 지적) - 지도가 "이제 막 준비됐다" 신호를 받은
+            // 직후에 SDK가 스타일/테마를 마저 로딩하면서 교통정보를 자기 마음대로
+            // 다시 켜버리는 것으로 추정. 한 번 성공해도 끝내지 않고, 앱 켤 때(재시도
+            // 경로로 들어온 경우)는 2초/5초/9초 뒤에도 다시 덮어써서 SDK의 늦은 재설정을
+            // 이겨내도록 함. 설정화면에서 직접 저장한 경우(retryCount==0으로 바로 성공)는
+            // 이미 잘 되고 있으니 안 건드림 - retryCount>0(재시도를 거쳐 성공한 경우)일
+            // 때만 보강. #문제시 원복
+            if (retryCount > 0) {
+                listOf(2000L, 5000L, 9000L).forEach { delayMs ->
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        applyTmapTrafficInfoSetting(-1)
+                    }, delayMs)
+                }
+            }
         } catch (e: Exception) {
             NavLogger.e(this, "[티맵교통정보] 적용 예외: ${e.message}")
         }
