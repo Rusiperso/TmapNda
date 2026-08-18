@@ -458,6 +458,23 @@ class MapActivity : AppCompatActivity() {
         }
 
         initTmapSdk(appKey)
+
+        // v12.9: 안내 이어가기 - 앱을 새로 열었을 때 이전에 안내 중이던 목적지가
+        // 저장돼 있으면 "이어서 안내할까요?" 물어봄(재억 요청). 자동으로 바로 시작하지
+        // 않고 꼭 물어봐서, 다른 곳으로 갈 상황이면 그냥 무시하고 새로 검색할 수 있게 함. #문제시 원복
+        ResumeGuidanceStore.get(this)?.let { saved ->
+            android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("안내 이어가기")
+                .setMessage("${saved.name}(으)로 가던 중이었어요. 이어서 안내할까요?")
+                .setPositiveButton("이어서 안내") { _, _ ->
+                    startKakaoOverlayGuidance(saved.name, saved.lat, saved.lon)
+                }
+                .setNegativeButton("아니요") { _, _ ->
+                    ResumeGuidanceStore.clear(this)
+                }
+                .setCancelable(false)
+                .show()
+        }
     }
 
     private fun initTmapSdk(appKey: String) {
@@ -1208,8 +1225,10 @@ class MapActivity : AppCompatActivity() {
     // 테마(Light)의 글자색(검정)이 어두운 패널 배경(#EE111111 등) 위에서 안 보이는 문제가
     // 있었음(사용자 지적: "텍스트 검색 시 뒷 배경색과 동일해서 텍스트 안보임"). 글자색을
     // 명시적으로 흰색으로 지정하는 어댑터로 교체. #문제시 원복
-    private fun darkTextAdapter(items: List<String>): android.widget.ArrayAdapter<String> {
-        return object : android.widget.ArrayAdapter<String>(
+    // v12.9: 검색 결과 목록의 "· N분"(소요시간) 부분을 SpannableString으로 색을 다르게
+    // 입힐 수 있도록 String -> CharSequence로 확장(재억 요청 - 시인성 올리기). #문제시 원복
+    private fun darkTextAdapter(items: List<CharSequence>): android.widget.ArrayAdapter<CharSequence> {
+        return object : android.widget.ArrayAdapter<CharSequence>(
             this, android.R.layout.simple_list_item_1, android.R.id.text1, items
         ) {
             override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
@@ -1220,6 +1239,22 @@ class MapActivity : AppCompatActivity() {
                 return view
             }
         }
+    }
+
+    // v12.9: 이름/거리 뒤에 "· N분"(소요시간) 부분만 파란색(#5B9BFF, 즐겨찾기 시간 색과
+    // 통일)으로 강조. etaText가 없으면(계산 실패) 그냥 일반 텍스트. #문제시 원복
+    private fun highlightEta(label: String, etaText: String?): CharSequence {
+        if (etaText.isNullOrBlank()) return label
+        val marker = " · $etaText"
+        val start = label.lastIndexOf(marker)
+        if (start < 0) return label
+        val spannable = android.text.SpannableString(label)
+        spannable.setSpan(
+            android.text.style.ForegroundColorSpan(android.graphics.Color.parseColor("#5B9BFF")),
+            start + 3, start + marker.length,
+            android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        return spannable
     }
 
     // v1.6: 속도가 도로 제한속도의 110%를 넘으면 경고음 - 기본 꺼짐, 이 다이얼로그에서 토글. #문제시 원복
@@ -1856,7 +1891,7 @@ class MapActivity : AppCompatActivity() {
                 val nameWithExtra = if (distanceAndEta.isNotEmpty()) "${h.name} · $distanceAndEta" else h.name
                 return if (h.addr.isNotBlank()) "$nameWithExtra\n${h.addr}" else nameWithExtra
             }
-            val currentLabels = pageHits.map { buildLabel(it, "검색 중") }.toMutableList()
+            val currentLabels: MutableList<CharSequence> = pageHits.map { buildLabel(it, "검색 중") as CharSequence }.toMutableList()
             // v12.8: 크래시 원인 - ArrayAdapter가 리스트를 복사하지 않고 원본을 그대로
             // 참조해서 써서, adapter.clear()를 부르면 currentLabels 자체도 같이
             // 비워져버렸음. 그 상태에서 다른 소요시간 계산 결과가 나중에 도착해
@@ -1875,7 +1910,8 @@ class MapActivity : AppCompatActivity() {
                 pageHits.forEachIndexed { index, h ->
                     KakaoSdkState.computeEta(this@MapActivity, curLat, curLon, h.lat, h.lon) { minutes, _ ->
                         runOnUiThread {
-                            currentLabels[index] = buildLabel(h, SearchRanking.formatEtaMinutes(minutes))
+                            val etaFormatted = SearchRanking.formatEtaMinutes(minutes)
+                            currentLabels[index] = highlightEta(buildLabel(h, etaFormatted), etaFormatted)
                             adapter.clear()
                             adapter.addAll(currentLabels)
                             adapter.notifyDataSetChanged()

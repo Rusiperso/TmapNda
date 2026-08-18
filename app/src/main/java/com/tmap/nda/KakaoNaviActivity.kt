@@ -350,7 +350,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // attachExitHook(naviView)
         val delegate = KakaoGuidanceDelegate(
             this,
-            onGuideEnded = { finishGuidance() },
+            onGuideEnded = { finishGuidance(arrivedNaturally = true) },
             onGuideStarted = {},
             isRouteGuideActive = { !kakaoMuted }
         ).also { kakaoGuidanceDelegate = it }
@@ -475,6 +475,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     return@runOnUiThread
                 }
                 NavLogger.d(this, "카카오 경로요청 성공, 안내 시작: $destName")
+                // v12.9: 안내 이어가기 - 안내가 실제로 시작되는 이 시점에 목적지를 저장.
+                // 정상 도착하면 finishGuidance(arrivedNaturally=true)에서 지워짐. #문제시 원복
+                ResumeGuidanceStore.save(this, HistoryEntry(destName, "", destLat, destLon))
                 // naviView는 setupContentAndStart()에서 이미 initWithGuidance(trip=null)로
                 // 초기화돼있는 상태(idle map) - 여기서 또 initWithGuidance()를 부르면 안 되고
                 // guideNewDestinations()로 이미 떠있는 세션에 실제 목적지만 갈아끼움.
@@ -1503,8 +1506,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     }
 
     // v1.7: 검색결과 목록을 다크 테마 다이얼로그로 보여주고 사용자가 직접 고르게 함. #문제시 원복
-    private fun darkTextAdapter(items: List<String>): android.widget.ArrayAdapter<String> {
-        return object : android.widget.ArrayAdapter<String>(
+    // v12.9: MapActivity와 동일 - "· N분" 부분을 SpannableString으로 색을 다르게
+    // 입힐 수 있도록 String -> CharSequence로 확장(재억 요청). #문제시 원복
+    private fun darkTextAdapter(items: List<CharSequence>): android.widget.ArrayAdapter<CharSequence> {
+        return object : android.widget.ArrayAdapter<CharSequence>(
             this, android.R.layout.simple_list_item_1, android.R.id.text1, items
         ) {
             override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
@@ -1515,6 +1520,21 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 return view
             }
         }
+    }
+
+    // v12.9: MapActivity와 동일 - "· N분"(소요시간) 부분만 파란색으로 강조. #문제시 원복
+    private fun highlightEta(label: String, etaText: String?): CharSequence {
+        if (etaText.isNullOrBlank()) return label
+        val marker = " · $etaText"
+        val start = label.lastIndexOf(marker)
+        if (start < 0) return label
+        val spannable = android.text.SpannableString(label)
+        spannable.setSpan(
+            android.text.style.ForegroundColorSpan(android.graphics.Color.parseColor("#5B9BFF")),
+            start + 3, start + marker.length,
+            android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        return spannable
     }
 
     // v4.0: 상단바 이벤트(카메라/구간단속/방지턱) 표시 - 설정에서 끄면 안 보이게 함
@@ -1819,7 +1839,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 val nameWithExtra = if (distanceAndEta.isNotEmpty()) "${h.name} · $distanceAndEta" else h.name
                 return if (h.addr.isNotBlank()) "$nameWithExtra\n${h.addr}" else nameWithExtra
             }
-            val currentLabels = pageHits.map { buildLabel(it, "검색 중") }.toMutableList()
+            val currentLabels: MutableList<CharSequence> = pageHits.map { buildLabel(it, "검색 중") as CharSequence }.toMutableList()
             // v12.8: MapActivity와 동일 - ArrayAdapter가 원본 리스트를 그대로 참조해서
             // adapter.clear()가 currentLabels까지 같이 비워버려 크래시나던 문제(재억
             // 지적). 복사본(toList())을 넘겨서 분리. #문제시 원복
@@ -1835,7 +1855,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 pageHits.forEachIndexed { index, h ->
                     KakaoSdkState.computeEta(this@KakaoNaviActivity, curLat, curLon, h.lat, h.lon) { minutes, _ ->
                         runOnUiThread {
-                            currentLabels[index] = buildLabel(h, SearchRanking.formatEtaMinutes(minutes))
+                            val etaFormatted = SearchRanking.formatEtaMinutes(minutes)
+                            currentLabels[index] = highlightEta(buildLabel(h, etaFormatted), etaFormatted)
                             adapter.clear()
                             adapter.addAll(currentLabels)
                             adapter.notifyDataSetChanged()
@@ -1868,7 +1889,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         renderPage()
     }
 
-    private fun finishGuidance() {
+    // v12.9: 안내 이어가기 - 정상 도착(SDK가 스스로 안내종료를 알려줄 때)일 때만
+    // 저장된 이어가기 목적지를 지움. 사용자가 "안내종료" 버튼으로 중간에 끈 경우는
+    // 계속 남겨둬서 다음에 앱 열 때 "이어서 안내할까요?" 물어볼 수 있게 함(재억 요청). #문제시 원복
+    private fun finishGuidance(arrivedNaturally: Boolean = false) {
+        if (arrivedNaturally) {
+            ResumeGuidanceStore.clear(this)
+        }
         KakaoRouteDataRepository.reset()
         cancelNavNotification()
         try {
