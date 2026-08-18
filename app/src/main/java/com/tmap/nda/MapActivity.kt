@@ -30,7 +30,6 @@ import com.tmapmobility.tmap.tmapsdk.ui.util.TmapUISDK.Companion.getFragment
 import com.tmapmobility.tmap.tmapsdk.ui.util.TmapUISDK.Companion.initialize
 import com.tmapmobility.tmap.tmapsdk.ui.fragment.NavigationFragment
 import com.tmapmobility.tmap.tmapsdk.ui.data.MapLayerType
-import com.skt.tmap.vsm.map.MapEngine
 import androidx.lifecycle.Observer
 import android.content.res.Configuration
 import android.view.MotionEvent
@@ -1046,17 +1045,33 @@ class MapActivity : AppCompatActivity() {
     // v10.9: [교통정보] 예전에 남겨둔 조사(v9.2)에서, 화면을 담당하는 MapEngine 클래스에
     // 진짜 켜고 끄는 함수(setShowTrafficInfo)가 있는 걸 확인함. 이 함수는 화면(NavigationFragment)
     // 안에 있는 지도 객체(getMapView())를 통해서만 부를 수 있어서, 그 경로로 접근해 저장된
-    // 설정값을 실제로 반영함. 화면(NavigationFragment)이 아직 준비 안 됐을 때는 조용히 건너뜀. #문제시 원복
+    // 설정값을 실제로 반영함. 화면(NavigationFragment)이 아직 준비 안 됐을 때는 조용히 건너뜀.
+    // v11.0: MapEngine 클래스를 직접 import해서 쓰면 빌드 시점에 그 클래스가 속한 부품을
+    // 못 찾아서 컴파일이 깨지는 문제 발견(v11.0 CI 빌드 실패로 확인) - dumpTrafficApiCandidates()
+    // 등 기존 코드들이 이럴 때 쓰던 방식과 동일하게, 클래스를 직접 안 쓰고 이름표(리플렉션)로만
+    // 찾아서 호출하도록 바꿈. #문제시 원복
     private fun applyTmapTrafficInfoSetting() {
         try {
             val enabled = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 .getBoolean("tmap_traffic_info_enabled", true)
-            val mapEngine: MapEngine? = navigationFragment?.mapView
+            val getMapViewMethod = navigationFragment?.javaClass?.methods?.firstOrNull {
+                it.name == "getMapView" && it.parameterCount == 0
+            }
+            val mapEngine = getMapViewMethod?.invoke(navigationFragment)
             if (mapEngine == null) {
                 NavLogger.d(this, "[티맵교통정보] 지도가 아직 준비 안 됨 - 다음 기회에 다시 적용")
                 return
             }
-            mapEngine.setShowTrafficInfo(enabled)
+            val setShowTrafficInfoMethod = mapEngine.javaClass.methods.firstOrNull {
+                it.name == "setShowTrafficInfo" &&
+                    it.parameterCount == 1 &&
+                    (it.parameterTypes[0] == Boolean::class.javaPrimitiveType)
+            }
+            if (setShowTrafficInfoMethod == null) {
+                NavLogger.e(this, "[티맵교통정보] setShowTrafficInfo 함수를 못 찾음")
+                return
+            }
+            setShowTrafficInfoMethod.invoke(mapEngine, enabled)
             NavLogger.d(this, "[티맵교통정보] 적용됨: $enabled")
         } catch (e: Exception) {
             NavLogger.e(this, "[티맵교통정보] 적용 예외: ${e.message}")
