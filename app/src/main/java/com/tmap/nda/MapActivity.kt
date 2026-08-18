@@ -1857,7 +1857,13 @@ class MapActivity : AppCompatActivity() {
                 return if (h.addr.isNotBlank()) "$nameWithExtra\n${h.addr}" else nameWithExtra
             }
             val currentLabels = pageHits.map { buildLabel(it, "검색 중") }.toMutableList()
-            val adapter = darkTextAdapter(currentLabels)
+            // v12.8: 크래시 원인 - ArrayAdapter가 리스트를 복사하지 않고 원본을 그대로
+            // 참조해서 써서, adapter.clear()를 부르면 currentLabels 자체도 같이
+            // 비워져버렸음. 그 상태에서 다른 소요시간 계산 결과가 나중에 도착해
+            // currentLabels[index]에 값을 넣으려다 "그런 자리 없음" 오류로 앱이 죽음
+            // (재억 지적, 검색 결과에서 크래시). 어댑터한테는 복사본(toList())을 넘겨서
+            // currentLabels와 완전히 분리시킴. #문제시 원복
+            val adapter = darkTextAdapter(currentLabels.toList())
             listView.adapter = adapter
             listView.setOnItemClickListener { _, _, position, _ -> pickEntry(pageHits[position]) }
             dialog.setTitle("검색 결과 ${hits.size}건 (${start + 1}-$end)")
