@@ -488,6 +488,27 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // requestKakaoRoute()에서 검증된 순서 그대로 재사용: lastKnown GPS 캐시 없이도
     // KNSDK 자체 GPS/시스템 캐시 순으로 폴백하고, 그래도 없으면 1초 뒤 재시도. #문제시 원복
     private fun resolveCurrentPositionThenRequestRoute(destName: String, destLat: Double, destLon: Double, finishOnFailure: Boolean = true) {
+        // v13.7-2: 재억 지적 - 저장까지만 해두고 실제로 꺼내 쓰는 코드가 없어서 안내
+        // 시작 딜레이 최소화 기능이 사실상 아무 효과가 없었음. 여기서 캐시된 trip을
+        // 실제로 써서, "출발-도착 연결"부터 다시 하지 않고 바로 안내를 시작하도록 함.
+        // SDK가 재사용을 허용하는지 문서로 확인 안 돼서, 실패하면(예외 발생) 즉시
+        // 아래 원래 방식(처음부터 새로 계산)으로 안전하게 넘어감. #문제시 원복
+        val cachedTrip = PendingTripHolder.consumeIfMatches(destLat, destLon)
+        if (cachedTrip != null) {
+            try {
+                NavLogger.d(this, "[안내시작최적화] 캐시된 경로 재사용 시도: $destName")
+                ResumeGuidanceStore.save(this, HistoryEntry(destName, "", destLat, destLon))
+                naviView.guideNewDestinations(cachedTrip, activeRoutePriority, activeRouteAvoidOption)
+                naviView.requestLayout()
+                naviView.invalidate()
+                NavLogger.d(this, "[안내시작최적화] 캐시된 경로로 안내 시작 성공")
+                return
+            } catch (e: Exception) {
+                NavLogger.e(this, "[안내시작최적화] 캐시된 경로 재사용 실패, 처음부터 다시 계산: ${e.message}")
+                // 아래로 흘러가서 원래 방식대로 처음부터 다시 계산함
+            }
+        }
+
         var startPoi: KNPOI? = null
         val currentGps = KNSDK.sharedGpsManager()?.recentGpsData
         if (currentGps != null && currentGps.pos.x > 0 && currentGps.pos.y > 0) {
