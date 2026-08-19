@@ -1346,6 +1346,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
         lateinit var dialog: android.app.AlertDialog
         lateinit var listView: android.widget.ListView
+        // v13.9: MapActivity와 동일 - 시간 계산으로 줄 높이가 바뀌면서 목록이 다시
+        // 그려지고, 다시 그려질 때마다 계산을 새로 시작하는 게 끝없이 반복되던 문제
+        // (재억 지적, 영상으로 확인 - 느린 안내/느린 검색의 진짜 원인). 계산 결과를
+        // 저장해뒀다가 재사용해서 반복을 끊음. #문제시 원복
+        val etaResultCache = HashMap<Int, String?>()
 
         fun buildAdapter(): android.widget.BaseAdapter = object : android.widget.BaseAdapter() {
             override fun getCount() = history.size
@@ -1372,16 +1377,24 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     val label = if (entry.addr.isNotBlank()) "$base\n${entry.addr}" else base
                     nameText.text = if (isFinal) highlightEta(label, etaText) else label
                 }
-                applyHistoryLabel("검색 중", isFinal = false)
-                val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
-                if (curLat != null && curLon != null) {
-                    KakaoSdkState.computeEta(this@KakaoNaviActivity, curLat, curLon, entry.lat, entry.lon) { minutes, _ ->
-                        runOnUiThread {
-                            applyHistoryLabel(SearchRanking.formatEtaMinutes(minutes), isFinal = true)
-                        }
-                    }
+                if (etaResultCache.containsKey(position)) {
+                    // v13.9: 이미 계산해둔 값이 있으면 바로 보여주고 끝 - 재계산 없음. #문제시 원복
+                    applyHistoryLabel(etaResultCache[position], isFinal = true)
                 } else {
-                    applyHistoryLabel(null, isFinal = true)
+                    applyHistoryLabel("검색 중", isFinal = false)
+                    val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
+                    if (curLat != null && curLon != null) {
+                        KakaoSdkState.computeEta(this@KakaoNaviActivity, curLat, curLon, entry.lat, entry.lon) { minutes, _ ->
+                            val etaText = SearchRanking.formatEtaMinutes(minutes)
+                            etaResultCache[position] = etaText
+                            runOnUiThread {
+                                applyHistoryLabel(etaText, isFinal = true)
+                            }
+                        }
+                    } else {
+                        etaResultCache[position] = null
+                        applyHistoryLabel(null, isFinal = true)
+                    }
                 }
                 // v10.9-5: MapActivity와 동일 - "✕" 작은 글자 대신 배경 있는 "삭제" 버튼으로
                 // 바꾸고 누르는 영역도 넓힘(재억 지적). #문제시 원복
