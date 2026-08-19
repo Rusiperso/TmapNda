@@ -3292,6 +3292,16 @@ class MapActivity : AppCompatActivity() {
             NavLogger.d(this, "startSafeDriveMode 호출됐지만 Activity 이미 종료됨 - 무시")
             return
         }
+        // v14.2: 재억이 보내준 크래시 화면(사진)으로 확인 - "Fragment already added:
+        // NavigationFragment" 예외로 앱이 강제종료되던 문제. 원인 - 이 함수가 화면
+        // (NavigationFragment)을 이미 추가해뒀는지 확인 없이 무조건 새로 추가(add)하고
+        // 있었음. SDK 초기화 콜백이 짧은 시간 안에 두 번 걸리는 경우(드묾) 등으로 이
+        // 함수가 두 번 불리면, 두 번째 add() 시도에서 "이미 추가돼있다"는 예외로 죽음.
+        // 이미 추가돼 있으면 다시 추가하지 않고 조용히 넘어가도록 함. #문제시 원복
+        if (supportFragmentManager.findFragmentById(R.id.tmapUILayout) != null) {
+            NavLogger.d(this, "startSafeDriveMode: 화면(NavigationFragment)이 이미 추가돼있어 다시 추가하지 않음")
+            return
+        }
         navigationFragment = getFragment() as NavigationFragment
 
         supportFragmentManager.beginTransaction()
