@@ -22,6 +22,7 @@ import com.kakaomobility.knsdk.KNRouteAvoidOption
 import com.kakaomobility.knsdk.KNRoutePriority
 import com.kakaomobility.knsdk.KNSDK
 import com.kakaomobility.knsdk.common.objects.KNPOI
+import com.kakaomobility.knsdk.trip.kntrip.KNTrip
 import com.kakaomobility.knsdk.ui.view.KNNaviView
 import com.tmap.nda.databinding.ActivityKakaoNaviBinding
 import com.tmapmobility.tmap.tmapsdk.ui.util.TmapUISDK
@@ -493,7 +494,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // 실제로 써서, "출발-도착 연결"부터 다시 하지 않고 바로 안내를 시작하도록 함.
         // SDK가 재사용을 허용하는지 문서로 확인 안 돼서, 실패하면(예외 발생) 즉시
         // 아래 원래 방식(처음부터 새로 계산)으로 안전하게 넘어감. #문제시 원복
-        val cachedTrip = PendingTripHolder.consumeIfMatches(destLat, destLon)
+        val cachedTrip = PendingTripHolder.consumeIfMatches(destLat, destLon) as? KNTrip
         if (cachedTrip != null) {
             try {
                 NavLogger.d(this, "[안내시작최적화] 캐시된 경로 재사용 시도: $destName")
