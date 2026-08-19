@@ -977,6 +977,48 @@ class MapActivity : AppCompatActivity() {
         // 한 번 계산한 결과를 여기 저장해두고, 다시 그려질 땐 저장된 값을 바로 씀 - 계산도
         // "검색 중" 되돌림도 다시 안 함. #문제시 원복
         val etaResultCache = HashMap<Int, String?>()
+        // v13.10: 재억 지적(영상+로그로 재확인) - 위 캐시로 "다시 계산하는 것"은 막았지만,
+        // 목록이 처음 뜨는 순간엔 보이는 줄 전부(예: 6개)가 동시에 카카오 쪽에 계산을
+        // 요청하고 있었음. 즐겨찾기 팝업에서 고친 것과 같은 문제 - 한꺼번에 몰리면
+        // 카카오 SDK 쪽 응답이 하나씩 몇 초씩 밀려서 나오고, 그동안 목록이 멈춘 것처럼
+        // 보임(실제로 최대 1분 가까이). 즐겨찾기와 동일하게 "동시 최대 2개까지만" 요청이
+        // 나가도록 대기열을 둠 - 나머지 줄은 앞 요청이 끝나야 순서대로 시작됨. #문제시 원복
+        val etaPendingQueue = ArrayDeque<Int>()
+        val etaCallbacks = HashMap<Int, MutableList<(String?) -> Unit>>()
+        var etaActiveCount = 0
+        val etaMaxConcurrent = 2
+        fun etaPump() {
+            while (etaActiveCount < etaMaxConcurrent && etaPendingQueue.isNotEmpty()) {
+                val pos = etaPendingQueue.removeFirst()
+                if (etaResultCache.containsKey(pos)) continue
+                val entry = history.getOrNull(pos) ?: continue
+                val (curLat, curLon) = resolveCurrentWgs84LatLon()
+                if (curLat == null || curLon == null) {
+                    etaResultCache[pos] = null
+                    runOnUiThread { etaCallbacks.remove(pos)?.forEach { it(null) } }
+                    continue
+                }
+                etaActiveCount++
+                KakaoSdkState.computeEta(this, curLat, curLon, entry.lat, entry.lon) { minutes, _ ->
+                    val etaText = SearchRanking.formatEtaMinutes(minutes)
+                    etaResultCache[pos] = etaText
+                    etaActiveCount--
+                    runOnUiThread { etaCallbacks.remove(pos)?.forEach { it(etaText) } }
+                    etaPump()
+                }
+            }
+        }
+        fun requestEta(position: Int, onResult: (String?) -> Unit) {
+            if (etaResultCache.containsKey(position)) {
+                onResult(etaResultCache[position])
+                return
+            }
+            etaCallbacks.getOrPut(position) { mutableListOf() }.add(onResult)
+            if (!etaPendingQueue.contains(position)) {
+                etaPendingQueue.addLast(position)
+            }
+            etaPump()
+        }
 
         fun buildAdapter(): android.widget.BaseAdapter = object : android.widget.BaseAdapter() {
             override fun getCount() = history.size
@@ -1009,18 +1051,8 @@ class MapActivity : AppCompatActivity() {
                     applyHistoryLabel(etaResultCache[position], isFinal = true)
                 } else {
                     applyHistoryLabel("검색 중", isFinal = false)
-                    val (curLat, curLon) = resolveCurrentWgs84LatLon()
-                    if (curLat != null && curLon != null) {
-                        KakaoSdkState.computeEta(this@MapActivity, curLat, curLon, entry.lat, entry.lon) { minutes, _ ->
-                            val etaText = SearchRanking.formatEtaMinutes(minutes)
-                            etaResultCache[position] = etaText
-                            runOnUiThread {
-                                applyHistoryLabel(etaText, isFinal = true)
-                            }
-                        }
-                    } else {
-                        etaResultCache[position] = null
-                        applyHistoryLabel(null, isFinal = true)
+                    requestEta(position) { etaText ->
+                        applyHistoryLabel(etaText, isFinal = true)
                     }
                 }
                 // v10.9-5: 예전엔 "✕" 작은 글자 하나만 있어서 실차 화면에서 눌러야 하는
