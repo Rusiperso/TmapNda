@@ -22,6 +22,8 @@
 
 ## 1. Tmap AppKey 발급받기
 
+<img src="docs/images/guide-tmap-appkey.svg" alt="Tmap AppKey 발급 순서도" width="680">
+
 1. [openapi.sk.com](https://openapi.sk.com) 접속 (PC 권장)
 2. 우측 상단 **로그인** 클릭 → 보유한 **Tmap 계정**으로 로그인 (별도 회원가입 불 필요)
 3. 로그인 후 **대시보드** 이동
@@ -47,6 +49,8 @@
 ## 2. Kakao API 키 발급받기 (목적지 검색·길안내에 필수)
 
 목적지 검색과 카카오내비 턴바이턴 길안내를 쓰려면 아래 키가 필요합니다.
+
+<img src="docs/images/guide-kakao-apikey.svg" alt="카카오 API 키 발급 순서도" width="680">
 
 1. [developers.kakao.com](https://developers.kakao.com) 접속 (PC 권장)
 2. 우측 상단 **로그인** → 카카오 계정으로 로그인
