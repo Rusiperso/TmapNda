@@ -794,10 +794,21 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         diagLog.append("[$depth]${c.javaClass.simpleName}/${bg?.javaClass?.simpleName}")
                         if (color != null) {
                             diagLog.append("(#${Integer.toHexString(color)})")
-                            if (isBlue(color)) {
+                            // v14.2: 재억이 보내준 로그로 재확인 - 예전(v13.10)에 여기 고쳤던
+                            // 크기 제한이 그 뒤 "로컬 작업 지우기" 되돌리기 때 같이 사라져서
+                            // 다시 원래(버그 있는) 상태로 돌아가 있었음. 파란색 탐색엔 크기
+                            // 제한이 없어서, 상단바 전체(예: 681x102, 검색/집/회사/로그전송/
+                            // 메뉴 버튼이 다 들어있는 영역)가 파란 배경으로 잡혀 "안내종료
+                            // 버튼"으로 오인됨 - 터치할 때마다 계속 재탐색이 반복되고, 상단바
+                            // 아무 곳이나 눌러도 안내종료로 처리되던 문제. 아래 host 후보
+                            // 탐색과 동일한 크기 제한(maxFallbackSize)을 파란색 후보에도
+                            // 다시 적용. #문제시 원복
+                            if (isBlue(color) && c.width <= maxFallbackSize && c.height <= maxFallbackSize) {
                                 blueHost = c
                                 diagLog.append("★파란색채택")
                                 break
+                            } else if (isBlue(color)) {
+                                diagLog.append("(파란색이지만 크기초과라 제외 w=${c.width} h=${c.height})")
                             }
                         }
                         diagLog.append(" ")
