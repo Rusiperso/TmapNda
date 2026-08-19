@@ -97,6 +97,26 @@ class MainActivity : AppCompatActivity() {
         binding.etTargetIp.setText(savedTargetIp)
         binding.cbBackgroundLocation.isChecked = savedReqBackground
 
+        // v13.8: 재억 요청 - 목적지 없을 때 기본 화면(티맵/카카오) 선택. 버튼 누르면
+        // 바로 저장 + 강조 표시(다이얼로그의 "저장" 누를 때까지 기다릴 필요 없음). #문제시 원복
+        fun refreshDefaultScreenButtons(selected: String) {
+            val tmapSelected = selected != "kakao"
+            binding.btnDefaultScreenTmap.isSelected = tmapSelected
+            binding.btnDefaultScreenKakao.isSelected = !tmapSelected
+            binding.btnDefaultScreenTmap.alpha = if (tmapSelected) 1.0f else 0.5f
+            binding.btnDefaultScreenKakao.alpha = if (tmapSelected) 0.5f else 1.0f
+        }
+        val savedDefaultScreen = sharedPref.getString("default_safety_screen", "tmap") ?: "tmap"
+        refreshDefaultScreenButtons(savedDefaultScreen)
+        binding.btnDefaultScreenTmap.setOnClickListener {
+            sharedPref.edit().putString("default_safety_screen", "tmap").apply()
+            refreshDefaultScreenButtons("tmap")
+        }
+        binding.btnDefaultScreenKakao.setOnClickListener {
+            sharedPref.edit().putString("default_safety_screen", "kakao").apply()
+            refreshDefaultScreenButtons("kakao")
+        }
+
         try {
             val pInfo = packageManager.getPackageInfo(packageName, 0)
             binding.tvAppVersion.text = "버전: ${pInfo.versionName}"

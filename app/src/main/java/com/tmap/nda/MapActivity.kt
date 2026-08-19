@@ -2279,7 +2279,17 @@ class MapActivity : AppCompatActivity() {
                                     // 진짜 원인이었음. 사용자가 맞춰둔 값(unmuteTmapVolume)으로 복원. #문제시 원복
                                     unmuteTmapVolume()
                                 }
-                                hideKakaoOverlay()
+                                // v13.8: 재억 요청 - 목적지 없을 때 기본 화면을 설정에서 "카카오"로
+                                // 골라뒀으면 여기서 티맵으로 안 되돌리고 카카오 화면 그대로 둠.
+                                // 주의: 예전에 idle map을 기본 HUD로 쓰는 비슷한 실험을 했다가,
+                                // 재사용된 naviView가 다음 경로 안내로 전환될 때 화면이 안 바뀌는
+                                // 문제로 롤백한 적 있음(바로 위 주석 참고) - 실차에서 "카카오 기본
+                                // 화면 → 목적지 검색 → 화면 전환 잘 되는지" 꼭 확인 필요. #문제시 원복
+                                val defaultScreen = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                                    .getString("default_safety_screen", "tmap") ?: "tmap"
+                                if (defaultScreen != "kakao") {
+                                    hideKakaoOverlay()
+                                }
                             }
                         }
                     }
