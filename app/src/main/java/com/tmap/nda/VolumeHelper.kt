@@ -14,7 +14,20 @@ import com.tmapmobility.tmap.tmapsdk.ui.util.TmapUISDK
 object VolumeHelper {
     private const val PREF_KEY = "last_music_volume_percent"
 
+    // v14.1: 재억 지적 - 설정 화면에서 슬라이더로 40%를 골라 "지금 음량으로 저장"을 눌러도
+    // 다시 예전 값(예: 46%)으로 되돌아가는 문제. 원인 - saveExplicitVolumePercent()가
+    // applySavedSystemVolume()으로 시스템 음량을 실제로 바꾸는데, 이때 안드로이드가 보내는
+    // "음량이 바뀌었다"는 신호를 아래 volumeChangeReceiver(MapActivity)가 그대로 받아서
+    // "지금 시스템 음량"을 다시 저장해버림 - 그 신호가 타이밍상 살짝 늦게(옛날 값 기준으로)
+    // 들어오면 방금 저장한 40%가 옛날 46%로 도로 덮어써짐. 저장 직후 짧은 시간(1.5초) 동안은
+    // 이 자동 재저장을 무시하도록 보호장치를 둠. #문제시 원복
+    @Volatile
+    private var ignoreCaptureUntilMillis: Long = 0L
+
     fun captureCurrentVolumePercent(context: Context) {
+        if (System.currentTimeMillis() < ignoreCaptureUntilMillis) {
+            return
+        }
         try {
             val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val current = am.getStreamVolume(AudioManager.STREAM_MUSIC)
@@ -41,6 +54,9 @@ object VolumeHelper {
       // 화면에서 바로 소리로 확인 가능하게 함. #문제시 원복
     fun saveExplicitVolumePercent(context: Context, percent: Int) {
         val clamped = percent.coerceIn(0, 100)
+        // v14.1: 시스템 볼륨을 바꾸기 직전에 보호 시간을 먼저 걸어둠 - applySavedSystemVolume()이
+        // 발생시키는 시스템 신호가 이 보호 시간 안에 들어오면 무시됨. #문제시 원복
+        ignoreCaptureUntilMillis = System.currentTimeMillis() + 1500L
         context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             .edit().putInt(PREF_KEY, clamped).apply()
         try {
