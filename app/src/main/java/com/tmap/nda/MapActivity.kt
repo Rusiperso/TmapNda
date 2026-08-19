@@ -2290,17 +2290,7 @@ class MapActivity : AppCompatActivity() {
                                     // 진짜 원인이었음. 사용자가 맞춰둔 값(unmuteTmapVolume)으로 복원. #문제시 원복
                                     unmuteTmapVolume()
                                 }
-                                // v13.8: 재억 요청 - 목적지 없을 때 기본 화면을 설정에서 "카카오"로
-                                // 골라뒀으면 여기서 티맵으로 안 되돌리고 카카오 화면 그대로 둠.
-                                // 주의: 예전에 idle map을 기본 HUD로 쓰는 비슷한 실험을 했다가,
-                                // 재사용된 naviView가 다음 경로 안내로 전환될 때 화면이 안 바뀌는
-                                // 문제로 롤백한 적 있음(바로 위 주석 참고) - 실차에서 "카카오 기본
-                                // 화면 → 목적지 검색 → 화면 전환 잘 되는지" 꼭 확인 필요. #문제시 원복
-                                val defaultScreen = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-                                    .getString("default_safety_screen", "tmap") ?: "tmap"
-                                if (defaultScreen != "kakao") {
-                                    hideKakaoOverlay()
-                                }
+                                hideKakaoOverlay()
                             }
                         }
                     }
@@ -2556,6 +2546,9 @@ class MapActivity : AppCompatActivity() {
                         "KNSDK 라이프사이클 전달 예외: ${e.message}"
                     )
                 }
+                // v13.9: onResume이 이 초기화 완료보다 먼저 지나가버리는 경우(콜드 스타트)를
+                // 대비해서, 초기화가 끝난 이 시점에도 한 번 더 확인. #문제시 원복
+                runOnUiThread { applyDefaultSafetyScreenSetting() }
             } else {
                 NavLogger.e(
                     this,
@@ -3550,6 +3543,31 @@ class MapActivity : AppCompatActivity() {
             PendingMapAction.openFullHistoryDialog = false
             binding.llSearchPanel?.visibility = View.VISIBLE
             showFullSearchHistoryDialog()
+        }
+        applyDefaultSafetyScreenSetting()
+    }
+
+    // v13.9: 재억 지적 - "카카오를 기본 화면으로 골라도 티맵만 나온다"는 문제의 진짜
+    // 원인을 다시 찾음. 이전 수정(v13.8)은 실제 길안내와 무관한 옛날 오버레이 델리게이트
+    // 훅에 걸어둔 거라 실제로는 한 번도 실행이 안 됐음(지금 실제 길안내는 별도 화면인
+    // KakaoNaviActivity로 완전히 분리돼있어서). 진짜 맞는 자리 - 앱을 처음 켰을 때, 그리고
+    // KakaoNaviActivity에서 길안내를 마치고 이 화면으로 돌아왔을 때(둘 다 onResume) - 에서
+    // 설정을 확인해서 "카카오"로 골라뒀으면 카카오 기본지도(showKakaoIdleMap, 목적지 없음)를
+    // 띄움. 이미 표시돼 있으면(재진입) 다시 안 그림. 실제 길안내 중(별도 화면)에는 이
+    // 화면 자체가 보이지 않는 상태라 여기 로직과 안 겹침. #문제시 원복
+    private fun applyDefaultSafetyScreenSetting() {
+        if (!knsdkInitialized) return
+        val defaultScreen = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .getString("default_safety_screen", "tmap") ?: "tmap"
+        val kakaoOverlayAlreadyVisible = binding.flKakaoOverlay?.visibility == View.VISIBLE
+        if (defaultScreen == "kakao") {
+            if (!kakaoOverlayAlreadyVisible) {
+                showKakaoIdleMap()
+            }
+        } else {
+            if (kakaoOverlayAlreadyVisible) {
+                hideKakaoOverlay()
+            }
         }
     }
 
