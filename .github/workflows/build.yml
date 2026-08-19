@@ -23,7 +23,29 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build APK
-        run: ./gradlew assembleDebug
+        run: |
+          set +e
+          ./gradlew assembleDebug --stacktrace > build_log.txt 2>&1
+          echo "BUILD_EXIT=$?" >> "$GITHUB_ENV"
+          tail -n 300 build_log.txt
+
+      - name: Upload log on failure (temp diagnostic)
+        if: env.BUILD_EXIT != '0'
+        run: |
+          git config user.name "diag-bot"
+          git config user.email "diag-bot@users.noreply.github.com"
+          git checkout --orphan diag-build-log
+          git rm -rf --cached . > /dev/null 2>&1 || true
+          tail -c 60000 build_log.txt > build_log_tail.txt
+          git add build_log_tail.txt
+          git commit -m "diag: build log"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" diag-build-log
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fail if build failed
+        if: env.BUILD_EXIT != '0'
+        run: exit 1
 
       - name: Rename APK
         run: |
