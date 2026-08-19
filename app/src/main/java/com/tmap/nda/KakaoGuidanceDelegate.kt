@@ -283,6 +283,13 @@ class KakaoGuidanceDelegate(
                     LaneSignalRepository.lanes = recommendedFlags
                     LaneSignalRepository.source = "kakao"
                     LaneSignalRepository.lastUpdateTime = System.currentTimeMillis()
+                    // v13.6: 재억 지적 - "평소엔 안뜨고 카카오 안내 끝내야 뜬다" 원인을
+                    // 다음 재현 때 정확히 잡기 위한 진단 로그. 카카오가 실제로 차선을
+                    // 갱신하는 매 순간을 15초 간격으로 남김. #문제시 원복
+                    if (System.currentTimeMillis() - lastLaneUpdateDiagLogTime > 15000L) {
+                        lastLaneUpdateDiagLogTime = System.currentTimeMillis()
+                        NavLogger.d(context, "[차선진단][카카오] 갱신됨 lanes=${recommendedFlags.size}개")
+                    }
                 }
                 // v5.4: KNDriveLaneView(카카오 공식 렌더링 컴포넌트)에 그대로 넘겨줄 원본
                 // KNLane 객체 보관. #문제시 원복
@@ -382,6 +389,7 @@ class KakaoGuidanceDelegate(
     // 위험이 있어 매핑하지 않고 51로 두되, 어떤 코드가 안 걸렸는지 15초 간격으로 로그를
     // 남겨서 다음 세션에서 매핑표를 확장할 수 있게 함. #문제시 원복
     private var lastUnmappedTurnTypeLogTime = 0L
+    private var lastLaneUpdateDiagLogTime = 0L
     // v4.16: TmapNda 자체 APK를 디컴파일해서 KNRGCode enum을 바이트코드 레벨에서 직접
     // 추출 - 전체 92개 값을 정확히 확인함(사용자가 준 CarrotNavi 참고로 openpilot이 기대하는
     // 코드체계도 확인됨: carrot_serv.py의 turn_type_mapping). 이 둘을 대조해서 확실한

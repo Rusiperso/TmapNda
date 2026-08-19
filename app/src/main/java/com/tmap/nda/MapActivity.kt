@@ -3241,6 +3241,20 @@ class MapActivity : AppCompatActivity() {
                     // 확인해서(사용자 2·3·4번) LaneSignalRepository에 연결. 카카오가 이미
                     // 최근에 갱신했으면 카카오 값을 안 건드림(둘이 서로 덮어쓰기 경쟁 방지). #문제시 원복
                     updateTmapLaneInfoFromEngine()
+                    // v13.6: 재억 지적("평소엔 안뜨고 카카오 안내 끝내야 뜬다") - 실제로
+                    // 화면(Tmap)에 렌더링을 시도하는 이 시점에 LaneSignalRepository 상태가
+                    // 뭐였는지 15초 간격으로 남김. 카카오 쪽 로그([차선진단][카카오])랑
+                    // 시간 맞춰보면 "갱신은 됐는데 화면에 안 뜬 건지" "갱신 자체가 하필
+                    // 그 순간엔 안 됐던 건지" 구분 가능. #문제시 원복
+                    if (System.currentTimeMillis() - lastLaneRenderDiagLogTime > 15000L) {
+                        lastLaneRenderDiagLogTime = System.currentTimeMillis()
+                        NavLogger.d(
+                            this@MapActivity,
+                            "[차선진단][Tmap화면렌더링] source=${LaneSignalRepository.source} " +
+                                "lanes=${LaneSignalRepository.lanes.size}개 fresh=${LaneSignalRepository.isFresh()} " +
+                                "overlayEnabled(설정)=${getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("lane_overlay_tmap_enabled", true)}"
+                        )
+                    }
                     runOnUiThread {
                         renderLaneSignalBar(this@MapActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "tmap")
                     }
@@ -3984,6 +3998,7 @@ class MapActivity : AppCompatActivity() {
     private var laneFieldLookupFailed = false
     private var aheadLaneInfoDataDumped = false
     private var lastLaneDiagLogTime = 0L
+    private var lastLaneRenderDiagLogTime = 0L
 
     // v4.13: Tmap 자체 안내 시엔 지금까지 차선정보가 아예 안 나왔던 문제(사용자 2·3·4번) -
     // Tmap의 EDCData 번들(얕은 경로)엔 차선 필드가 없지만, getRecentRGData()로 얻는
