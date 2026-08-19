@@ -328,6 +328,72 @@ object PanelDragHelper {
             addView(favoritePlusButton)
         }
 
+        // v13.8: 재억 요청 - "볼륨을 아무리 맞춰놔도 다음에 켜면 다시 돌아간다"는 지적에 대응.
+        // 기존엔 마지막으로 잡힌 시스템 볼륨을 자동으로만 저장했는데(VolumeHelper), 이번엔
+        // 여기서 슬라이더로 직접 값을 고르고 "지금 음량으로 저장" 눌러서 명시적으로 고정할
+        // 수 있게 함. 저장한 값은 다음 안내부터 unmuteTmapVolume()/applySavedSystemVolume()이
+        // 그대로 읽어감(기존 로직 그대로 재사용). #문제시 원복
+        val volumeSectionTitle = android.widget.TextView(context).apply {
+            text = "길안내 음량 저장"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 15f
+            setPadding(40, 20, 40, 4)
+        }
+        val volumeSectionDesc = android.widget.TextView(context).apply {
+            text = "여기서 저장한 음량은 앱을 껐다 켜도 유지됩니다."
+            setTextColor(android.graphics.Color.parseColor("#AAAAAA"))
+            textSize = 12f
+            setPadding(40, 0, 40, 10)
+        }
+        var pendingVolumePercent = VolumeHelper.savedVolumePercent(context)
+        val volumeValueText = android.widget.TextView(context).apply {
+            text = "$pendingVolumePercent%"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 14f
+            minWidth = 70
+            gravity = android.view.Gravity.END
+        }
+        val volumeSeekBar = android.widget.SeekBar(context).apply {
+            max = 100
+            progress = pendingVolumePercent
+            setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: android.widget.SeekBar?, value: Int, fromUser: Boolean) {
+                    pendingVolumePercent = value
+                    volumeValueText.text = "$value%"
+                }
+                override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
+                override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
+            })
+        }
+        val volumeSeekRow = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(40, 0, 40, 4)
+            addView(volumeSeekBar, android.widget.LinearLayout.LayoutParams(
+                0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+            ))
+            addView(volumeValueText)
+        }
+        val currentSavedVolumeText = android.widget.TextView(context).apply {
+            text = "현재 저장된 음량: ${VolumeHelper.savedVolumePercent(context)}%"
+            setTextColor(android.graphics.Color.parseColor("#888888"))
+            textSize = 11f
+            setPadding(40, 0, 40, 10)
+        }
+        val saveVolumeButton = android.widget.Button(context).apply {
+            text = "지금 음량으로 저장"
+            setOnClickListener {
+                VolumeHelper.saveExplicitVolumePercent(context, pendingVolumePercent)
+                currentSavedVolumeText.text = "현재 저장된 음량: $pendingVolumePercent%"
+                android.widget.Toast.makeText(context, "음량 ${pendingVolumePercent}%로 저장됨", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+        val saveVolumeButtonRow = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            setPadding(40, 0, 40, 20)
+            addView(saveVolumeButton)
+        }
+
         val container = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             addView(checkBox)
@@ -339,6 +405,11 @@ object PanelDragHelper {
             addView(satelliteViewCheckBox)
             addView(trafficInfoCheckBox)
             addView(favoriteCountRow)
+            addView(volumeSectionTitle)
+            addView(volumeSectionDesc)
+            addView(volumeSeekRow)
+            addView(currentSavedVolumeText)
+            addView(saveVolumeButtonRow)
         }
         android.app.AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("앱 설정")
