@@ -403,8 +403,12 @@ class KakaoGuidanceDelegate(
             // 도착
             "KNRGCode_Goal" -> 201
             // 분기(fork) - 로그로 실제 관측된 RightDirection 포함
-            "KNRGCode_LeftDirection" -> 7
-            "KNRGCode_RightDirection" -> 6
+            // v13.6: 재억 지적 - 대안경로 합류 지점(진짜 회전이 아닌 분기점)에서
+            // 불필요한 감속이 들어감. 6(우측분기)이 openpilot 쪽에서 감속을 유발하는
+            // 코드라서, 진짜 갈림길이 아닌 곳까지 감속시켰을 가능성이 높음. 좌/우회전처럼
+            // 확실한 것만 매핑한다는 원래 방침대로, 애매한 분기 신호는 다시 51(무안내,
+            // 감속 안 함)로 되돌림. #문제시 원복
+            "KNRGCode_LeftDirection", "KNRGCode_RightDirection" -> 51
             // 고속도로 진출 램프
             "KNRGCode_LeftOutHighway" -> 102
             "KNRGCode_RightOutHighway", "KNRGCode_OutHighway" -> 101

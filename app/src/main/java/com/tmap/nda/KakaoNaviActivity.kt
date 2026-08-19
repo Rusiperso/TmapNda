@@ -1609,6 +1609,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     // v13.2-2: MapActivity와 동일 - 즐겨찾기/집/회사 등록된 칸을 눌렀을 때도 검색 결과와
     // 동일하게 "추천/고속도로우선/무료도로우선" 경로 선택 팝업이 뜨도록 함(재억 지적). #문제시 원복
+    // v13.6: MapActivity와 동일 - 무료도로 우선이 추천 경로랑 거리가 똑같으면 톨게이트가
+    // 아예 없는 구간으로 보고 안 물어보고 바로 감(재억 요청). #문제시 원복
     private fun showRoutePriorityDialog(picked: HistoryEntry, saveToSlot: String? = null) {
         val optionLabels = listOf("추천 경로", "고속도로 우선", "무료도로 우선")
         val optionPriorities = listOf(
@@ -1617,46 +1619,66 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             KNRoutePriority.KNRoutePriority_Recommand
         )
         val optionAvoidOptions = listOf(0, 0, KNRouteAvoidOption.KNRouteAvoidOption_Fare.value)
-        val labels = optionLabels.map { "$it\n검색 중" }.toMutableList()
-        val listView = android.widget.ListView(this)
-        val adapter = darkTextAdapter(ArrayList<CharSequence>(labels))
-        listView.adapter = adapter
-        val routeDialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("${picked.name}\n어떻게 갈까요?")
-            .setView(listView)
-            .setNegativeButton("취소", null)
-            .create()
-        listView.setOnItemClickListener { _, _, position, _ ->
-            routeDialog.dismiss()
-            // v13.2-3: 재억 요청 - "이동방식 저장"으로 열린 거면 고른 방식을 그 칸에
-            // 저장까지 해둠(다음부터 짧게 누르면 이 방식으로 바로 감). #문제시 원복
+
+        fun goDirectly(index: Int) {
             if (saveToSlot != null) {
-                QuickSlotStore.updateRoutePreference(this, saveToSlot, optionPriorities[position].name, optionAvoidOptions[position])
+                QuickSlotStore.updateRoutePreference(this, saveToSlot, optionPriorities[index].name, optionAvoidOptions[index])
             }
-            activeRoutePriority = optionPriorities[position]
-            activeRouteAvoidOption = optionAvoidOptions[position]
+            activeRoutePriority = optionPriorities[index]
+            activeRouteAvoidOption = optionAvoidOptions[index]
             KakaoRouteDataRepository.reset()
             resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
         }
-        routeDialog.show()
-        routeDialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
+
+        fun showPickerWithResults(minutesArr: Array<Int?>) {
+            val labels = optionLabels.mapIndexed { i, label ->
+                "$label\n${SearchRanking.formatEtaMinutes(minutesArr[i]) ?: "계산 실패"}"
+            }.toMutableList()
+            val listView = android.widget.ListView(this)
+            val adapter = darkTextAdapter(ArrayList<CharSequence>(labels))
+            listView.adapter = adapter
+            val routeDialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("${picked.name}\n어떻게 갈까요?")
+                .setView(listView)
+                .setNegativeButton("취소", null)
+                .create()
+            listView.setOnItemClickListener { _, _, position, _ ->
+                routeDialog.dismiss()
+                goDirectly(position)
+            }
+            routeDialog.show()
+            routeDialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
+        }
 
         val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
-        if (curLat == null || curLon == null) return
+        if (curLat == null || curLon == null) {
+            goDirectly(0)
+            return
+        }
+        val minutesArr = arrayOfNulls<Int>(3)
+        val distArr = arrayOfNulls<Int>(3)
+        var receivedCount = 0
         // v13.6: MapActivity와 동일 - "출발-도착 연결"을 한 번만 하고 그 위에서 3개
         // 우선순위만 각각 계산(재억 지적 - 계산 느림). #문제시 원복
         KakaoSdkState.computeEtaForOptions(
             this, curLat, curLon, picked.lat, picked.lon,
             options = optionPriorities.zip(optionAvoidOptions)
-        ) { index, minutes, _ ->
+        ) { index, minutes, distanceMeters ->
             runOnUiThread {
-                val etaText = SearchRanking.formatEtaMinutes(minutes) ?: "계산 실패"
-                labels[index] = "${optionLabels[index]}\n$etaText"
-                adapter.clear()
-                adapter.addAll(ArrayList<CharSequence>(labels))
-                adapter.notifyDataSetChanged()
+                minutesArr[index] = minutes
+                distArr[index] = distanceMeters
+                receivedCount++
+                if (receivedCount == 3) {
+                    val recDist = distArr[0]
+                    val freeDist = distArr[2]
+                    if (recDist != null && freeDist != null && Math.abs(recDist - freeDist) < 200) {
+                        goDirectly(0)
+                    } else {
+                        showPickerWithResults(minutesArr)
+                    }
                 }
             }
+        }
     }
 
     // v12.9: MapActivity와 동일 - "· N분"(소요시간) 부분만 파란색으로 강조. #문제시 원복

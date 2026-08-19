@@ -1279,6 +1279,9 @@ class MapActivity : AppCompatActivity() {
     // v13.2-2: 재억 지적 - 검색 결과에서 고를 때만 경로 선택 팝업이 뜨고, 즐겨찾기/집/회사
     // 등록된 칸을 눌렀을 땐 안 뜨던 문제. 클래스 전체에서 쓸 수 있는 메소드로 빼서
     // 검색 결과/즐겨찾기/집/회사 전부 동일하게 이 팝업을 거치도록 함. #문제시 원복
+    // v13.6: 재억 요청 - 무료도로 우선이 추천 경로랑 거리가 똑같으면(=톨게이트/유료도로
+    // 자체가 없는 구간) 굳이 안 물어보고 바로 추천 경로로 감. 그래서 팝업을 미리 띄우지
+    // 않고, 3개 다 계산이 끝날 때까지 조용히 기다렸다가 판단함. #문제시 원복
     private fun showRoutePriorityDialog(picked: HistoryEntry, saveToSlot: String? = null) {
         val optionLabels = listOf("추천 경로", "고속도로 우선", "무료도로 우선")
         val optionPriorities = listOf(
@@ -1287,32 +1290,45 @@ class MapActivity : AppCompatActivity() {
             KNRoutePriority.KNRoutePriority_Recommand
         )
         val optionAvoidOptions = listOf(0, 0, KNRouteAvoidOption.KNRouteAvoidOption_Fare.value)
-        val labels = optionLabels.map { "$it\n검색 중" }.toMutableList()
-        val listView = android.widget.ListView(this)
-        val adapter = darkTextAdapter(ArrayList<CharSequence>(labels))
-        listView.adapter = adapter
-        val routeDialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("${picked.name}\n어떻게 갈까요?")
-            .setView(listView)
-            .setNegativeButton("취소", null)
-            .create()
-        listView.setOnItemClickListener { _, _, position, _ ->
-            routeDialog.dismiss()
-            // v13.2-3: 재억 요청 - 즐겨찾기/집/회사의 "이동방식 저장"으로 열린 거면,
-            // 고른 방식을 그 칸에 저장까지 해둠(다음부터 짧게 누르면 이 방식으로 바로 감). #문제시 원복
+
+        fun goDirectly(index: Int) {
             if (saveToSlot != null) {
-                QuickSlotStore.updateRoutePreference(this, saveToSlot, optionPriorities[position].name, optionAvoidOptions[position])
+                QuickSlotStore.updateRoutePreference(this, saveToSlot, optionPriorities[index].name, optionAvoidOptions[index])
             }
             startKakaoOverlayGuidance(
                 picked.name, picked.lat, picked.lon,
-                optionPriorities[position].name, optionAvoidOptions[position]
+                optionPriorities[index].name, optionAvoidOptions[index]
             )
         }
-        routeDialog.show()
-        routeDialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
+
+        fun showPickerWithResults(minutesArr: Array<Int?>, distArr: Array<Int?>) {
+            val labels = optionLabels.mapIndexed { i, label ->
+                "$label\n${SearchRanking.formatEtaMinutes(minutesArr[i]) ?: "계산 실패"}"
+            }.toMutableList()
+            val listView = android.widget.ListView(this)
+            val adapter = darkTextAdapter(ArrayList<CharSequence>(labels))
+            listView.adapter = adapter
+            val routeDialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("${picked.name}\n어떻게 갈까요?")
+                .setView(listView)
+                .setNegativeButton("취소", null)
+                .create()
+            listView.setOnItemClickListener { _, _, position, _ ->
+                routeDialog.dismiss()
+                goDirectly(position)
+            }
+            routeDialog.show()
+            routeDialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
+        }
 
         val (curLat, curLon) = resolveCurrentWgs84LatLon()
-        if (curLat == null || curLon == null) return
+        if (curLat == null || curLon == null) {
+            goDirectly(0)
+            return
+        }
+        val minutesArr = arrayOfNulls<Int>(3)
+        val distArr = arrayOfNulls<Int>(3)
+        var receivedCount = 0
         // v13.6: 재억 지적(계산 느림) - "출발-도착 연결"을 3번 따로 안 하고 한 번만 해서
         // 그 위에서 3개 우선순위만 각각 계산하도록 함(computeEtaForOptions). #문제시 원복
         // v13.7: 재억 요청(안내 시작 딜레이 최소화) - 여기서 만든 trip을 PendingTripHolder에
@@ -1322,13 +1338,23 @@ class MapActivity : AppCompatActivity() {
             this, curLat, curLon, picked.lat, picked.lon,
             options = optionPriorities.zip(optionAvoidOptions),
             onTripReady = { trip -> PendingTripHolder.set(trip, picked.lat, picked.lon) }
-        ) { index, minutes, _ ->
+        ) { index, minutes, distanceMeters ->
             runOnUiThread {
-                val etaText = SearchRanking.formatEtaMinutes(minutes) ?: "계산 실패"
-                labels[index] = "${optionLabels[index]}\n$etaText"
-                adapter.clear()
-                adapter.addAll(ArrayList<CharSequence>(labels))
-                adapter.notifyDataSetChanged()
+                minutesArr[index] = minutes
+                distArr[index] = distanceMeters
+                receivedCount++
+                if (receivedCount == 3) {
+                    // v13.6: 재억 요청 - "무료도로 우선"(index 2) 거리가 "추천"(index 0)
+                    // 이랑 200m 이내로 거의 같으면 톨게이트/유료도로가 아예 없는 구간으로
+                    // 보고, 안 물어보고 바로 추천 경로로 감. #문제시 원복
+                    val recDist = distArr[0]
+                    val freeDist = distArr[2]
+                    if (recDist != null && freeDist != null && Math.abs(recDist - freeDist) < 200) {
+                        goDirectly(0)
+                    } else {
+                        showPickerWithResults(minutesArr, distArr)
+                    }
+                }
             }
         }
     }
