@@ -783,10 +783,31 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     var blueHost: android.view.View? = null
                     var cursor = view.parent
                     var depth = 0
-                    // v10.5 폴백 버그 수정: 파란색을 못 찾았을 때 화면 전체까지 올라가버리는 것을
-                    // 막기 위한 안전장치(원래 버튼 크기의 6배, 최소 250px)
-                    val maxFallbackSize = (view.height * 6).coerceAtLeast(250)
                     val diagLog = StringBuilder()
+                    // v10.5 폴백 버그 수정: 파란색을 못 찾았을 때 화면 전체까지 올라가버리는 것을
+                    // 막기 위한 안전장치(원래 버튼 크기의 6배, 최소 250px) - 아래 "host"(파란색
+                    // 아닌 일반 폴백) 후보 크기 제한용으로 계속 씀. #문제시 원복
+                    val maxFallbackSize = (view.height * 6).coerceAtLeast(250)
+                    // v14.4: 재억 지적 - v14.3의 "화면 위쪽 150px이면 상단바"라는 추측이
+                    // 틀렸음(메뉴 팝업의 안내종료도 화면 위쪽에 뜨는 경우가 있어서 똑같이
+                    // 걸려버림 - 다시 글자만 눌리는 걸로 좁아짐). 추측이 아니라, 우리 앱이
+                    // 실제로 그리는 상단바(binding.llTopBarRow)의 화면 좌표를 직접 구해서
+                    // "그 자리랑 진짜 겹치는지"로만 판단함. 진짜 상단바랑 겹칠 때만 제외하고,
+                    // 그 외(메뉴 팝업 등)는 크기·위치 상관없이 원래 카카오 SDK가 잡아준
+                    // 영역 그대로 씀. #문제시 원복
+                    val topBarRect = android.graphics.Rect()
+                    val topBarLoc = IntArray(2)
+                    try {
+                        binding.llTopBarRow.getLocationOnScreen(topBarLoc)
+                        topBarRect.set(
+                            topBarLoc[0], topBarLoc[1],
+                            topBarLoc[0] + binding.llTopBarRow.width,
+                            topBarLoc[1] + binding.llTopBarRow.height
+                        )
+                    } catch (e: Exception) {
+                        NavLogger.e(this, "[안내종료훅] 상단바 좌표 조회 예외: ${e.message}")
+                    }
+                    val screenLoc = IntArray(2)
                     while (cursor is android.view.View && depth < 15) {
                         val c = cursor
                         val bg = c.background
@@ -794,21 +815,20 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         diagLog.append("[$depth]${c.javaClass.simpleName}/${bg?.javaClass?.simpleName}")
                         if (color != null) {
                             diagLog.append("(#${Integer.toHexString(color)})")
-                            // v14.2: 재억이 보내준 로그로 재확인 - 예전(v13.10)에 여기 고쳤던
-                            // 크기 제한이 그 뒤 "로컬 작업 지우기" 되돌리기 때 같이 사라져서
-                            // 다시 원래(버그 있는) 상태로 돌아가 있었음. 파란색 탐색엔 크기
-                            // 제한이 없어서, 상단바 전체(예: 681x102, 검색/집/회사/로그전송/
-                            // 메뉴 버튼이 다 들어있는 영역)가 파란 배경으로 잡혀 "안내종료
-                            // 버튼"으로 오인됨 - 터치할 때마다 계속 재탐색이 반복되고, 상단바
-                            // 아무 곳이나 눌러도 안내종료로 처리되던 문제. 아래 host 후보
-                            // 탐색과 동일한 크기 제한(maxFallbackSize)을 파란색 후보에도
-                            // 다시 적용. #문제시 원복
-                            if (isBlue(color) && c.width <= maxFallbackSize && c.height <= maxFallbackSize) {
-                                blueHost = c
-                                diagLog.append("★파란색채택")
-                                break
-                            } else if (isBlue(color)) {
-                                diagLog.append("(파란색이지만 크기초과라 제외 w=${c.width} h=${c.height})")
+                            if (isBlue(color)) {
+                                c.getLocationOnScreen(screenLoc)
+                                val cRect = android.graphics.Rect(
+                                    screenLoc[0], screenLoc[1],
+                                    screenLoc[0] + c.width, screenLoc[1] + c.height
+                                )
+                                val overlapsRealTopBar = !topBarRect.isEmpty && android.graphics.Rect.intersects(cRect, topBarRect)
+                                if (!overlapsRealTopBar) {
+                                    blueHost = c
+                                    diagLog.append("★파란색채택")
+                                    break
+                                } else {
+                                    diagLog.append("(실제 상단바와 겹쳐서 제외 rect=$cRect)")
+                                }
                             }
                         }
                         diagLog.append(" ")
