@@ -1528,26 +1528,35 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
         // v11.4: MapActivity와 동일 - 팝업이 뜨자마자 등록된 칸들만 조용히 카카오
         // 경로계산을 돌려서 "OO분"으로 채움(재억 요청). #문제시 원복
-        quickSlotButtons.forEach { (slot, pair) ->
-            val etaText = pair.second
-            val entry = QuickSlotStore.get(this, slot)
-            if (entry == null) {
-                return@forEach
-            }
+        // v13.9: MapActivity와 동일 - 5칸을 동시에 던지면 "계산중"일 때 항목을 눌러서
+        // 경로선택 계산까지 겹칠 때 카카오 SDK 쪽에 요청이 몰려 딜레이가 심해짐(재억 지적).
+        // 순서대로(하나 끝나면 다음 하나) 계산하도록 바꿔서 한 번에 밀리는 요청 개수를 줄임. #문제시 원복
+        val quickSlotEntries = quickSlotButtons.mapNotNull { (slot, pair) ->
+            val entry = QuickSlotStore.get(this, slot) ?: return@mapNotNull null
+            Pair(pair.second, entry)
+        }
+        val (quickSlotCurLat, quickSlotCurLon) = resolveCurrentWgs84LatLonForSearch()
+        quickSlotEntries.forEach { (etaText, _) ->
             etaText.text = "검색 중"
             etaText.setTextColor(android.graphics.Color.parseColor("#FFD54F"))
             etaText.textSize = 9f
-            val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
-            if (curLat == null || curLon == null) {
+        }
+        fun computeQuickSlotEtaSequentially(index: Int) {
+            if (index >= quickSlotEntries.size) return
+            val (etaText, entry) = quickSlotEntries[index]
+            if (quickSlotCurLat == null || quickSlotCurLon == null) {
                 etaText.text = ""
-                return@forEach
+                computeQuickSlotEtaSequentially(index + 1)
+                return
             }
-            KakaoSdkState.computeEta(this, curLat, curLon, entry.lat, entry.lon) { minutes, _ ->
+            KakaoSdkState.computeEta(this, quickSlotCurLat, quickSlotCurLon, entry.lat, entry.lon) { minutes, _ ->
                 runOnUiThread {
                     etaText.text = SearchRanking.formatEtaMinutes(minutes) ?: ""
                 }
+                computeQuickSlotEtaSequentially(index + 1)
             }
         }
+        computeQuickSlotEtaSequentially(0)
         val titleView = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL

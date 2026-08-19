@@ -1155,26 +1155,37 @@ class MapActivity : AppCompatActivity() {
         }
         // v11.4: 팝업이 뜨자마자, 등록된 칸들만 조용히 카카오 경로계산을 돌려서
         // "OO분"으로 채움. 계산 중엔 "…", 실패하면 빈 칸으로 둠(재억 요청). #문제시 원복
-        quickSlotButtons.forEach { (slot, pair) ->
-            val etaText = pair.second
-            val entry = QuickSlotStore.get(this, slot)
-            if (entry == null) {
-                return@forEach
-            }
+        // v13.9: 재억 지적 - "계산중"일 때 항목을 누르면 딜레이가 심함. 원인 - 즐겨찾기
+        // 5칸 전부를 한꺼번에 동시에 계산 요청하고 있어서, 그 위에 항목 탭으로 경로선택
+        // 계산(3개)까지 더 겹치면 카카오 SDK 쪽에 최대 8개 요청이 한꺼번에 몰려 서로
+        // 밀림. 5칸을 동시에 안 던지고 하나 끝나면 다음 하나, 이렇게 순서대로만 돌려서
+        // 한 번에 밀리는 요청 개수를 줄임. #문제시 원복
+        val quickSlotEntries = quickSlotButtons.mapNotNull { (slot, pair) ->
+            val entry = QuickSlotStore.get(this, slot) ?: return@mapNotNull null
+            Pair(pair.second, entry)
+        }
+        val (quickSlotCurLat, quickSlotCurLon) = resolveCurrentWgs84LatLon()
+        quickSlotEntries.forEach { (etaText, _) ->
             etaText.text = "검색 중"
             etaText.setTextColor(android.graphics.Color.parseColor("#FFD54F"))
             etaText.textSize = 9f
-            val (curLat, curLon) = resolveCurrentWgs84LatLon()
-            if (curLat == null || curLon == null) {
+        }
+        fun computeQuickSlotEtaSequentially(index: Int) {
+            if (index >= quickSlotEntries.size) return
+            val (etaText, entry) = quickSlotEntries[index]
+            if (quickSlotCurLat == null || quickSlotCurLon == null) {
                 etaText.text = ""
-                return@forEach
+                computeQuickSlotEtaSequentially(index + 1)
+                return
             }
-            KakaoSdkState.computeEta(this, curLat, curLon, entry.lat, entry.lon) { minutes, _ ->
+            KakaoSdkState.computeEta(this, quickSlotCurLat, quickSlotCurLon, entry.lat, entry.lon) { minutes, _ ->
                 runOnUiThread {
                     etaText.text = SearchRanking.formatEtaMinutes(minutes) ?: ""
                 }
+                computeQuickSlotEtaSequentially(index + 1)
             }
         }
+        computeQuickSlotEtaSequentially(0)
         // v11.9: 제목("검색 이력 전체")과 즐겨찾기 3칸을 같은 줄 좌우로 배치(재억 요청). #문제시 원복
         val titleView = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
