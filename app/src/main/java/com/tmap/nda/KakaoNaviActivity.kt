@@ -1235,13 +1235,18 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
         android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(existing.name)
-            .setItems(arrayOf("다시 검색", "이름 변경", "이동방식 저장", "삭제", "취소")) { _, which ->
+            // v13.10: MapActivity와 동일 - 순서를 "다시 검색 -> 안내 방법 변경 -> 이름 변경
+            // -> 삭제"로 바꾸고, "이동방식 저장"을 "안내 방법 변경"으로 이름도 바꿈(재억 요청). #문제시 원복
+            .setItems(arrayOf("다시 검색", "안내 방법 변경", "이름 변경", "삭제", "취소")) { _, which ->
                 when (which) {
                     0 -> {
                         pendingQuickSlotRegistration = slot
                         showInPlaceSearchDialog()
                     }
-                    1 -> {
+                    // v13.2-3: MapActivity와 동일 - 저장해둔 이동 방식만 바꾸고 싶을 때(재억 요청).
+                    // v13.10부터 저장만 되고 바로 안내를 시작하지는 않음. #문제시 원복
+                    1 -> showRoutePriorityDialog(existing, saveToSlot = slot)
+                    2 -> {
                         val input = android.widget.EditText(this).apply {
                             setText(existing.name)
                             setTextColor(android.graphics.Color.WHITE)
@@ -1258,8 +1263,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                             .setNegativeButton("취소", null)
                             .show()
                     }
-                    // v13.2-3: MapActivity와 동일 - 저장해둔 이동 방식만 바꾸고 싶을 때(재억 요청). #문제시 원복
-                    2 -> showRoutePriorityDialog(existing, saveToSlot = slot)
                     3 -> QuickSlotStore.delete(this, slot)
                 }
             }
@@ -1666,7 +1669,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
         fun goDirectly(index: Int) {
             if (saveToSlot != null) {
+                // v13.10: MapActivity와 동일 - "이동방식 저장" 메뉴로 들어왔을 때도 옵션을
+                // 고르면 저장과 동시에 무조건 경로 변경까지 실행해버렸음(재억 지적). 저장
+                // 전용으로 들어온 경우엔 저장만 하고 지금 안내 중인 경로는 그대로 둠. #문제시 원복
                 QuickSlotStore.updateRoutePreference(this, saveToSlot, optionPriorities[index].name, optionAvoidOptions[index])
+                Toast.makeText(this, "${picked.name}의 이동방식을 \"${optionLabels[index]}\"로 저장했어요.", Toast.LENGTH_SHORT).show()
+                return
             }
             activeRoutePriority = optionPriorities[index]
             activeRouteAvoidOption = optionAvoidOptions[index]
@@ -1713,9 +1721,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 distArr[index] = distanceMeters
                 receivedCount++
                 if (receivedCount == 3) {
+                    // v13.10: MapActivity와 동일 - "이동방식 저장" 메뉴(saveToSlot != null)는
+                    // 사용자가 직접 골라서 저장하려는 목적이라 자동 스킵하면 안 됨. #문제시 원복
                     val recDist = distArr[0]
                     val freeDist = distArr[2]
-                    if (recDist != null && freeDist != null && Math.abs(recDist - freeDist) < 200) {
+                    if (saveToSlot == null && recDist != null && freeDist != null && Math.abs(recDist - freeDist) < 200) {
                         goDirectly(0)
                     } else {
                         showPickerWithResults(minutesArr)

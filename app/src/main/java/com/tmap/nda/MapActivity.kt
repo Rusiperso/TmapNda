@@ -757,13 +757,19 @@ class MapActivity : AppCompatActivity() {
         }
         android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(existing.name)
-            .setItems(arrayOf("다시 검색", "이름 변경", "이동방식 저장", "삭제", "취소")) { _, which ->
+            // v13.10: 재억 요청 - 메뉴 순서를 "다시 검색 -> 안내 방법 변경 -> 이름 변경 ->
+            // 삭제"로 바꿈. "이동방식 저장"이라는 이름도 헷갈린다는 지적이 있어서
+            // "안내 방법 변경"으로 더 명확하게 바꿈. #문제시 원복
+            .setItems(arrayOf("다시 검색", "안내 방법 변경", "이름 변경", "삭제", "취소")) { _, which ->
                 when (which) {
                     0 -> {
                         pendingQuickSlotRegistration = slot
                         showTmapTextSearchDialog()
                     }
-                    1 -> {
+                    // v13.2-3: 재억 요청 - 저장해둔 이동 방식(추천/고속도로/무료도로)만 바꾸고
+                    // 싶을 때. 고르면 저장만 되고(v13.10부터) 바로 안내를 시작하지는 않음. #문제시 원복
+                    1 -> showRoutePriorityDialog(existing, saveToSlot = slot)
+                    2 -> {
                         val input = android.widget.EditText(this).apply {
                             setText(existing.name)
                             setTextColor(android.graphics.Color.WHITE)
@@ -780,9 +786,6 @@ class MapActivity : AppCompatActivity() {
                             .setNegativeButton("취소", null)
                             .show()
                     }
-                    // v13.2-3: 재억 요청 - 저장해둔 이동 방식(추천/고속도로/무료도로)만 바꾸고
-                    // 싶을 때. 고르면 그 방식으로 저장까지 되고 바로 안내도 시작됨. #문제시 원복
-                    2 -> showRoutePriorityDialog(existing, saveToSlot = slot)
                     3 -> QuickSlotStore.delete(this, slot)
                 }
             }
@@ -1318,7 +1321,14 @@ class MapActivity : AppCompatActivity() {
 
         fun goDirectly(index: Int) {
             if (saveToSlot != null) {
+                // v13.10: 재억 지적 - "이동방식 저장" 메뉴로 들어왔을 때도 옵션을 고르면
+                // 저장과 동시에 무조건 길안내까지 시작해버렸음. "그냥 이동방식만 바꿔서
+                // 저장"하고 싶은 경우와 "골라서 바로 출발"하는 경우를 구분 안 한 게 원인.
+                // saveToSlot이 있는 경우(=저장 전용 메뉴로 들어온 경우)엔 저장만 하고
+                // 안내는 시작하지 않음. #문제시 원복
                 QuickSlotStore.updateRoutePreference(this, saveToSlot, optionPriorities[index].name, optionAvoidOptions[index])
+                Toast.makeText(this, "${picked.name}의 이동방식을 \"${optionLabels[index]}\"로 저장했어요.", Toast.LENGTH_SHORT).show()
+                return
             }
             startKakaoOverlayGuidance(
                 picked.name, picked.lat, picked.lon,
@@ -1372,9 +1382,12 @@ class MapActivity : AppCompatActivity() {
                     // v13.6: 재억 요청 - "무료도로 우선"(index 2) 거리가 "추천"(index 0)
                     // 이랑 200m 이내로 거의 같으면 톨게이트/유료도로가 아예 없는 구간으로
                     // 보고, 안 물어보고 바로 추천 경로로 감. #문제시 원복
+                    // v13.10: 재억 지적 - "이동방식 저장" 메뉴(saveToSlot != null)는 애초에
+                    // 사용자가 직접 골라서 저장하려는 목적이라, 자동으로 건너뛰면 안 됨.
+                    // 저장 전용 메뉴일 땐 이 자동 스킵을 하지 않고 항상 선택창을 보여줌. #문제시 원복
                     val recDist = distArr[0]
                     val freeDist = distArr[2]
-                    if (recDist != null && freeDist != null && Math.abs(recDist - freeDist) < 200) {
+                    if (saveToSlot == null && recDist != null && freeDist != null && Math.abs(recDist - freeDist) < 200) {
                         goDirectly(0)
                     } else {
                         showPickerWithResults(minutesArr, distArr)
