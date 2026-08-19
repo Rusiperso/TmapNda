@@ -1475,6 +1475,52 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
+    // v13.6: 재억 지적 - 카메라 접근 알림음("띵 띵~")을 티맵 SDK가 끄고 켤 수 있는
+    // 스위치가 있는지 조사. 위 dumpTrafficApiCandidates()랑 똑같은 방식으로 관련
+    // 키워드 함수들을 로그로 찍음. #문제시 원복
+    private fun dumpCameraAlarmApiCandidates() {
+        val prefs = getSharedPreferences("nav_diag", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("camera_alarm_api_dumped", false)) return
+        try {
+            val keywords = listOf("alarm", "camera", "sound", "voice", "mute", "beep", "sdi", "safety")
+            fun dump(label: String, clazz: Class<*>) {
+                for (m in clazz.methods) {
+                    val n = m.name.lowercase()
+                    if (keywords.any { n.contains(it) }) {
+                        NavLogger.e(
+                            this@MapActivity,
+                            "[카메라알림음조사] $label: ${m.name}(${m.parameterTypes.joinToString { it.simpleName }}) -> ${m.returnType.simpleName}"
+                        )
+                    }
+                }
+            }
+            dump("NavigationFragment", NavigationFragment::class.java)
+            dump("TmapUISDK", TmapUISDK::class.java)
+            dump("TmapUISDK.Companion", TmapUISDK.Companion::class.java)
+            val getMapViewMethod = navigationFragment?.javaClass?.methods?.firstOrNull {
+                it.name == "getMapView" && it.parameterCount == 0
+            }
+            val mapEngine = getMapViewMethod?.invoke(navigationFragment)
+            if (mapEngine != null) {
+                dump("MapEngine(${mapEngine.javaClass.simpleName})", mapEngine.javaClass)
+            }
+            try {
+                val sdkManagerClass = Class.forName("com.skt.tmap.engine.navigation.SDKManager")
+                dump("SDKManager", sdkManagerClass)
+                val companion = sdkManagerClass.getField("Companion").get(null)
+                if (companion != null) {
+                    dump("SDKManager.Companion", companion.javaClass)
+                }
+            } catch (e: Exception) {
+                NavLogger.e(this, "[카메라알림음조사] SDKManager dump error: ${e.message}")
+            }
+            NavLogger.e(this, "[카메라알림음조사] 조사 완료 - 위 목록에 후보가 없으면 SDK에 켜고끄는 스위치 자체가 없을 가능성이 높음")
+            prefs.edit().putBoolean("camera_alarm_api_dumped", true).apply()
+        } catch (e: Exception) {
+            NavLogger.e(this, "[카메라알림음조사] 예외: ${e.message}")
+        }
+    }
+
     // v2.0: 잠금 해제 상태면 오버레이가 터치를 그냥 통과시켜서(false 리턴) 지도가 핀치줌/드래그를 받게 함.
     // 잠금 상태(기본값)면 오버레이가 계속 터치를 소비(true)해서 지도 조작을 차단. #문제시 원복
     // v4.0: 상단바 이벤트(카메라/구간단속/방지턱) 표시 - 설정에서 끄면 안 보이게 함
@@ -3053,6 +3099,7 @@ class MapActivity : AppCompatActivity() {
         updateRecentSearchPanel()
         dumpNavigationApiCandidates()
         dumpTrafficApiCandidates()
+        dumpCameraAlarmApiCandidates()
         applyTmapSatelliteViewSetting()
         applyTmapTrafficInfoSetting()
 
