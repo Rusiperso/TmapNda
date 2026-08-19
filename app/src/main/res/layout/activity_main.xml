@@ -80,48 +80,6 @@
         android:text="항상 허용 (백그라운드 동작 허용)"
         android:layout_marginBottom="16dp"/>
 
-    <!-- v13.8: 재억 요청 - 목적지 없이 그냥 달릴 때(안전운전 모드) 기본으로 보여줄 화면을
-         티맵/카카오 중에서 고를 수 있게 함. Tmap/카카오 키 입력란과 같은 초기 설정
-         화면에 배치(재억 지정 위치). #문제시 원복 -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="목적지 없을 때 기본 화면"
-        android:textSize="14sp"
-        android:textStyle="bold"
-        android:layout_marginTop="8dp"/>
-
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="경로 안내 중이 아닐 때(그냥 달리기만 할 때) 어떤 지도를 보여줄지 고릅니다."
-        android:textSize="11sp"
-        android:textColor="#888888"
-        android:layout_marginBottom="8dp"/>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginBottom="16dp">
-
-        <Button
-            android:id="@+id/btnDefaultScreenTmap"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginEnd="8dp"
-            android:text="티맵"/>
-
-        <Button
-            android:id="@+id/btnDefaultScreenKakao"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="카카오"/>
-
-    </LinearLayout>
-
     <Button
         android:id="@+id/btnStartNavi"
         android:layout_width="match_parent"
