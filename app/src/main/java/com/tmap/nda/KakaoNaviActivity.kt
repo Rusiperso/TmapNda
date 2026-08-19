@@ -1344,21 +1344,22 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
                     )
                 }
-                // v12.8: MapActivity와 동일 - 최근검색 이력 목록에도 예상 소요시간 표시(재억 요청). #문제시 원복
-                fun applyHistoryLabel(etaText: String?) {
+                // v13.8: MapActivity와 동일 - 시간이 흰색으로만 나오던 문제 수정(재억 지적). #문제시 원복
+                fun applyHistoryLabel(etaText: String?, isFinal: Boolean) {
                     val base = if (etaText != null) "${entry.name} · $etaText" else entry.name
-                    nameText.text = if (entry.addr.isNotBlank()) "$base\n${entry.addr}" else base
+                    val label = if (entry.addr.isNotBlank()) "$base\n${entry.addr}" else base
+                    nameText.text = if (isFinal) highlightEta(label, etaText) else label
                 }
-                applyHistoryLabel("검색 중")
+                applyHistoryLabel("검색 중", isFinal = false)
                 val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
                 if (curLat != null && curLon != null) {
                     KakaoSdkState.computeEta(this@KakaoNaviActivity, curLat, curLon, entry.lat, entry.lon) { minutes, _ ->
                         runOnUiThread {
-                            applyHistoryLabel(SearchRanking.formatEtaMinutes(minutes))
+                            applyHistoryLabel(SearchRanking.formatEtaMinutes(minutes), isFinal = true)
                         }
                     }
                 } else {
-                    applyHistoryLabel(null)
+                    applyHistoryLabel(null, isFinal = true)
                 }
                 // v10.9-5: MapActivity와 동일 - "✕" 작은 글자 대신 배경 있는 "삭제" 버튼으로
                 // 바꾸고 누르는 영역도 넓힘(재억 지적). #문제시 원복
@@ -1484,7 +1485,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val quickSlotRow = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             quickSlotButtons.forEach { (_, pair) ->
-                pair.first.layoutParams = android.widget.LinearLayout.LayoutParams(100, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                pair.first.layoutParams = android.widget.LinearLayout.LayoutParams(130, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                     marginStart = 8
                 }
                 addView(pair.first)

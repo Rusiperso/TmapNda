@@ -988,22 +988,23 @@ class MapActivity : AppCompatActivity() {
                         0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
                     )
                 }
-                // v12.8: 재억 요청 - 최근검색 이력 목록에도 즐겨찾기/검색결과와 동일하게
-                // 예상 소요시간을 붙여서 보여줌. 계산 중엔 "검색 중". #문제시 원복
-                fun applyHistoryLabel(etaText: String?) {
+                // v13.8: 재억 지적 - 최근검색 이력 목록의 시간이 검색결과/즐겨찾기와 달리
+                // 흰색으로만 나오던 문제 - highlightEta()를 안 쓰고 있었음. #문제시 원복
+                fun applyHistoryLabel(etaText: String?, isFinal: Boolean) {
                     val base = if (etaText != null) "${entry.name} · $etaText" else entry.name
-                    nameText.text = if (entry.addr.isNotBlank()) "$base\n${entry.addr}" else base
+                    val label = if (entry.addr.isNotBlank()) "$base\n${entry.addr}" else base
+                    nameText.text = if (isFinal) highlightEta(label, etaText) else label
                 }
-                applyHistoryLabel("검색 중")
+                applyHistoryLabel("검색 중", isFinal = false)
                 val (curLat, curLon) = resolveCurrentWgs84LatLon()
                 if (curLat != null && curLon != null) {
                     KakaoSdkState.computeEta(this@MapActivity, curLat, curLon, entry.lat, entry.lon) { minutes, _ ->
                         runOnUiThread {
-                            applyHistoryLabel(SearchRanking.formatEtaMinutes(minutes))
+                            applyHistoryLabel(SearchRanking.formatEtaMinutes(minutes), isFinal = true)
                         }
                     }
                 } else {
-                    applyHistoryLabel(null)
+                    applyHistoryLabel(null, isFinal = true)
                 }
                 // v10.9-5: 예전엔 "✕" 작은 글자 하나만 있어서 실차 화면에서 눌러야 하는
                 // 위치가 잘 안 보이고 오터치도 잦았음(재억 지적) - 배경이 있는 "삭제" 글자
@@ -1132,7 +1133,7 @@ class MapActivity : AppCompatActivity() {
         val quickSlotRow = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             quickSlotButtons.forEach { (_, pair) ->
-                pair.first.layoutParams = android.widget.LinearLayout.LayoutParams(100, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                pair.first.layoutParams = android.widget.LinearLayout.LayoutParams(130, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                     marginStart = 8
                 }
                 addView(pair.first)
@@ -1314,9 +1315,13 @@ class MapActivity : AppCompatActivity() {
         if (curLat == null || curLon == null) return
         // v13.6: 재억 지적(계산 느림) - "출발-도착 연결"을 3번 따로 안 하고 한 번만 해서
         // 그 위에서 3개 우선순위만 각각 계산하도록 함(computeEtaForOptions). #문제시 원복
+        // v13.7: 재억 요청(안내 시작 딜레이 최소화) - 여기서 만든 trip을 PendingTripHolder에
+        // 담아뒀다가, 실제 안내 화면(KakaoNaviActivity)에서 재사용 시도함(실패하면 그
+        // 화면에서 알아서 처음부터 다시 계산하도록 안전하게 처리해둠). #문제시 원복
         KakaoSdkState.computeEtaForOptions(
             this, curLat, curLon, picked.lat, picked.lon,
-            options = optionPriorities.zip(optionAvoidOptions)
+            options = optionPriorities.zip(optionAvoidOptions),
+            onTripReady = { trip -> PendingTripHolder.set(trip, picked.lat, picked.lon) }
         ) { index, minutes, _ ->
             runOnUiThread {
                 val etaText = SearchRanking.formatEtaMinutes(minutes) ?: "계산 실패"
