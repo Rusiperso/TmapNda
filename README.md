@@ -71,9 +71,9 @@ TmapNda를 쓰려면 **① Tmap AppKey**, **② 카카오 REST API 키 + Default
 
 **2.** 우측 상단 **로그인** 클릭 → 보유한 **Tmap 계정**으로 로그인 (별도 회원가입 불필요)
 
-**3.** 로그인 후 **대시보드** 이동 → 좌측(또는 상단) 메뉴에서 **앱** 클릭 → **앱 만들기** 버튼 클릭
+**3.** 로그인 후 **대시보드** 이동 → 좌측(또는 상단) 메뉴에서 **앱** 클릭 → 아래처럼 앱 목록 화면이 뜨면 우측 상단 **+ 앱 만들기** 버튼 클릭
 
-<p align="center"><img src="docs/images/tmap-app-create.png" width="520" alt="Tmap 앱 만들기 화면"></p>
+<p align="center"><img src="docs/images/tmap-app-create.png" width="620" alt="Tmap 앱 목록 화면 - 앱 만들기 버튼 위치"></p>
 
 **4.** 아래 항목을 입력하고 이용약관에 전부 동의합니다.
 
@@ -95,22 +95,14 @@ TmapNda를 쓰려면 **① Tmap AppKey**, **② 카카오 REST API 키 + Default
 
 <p align="center"><img src="docs/images/tmap-pricing.png" width="620" alt="Tmap API 사용요금 - Free 선택 화면"></p>
 
-**7.** 앱 목록에서 방금 만든 앱 클릭 → **앱키(appKey)** 탭에서 옆 복사 아이콘으로 전체 복사 (아래 화면의 검은 박스 자리에 본인 키가 표시됩니다)
+**7.** 앱 목록에서 방금 만든 앱 클릭 → **앱키(appKey)** 탭 이동 → 회색 칸에 발급된 키가 표시되면 옆 복사 아이콘으로 전체 복사 (아래 예시 화면은 보안을 위해 키 부분을 가리고 촬영한 화면입니다)
 
-<p align="center"><img src="docs/images/tmap-appkey.png" width="620" alt="Tmap APP Key 복사 화면"></p>
+<p align="center"><img src="docs/images/tmap-appkey.png" width="620" alt="Tmap 앱키(appKey) 탭 화면"></p>
 
 **8.** TmapNda 앱 최초 실행 시 뜨는 초기 화면(안전운행 시작하기 화면)의 앱키 입력란에 붙여넣기 → 저장
    > 이미 한 번 실행했다면 상단바 **≡ 메뉴 → 설정을 길게 누르면** 이 화면으로 다시 이동합니다.
 
-**9.** [developers.kakao.com](https://developers.kakao.com) 접속 → 우측 상단 **로그인** → 카카오 계정으로 로그인 → 상단 메뉴 **앱** 이동
-
-<p align="center"><img src="docs/images/kakao-dashboard.png" width="620" alt="카카오 디벨로퍼스 내 애플리케이션 목록 화면"></p>
-
-   → 우측 **+ 앱 생성** 클릭
-
-<p align="center"><img src="docs/images/kakao-app-create.png" width="420" alt="카카오 애플리케이션 생성 팝업 화면"></p>
-
-**10.** 팝업에서 아래 항목을 입력하고 **저장** (별도 심사 없이 즉시 생성됩니다)
+**9.** [developers.kakao.com](https://developers.kakao.com) 접속 → 우측 상단 **로그인** → 카카오 계정으로 로그인 → 상단 메뉴 **앱** 이동 → 우측 상단 빨간 화살표가 가리키는 **+ 앱 생성** 클릭 → 뜨는 팝업에서 아래 항목 입력 후 **저장** (별도 심사 없이 즉시 생성됩니다)
 
    | 항목 | 값 |
    |---|---|
@@ -119,28 +111,22 @@ TmapNda를 쓰려면 **① Tmap AppKey**, **② 카카오 REST API 키 + Default
    | 회사명(사업자명) * | 개인이면 이름 등 아무 문자열 |
    | 카테고리 | 지도/내비게이션 (또는 자유 선택) |
 
-**11.** 생성된 앱 카드 클릭 → 아래 두 가지를 **모두** 진행합니다. 하나라도 빠지면 검색·길안내가 동작하지 않습니다.
+<p align="center"><img src="docs/images/kakao-app-create.png" width="520" alt="카카오 앱 생성 화면 - 앱 생성 버튼과 입력 팝업"></p>
 
-   **① 플랫폼(앱 키) 등록** — 좌측 메뉴 **앱 → 앱 키**(또는 **플랫폼 키**) 클릭
+**10.** 생성된 앱 카드 클릭 → 아래 두 가지를 **모두** 진행합니다. 하나라도 빠지면 검색·길안내가 동작하지 않습니다.
 
-<p align="center"><img src="docs/images/kakao-platform-menu.png" width="260" alt="카카오 좌측 메뉴 - 플랫폼 키 위치"></p>
-
-   → **Default Native AppKey** 클릭 → 화면을 아래로 내려서 **Android 앱 정보**의 패키지명·키 해시에 아래 값을 그대로 복사해서 입력하고 저장
+   **① 플랫폼(앱 키) 등록** — 좌측 메뉴 **앱 → 플랫폼 키** 클릭 → 빨간 화살표가 가리키는 **네이티브 앱 키(Default Native AppKey)** 클릭 → 화면을 아래로 내려서 **Android 앱 정보**의 패키지명·키 해시 칸에 아래 값을 그대로 복사해서 입력하고 저장
 
    ```
    패키지명: com.tmap.nda
    키 해시: zQSvbNffsYGnbQksdHmIUbe10V0=
    ```
 
-<p align="center"><img src="docs/images/kakao-platform-key.png" width="620" alt="Default Native AppKey 등록 화면"></p>
+<p align="center"><img src="docs/images/kakao-platform-key.png" width="520" alt="카카오 플랫폼 키 등록 화면 - 네이티브 앱 키, 패키지명, 키 해시 입력 위치"></p>
 
-   **② 카카오맵 쿼터 사용 체크** — 좌측 메뉴 **앱 → 제품 설정 → 카카오맵** 클릭
+   **② 카카오맵 쿼터 사용 체크** — 좌측 메뉴 **제품 설정 → 카카오맵** 클릭 → **사용 설정** 상태를 **ON**으로 켜고 저장
 
-<p align="center"><img src="docs/images/kakao-map-menu.png" width="260" alt="카카오 좌측 메뉴 - 카카오맵 위치"></p>
-
-   → **쿼터 사용**(사용 설정) 상태를 켜고 저장 (아래 화면의 검은 박스 자리에 본인 앱 ID가 표시됩니다)
-
-<p align="center"><img src="docs/images/kakao-map-quota.png" width="420" alt="카카오맵 쿼터 사용 체크 화면"></p>
+<p align="center"><img src="docs/images/kakao-map-quota.png" width="520" alt="카카오맵 쿼터 사용 체크 화면 - 카카오맵 메뉴와 사용 설정 ON 위치"></p>
 
 **12.** 아래 두 개의 키를 복사합니다.
 
