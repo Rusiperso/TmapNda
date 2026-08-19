@@ -55,6 +55,14 @@ class MapActivity : AppCompatActivity() {
     private var loggedEdcKeySetOnce = false  // 차선/신호등 진단용 전체 키 목록은 한 번만 로그
     private var tbtDistErrorLogged = false   // nTBTDist 리플렉션 실패는 최초 1회만 로깅
     private var isTmapMuted = false  // 티맵 안내음성 음소거 여부 (기본값: 소리 켜짐. 카카오는 실제 경로안내 중에만 말하므로 기본상태에선 티맵 음성이 나와야 함)
+    // v14.2: 재억 요청 - 즐겨찾기/이력/검색결과 목록에서 배경으로 예상시간을 계산하는
+    // 도중에 사용자가 항목 하나를 눌러서 안내를 시작하려 하면, 아직 시작 안 한 나머지
+    // 배경 계산들은 그만두고(이미 보낸 요청까지 취소는 안 되지만 더 안 늘어나게) 방금
+    // 누른 항목 계산이 불필요한 경쟁 없이 나가도록 함("A,B,C,D 계산 중에 E를 누르면
+    // 남은 배경 계산은 그만두고 E부터" - 재억 아이디어). 항목을 고르는 곳
+    // (showRoutePriorityDialog)에서 이 숫자를 하나 올리면, 그 전에 시작된 배경 대기열들은
+    // 자기가 시작될 때 봤던 숫자와 지금 숫자가 다른 걸 보고 스스로 멈춤. #문제시 원복
+    private var etaQueueGeneration = 0
     private val originalBottomMargins = mutableMapOf<Int, Int>()
     private val originalTopMargins = mutableMapOf<Int, Int>()
     private var lastAppliedBottomInset = -1
@@ -976,7 +984,14 @@ class MapActivity : AppCompatActivity() {
         // 계산을 또 새로 시작하는 게 끝없이 반복되던 문제(느린 안내/느린 검색의 진짜 원인).
         // 한 번 계산한 결과를 여기 저장해두고, 다시 그려질 땐 저장된 값을 바로 씀 - 계산도
         // "검색 중" 되돌림도 다시 안 함. #문제시 원복
-        val etaResultCache = HashMap<Int, String?>()
+        // v14.1: 재억 지적(스샷으로 확인 - "노블워시가 2시간 48분이었다가 22분으로 바뀜")
+        // - 캐시를 "몇 번째 줄인지"(position)로 저장하고 있었는데, 검색을 새로 하면 최근
+        // 이력 목록 순서가 바뀜(방금 검색한 게 위로 올라감). 그러면 "1번째 줄"이 가리키는
+        // 목적지가 바뀌는데 캐시는 그걸 모르고 예전 값을 그대로 보여줌 - 실제로는 다른
+        // 목적지의 계산 결과가 잘못 표시된 것. 순번이 아니라 목적지 좌표 자체를 키로 써서,
+        // 순서가 바뀌어도 항상 그 목적지 고유의 값만 표시되도록 함. #문제시 원복
+        fun etaCacheKey(entry: HistoryEntry) = "${entry.lat},${entry.lon}"
+        val etaResultCache = HashMap<String, String?>()
         // v13.10: 재억 지적(영상+로그로 재확인) - 위 캐시로 "다시 계산하는 것"은 막았지만,
         // 목록이 처음 뜨는 순간엔 보이는 줄 전부(예: 6개)가 동시에 카카오 쪽에 계산을
         // 요청하고 있었음. 즐겨찾기 팝업에서 고친 것과 같은 문제 - 한꺼번에 몰리면
@@ -984,36 +999,59 @@ class MapActivity : AppCompatActivity() {
         // 보임(실제로 최대 1분 가까이). 즐겨찾기와 동일하게 "동시 최대 2개까지만" 요청이
         // 나가도록 대기열을 둠 - 나머지 줄은 앞 요청이 끝나야 순서대로 시작됨. #문제시 원복
         val etaPendingQueue = ArrayDeque<Int>()
-        val etaCallbacks = HashMap<Int, MutableList<(String?) -> Unit>>()
+        val etaCallbacks = HashMap<String, MutableList<(String?) -> Unit>>()
         var etaActiveCount = 0
         val etaMaxConcurrent = 2
+        val etaMyGeneration = etaQueueGeneration
         fun etaPump() {
-            while (etaActiveCount < etaMaxConcurrent && etaPendingQueue.isNotEmpty()) {
+            while (etaQueueGeneration == etaMyGeneration && etaActiveCount < etaMaxConcurrent && etaPendingQueue.isNotEmpty()) {
                 val pos = etaPendingQueue.removeFirst()
-                if (etaResultCache.containsKey(pos)) continue
                 val entry = history.getOrNull(pos) ?: continue
+                val key = etaCacheKey(entry)
+                if (etaResultCache.containsKey(key)) continue
                 val (curLat, curLon) = resolveCurrentWgs84LatLon()
                 if (curLat == null || curLon == null) {
-                    etaResultCache[pos] = null
-                    runOnUiThread { etaCallbacks.remove(pos)?.forEach { it(null) } }
+                    etaResultCache[key] = null
+                    runOnUiThread { etaCallbacks.remove(key)?.forEach { it(null) } }
                     continue
                 }
                 etaActiveCount++
+                var settled = false
+                val timeoutHandler = android.os.Handler(android.os.Looper.getMainLooper())
+                val timeoutRunnable = Runnable {
+                    if (!settled) {
+                        settled = true
+                        NavLogger.e(this, "[이력소요시간] 8초 타임아웃 - 포기하고 다음으로: ${entry.name}")
+                        etaResultCache[key] = null
+                        etaActiveCount--
+                        runOnUiThread { etaCallbacks.remove(key)?.forEach { it(null) } }
+                        etaPump()
+                    }
+                }
+                // v14.1: 재억 지적(스샷으로 확인 - "요청 시도"에서 안 넘어가는 증상) -
+                // 요청 하나가 응답을 영영 못 받으면 대기열 전체가 거기서 멈춰버림.
+                // 8초 최대 대기시간을 걸어서, 넘으면 포기하고 다음으로 넘어가게 함. #문제시 원복
+                timeoutHandler.postDelayed(timeoutRunnable, 8000L)
                 KakaoSdkState.computeEta(this, curLat, curLon, entry.lat, entry.lon) { minutes, _ ->
+                    if (settled) return@computeEta
+                    settled = true
+                    timeoutHandler.removeCallbacks(timeoutRunnable)
                     val etaText = SearchRanking.formatEtaMinutes(minutes)
-                    etaResultCache[pos] = etaText
+                    etaResultCache[key] = etaText
                     etaActiveCount--
-                    runOnUiThread { etaCallbacks.remove(pos)?.forEach { it(etaText) } }
+                    runOnUiThread { etaCallbacks.remove(key)?.forEach { it(etaText) } }
                     etaPump()
                 }
             }
         }
         fun requestEta(position: Int, onResult: (String?) -> Unit) {
-            if (etaResultCache.containsKey(position)) {
-                onResult(etaResultCache[position])
+            val entry = history.getOrNull(position) ?: return
+            val key = etaCacheKey(entry)
+            if (etaResultCache.containsKey(key)) {
+                onResult(etaResultCache[key])
                 return
             }
-            etaCallbacks.getOrPut(position) { mutableListOf() }.add(onResult)
+            etaCallbacks.getOrPut(key) { mutableListOf() }.add(onResult)
             if (!etaPendingQueue.contains(position)) {
                 etaPendingQueue.addLast(position)
             }
@@ -1046,9 +1084,10 @@ class MapActivity : AppCompatActivity() {
                     val label = if (entry.addr.isNotBlank()) "$base\n${entry.addr}" else base
                     nameText.text = if (isFinal) highlightEta(label, etaText) else label
                 }
-                if (etaResultCache.containsKey(position)) {
+                val entryKey = etaCacheKey(entry)
+                if (etaResultCache.containsKey(entryKey)) {
                     // v13.9: 이미 계산해둔 값이 있으면 바로 보여주고 끝 - 재계산 없음. #문제시 원복
-                    applyHistoryLabel(etaResultCache[position], isFinal = true)
+                    applyHistoryLabel(etaResultCache[entryKey], isFinal = true)
                 } else {
                     applyHistoryLabel("검색 중", isFinal = false)
                     requestEta(position) { etaText ->
@@ -1190,11 +1229,12 @@ class MapActivity : AppCompatActivity() {
         }
         // v11.4: 팝업이 뜨자마자, 등록된 칸들만 조용히 카카오 경로계산을 돌려서
         // "OO분"으로 채움. 계산 중엔 "…", 실패하면 빈 칸으로 둠(재억 요청). #문제시 원복
-        // v13.9: 재억 지적 - "계산중"일 때 항목을 누르면 딜레이가 심함. 원인 - 즐겨찾기
-        // 5칸 전부를 한꺼번에 동시에 계산 요청하고 있어서, 그 위에 항목 탭으로 경로선택
-        // 계산(3개)까지 더 겹치면 카카오 SDK 쪽에 최대 8개 요청이 한꺼번에 몰려 서로
-        // 밀림. 5칸을 동시에 안 던지고 하나 끝나면 다음 하나, 이렇게 순서대로만 돌려서
-        // 한 번에 밀리는 요청 개수를 줄임. #문제시 원복
+        // v14.1: 재억 지적(로그+스샷으로 재확인) - 세 군데(즐겨찾기/이력/검색결과)를 전부
+        // "동시 최대 2개"로 통일. 추가로, 요청 하나가 응답을 영영 못 받으면(카카오 SDK
+        // 쪽 문제) 대기열 전체가 거기서 영원히 멈춰버리는 문제가 있었음("요청 시도"에서
+        // 안 넘어가는 증상, 스샷으로 확인). 각 요청에 8초 최대 대기시간을 걸어서, 넘으면
+        // 포기하고 다음으로 넘어가도록 함. #문제시 원복
+        val etaTimeoutMs = 8000L
         val quickSlotEntries = quickSlotButtons.mapNotNull { (slot, pair) ->
             val entry = QuickSlotStore.get(this, slot) ?: return@mapNotNull null
             Pair(pair.second, entry)
@@ -1205,22 +1245,45 @@ class MapActivity : AppCompatActivity() {
             etaText.setTextColor(android.graphics.Color.parseColor("#FFD54F"))
             etaText.textSize = 9f
         }
-        fun computeQuickSlotEtaSequentially(index: Int) {
-            if (index >= quickSlotEntries.size) return
-            val (etaText, entry) = quickSlotEntries[index]
-            if (quickSlotCurLat == null || quickSlotCurLon == null) {
-                etaText.text = ""
-                computeQuickSlotEtaSequentially(index + 1)
-                return
-            }
-            KakaoSdkState.computeEta(this, quickSlotCurLat, quickSlotCurLon, entry.lat, entry.lon) { minutes, _ ->
-                runOnUiThread {
-                    etaText.text = SearchRanking.formatEtaMinutes(minutes) ?: ""
+        val quickSlotPendingQueue = ArrayDeque<Int>()
+        var quickSlotActiveCount = 0
+        val quickSlotMaxConcurrent = 2
+        val quickSlotMyGeneration = etaQueueGeneration
+        fun quickSlotPump() {
+            while (etaQueueGeneration == quickSlotMyGeneration && quickSlotActiveCount < quickSlotMaxConcurrent && quickSlotPendingQueue.isNotEmpty()) {
+                val index = quickSlotPendingQueue.removeFirst()
+                val (etaText, entry) = quickSlotEntries[index]
+                if (quickSlotCurLat == null || quickSlotCurLon == null) {
+                    etaText.text = ""
+                    continue
                 }
-                computeQuickSlotEtaSequentially(index + 1)
+                quickSlotActiveCount++
+                var settled = false
+                val timeoutHandler = android.os.Handler(android.os.Looper.getMainLooper())
+                val timeoutRunnable = Runnable {
+                    if (!settled) {
+                        settled = true
+                        NavLogger.e(this, "[즐겨찾기소요시간] 8초 타임아웃 - 포기하고 다음으로: ${entry.name}")
+                        etaText.text = ""
+                        quickSlotActiveCount--
+                        quickSlotPump()
+                    }
+                }
+                timeoutHandler.postDelayed(timeoutRunnable, etaTimeoutMs)
+                KakaoSdkState.computeEta(this, quickSlotCurLat, quickSlotCurLon, entry.lat, entry.lon) { minutes, _ ->
+                    if (settled) return@computeEta
+                    settled = true
+                    timeoutHandler.removeCallbacks(timeoutRunnable)
+                    runOnUiThread {
+                        etaText.text = SearchRanking.formatEtaMinutes(minutes) ?: ""
+                    }
+                    quickSlotActiveCount--
+                    quickSlotPump()
+                }
             }
         }
-        computeQuickSlotEtaSequentially(0)
+        quickSlotEntries.indices.forEach { quickSlotPendingQueue.addLast(it) }
+        quickSlotPump()
         // v11.9: 제목("검색 이력 전체")과 즐겨찾기 3칸을 같은 줄 좌우로 배치(재억 요청). #문제시 원복
         val titleView = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
@@ -1343,6 +1406,9 @@ class MapActivity : AppCompatActivity() {
     // 자체가 없는 구간) 굳이 안 물어보고 바로 추천 경로로 감. 그래서 팝업을 미리 띄우지
     // 않고, 3개 다 계산이 끝날 때까지 조용히 기다렸다가 판단함. #문제시 원복
     private fun showRoutePriorityDialog(picked: HistoryEntry, saveToSlot: String? = null) {
+        // v14.2: 재억 아이디어 - 항목을 골라서 여기로 들어온 순간, 배경에서 돌던 나머지
+        // 목록 계산들은 더 안 늘어나게 멈춤(위 etaQueueGeneration 설명 참고). #문제시 원복
+        etaQueueGeneration++
         val optionLabels = listOf("추천 경로", "고속도로 우선", "무료도로 우선")
         val optionPriorities = listOf(
             KNRoutePriority.KNRoutePriority_Recommand,
@@ -2151,17 +2217,58 @@ class MapActivity : AppCompatActivity() {
 
             val (curLat, curLon) = resolveCurrentWgs84LatLon()
             if (curLat != null && curLon != null) {
-                pageHits.forEachIndexed { index, h ->
-                    KakaoSdkState.computeEta(this@MapActivity, curLat, curLon, h.lat, h.lon) { minutes, _ ->
-                        runOnUiThread {
+                // v14.1: 재억 지적(로그로 재확인) - 즐겨찾기/최근검색 이력은 고쳤는데 이
+                // "검색 결과" 목록만 빠져있었음. 페이지에 보이는 항목 전부(최대 10개)를
+                // 한꺼번에 동시에 계산 요청해서, 카카오 SDK 쪽 응답이 하나씩 1~2초씩
+                // 밀려서 나오고 총 15초 넘게 걸리는 게 로그로 확인됨(검색해서 안내 시작할
+                // 때 지연의 세 번째 원인). 즐겨찾기/이력과 동일하게 "동시 최대 2개까지만"
+                // 요청이 나가도록 대기열로 바꿈. #문제시 원복
+                val etaPendingQueue = ArrayDeque<Int>()
+                var etaActiveCount = 0
+                val etaMaxConcurrent = 2
+                val etaMyGeneration = etaQueueGeneration
+                fun etaPump() {
+                    while (etaQueueGeneration == etaMyGeneration && etaActiveCount < etaMaxConcurrent && etaPendingQueue.isNotEmpty()) {
+                        val index = etaPendingQueue.removeFirst()
+                        val h = pageHits.getOrNull(index) ?: continue
+                        etaActiveCount++
+                        var settled = false
+                        val timeoutHandler = android.os.Handler(android.os.Looper.getMainLooper())
+                        val timeoutRunnable = Runnable {
+                            if (!settled) {
+                                settled = true
+                                NavLogger.e(this@MapActivity, "[검색결과소요시간] 8초 타임아웃 - 포기하고 다음으로: ${h.name}")
+                                etaActiveCount--
+                                runOnUiThread {
+                                    currentLabels[index] = buildLabel(h, null)
+                                    adapter.clear()
+                                    adapter.addAll(currentLabels)
+                                    adapter.notifyDataSetChanged()
+                                }
+                                etaPump()
+                            }
+                        }
+                        // v14.1: 재억 지적(스샷으로 확인) - 요청 하나가 응답을 영영 못 받으면
+                        // 대기열 전체가 멈춤. 8초 타임아웃으로 다음으로 넘어가게 함. #문제시 원복
+                        timeoutHandler.postDelayed(timeoutRunnable, 8000L)
+                        KakaoSdkState.computeEta(this@MapActivity, curLat, curLon, h.lat, h.lon) { minutes, _ ->
+                            if (settled) return@computeEta
+                            settled = true
+                            timeoutHandler.removeCallbacks(timeoutRunnable)
                             val etaFormatted = SearchRanking.formatEtaMinutes(minutes)
-                            currentLabels[index] = highlightEta(buildLabel(h, etaFormatted), etaFormatted)
-                            adapter.clear()
-                            adapter.addAll(currentLabels)
-                            adapter.notifyDataSetChanged()
+                            etaActiveCount--
+                            runOnUiThread {
+                                currentLabels[index] = highlightEta(buildLabel(h, etaFormatted), etaFormatted)
+                                adapter.clear()
+                                adapter.addAll(currentLabels)
+                                adapter.notifyDataSetChanged()
+                            }
+                            etaPump()
                         }
                     }
                 }
+                pageHits.indices.forEach { etaPendingQueue.addLast(it) }
+                etaPump()
             } else {
                 pageHits.forEachIndexed { index, h ->
                     currentLabels[index] = buildLabel(h, null)
