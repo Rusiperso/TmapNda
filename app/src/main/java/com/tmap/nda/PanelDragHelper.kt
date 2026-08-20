@@ -350,17 +350,14 @@ object PanelDragHelper {
         // 여기서 슬라이더로 직접 값을 고르고 "지금 음량으로 저장" 눌러서 명시적으로 고정할
         // 수 있게 함. 저장한 값은 다음 안내부터 unmuteTmapVolume()/applySavedSystemVolume()이
         // 그대로 읽어감(기존 로직 그대로 재사용). #문제시 원복
+        // v15.3: 재억 요청 - 음량은 따로 "지금 음량으로 저장" 버튼을 누를 필요 없이,
+        // 다른 설정들처럼 슬라이더로 값만 정해두고 맨 아래 "저장" 버튼 누를 때 한 번에
+        // 같이 저장되도록 통합. #문제시 원복
         val volumeSectionTitle = android.widget.TextView(context).apply {
-            text = "길안내 음량 저장"
+            text = "길안내 음량"
             setTextColor(android.graphics.Color.WHITE)
             textSize = 15f
-            setPadding(40, 20, 40, 4)
-        }
-        val volumeSectionDesc = android.widget.TextView(context).apply {
-            text = "여기서 저장한 음량은 앱을 껐다 켜도 유지됩니다."
-            setTextColor(android.graphics.Color.parseColor("#AAAAAA"))
-            textSize = 12f
-            setPadding(40, 0, 40, 10)
+            setPadding(40, 20, 40, 10)
         }
         var pendingVolumePercent = VolumeHelper.savedVolumePercent(context)
         val volumeValueText = android.widget.TextView(context).apply {
@@ -391,26 +388,6 @@ object PanelDragHelper {
             ))
             addView(volumeValueText)
         }
-        val currentSavedVolumeText = android.widget.TextView(context).apply {
-            text = "현재 저장된 음량: ${VolumeHelper.savedVolumePercent(context)}%"
-            setTextColor(android.graphics.Color.parseColor("#888888"))
-            textSize = 11f
-            setPadding(40, 0, 40, 10)
-        }
-        val saveVolumeButton = android.widget.Button(context).apply {
-            text = "지금 음량으로 저장"
-            setOnClickListener {
-                VolumeHelper.saveExplicitVolumePercent(context, pendingVolumePercent)
-                currentSavedVolumeText.text = "현재 저장된 음량: $pendingVolumePercent%"
-                android.widget.Toast.makeText(context, "음량 ${pendingVolumePercent}%로 저장됨", android.widget.Toast.LENGTH_SHORT).show()
-            }
-        }
-        val saveVolumeButtonRow = android.widget.LinearLayout(context).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            setPadding(40, 0, 40, 20)
-            addView(saveVolumeButton)
-        }
-
         val container = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             addView(checkBox)
@@ -424,10 +401,7 @@ object PanelDragHelper {
             addView(routeLineDisplayCheckBox)
             addView(favoriteCountRow)
             addView(volumeSectionTitle)
-            addView(volumeSectionDesc)
             addView(volumeSeekRow)
-            addView(currentSavedVolumeText)
-            addView(saveVolumeButtonRow)
         }
         // v15.3: 설정 항목이 많아져서 다이얼로그 세로 길이가 화면을 넘길 수 있으므로
         // ScrollView로 감쌈. AlertDialog는 setView(content)의 버튼 줄을 항상 콘텐츠
@@ -458,6 +432,8 @@ object PanelDragHelper {
                         }
                     }
                     .apply()
+                // v15.3: 음량도 다른 항목들과 같은 저장 버튼 한 번으로 같이 저장(별도 버튼 제거)
+                VolumeHelper.saveExplicitVolumePercent(context, pendingVolumePercent)
                 if (touchLockOverlay != null && unlockMapTouchCheckBox != null) {
                     if (unlockMapTouchCheckBox.isChecked) {
                         touchLockOverlay.setOnTouchListener { _, _ -> false }
