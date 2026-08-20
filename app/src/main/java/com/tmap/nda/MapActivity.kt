@@ -1094,6 +1094,25 @@ class MapActivity : AppCompatActivity() {
                         applyHistoryLabel(etaText, isFinal = true)
                     }
                 }
+                // v14.4: 재억 요청 - 최근목적지 항목에서 바로 즐겨찾기(집/회사/즐겨찾기1~5)로
+                // 등록할 수 있는 "저장" 버튼. 이미 등록된 칸을 골라도 그대로 덮어씀(재억 확인).
+                // #문제시 원복
+                val saveText = android.widget.TextView(this@MapActivity).apply {
+                    text = "저장"
+                    textSize = 14f
+                    setTextColor(android.graphics.Color.parseColor("#A0C8F0"))
+                    setBackgroundColor(android.graphics.Color.parseColor("#233A4A"))
+                    setPadding(36, 20, 36, 20)
+                    val marginParams = android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    marginParams.marginStart = 16
+                    layoutParams = marginParams
+                    setOnClickListener {
+                        showQuickSlotPickerForSave(entry)
+                    }
+                }
                 // v10.9-5: 예전엔 "✕" 작은 글자 하나만 있어서 실차 화면에서 눌러야 하는
                 // 위치가 잘 안 보이고 오터치도 잦았음(재억 지적) - 배경이 있는 "삭제" 글자
                 // 버튼으로 바꾸고, 누르는 영역(패딩)도 훨씬 넓게 키움. #문제시 원복
@@ -1120,6 +1139,7 @@ class MapActivity : AppCompatActivity() {
                     }
                 }
                 row.addView(nameText)
+                row.addView(saveText)
                 row.addView(deleteText)
                 return row
             }
@@ -2116,6 +2136,34 @@ class MapActivity : AppCompatActivity() {
     // 바꿈. AlertDialog는 버튼이 최대 3개까지만 되는데 마침 딱 맞음(왼쪽부터 이전=중립,
     // 다음=긍정, 취소=부정). 다이얼로그를 다시 만들지 않고, 페이지 넘길 때마다 목록
     // 내용이랑 버튼 상태만 새로 그림(재생성하면 버튼이 자동으로 닫혀버려서). #문제시 원복
+    // v14.4: 재억 요청 - 최근목적지 "저장" 버튼을 누르면 집/회사/즐겨찾기1~5 중 어디에
+    // 넣을지 물어보는 창. 이미 그 칸에 다른 장소가 등록돼 있어도 그대로 덮어씀(재억 확인 -
+    // "다 차 있어도 덮어 씌우는 방식"). 즐겨찾기 칸 개수는 설정값(0~5)만큼만 보여줌. #문제시 원복
+    private fun showQuickSlotPickerForSave(entry: HistoryEntry) {
+        val favoriteCount = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .getInt("quickslot_favorite_count", 5).coerceIn(0, 5)
+        val slotLabels = mutableListOf("집" to QuickSlotStore.SLOT_HOME, "회사" to QuickSlotStore.SLOT_WORK)
+        val favoriteSlots = listOf(
+            "즐겨찾기 1" to QuickSlotStore.SLOT_FAV1,
+            "즐겨찾기 2" to QuickSlotStore.SLOT_FAV2,
+            "즐겨찾기 3" to QuickSlotStore.SLOT_FAV3,
+            "즐겨찾기 4" to QuickSlotStore.SLOT_FAV4,
+            "즐겨찾기 5" to QuickSlotStore.SLOT_FAV5
+        ).take(favoriteCount)
+        slotLabels.addAll(favoriteSlots)
+
+        val items = slotLabels.map { it.first }.toTypedArray()
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("어디에 저장할까요?")
+            .setItems(items) { _, which ->
+                val (_, slot) = slotLabels[which]
+                QuickSlotStore.save(this, slot, entry)
+                Toast.makeText(this, "'${entry.name}' 저장 완료", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("취소", null)
+            .show()
+    }
+
     private fun showSearchResultsDialog(hits: List<HistoryEntry>) {
         binding.llSearchPanel?.visibility = View.VISIBLE
         binding.tvSearchStatus?.text = "검색 결과 ${hits.size}건 - 목적지를 선택하세요"
