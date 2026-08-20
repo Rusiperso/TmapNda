@@ -2407,6 +2407,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
+    // v14.4: GPS 위치가 들어올 때마다(제한 없이, 최대한 빠르게) 매번 새로 메서드를
+    // 찾던 것을 한 번만 찾아서 저장해두고 재사용하도록 캐싱. MapActivity.kt의
+    // sdkManagerCompanion/getInstanceMethod 캐싱 방식과 동일한 패턴. #문제시 원복
+    private var gpsOnLocationChangedMethod: java.lang.reflect.Method? = null
+
     private fun startRealtimeGpsForwarding() {
         try {
             locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -2436,8 +2441,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             binding.btnGpsStatus?.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
             val gpsManager = KNSDK.sharedGpsManager()
             if (gpsManager != null) {
-                val m = gpsManager.javaClass.getMethod("onLocationChanged", Location::class.java)
-                m.invoke(gpsManager, location)
+                if (gpsOnLocationChangedMethod == null) {
+                    gpsOnLocationChangedMethod = gpsManager.javaClass.getMethod("onLocationChanged", Location::class.java)
+                }
+                gpsOnLocationChangedMethod?.invoke(gpsManager, location)
                 NavLogger.d(
                     this,
                     "[GPS] KNSDK로 전달됨: lat=${location.latitude} lon=${location.longitude} " +
