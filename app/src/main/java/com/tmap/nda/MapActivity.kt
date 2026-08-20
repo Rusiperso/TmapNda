@@ -499,114 +499,15 @@ class MapActivity : AppCompatActivity() {
                         return@runOnUiThread
                     }
 
-                    try {
-                        val methods = NavigationFragment::class.java.methods
-                        for (m in methods) {
-                            if (m.name.contains("mute", ignoreCase = true) || m.name.contains("volume", ignoreCase = true) || m.name.contains("sound", ignoreCase = true) || m.name.contains("audio", ignoreCase = true)) {
-                                NavLogger.e(this@MapActivity, "NavigationFragment method: ${m.name}")
-                            }
-                        }
-                        val uiMethods = TmapUISDK::class.java.methods
-                        for (m in uiMethods) {
-                            if (m.name.contains("mute", ignoreCase = true) || m.name.contains("volume", ignoreCase = true) || m.name.contains("sound", ignoreCase = true) || m.name.contains("audio", ignoreCase = true)) {
-                                NavLogger.e(this@MapActivity, "TmapUISDK method: ${m.name}")
-                            }
-                        }
-
-                        // Let's also check TmapUISDK.Companion methods just in case
-                        val compMethods = TmapUISDK.Companion::class.java.methods
-                        for (m in compMethods) {
-                            if (m.name.contains("mute", ignoreCase = true) || m.name.contains("volume", ignoreCase = true) || m.name.contains("sound", ignoreCase = true) || m.name.contains("audio", ignoreCase = true)) {
-                                NavLogger.e(this@MapActivity, "TmapUISDK.Companion method: ${m.name}")
-                            }
-                        }
-
-                        // v4.8: 사용자 요청 - 차선/신호등 데이터를 따로 주는 observable/메서드가
-                        // TmapUISDK에 있는지 이름으로 넓게 탐색 (observableRouteData 외에
-                        // 다른 스트림이 있을 수 있음). #문제시 원복
-                        for (m in compMethods) {
-                            if (m.name.contains("observable", ignoreCase = true) || m.name.contains("lane", ignoreCase = true) ||
-                                m.name.contains("signal", ignoreCase = true) || m.name.contains("turn", ignoreCase = true) ||
-                                m.name.contains("guide", ignoreCase = true)
-                            ) {
-                                NavLogger.e(this@MapActivity, "[티맵 차선/신호등?] TmapUISDK.Companion method: ${m.name}")
-                            }
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-
-                    // SDK 전체 API 노출 여부 확인용 전수 덤프 (필터 없음)
-                    try {
-                        fun dumpClass(tag: String, clazz: Class<*>) {
-                            NavLogger.e(this@MapActivity, "===== $tag (${clazz.name}) =====")
-                            for (m in clazz.methods) {
-                                NavLogger.e(this@MapActivity, "$tag method: ${m.name}(${m.parameterTypes.joinToString { it.simpleName }}): ${m.returnType.simpleName}")
-                            }
-                            for (f in clazz.declaredFields) {
-                                NavLogger.e(this@MapActivity, "$tag field: ${f.name} : ${f.type.simpleName}")
-                            }
-                            // 이 클래스가 갖고 있는 내부/중첩 클래스도 이름만 같이 보여줌 (콜백 데이터 클래스 파악용)
-                            for (inner in clazz.declaredClasses) {
-                                NavLogger.e(this@MapActivity, "$tag inner class: ${inner.name}")
-                            }
-                        }
-                        dumpClass("NavigationFragment", NavigationFragment::class.java)
-                        dumpClass("TmapUISDK", TmapUISDK::class.java)
-                        dumpClass("TmapUISDK.Companion", TmapUISDK.Companion::class.java)
-
-                        // 이름상 데이터를 담고 있을 가능성이 높은 클래스는, 패키지 경로 추측 대신
-                        // 실제 메서드의 리턴/파라미터 타입에서 Class를 런타임으로 가져와서 덤프
-                        try {
-                            val getConfigMethod = TmapUISDK::class.java.methods.firstOrNull { it.name == "getRouteGuidanceConfig" }
-                            getConfigMethod?.returnType?.let { dumpClass("RouteGuidanceConfig", it) }
-                        } catch (e: Exception) { e.printStackTrace() }
-
-                        try {
-                            val setListenerMethod = NavigationFragment::class.java.methods.firstOrNull { it.name == "setNavigationScreenStateListener" }
-                            setListenerMethod?.parameterTypes?.firstOrNull()?.let { dumpClass("NavigationScreenStateListener", it) }
-                        } catch (e: Exception) { e.printStackTrace() }
-
-                        // 검색결과/목적지가 좌측 HUD 패널에 가려지는 문제 해결용:
-                        // 지도 패딩(setMapPadding 류) 또는 카메라 오프셋 API가
-                        // NavigationFragment가 아니라 실제 지도 엔진 객체 쪽에 있을 가능성이 높아서
-                        // getMapView()/getVsmMapView()의 리턴 타입도 같이 덤프해서 확인. #문제시 원복
-                        try {
-                            val getMapViewMethod = NavigationFragment::class.java.methods.firstOrNull { it.name == "getMapView" }
-                            getMapViewMethod?.returnType?.let { dumpClass("MapEngine", it) }
-                        } catch (e: Exception) { e.printStackTrace() }
-
-                        try {
-                            val getVsmMapViewMethod = NavigationFragment::class.java.methods.firstOrNull { it.name == "getVsmMapView" }
-                            getVsmMapViewMethod?.returnType?.let { dumpClass("VsmSdkMapView", it) }
-                        } catch (e: Exception) { e.printStackTrace() }
-
-                        // v8.5: [위성지도 조사] setMapLayerTypeSetting(Context, MapLayerType)이
-                        // NavigationFragment에 확인됐으나 MapLayerType 자체가 어떤 값들(일반/위성/
-                        // 하이브리드 등)을 갖는지는 안 찍혀서, getMapLayerTypeSetting 리턴 타입을
-                        // 가져와 enum이면 상수 이름을 전부 로그로 남김. #문제시 원복
-                        try {
-                            val getLayerTypeMethod = NavigationFragment::class.java.methods.firstOrNull { it.name == "getMapLayerTypeSetting" }
-                            val layerTypeClass = getLayerTypeMethod?.returnType
-                            if (layerTypeClass != null) {
-                                dumpClass("MapLayerType", layerTypeClass)
-                                if (layerTypeClass.isEnum) {
-                                    val constants = layerTypeClass.enumConstants
-                                    if (constants != null) {
-                                        for (c in constants) {
-                                            NavLogger.e(this@MapActivity, "[위성지도조사] MapLayerType enum 상수: $c")
-                                        }
-                                    }
-                                } else {
-                                    NavLogger.e(this@MapActivity, "[위성지도조사] MapLayerType은 enum이 아님: ${layerTypeClass.name}")
-                                }
-                            } else {
-                                NavLogger.e(this@MapActivity, "[위성지도조사] getMapLayerTypeSetting 메서드를 못 찾음")
-                            }
-                        } catch (e: Exception) { e.printStackTrace() }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
+                    // v14.9: 재억 지적 - 카카오 안내종료 후 티맵 화면으로 돌아올 때 가끔
+                    // 화면이 몇 초간 멈추는 증상. 원인 확인해보니, 여기 있던 "SDK에 이런
+                    // 기능이 있는지 찾아보는" 디버그용 리플렉션 전수 조사 코드(음소거/볼륨/
+                    // 차선정보/위성지도 API를 찾으려고 SDK 클래스 여러 개의 함수를 통째로
+                    // 로그로 찍던 코드, 한 번에 1500줄 넘게 찍음)가 화면이 새로 켜질 때마다
+                    // 메인 스레드에서 실행되면서 그동안 화면을 멈추게 하고 있었음. 이미 필요한
+                    // 기능(음소거/볼륨/차선정보/위성지도)은 다 찾아서 실제로 구현해뒀으므로
+                    // 안전하게 통째로 제거함. #문제시 원복: 아래 git 이력에서 v14.8 이전 버전
+                    // MapActivity.kt의 이 위치 코드를 참고
 
                     startSafeDriveMode()
                     startUdpSenderService()
