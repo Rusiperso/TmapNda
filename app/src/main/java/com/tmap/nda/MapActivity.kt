@@ -2140,6 +2140,9 @@ class MapActivity : AppCompatActivity() {
     // v14.4: 재억 요청 - 최근목적지 "저장" 버튼을 누르면 집/회사/즐겨찾기1~5 중 어디에
     // 넣을지 물어보는 창. 이미 그 칸에 다른 장소가 등록돼 있어도 그대로 덮어씀(재억 확인 -
     // "다 차 있어도 덮어 씌우는 방식"). 즐겨찾기 칸 개수는 설정값(0~5)만큼만 보여줌. #문제시 원복
+    // v14.8: 재억 지적 - 원래 재억이 확인했던 미리보기는 흰 카드 안에 버튼들이 2~3칸씩
+    // 그리드로 배치된 모양이었는데, 실제 코드는 그냥 안드로이드 기본 세로 목록(setItems)으로
+    // 구현되어 있었음. 미리보기와 똑같이 카드+그리드 버튼 모양으로 다시 만듦. #문제시 원복
     private fun showQuickSlotPickerForSave(entry: HistoryEntry) {
         val favoriteCount = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             .getInt("quickslot_favorite_count", 5).coerceIn(0, 5)
@@ -2153,16 +2156,97 @@ class MapActivity : AppCompatActivity() {
         ).take(favoriteCount)
         slotLabels.addAll(favoriteSlots)
 
-        val items = slotLabels.map { it.first }.toTypedArray()
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("어디에 저장할까요?")
-            .setItems(items) { _, which ->
-                val (_, slot) = slotLabels[which]
-                QuickSlotStore.save(this, slot, entry)
-                Toast.makeText(this, "'${entry.name}' 저장 완료", Toast.LENGTH_SHORT).show()
+        val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setView(buildQuickSlotPickerView(entry, slotLabels))
+            .create()
+        dialog.show()
+        // setView로 넣은 커스텀 버튼들이 dialog를 직접 닫아야 해서, 아래에서 dialog 참조를 넘겨줌.
+        quickSlotPickerDialogInUse = dialog
+    }
+
+    private var quickSlotPickerDialogInUse: android.app.AlertDialog? = null
+
+    private fun buildQuickSlotPickerView(
+        entry: HistoryEntry,
+        slotLabels: List<Pair<String, String>>
+    ): android.view.View {
+        val density = resources.displayMetrics.density
+        fun dp(v: Int) = (v * density).toInt()
+
+        val card = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(dp(20), dp(20), dp(20), dp(20))
+        }
+        card.addView(android.widget.TextView(this).apply {
+            text = "어디에 저장할까요?"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 16f
+        })
+        card.addView(android.widget.TextView(this).apply {
+            text = entry.name
+            setTextColor(android.graphics.Color.parseColor("#4FA8E8"))
+            textSize = 13f
+            setPadding(0, dp(4), 0, dp(14))
+        })
+
+        fun makeSlotButton(label: String, slot: String): android.widget.Button {
+            return android.widget.Button(this, null, android.R.attr.buttonStyle).apply {
+                text = label
+                textSize = 14f
+                isAllCaps = false
+                setOnClickListener {
+                    QuickSlotStore.save(this@MapActivity, slot, entry)
+                    Toast.makeText(this@MapActivity, "'${entry.name}' 저장 완료", Toast.LENGTH_SHORT).show()
+                    quickSlotPickerDialogInUse?.dismiss()
+                }
             }
-            .setNegativeButton("취소", null)
-            .show()
+        }
+
+        fun addRow(items: List<Pair<String, String>>) {
+            val row = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                setPadding(0, 0, 0, dp(8))
+            }
+            items.forEachIndexed { index, (label, slot) ->
+                row.addView(
+                    makeSlotButton(label, slot),
+                    android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        marginEnd = if (index == items.lastIndex) 0 else dp(8)
+                    }
+                )
+            }
+            card.addView(row)
+        }
+
+        // 집/회사는 항상 한 줄에 2칸. 그 뒤 즐겨찾기는 2개씩 묶고, 마지막에 1개가 남으면
+        // 바로 앞 줄과 합쳐서 3칸짜리 줄로 만듦(미리보기와 동일한 모양). #문제시 원복
+        val fixedRow = slotLabels.take(2)
+        val favoriteRest = slotLabels.drop(2)
+        val rows = mutableListOf<List<Pair<String, String>>>()
+        if (fixedRow.isNotEmpty()) rows.add(fixedRow)
+        var i = 0
+        val favRows = mutableListOf<MutableList<Pair<String, String>>>()
+        while (i < favoriteRest.size) {
+            favRows.add(favoriteRest.subList(i, minOf(i + 2, favoriteRest.size)).toMutableList())
+            i += 2
+        }
+        if (favRows.size >= 2 && favRows.last().size == 1) {
+            val leftover = favRows.removeAt(favRows.size - 1)
+            favRows.last().addAll(leftover)
+        }
+        rows.addAll(favRows)
+        rows.forEach { addRow(it) }
+
+        card.addView(android.widget.Button(this).apply {
+            text = "취소"
+            textSize = 14f
+            isAllCaps = false
+            setOnClickListener { quickSlotPickerDialogInUse?.dismiss() }
+        }, android.widget.LinearLayout.LayoutParams(
+            android.widget.LinearLayout.LayoutParams.MATCH_PARENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(4) })
+
+        return card
     }
 
     private fun showSearchResultsDialog(hits: List<HistoryEntry>) {
