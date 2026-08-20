@@ -7,6 +7,19 @@ object SdiDataRepository {
     @Volatile var lastOverSpeedWarningTime: Long = 0L
 
     var roadLimitSpeed: Int = 80
+
+    // v: 버그수정(재억 제보 - "10% 이하로 달렸는데도 경고음 남") - 카카오 화면은
+    // roadLimitSpeed(위 값, Tmap 전용)를 채워주는 코드가 없어서 항상 Tmap 화면의
+    // 마지막 값(또는 기본값 80)이 그대로 남아있었음. 카카오 화면은 이 값을 별도로 써서
+    // "Tmap이 안 채워준 값을 잘못 갖다쓰는" 문제를 원천 차단함. #문제시 원복
+    @Volatile var kakaoRoadLimitSpeed: Int = 0
+    @Volatile var kakaoRoadLimitSpeedUpdatedAt: Long = 0L
+
+    /** 카카오 화면 과속경고음이 이 값을 신뢰해도 되는지(실제로 한 번이라도 채워졌고, 너무 오래되지 않았는지) */
+    fun isKakaoRoadLimitFresh(maxAgeMs: Long = 8000L): Boolean {
+        return kakaoRoadLimitSpeed >= 30 &&
+            (System.currentTimeMillis() - kakaoRoadLimitSpeedUpdatedAt) < maxAgeMs
+    }
     var sdiType: Int = 0
     var sdiSpeedLimit: Int = 0
     var sdiDistance: Int = 0

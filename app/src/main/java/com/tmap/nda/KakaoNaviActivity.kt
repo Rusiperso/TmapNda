@@ -2384,8 +2384,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private var lastOverSpeedDiagLogTime = 0L
     private fun checkOverSpeedWarning(speedKph: Int) {
         val pref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-        if (!pref.getBoolean("over_speed_warning_enabled", false)) return
-        val limit = SdiDataRepository.roadLimitSpeed
+        if (!pref.getBoolean("over_speed_warning_enabled", true)) return
+        // v: 버그수정(재억 제보 - "10% 이하로 달렸는데도 경고음 남") - 카카오 화면에서 지금까지
+        // Tmap 전용 값(SdiDataRepository.roadLimitSpeed)을 그대로 읽고 있었음. 카카오 화면은
+        // 이 값을 채워주는 코드가 없어서 Tmap 화면의 마지막 값(또는 기본값 80)이 실제 도로와
+        // 무관하게 고정된 채 "80의 110%"를 기준으로 잘못 판단하고 있었던 게 원인.
+        // kakaoRoadLimitSpeed(카카오 전용, 실시간 채워지는 값)로 교체하고, 아직 한 번도
+        // 못 채웠거나(조사 중인 리플렉션 게터가 안 맞음) 너무 오래됐으면 안전하게 판단을
+        // 건너뜀(잘못된 숫자로 울리느니 조용한 게 낫다는 판단). #문제시 원복
+        if (!SdiDataRepository.isKakaoRoadLimitFresh()) return
+        val limit = SdiDataRepository.kakaoRoadLimitSpeed
         if (limit < 30 || speedKph <= 0) return
         val now = System.currentTimeMillis()
         // v: MapActivity와 동일한 진단 로그 - 트리거 여부와 무관하게 3초마다 limit 흐름을

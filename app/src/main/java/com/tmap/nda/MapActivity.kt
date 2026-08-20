@@ -1658,7 +1658,7 @@ class MapActivity : AppCompatActivity() {
     private var lastOverSpeedDiagLogTime = 0L
     private fun checkOverSpeedWarning(speedKph: Int) {
         val pref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-        if (!pref.getBoolean("over_speed_warning_enabled", false)) return
+        if (!pref.getBoolean("over_speed_warning_enabled", true)) return
         val limit = SdiDataRepository.roadLimitSpeed
         if (limit < 30 || speedKph <= 0) return
         val now = System.currentTimeMillis()

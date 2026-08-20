@@ -236,6 +236,34 @@ class KakaoGuidanceDelegate(
             // 거리를 곡선 경로 그대로 정확히 계산할 수 있음(아래 카메라/방지턱 검색
             // 로직에서 사용). #문제시 원복
             if (currentLocation != null) {
+                // v: 버그수정(재억 제보 - "10% 이하로 달렸는데도 경고음 남") 원인 조사 -
+                // 카카오 화면 과속경고음이 지금까지 Tmap 전용 SdiDataRepository.roadLimitSpeed를
+                // 그대로 갖다 썼는데, 카카오 화면에선 이 값을 채워주는 코드가 아예 없어서
+                // Tmap 화면 마지막 값(또는 기본값 80)이 실제 도로와 무관하게 고정되어 있었음.
+                // KNGuide_Location에 "지금 도로의 기본 제한속도"에 해당하는 게터가 있는지
+                // 확실치 않아서(공식 문서에 명시 안 됨), 후보 이름들을 순서대로 리플렉션으로
+                // 찔러보고 처음 유효한(>=30) 값을 채택. 게터 이름이 로그로 남으므로, 다음 실주행
+                // 로그를 보고 진짜 맞는 값인지 검증 후 이 후보 목록을 정리할 예정. #문제시 원복
+                val roadLimitCandidates = listOf("RoadSpeedLimit", "CurRoadSpeedLimit", "CurSpeedLimit", "LinkSpeedLimit", "RoadLimitSpeed")
+                var kakaoLimit = 0
+                var matchedGetterName: String? = null
+                for (candidate in roadLimitCandidates) {
+                    val v = findGetterInt(currentLocation, candidate)
+                    if (v in 30..150) {
+                        kakaoLimit = v
+                        matchedGetterName = candidate
+                        break
+                    }
+                }
+                if (kakaoLimit > 0) {
+                    SdiDataRepository.kakaoRoadLimitSpeed = kakaoLimit
+                    SdiDataRepository.kakaoRoadLimitSpeedUpdatedAt = System.currentTimeMillis()
+                }
+                if (now - lastLocationLogAt < 50) {
+                    // 위 2초 스로틀 로그와 같은 타이밍에 한 번만 같이 남김
+                    NavLogger.d(context, "[카카오 도로제한속도 조사] 매칭게터=$matchedGetterName 값=$kakaoLimit (30~150 범위 밖이면 0으로 무시됨)")
+                }
+
                 val myDistFromS = findGetterInt(currentLocation, "DistFromS")
                 if (myDistFromS > 0) {
                     KakaoRouteDataRepository.currentDistFromS = myDistFromS
