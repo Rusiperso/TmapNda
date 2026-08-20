@@ -429,9 +429,16 @@ object PanelDragHelper {
             addView(currentSavedVolumeText)
             addView(saveVolumeButtonRow)
         }
+        // v15.3: 설정 항목이 많아져서 다이얼로그 세로 길이가 화면을 넘길 수 있으므로
+        // ScrollView로 감쌈. AlertDialog는 setView(content)의 버튼 줄을 항상 콘텐츠
+        // 바깥에 별도로 그리기 때문에, 콘텐츠만 스크롤되고 취소/저장 버튼은 화면에
+        // 고정된 채로 유지됨. #문제시 원복
+        val scrollableContainer = android.widget.ScrollView(context).apply {
+            addView(container)
+        }
         android.app.AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("앱 설정")
-            .setView(container)
+            .setView(scrollableContainer)
             .setPositiveButton("저장") { _, _ ->
                 pref.edit()
                     .putBoolean("over_speed_warning_enabled", checkBox.isChecked)
