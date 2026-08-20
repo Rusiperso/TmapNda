@@ -50,6 +50,12 @@ object AutoUpdater {
         pollRunnable = null
     }
 
+    // v14.6: 재억 지적 - 5분마다 확인할 때마다 이전 창을 안 닫고 새 창을 계속 쌓아서
+    // 띄우고 있었음. 지금 창이 떠 있으면 새로 안 띄우게 참조를 들고 있음. "나중에"를
+    // 누르면 참조를 비워서 다음 5분 뒤엔 다시 정상적으로 알려줌(재억 확인 - 나중에
+    // 누르면 5분 뒤 다시 알림 오는 방식 유지). #문제시 원복
+    private var currentUpdateDialog: AlertDialog? = null
+
     fun checkForUpdates(context: Context, isManual: Boolean = false) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -129,17 +135,28 @@ object AutoUpdater {
             NavLogger.d(context, "showUpdateDialog: Activity 이미 종료됨 - 스킵")
             return
         }
-        AlertDialog.Builder(context)
+        // v14.6: 이미 업데이트 창이 떠 있으면 또 띄우지 않고 넘어감(중복 방지). #문제시 원복
+        if (currentUpdateDialog?.isShowing == true) {
+            return
+        }
+        val dialog = AlertDialog.Builder(context)
             .setTitle("새로운 업데이트 발견")
             .setMessage("최신 버전($newVersion)이 등록되었습니다.\n지금 업데이트 하시겠습니까?")
             .setPositiveButton("업데이트") { _, _ ->
+                currentUpdateDialog = null
                 downloadAndInstall(context, downloadUrl, newVersion)
             }
             .setNegativeButton("나중에") { dialog, _ ->
+                currentUpdateDialog = null
                 dialog.dismiss()
             }
+            .setOnCancelListener {
+                currentUpdateDialog = null
+            }
             .setCancelable(false)
-            .show()
+            .create()
+        currentUpdateDialog = dialog
+        dialog.show()
     }
 
     private fun downloadAndInstall(context: Context, downloadUrl: String, version: String) {
