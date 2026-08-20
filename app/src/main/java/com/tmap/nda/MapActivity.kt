@@ -3813,11 +3813,16 @@ class MapActivity : AppCompatActivity() {
     }
 
 
+    // v14.4: 안전정보(카메라/제한속도) 들어올 때마다 Gson을 매번 새로 만들던 것을
+    // UdpSenderService.kt의 gson 캐싱 방식과 동일하게 한 번만 만들어 재사용하도록 수정.
+    // 변환 결과나 화면 표시 로직은 전혀 안 바뀜. #문제시 원복
+    private val sdiInfoGson = com.google.gson.Gson()
+
     private fun extractAndDisplaySdiInfo(bundle: android.os.Bundle) {
         try {
             val sdiObj = bundle.get("firstSDIInfo")
             if (sdiObj != null) {
-                val sdiJsonStr = if (sdiObj is String) sdiObj else com.google.gson.Gson().toJson(sdiObj)
+                val sdiJsonStr = if (sdiObj is String) sdiObj else sdiInfoGson.toJson(sdiObj)
                 val json = org.json.JSONObject(sdiJsonStr)
 
                 val sdiType = json.optInt("nSdiType", 0)
