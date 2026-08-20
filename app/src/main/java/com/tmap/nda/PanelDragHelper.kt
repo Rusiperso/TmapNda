@@ -200,21 +200,29 @@ object PanelDragHelper {
     // 개념(카카오 화면은 자체 지도 제스처를 씀)이라 null이면 그 체크박스만 건너뜀. #문제시 원복
     fun showAppSettingsDialog(context: android.app.Activity, touchLockOverlay: View?, onSaved: (() -> Unit)? = null) {
         val pref = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-        val checkBox = android.widget.CheckBox(context).apply {
+        // v: 체크박스 -> 토글 스위치로 전환(재억 요청). 아울러 "체크=활성화, 빈칸=비활성화"로
+        // 의미를 전부 통일. 이전엔 이름에 "끄기"가 들어간 두 항목(경고음, 이동식카메라 감속)이
+        // 반대 의미였는데(체크할수록 기능이 꺼짐), 이게 혼란의 원인이었음. 저장되는 값(키 이름)은
+        // 기존 코드와의 호환을 위해 그대로 두고, 화면에 보이는 스위치 상태/저장 시 대입만
+        // 뒤집어서 "스위치 켜짐=그 줄 이름대로 작동"이 되도록 맞춤. #문제시 원복
+        val checkBox = android.widget.Switch(context).apply {
             text = "속도 10% 초과 시 경고음"
-            isChecked = pref.getBoolean("over_speed_warning_enabled", false)
+            // v: 재억 요청 - 기본값을 켜짐으로 변경(기존 false -> true)
+            isChecked = pref.getBoolean("over_speed_warning_enabled", true)
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 30, 40, 30)
         }
-        val disableMobileCamCheckBox = android.widget.CheckBox(context).apply {
-            text = "이동식카메라 감속 끄기"
-            isChecked = pref.getBoolean("mobile_cam_slowdown_disabled", false)
+        val disableMobileCamCheckBox = android.widget.Switch(context).apply {
+            text = "이동식카메라 감속"
+            // 저장값(mobile_cam_slowdown_disabled)은 "꺼졌는지 여부"라 의미가 반대이므로
+            // 화면에는 반전해서 보여줌(스위치 켜짐 = 감속 기능이 켜짐)
+            isChecked = !pref.getBoolean("mobile_cam_slowdown_disabled", false)
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
         // v4.0: 상단바 이벤트(카메라/구간단속/방지턱) 표시 켜고 끄기 - 모바일 화면은
         // 좁아서 부담스러울 수 있어 옵션으로 제공 (사용자 지적 6번). #문제시 원복
-        val showTopBarEventCheckBox = android.widget.CheckBox(context).apply {
+        val showTopBarEventCheckBox = android.widget.Switch(context).apply {
             text = "상단바에 이벤트(카메라/구간단속/방지턱) 표시"
             isChecked = pref.getBoolean("topbar_event_enabled", true)
             setTextColor(android.graphics.Color.WHITE)
@@ -227,7 +235,7 @@ object PanelDragHelper {
         // #문제시 원복
         // v: 사용자 요청(2026-08-10) - 카카오 화면에는 차선 오버레이를 아예 안 띄우기로 해서,
         // 이 체크박스(카카오용)는 UI에서 제거. Tmap용만 남김. #문제시 원복
-        val showLaneOverlayTmapCheckBox = android.widget.CheckBox(context).apply {
+        val showLaneOverlayTmapCheckBox = android.widget.Switch(context).apply {
             text = "차선 안내 오버레이 표시 (Tmap 화면 한정)"
             isChecked = pref.getBoolean("lane_overlay_tmap_enabled", true)
             setTextColor(android.graphics.Color.WHITE)
@@ -236,14 +244,14 @@ object PanelDragHelper {
         // v5.2: 초기 설정화면(MainActivity)에 있던 항목을 여기로 이동 - 매번 앱 처음 켤 때만
         // 보이는 화면이라 여기 있을 이유가 없었음(사용자 지적). SharedPreferences 키는
         // 그대로(USE_KM_DISTANCE_FORMAT) 써서 기존 저장값/읽는 쪽 코드는 안 건드림. #문제시 원복
-        val distanceFormatKmCheckBox = android.widget.CheckBox(context).apply {
+        val distanceFormatKmCheckBox = android.widget.Switch(context).apply {
             text = "1000m 이상일 때 km 단위로 거리 표시"
             isChecked = pref.getBoolean("USE_KM_DISTANCE_FORMAT", true)
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
         val unlockMapTouchCheckBox = if (touchLockOverlay != null) {
-            android.widget.CheckBox(context).apply {
+            android.widget.Switch(context).apply {
                 text = "티맵 터치 잠금 해제 (핀치줌/드래그 허용)"
                 isChecked = pref.getBoolean("map_touch_unlocked", false)
                 setTextColor(android.graphics.Color.WHITE)
@@ -253,7 +261,7 @@ object PanelDragHelper {
 
         // v8.7: v8.5 조사로 확인된 Tmap MapLayerType(Default/Aerial) API를 사용자가 켜고 끌 수
         // 있게 노출. 카카오 화면엔 이런 API 자체가 없어서 Tmap 화면 한정 문구를 명시. #문제시 원복
-        val satelliteViewCheckBox = android.widget.CheckBox(context).apply {
+        val satelliteViewCheckBox = android.widget.Switch(context).apply {
             text = "티맵 위성지도 보기"
             isChecked = pref.getBoolean("tmap_satellite_view_enabled", false)
             setTextColor(android.graphics.Color.WHITE)
@@ -263,9 +271,18 @@ object PanelDragHelper {
         // v9.2: 재억 요청 - 도로 위 초록/주황/빨강 실시간 정체 표시 켜고 끄기. SDK 안에 실제
         // 스위치가 있는지는 아직 조사 중이라(dumpTrafficApiCandidates), 우선 체크박스와 저장값만
         // 만들어둠 - 조사 결과 나오면 applyTmapSatelliteViewSetting()처럼 실제로 연결 예정. #문제시 원복
-        val trafficInfoCheckBox = android.widget.CheckBox(context).apply {
+        val trafficInfoCheckBox = android.widget.Switch(context).apply {
             text = "티맵 교통 정보 (도로 정체 색깔 표시)"
             isChecked = pref.getBoolean("tmap_traffic_info_enabled", true)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
+
+        // v: 신규기능(재억 요청) - 콤마 화면에 카카오 경로선을 표시할지 켜고 끄는 토글.
+        // 기본값은 꺼짐(신규 기능이라 재억이 필요할 때만 켜도록). #문제시 원복
+        val routeLineDisplayCheckBox = android.widget.Switch(context).apply {
+            text = "경로선 콤마 화면에 표시"
+            isChecked = pref.getBoolean("route_line_display_enabled", false)
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
@@ -404,6 +421,7 @@ object PanelDragHelper {
             unlockMapTouchCheckBox?.let { addView(it) }
             addView(satelliteViewCheckBox)
             addView(trafficInfoCheckBox)
+            addView(routeLineDisplayCheckBox)
             addView(favoriteCountRow)
             addView(volumeSectionTitle)
             addView(volumeSectionDesc)
@@ -417,12 +435,15 @@ object PanelDragHelper {
             .setPositiveButton("저장") { _, _ ->
                 pref.edit()
                     .putBoolean("over_speed_warning_enabled", checkBox.isChecked)
-                    .putBoolean("mobile_cam_slowdown_disabled", disableMobileCamCheckBox.isChecked)
+                    // 저장 키(mobile_cam_slowdown_disabled)는 "꺼졌는지 여부"라 스위치 상태를
+                    // 반전해서 저장(스위치 켜짐=감속 기능 켜짐이므로 disabled=!isChecked)
+                    .putBoolean("mobile_cam_slowdown_disabled", !disableMobileCamCheckBox.isChecked)
                     .putBoolean("topbar_event_enabled", showTopBarEventCheckBox.isChecked)
                     .putBoolean("lane_overlay_tmap_enabled", showLaneOverlayTmapCheckBox.isChecked)
                     .putBoolean("USE_KM_DISTANCE_FORMAT", distanceFormatKmCheckBox.isChecked)
                     .putBoolean("tmap_satellite_view_enabled", satelliteViewCheckBox.isChecked)
                     .putBoolean("tmap_traffic_info_enabled", trafficInfoCheckBox.isChecked)
+                    .putBoolean("route_line_display_enabled", routeLineDisplayCheckBox.isChecked)
                     .putInt("quickslot_favorite_count", favoriteCount)
                     .apply {
                         if (unlockMapTouchCheckBox != null) {
