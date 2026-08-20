@@ -845,7 +845,8 @@ class MapActivity : AppCompatActivity() {
             .show()
     }
 
-    // 로그 파일을 이메일(jaeeok.cho@icloud.com)로 공유 - 회전되어 쌓여있던 로그까지 전부 한번에 보냄.
+    // 로그 파일을 이메일(jaeeok.cho@icloud.com, choksa55@gmail.com 두 곳 동시)로 공유 -
+    // 회전되어 쌓여있던 로그까지 전부 한번에 보냄.
     // 공유해도 삭제되지 않음(앱 종료시에만 전체 삭제).
     private fun shareNavLog() {
         val result = NavLogger.buildShareIntent(this)
