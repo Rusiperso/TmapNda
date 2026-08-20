@@ -73,6 +73,14 @@ object KakaoRouteDataRepository {
     // safetyEventDistFromS - currentDistFromS로 실시간 재계산함. #문제시 원복
     @Volatile var safetyEventDistFromS: Int = -1
 
+    // v: 신규기능(콤마 화면에 카카오 경로선 표시용) - guidanceDidUpdateRoutes에서 채워짐.
+    // (경도,위도) 순서 목록. 콤마 쪽 7713번 문(carrot_http_post -> _dispatch_obj의 "vrtx" 키)이
+    // 이 형식을 그대로 받아서 화면에 선을 그려줌. KNRoute 안에서 정확히 어떤 게터가 이 좌표
+    // 목록을 주는지 공식 문서에 명시가 안 돼있어서, 후보 이름들을 순서대로 리플렉션으로
+    // 찔러보고 첫 성공을 채택 - 실주행 로그(matchedRouteLineGetter)로 검증 필요. #문제시 원복
+    @Volatile var routeCoordinates: List<Pair<Double, Double>> = emptyList()
+    @Volatile var routeCoordinatesUpdatedAt: Long = 0L
+
     private val listeners = CopyOnWriteArraySet<(KakaoRouteSnapshot) -> Unit>()
 
     fun reset() {

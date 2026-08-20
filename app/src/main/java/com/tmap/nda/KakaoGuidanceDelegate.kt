@@ -107,6 +107,61 @@ class KakaoGuidanceDelegate(
         multiRouteInfo: KNMultiRouteInfo?
     ) {
         naviView?.guidanceDidUpdateRoutes(guidance, routes, multiRouteInfo)
+
+        // v: 신규기능(콤마 화면에 카카오 경로선 표시) - 새 경로가 확정될 때마다 좌표 목록을
+        // 뽑아서 저장해둠. UdpSenderService가 이 값을 주기적으로 콤마 7713번 문으로 같이
+        // 실어보냄(기존 rgdata HTTP 전송에 vrtx 키만 추가하는 방식이라 새 연결/새 포트를
+        // 안 열어도 됨). #문제시 원복
+        try {
+            val firstRoute = routes.firstOrNull()
+            if (firstRoute != null) {
+                val coords = extractRouteLineCoordinates(firstRoute)
+                if (coords.isNotEmpty()) {
+                    KakaoRouteDataRepository.routeCoordinates = coords
+                    KakaoRouteDataRepository.routeCoordinatesUpdatedAt = System.currentTimeMillis()
+                    NavLogger.d(context, "[경로선 조사] 좌표 ${coords.size}개 추출 성공")
+                } else {
+                    NavLogger.d(context, "[경로선 조사] 후보 게터 전부 실패 - KNRoute 구조 재조사 필요")
+                }
+            }
+        } catch (e: Exception) {
+            NavLogger.e(context, "[경로선 조사] 추출 실패: ${e.message}")
+        }
+    }
+
+    // v: 신규기능(경로선) - KNRoute 안에서 "경로를 이루는 좌표 목록"을 주는 게터 이름이
+    // 공식 문서에 명시 안 돼있어서, 자주 쓰이는 이름 후보들을 순서대로 시도. 후보 하나가
+    // 성공하면 그 결과(List<KNPoint 유사 객체>)에서 다시 위도/경도 게터를 찾아 (경도,위도)
+    // 쌍으로 변환. 전부 실패하면 빈 리스트 반환(호출부에서 안전하게 무시됨). 실주행 로그로
+    // 어떤 후보가 맞았는지 확인 후 나머지 후보는 정리할 예정. #문제시 원복
+    private fun extractRouteLineCoordinates(route: KNRoute): List<Pair<Double, Double>> {
+        val lineCandidates = listOf("RoutePoints", "RouteLine", "Points", "Line", "Coords", "Coordinates")
+        for (candidateName in lineCandidates) {
+            try {
+                val getter = route.javaClass.methods.firstOrNull {
+                    it.parameterTypes.isEmpty() && it.name.equals("get$candidateName", ignoreCase = true)
+                } ?: continue
+                val result = getter.invoke(route) as? List<*> ?: continue
+                if (result.isEmpty()) continue
+
+                val out = ArrayList<Pair<Double, Double>>(result.size)
+                for (point in result) {
+                    if (point == null) continue
+                    val lon = findGetterDouble(point, "Longitude").takeIf { it != 0.0 }
+                        ?: findGetterDouble(point, "X").takeIf { it != 0.0 } ?: continue
+                    val lat = findGetterDouble(point, "Latitude").takeIf { it != 0.0 }
+                        ?: findGetterDouble(point, "Y").takeIf { it != 0.0 } ?: continue
+                    out.add(lon to lat)
+                }
+                if (out.isNotEmpty()) {
+                    NavLogger.d(context, "[경로선 조사] 매칭게터=get$candidateName 개수=${out.size}")
+                    return out
+                }
+            } catch (e: Exception) {
+                // 이 후보 실패 - 다음 후보 시도
+            }
+        }
+        return emptyList()
     }
 
     override fun guidanceDidUpdateIndoorRoute(guidance: KNGuidance, route: KNRoute?) {

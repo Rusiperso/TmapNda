@@ -1246,6 +1246,29 @@ class UdpSenderService : Service() {
                         val bodyJson = JSONObject().apply {
                             put("rgdata", JSONObject(latestPayload))
                             put("timestamp_ms", System.currentTimeMillis())
+                            // v: 신규기능(경로선) - 토글 켜져있고, 카카오 쪽에서 좌표를 뽑는 데
+                            // 성공한 게 10초 이내로 신선하면 같이 실어보냄. 이미 잘 되던 rgdata
+                            // 전송 자체는 이 블록과 무관하게 그대로 나감(여기서 실패해도 위
+                            // put("rgdata",...)는 이미 끝난 뒤라 영향 없음). #문제시 원복
+                            try {
+                                val routeToggleOn = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                                    .getBoolean("route_line_display_enabled", false)
+                                val coords = KakaoRouteDataRepository.routeCoordinates
+                                val fresh = (System.currentTimeMillis() - KakaoRouteDataRepository.routeCoordinatesUpdatedAt) < 10_000L
+                                if (routeToggleOn && fresh && coords.isNotEmpty()) {
+                                    val vrtxArray = org.json.JSONArray()
+                                    for ((lon, lat) in coords) {
+                                        vrtxArray.put(JSONObject().apply {
+                                            put("x", lon)
+                                            put("y", lat)
+                                            put("valid", true)
+                                        })
+                                    }
+                                    put("vrtx", vrtxArray)
+                                }
+                            } catch (e: Exception) {
+                                // 경로선 전송 실패해도 rgdata 전송엔 영향 없어야 하므로 조용히 무시
+                            }
                         }
                         val body = bodyJson.toString().toRequestBody("application/json".toMediaTypeOrNull())
                         val request = Request.Builder()
