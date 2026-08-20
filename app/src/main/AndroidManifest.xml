@@ -64,10 +64,17 @@
             </intent-filter>
         </activity>
         
+        <!-- v: 분할화면(멀티윈도우)으로 들어가면 화면 크기가 바뀌는데, 아래 configChanges
+             지시가 없어서 안드로이드가 내비게이션 화면을 통째로 부쉈다가 다시 만들었음
+             (콤마 연결도 그 과정에서 같이 끊김). 카카오내비 화면(KakaoNaviActivity)엔
+             이미 있던 지시를 여기에도 추가함. #문제시 원복: configChanges, resizeableActivity
+             두 줄 지우면 원래대로 -->
         <activity
             android:name=".MapActivity"
             android:exported="true"
-            android:launchMode="singleTask">
+            android:launchMode="singleTask"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|density">
             <!-- v3.4: 스티어링휠 마이크 버튼을 헤드유닛이 "기본 음성 비서 실행" 인텐트로
                  처리하는 경우 대비 - 정확히 어떤 방식을 쓰는 헤드유닛인지 몰라서
                  여러 경로를 동시에 걸어둠(#문제시 원복). 실차에서 버튼 눌러보고
