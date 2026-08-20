@@ -60,7 +60,7 @@ object QuickSlotStore {
         save(context, slot, existing.copy(routePriorityName = routePriorityName, routeAvoidOption = routeAvoidOption))
     }
 
-    // v14.9: 재억 요청 - "안내 방법 변경" 메뉴에서 저장해둔 이동방식만 지우는 기능.
+    // v14.9: 재억 요청 - "경로 방식 변경" 메뉴에서 저장해둔 이동방식만 지우는 기능.
     // 주소/이름/집·회사 등록 자체는 그대로 두고 routePriorityName만 null로 되돌려서,
     // 다음부터는 다시 "어떻게 갈까요?" 팝업이 매번 뜨는 상태로 돌아가게 함. #문제시 원복
     fun clearRoutePreference(context: Context, slot: String) {

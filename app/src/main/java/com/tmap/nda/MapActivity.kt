@@ -666,19 +666,15 @@ class MapActivity : AppCompatActivity() {
         }
         android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(existing.name)
-            // v13.10: 재억 요청 - 메뉴 순서를 "다시 검색 -> 안내 방법 변경 -> 이름 변경 ->
-            // 삭제"로 바꿈. "이동방식 저장"이라는 이름도 헷갈린다는 지적이 있어서
-            // "안내 방법 변경"으로 더 명확하게 바꿈. #문제시 원복
-            .setItems(arrayOf("다시 검색", "안내 방법 변경", "이름 변경", "삭제", "취소")) { _, which ->
+            // v14.10: 재억 요청 - 메뉴 순서를 "다시 검색 -> 이름 변경 -> 경로 방식 변경 ->
+            // 삭제 -> 취소"로 재변경. "안내 방법 변경"은 "경로 방식 변경"으로 이름도 변경. #문제시 원복
+            .setItems(arrayOf("다시 검색", "이름 변경", "경로 방식 변경", "삭제", "취소")) { _, which ->
                 when (which) {
                     0 -> {
                         pendingQuickSlotRegistration = slot
                         showTmapTextSearchDialog()
                     }
-                    // v13.2-3: 재억 요청 - 저장해둔 이동 방식(추천/고속도로/무료도로)만 바꾸고
-                    // 싶을 때. 고르면 저장만 되고(v13.10부터) 바로 안내를 시작하지는 않음. #문제시 원복
-                    1 -> showRoutePriorityDialog(existing, saveToSlot = slot)
-                    2 -> {
+                    1 -> {
                         val input = android.widget.EditText(this).apply {
                             setText(existing.name)
                             setTextColor(android.graphics.Color.WHITE)
@@ -695,6 +691,9 @@ class MapActivity : AppCompatActivity() {
                             .setNegativeButton("취소", null)
                             .show()
                     }
+                    // v13.2-3: 재억 요청 - 저장해둔 이동 방식(추천/고속도로/무료도로)만 바꾸고
+                    // 싶을 때. 고르면 저장만 되고(v13.10부터) 바로 안내를 시작하지는 않음. #문제시 원복
+                    2 -> showRoutePriorityDialog(existing, saveToSlot = slot)
                     3 -> QuickSlotStore.delete(this, slot)
                 }
             }
@@ -1344,7 +1343,7 @@ class MapActivity : AppCompatActivity() {
         )
         val optionAvoidOptions = listOf(0, 0, KNRouteAvoidOption.KNRouteAvoidOption_Fare.value)
 
-        // v14.9: 재억 요청 - "안내 방법 변경" 메뉴(saveToSlot != null)로 들어왔을 때만
+        // v14.9: 재억 요청 - "경로 방식 변경" 메뉴(saveToSlot != null)로 들어왔을 때만
         // 맨 아래에 "저장된 방식 삭제"를 추가함. 검색/즐겨찾기에서 바로 물어보는 경우(saveToSlot
         // == null)는 애초에 저장된 게 없을 수도 있는 상황이라 이 항목을 안 보여줌. #문제시 원복
         val CLEAR_OPTION_INDEX = 3

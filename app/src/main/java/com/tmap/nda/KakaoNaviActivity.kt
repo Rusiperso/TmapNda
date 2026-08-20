@@ -1270,18 +1270,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
         android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(existing.name)
-            // v13.10: MapActivity와 동일 - 순서를 "다시 검색 -> 안내 방법 변경 -> 이름 변경
-            // -> 삭제"로 바꾸고, "이동방식 저장"을 "안내 방법 변경"으로 이름도 바꿈(재억 요청). #문제시 원복
-            .setItems(arrayOf("다시 검색", "안내 방법 변경", "이름 변경", "삭제", "취소")) { _, which ->
+            // v14.10: MapActivity와 동일 - 순서를 "다시 검색 -> 이름 변경 -> 경로 방식 변경
+            // -> 삭제 -> 취소"로 재변경, "안내 방법 변경"을 "경로 방식 변경"으로 이름도 변경(재억 요청). #문제시 원복
+            .setItems(arrayOf("다시 검색", "이름 변경", "경로 방식 변경", "삭제", "취소")) { _, which ->
                 when (which) {
                     0 -> {
                         pendingQuickSlotRegistration = slot
                         showInPlaceSearchDialog()
                     }
-                    // v13.2-3: MapActivity와 동일 - 저장해둔 이동 방식만 바꾸고 싶을 때(재억 요청).
-                    // v13.10부터 저장만 되고 바로 안내를 시작하지는 않음. #문제시 원복
-                    1 -> showRoutePriorityDialog(existing, saveToSlot = slot)
-                    2 -> {
+                    1 -> {
                         val input = android.widget.EditText(this).apply {
                             setText(existing.name)
                             setTextColor(android.graphics.Color.WHITE)
@@ -1298,6 +1295,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                             .setNegativeButton("취소", null)
                             .show()
                     }
+                    // v13.2-3: MapActivity와 동일 - 저장해둔 이동 방식만 바꾸고 싶을 때(재억 요청).
+                    // v13.10부터 저장만 되고 바로 안내를 시작하지는 않음. #문제시 원복
+                    2 -> showRoutePriorityDialog(existing, saveToSlot = slot)
                     3 -> QuickSlotStore.delete(this, slot)
                 }
             }
