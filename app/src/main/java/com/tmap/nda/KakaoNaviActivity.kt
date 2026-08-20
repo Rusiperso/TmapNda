@@ -589,39 +589,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     applyKakaoSdkVolume()
                     logNaviViewDiagnostics("guideNewDestinations 300ms 후")
                 }, 300)
-                startNaviStateDiagnosticLoop()
             }
         }
     }
 
-    // naviView가 idle map(경로 없음)에 멈춰있는지, 실제 trip이 붙은 상태인지를 로그만으로
-    // 구분할 수 있도록 3초마다 상태를 남김. GPS 위치 로그는 idle 상태에서도 계속 찍히므로
-    // 그것만으로는 화면전환 여부를 판단할 수 없다는 점(사용자 지적)을 반영. #문제시 원복
-    private val diagnosticHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private var diagnosticLoopRunning = false
-    private fun startNaviStateDiagnosticLoop() {
-        if (diagnosticLoopRunning) return
-        diagnosticLoopRunning = true
-        val runnable = object : Runnable {
-            override fun run() {
-                if (isFinishing || isDestroyed) {
-                    diagnosticLoopRunning = false
-                    return
-                }
-                logNaviViewDiagnostics("주기 진단(3초)")
-                // v1.0.93: 스크린샷 비교 결과 1분이 지나도 지도 화면이 1픽셀도 안 바뀜(카메라/
-                // 마커가 GPS 갱신을 받아도 다시 안 그려지는 것으로 보임) - naviView가 SurfaceView
-                // 기반 렌더러라 데이터만 갱신되고 실제 화면 갱신 신호(invalidate)가 안 걸리는
-                // 것인지 확인하기 위해 3초마다 강제로 다시 그리기를 걸어봄. #문제시 원복
-                if (::naviView.isInitialized) {
-                    naviView.requestLayout()
-                    naviView.invalidate()
-                }
-                diagnosticHandler.postDelayed(this, 3000)
-            }
-        }
-        diagnosticHandler.postDelayed(runnable, 3000)
-    }
+    // v14.4: 예전에 "화면이 안 바뀐다" 문제를 진단하려고 3초마다 화면을 통째로 강제로
+    // 다시 그리게 하던 코드였음(startNaviStateDiagnosticLoop) - 진단 목적은 끝났고,
+    // 안내 내내 3초마다 불필요하게 다시 그리기를 강제해서 배터리/성능을 갉아먹고 있어서
+    // 통째로 제거함. #문제시 원복(git log 참고)
 
     private fun logNaviViewDiagnostics(tag: String) {
         try {
