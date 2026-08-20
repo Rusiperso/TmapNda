@@ -52,19 +52,40 @@ object VolumeHelper {
     // 저장하는 함수라, 사용자가 슬라이더로 원하는 값을 직접 고르는 이번 기능과는 안 맞음
     // (그래서 함수를 따로 둠). 저장과 동시에 티맵/시스템 볼륨에도 바로 반영해서 설정
       // 화면에서 바로 소리로 확인 가능하게 함. #문제시 원복
+    private val reapplyHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    // v14.8: 재억 지적 - 슬라이더로 값 고르고 "지금 음량으로 저장"을 눌러도, 잠시 뒤(1.5초
+    // 보호 시간이 끝난 뒤) 카카오/티맵 SDK 쪽에서 자기 나름대로 시스템 볼륨을 다시 건드리는
+    // 경우가 있고, 그 변경이 volumeChangeReceiver에 자동 캡처되어 방금 저장한 값을 도로
+    // 덮어써버림(예: 30%로 저장했는데 나중에 열어보면 예전 값 48%로 돌아가 있음). 한 번만
+    // 보호하고 끝내는 대신, 저장 직후 몇 초에 걸쳐 여러 번 다시 확인해서 재억이 고른 값으로
+    // 계속 고정시킴. #문제시 원복
+    private val reapplyDelaysMillis = longArrayOf(500L, 1500L, 3000L, 5000L)
+
     fun saveExplicitVolumePercent(context: Context, percent: Int) {
         val clamped = percent.coerceIn(0, 100)
+        val appContext = context.applicationContext
+        reapplyHandler.removeCallbacksAndMessages(null)
         // v14.1: 시스템 볼륨을 바꾸기 직전에 보호 시간을 먼저 걸어둠 - applySavedSystemVolume()이
         // 발생시키는 시스템 신호가 이 보호 시간 안에 들어오면 무시됨. #문제시 원복
-        ignoreCaptureUntilMillis = System.currentTimeMillis() + 1500L
-        context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        ignoreCaptureUntilMillis = System.currentTimeMillis() + 5500L
+        appContext.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             .edit().putInt(PREF_KEY, clamped).apply()
         try {
-            TmapUISDK.setVolume(context, clamped)
+            TmapUISDK.setVolume(appContext, clamped)
         } catch (e: Exception) {
-            NavLogger.e(context, "VolumeHelper 티맵볼륨 즉시적용 예외: ${e.message}")
+            NavLogger.e(appContext, "VolumeHelper 티맵볼륨 즉시적용 예외: ${e.message}")
         }
-        applySavedSystemVolume(context)
+        applySavedSystemVolume(appContext)
+        // v14.8: 500ms/1.5초/3초/5초 뒤에 다시 한 번씩 확인해서, 저장된 값(clamped)이랑
+        // 실제 시스템 볼륨이 어긋나 있으면 재억이 고른 값으로 다시 맞춰줌. #문제시 원복
+        for (delay in reapplyDelaysMillis) {
+            reapplyHandler.postDelayed({
+                appContext.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                    .edit().putInt(PREF_KEY, clamped).apply()
+                applySavedSystemVolume(appContext)
+            }, delay)
+        }
     }
 
     // v3.13: 카카오 SDK는 자체 음성안내 볼륨을 조절하는 공개 API가 없어서(문서에도 없음),
