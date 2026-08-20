@@ -39,7 +39,9 @@ class KakaoGuidanceDelegate(
     private val onGuideStarted: () -> Unit = {},
     // 세이프티(경로없음) 모드에선 false를 리턴해서 카카오 음성을 무음 처리하고,
     // 티맵 자체 카메라/방지턱/구간단속 안내음이 대신 나오게 하는 하이브리드 스위치. #문제시 원복
-    private val isRouteGuideActive: () -> Boolean = { true }
+    private val isRouteGuideActive: () -> Boolean = { true },
+    // 재억 요청(2026-08-20) - 재안내(경로 변경) 시 화면에 짧은 문구를 띄우기 위한 콜백. #문제시 원복
+    private val onRouteChanged: () -> Unit = {}
 ) : KNGuidance_GuideStateDelegate,
     KNGuidance_LocationGuideDelegate,
     KNGuidance_RouteGuideDelegate,
@@ -96,6 +98,7 @@ class KakaoGuidanceDelegate(
     ) {
         NavLogger.d(context, "[카카오안내] 경로 변경됨: 사유=$changeReason")
         naviView?.guidanceRouteChanged(guidance)
+        onRouteChanged()
     }
 
     override fun guidanceDidUpdateRoutes(

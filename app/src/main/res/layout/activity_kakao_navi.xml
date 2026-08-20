@@ -14,6 +14,24 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"/>
 
+    <!-- v14.4: 재억 요청 - 재안내(경로 변경) 시 잠깐 뜨는 문구 배너. 상단바보다 아래,
+         차선안내 바보다 위에 둬서 겹치지 않게 함. 평소엔 gone, 재안내 순간에만
+         잠깐 보였다 자동으로 사라짐. #문제시 원복 -->
+    <TextView
+        android:id="@+id/tvRerouteBanner"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="60dp"
+        android:text="새로운 길로 안내합니다"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp"
+        android:background="#CC000000"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="8dp"
+        android:visibility="gone"
+        android:elevation="21dp"/>
+
     <!-- 차선안내/신호등 잔여시간 - 상단바 아래로 -->
     <LinearLayout
         android:id="@+id/llLaneSignalBar"

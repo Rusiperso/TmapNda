@@ -373,7 +373,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             this,
             onGuideEnded = { finishGuidance() },
             onGuideStarted = {},
-            isRouteGuideActive = { !kakaoMuted }
+            isRouteGuideActive = { !kakaoMuted },
+            onRouteChanged = { showRerouteBanner() }
         ).also { kakaoGuidanceDelegate = it }
         delegate.naviView = naviView
         guidance.guideStateDelegate = delegate
@@ -2260,6 +2261,24 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 저장값을 지움. 앱이 강제종료/업데이트로 finishGuidance()를 거치지 않고 죽는
     // 경우에만 저장값이 남아서 다음에 "이어서 안내할까요?"가 뜸(이게 진짜 의도한
     // 시나리오). #문제시 원복
+    // v14.4: 재억 요청 - 재안내(경로 변경) 시 3초간 문구를 보여줬다 자동으로 감춤.
+    // 배너를 여러 번 빠르게 다시 띄우면(연속 재안내) 먼저 걸어둔 숨김 타이머가
+    // 나중 타이머보다 먼저 실행돼 배너가 일찍 꺼져버릴 수 있어서, 이전 타이머는
+    // 취소하고 새로 하나만 건다. #문제시 원복
+    private var rerouteBannerHideRunnable: Runnable? = null
+    private fun showRerouteBanner() {
+        val banner = findViewById<android.widget.TextView?>(
+            resources.getIdentifier("tvRerouteBanner", "id", packageName)
+        ) ?: return
+        runOnUiThread {
+            rerouteBannerHideRunnable?.let { banner.removeCallbacks(it) }
+            banner.visibility = View.VISIBLE
+            val hideRunnable = Runnable { banner.visibility = View.GONE }
+            rerouteBannerHideRunnable = hideRunnable
+            banner.postDelayed(hideRunnable, 3000L)
+        }
+    }
+
     private fun finishGuidance() {
         ResumeGuidanceStore.clear(this)
         KakaoRouteDataRepository.reset()
