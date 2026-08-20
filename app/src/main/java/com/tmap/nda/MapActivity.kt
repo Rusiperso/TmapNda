@@ -1307,14 +1307,19 @@ class MapActivity : AppCompatActivity() {
     // 명시적으로 흰색으로 지정하는 어댑터로 교체. #문제시 원복
     // v12.9: 검색 결과 목록의 "· N분"(소요시간) 부분을 SpannableString으로 색을 다르게
     // 입힐 수 있도록 String -> CharSequence로 확장(재억 요청 - 시인성 올리기). #문제시 원복
-    private fun darkTextAdapter(items: List<CharSequence>): android.widget.ArrayAdapter<CharSequence> {
+    // v14.9: redRowIndex - "저장된 방식 삭제" 같은 위험한 항목만 빨간 글씨로 강조하고
+    // 싶을 때 그 줄 번호를 넘겨줌(없으면 전부 흰색 그대로). #문제시 원복
+    private fun darkTextAdapter(items: List<CharSequence>, redRowIndex: Int? = null): android.widget.ArrayAdapter<CharSequence> {
         return object : android.widget.ArrayAdapter<CharSequence>(
             this, android.R.layout.simple_list_item_1, android.R.id.text1, items
         ) {
             override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
                 val view = super.getView(position, convertView, parent)
                 val tv = view.findViewById<android.widget.TextView>(android.R.id.text1)
-                tv.setTextColor(android.graphics.Color.WHITE)
+                tv.setTextColor(
+                    if (position == redRowIndex) android.graphics.Color.parseColor("#E24B4A")
+                    else android.graphics.Color.WHITE
+                )
                 tv.setPadding(24, 20, 24, 20)
                 return view
             }
@@ -1339,7 +1344,17 @@ class MapActivity : AppCompatActivity() {
         )
         val optionAvoidOptions = listOf(0, 0, KNRouteAvoidOption.KNRouteAvoidOption_Fare.value)
 
+        // v14.9: 재억 요청 - "안내 방법 변경" 메뉴(saveToSlot != null)로 들어왔을 때만
+        // 맨 아래에 "저장된 방식 삭제"를 추가함. 검색/즐겨찾기에서 바로 물어보는 경우(saveToSlot
+        // == null)는 애초에 저장된 게 없을 수도 있는 상황이라 이 항목을 안 보여줌. #문제시 원복
+        val CLEAR_OPTION_INDEX = 3
+
         fun goDirectly(index: Int) {
+            if (index == CLEAR_OPTION_INDEX && saveToSlot != null) {
+                QuickSlotStore.clearRoutePreference(this, saveToSlot)
+                Toast.makeText(this, "${picked.name}의 저장된 이동방식을 지웠어요.", Toast.LENGTH_SHORT).show()
+                return
+            }
             if (saveToSlot != null) {
                 // v13.10: 재억 지적 - "이동방식 저장" 메뉴로 들어왔을 때도 옵션을 고르면
                 // 저장과 동시에 무조건 길안내까지 시작해버렸음. "그냥 이동방식만 바꿔서
@@ -1360,8 +1375,14 @@ class MapActivity : AppCompatActivity() {
             val labels = optionLabels.mapIndexed { i, label ->
                 "$label\n${SearchRanking.formatEtaMinutes(minutesArr[i]) ?: "계산 실패"}"
             }.toMutableList()
+            if (saveToSlot != null) {
+                labels.add("저장된 방식 삭제")
+            }
             val listView = android.widget.ListView(this)
-            val adapter = darkTextAdapter(ArrayList<CharSequence>(labels))
+            val adapter = darkTextAdapter(
+                ArrayList<CharSequence>(labels),
+                redRowIndex = if (saveToSlot != null) CLEAR_OPTION_INDEX else null
+            )
             listView.adapter = adapter
             val routeDialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                 .setTitle("${picked.name}\n어떻게 갈까요?")
