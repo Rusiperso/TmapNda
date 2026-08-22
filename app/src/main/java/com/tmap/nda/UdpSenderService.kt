@@ -42,6 +42,12 @@ class UdpSenderService : Service() {
     // v9.3: 정지 시 남은시간 0 되는 문제 우회용 - 직전 유효 남은시간(초)과 그 시각. #문제시 원복
     private var lastValidGoPosTime = 0
     private var lastValidGoPosTimeAt = 0L
+    // v: 재억 제보(2026-08-22) - 위 lastValidGoPosTime 우회는 티맵 자체 값(rawGoPosTime)에만
+    // 적용돼 있었음. 카카오로 안내 중일 땐 이 값과 별개로 카카오 쪽 remainTime이 정지 시
+    // 순간 0이 되는데, 그때 카카오 값 갱신을 건너뛰고 바로 위에서 이미 0/0으로 정해진
+    // 티맵 값을 그대로 내보내서 목적지 정보가 사라졌음. 카카오 전용 직전값을 따로 둠. #문제시 원복
+    private var lastValidKakaoGoPosTime = 0
+    private var lastValidKakaoGoPosTimeAt = 0L
 
     // v: 사용자 요청 - "내 폰이 남의 핫스팟에 붙는 경우"랑 "내 폰이 직접 핫스팟을 켜고
     // 콤마가 거기 붙는 경우" 둘 다 항상 되게 해달라고 함. 이 둘은 안드로이드 입장에서
@@ -788,6 +794,15 @@ class UdpSenderService : Service() {
                         if (kr.remainDist > 0 && kr.remainTime > 0) {
                             json.put("nGoPosDist", kr.remainDist)
                             json.put("nGoPosTime", kr.remainTime)
+                            lastValidKakaoGoPosTime = kr.remainTime
+                            lastValidKakaoGoPosTimeAt = System.currentTimeMillis()
+                        } else if (kr.remainDist > 0 && lastValidKakaoGoPosTime > 0 &&
+                            System.currentTimeMillis() - lastValidKakaoGoPosTimeAt < 5 * 60 * 1000L
+                        ) {
+                            // 카카오 거리는 살아있는데(정지 등으로) 시간만 순간 0 - 티맵 값으로
+                            // 덮어써지지 않도록 카카오 직전 값으로 채워서 계속 목적지 정보 유지
+                            json.put("nGoPosDist", kr.remainDist)
+                            json.put("nGoPosTime", lastValidKakaoGoPosTime)
                         }
                         val kakaoTbtDist = if (kr.tbtDist > 0) kr.tbtDist else 9999
                         json.put("nTBTDist", kakaoTbtDist)
