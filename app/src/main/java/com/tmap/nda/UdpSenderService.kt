@@ -721,7 +721,7 @@ class UdpSenderService : Service() {
 
                     json.put("nTBTDist", tbtDist)      // 이벤트가 있으면 해당 거리 표출, 없으면 9999
                     json.put("nTBTTurnType", 51)    // Notification 타입 (직진/알림)
-                    json.put("szTBTMainText", "$prefix | GPS: $currentGpsStatusText")
+                    json.put("szTBTMainText", prefix)
 
                     // v1.0.98: 이 edcObserver는 observeForever라 Activity 생명주기와 무관하게
                     // 항상 최신 데이터를 받음. MapActivity.extractAndDisplaySdiInfo()는
@@ -811,7 +811,7 @@ class UdpSenderService : Service() {
                         } else {
                             "카카오안내"
                         }
-                        json.put("szTBTMainText", "$kakaoPrefix | GPS: $currentGpsStatusText")
+                        json.put("szTBTMainText", kakaoPrefix)
                         // v: 사용자 제안(2026-08-08) - "Tmap 우선순위 + 카카오 폴백"이라는
                         // 하이브리드 판단 자체가 문제였음. 실제 로그로 확인됨: safetyDistTrusted
                         // (카카오 SDK의 getRemainDist() 기반 검증)가 거의 항상 false로 나와서
