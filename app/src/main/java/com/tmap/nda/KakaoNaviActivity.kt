@@ -1827,12 +1827,18 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             setHintTextColor(android.graphics.Color.parseColor("#AAAAAA"))
         }
         android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("목적지 재검색")
+            .setTitle(if (pendingWaypointAddition) "경유지 검색" else "목적지 재검색")
             .setView(input)
             .setPositiveButton("검색") { _, _ ->
                 val q = input.text.toString().trim()
                 if (q.isNotEmpty()) performInPlaceSearch(q)
             }
+            // v: 재억 요청(2026-08-22) - 운전 중엔 타이핑보다 음성이 편해서, 특히 경유지
+            // 추가할 때 유용함. 이미 있던 상단바 음성검색(startVoiceSearch)을 그대로 재사용 -
+            // 인식 결과는 voiceSearchLauncher -> performInPlaceSearch -> pickEntry() 순으로
+            // 흘러가는데, pickEntry()가 이미 pendingWaypointAddition 플래그를 보고 "경유지
+            // 추가"인지 "목적지 변경"인지 알아서 구분하므로 별도 처리 없이도 맞게 동작함. #문제시 원복
+            .setNeutralButton("음성으로 검색") { _, _ -> startVoiceSearch() }
             .setNegativeButton("취소", null)
             .show()
     }
