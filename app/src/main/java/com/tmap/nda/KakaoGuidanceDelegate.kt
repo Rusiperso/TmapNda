@@ -244,6 +244,53 @@ class KakaoGuidanceDelegate(
         return emptyList()
     }
 
+    // v: 재억 요청(2026-08-22) - 경유지를 하나 이상 지나서 최종목적지로 가는 경우,
+    // "지금 향하고 있는 정차지"(다음 경유지 또는 그게 없으면 최종목적지)와 거기까지
+    // 남은 거리를 알아냄. KNRoute.getLocationsOfPois()가 출발/경유/도착 각 지점의
+    // 누적거리(DistFromS)를 담고 있을 것으로 추정(확실친 않음, 로그 없이 시도하는
+    // 부분이라 방어적으로 짬 - 실패하면 null 반환해서 기존 동작 그대로 유지). #문제시 원복
+    private fun resolveNextStopInfo(guidance: KNGuidance, myDistFromS: Int): Triple<String, Int, Boolean>? {
+        return try {
+            val trip = guidance.trip ?: return null
+            val route = guidance.routesOnGuide?.firstOrNull() ?: return null
+            val poisMethod = route.javaClass.methods.firstOrNull {
+                it.name == "getLocationsOfPois" && it.parameterTypes.isEmpty()
+            } ?: return null
+            val pois = poisMethod.invoke(route) as? List<*> ?: return null
+            if (pois.size < 3) return null // 출발/도착 2개뿐이면 경유지 없음 - 기존 동작 유지
+
+            // 경유지 이름 목록: trip 객체에서 "via"가 들어간 게터를 찾아 KNPOI 리스트를
+            // 얻고, 각 항목의 getName()을 시도. 순서가 요청한 순서와 같다고 가정. #문제시 원복
+            val viaNames = try {
+                val viaGetter = trip.javaClass.methods.firstOrNull {
+                    it.parameterTypes.isEmpty() && it.name.lowercase().contains("via")
+                }
+                (viaGetter?.invoke(trip) as? List<*>)?.map { via ->
+                    try {
+                        via?.javaClass?.methods?.firstOrNull { it.name == "getName" }?.invoke(via) as? String
+                    } catch (e: Exception) { null }
+                }
+            } catch (e: Exception) { null }
+
+            for (idx in 1 until pois.size) {
+                val poi = pois[idx] ?: continue
+                val dist = findGetterInt(poi, "DistFromS")
+                if (dist <= 0 || dist <= myDistFromS) continue
+                val isFinal = idx == pois.size - 1
+                val name = if (isFinal) {
+                    trip.goal?.name.orEmpty().ifBlank { "목적지" }
+                } else {
+                    viaNames?.getOrNull(idx - 1)?.takeIf { !it.isNullOrBlank() } ?: "경유지"
+                }
+                return Triple(name, dist - myDistFromS, isFinal)
+            }
+            null
+        } catch (e: Exception) {
+            NavLogger.e(context, "[다음정차지] 조사 실패(기존 동작 유지): ${e.message}")
+            null
+        }
+    }
+
     override fun guidanceDidUpdateIndoorRoute(guidance: KNGuidance, route: KNRoute?) {
         // CarrotNavi 실제 코드에서 naviView.guidanceDidUpdateIndoorRoute() 직접호출이
         // 확인 안 돼서(존재 여부 불확실), 컴파일 안전하게 리플렉션으로만 시도. #문제시 원복
@@ -341,6 +388,26 @@ class KakaoGuidanceDelegate(
                 val myDistFromS = findGetterInt(currentLocation, "DistFromS")
                 if (myDistFromS > 0) {
                     KakaoRouteDataRepository.currentDistFromS = myDistFromS
+
+                    // v: 재억 요청(2026-08-22) - 경유지가 있을 땐 최종목적지 정보 대신
+                    // "지금 향하고 있는 다음 정차지"(경유지 or 최종목적지) 정보를 보여주고,
+                    // 그 경유지를 지나면 자동으로 다음 걸로 넘어가게 함. 로그 없이 바로
+                    // 시도하는 거라 방어적으로 - 뭔가 안 맞으면 조용히 원래 동작(최종목적지
+                    // 표시)으로 돌아감. #문제시 원복
+                    resolveNextStopInfo(guidance, myDistFromS)?.let { (name, remainDist, isFinal) ->
+                        KakaoRouteDataRepository.destinationName = name
+                        if (!isFinal) {
+                            // 경유지 구간은 전체 남은시간을 거리 비율로 나눠 대략 추정
+                            // (카카오 SDK가 경유지 단위 시간을 따로 안 줘서 근사치). #문제시 원복
+                            val totalRemainDist = KakaoRouteDataRepository.remainDist
+                            val totalRemainTime = KakaoRouteDataRepository.remainTime
+                            if (totalRemainDist > 0 && totalRemainTime > 0 && remainDist <= totalRemainDist) {
+                                KakaoRouteDataRepository.remainDist = remainDist
+                                KakaoRouteDataRepository.remainTime =
+                                    (totalRemainTime.toLong() * remainDist / totalRemainDist).toInt()
+                            }
+                        }
+                    }
 
                     // v10.2: 실주행 로그로 확인된 버그 수정 - 안전정보 거리는 새 이벤트가
                     // 잡힐 때만(뜸하게) 갱신됐어서, 그 사이엔 UdpSenderService가 계속 옛날
