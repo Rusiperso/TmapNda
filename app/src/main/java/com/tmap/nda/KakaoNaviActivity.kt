@@ -1723,8 +1723,23 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private fun setupWaypointAddButton() {
         binding.btnAddWaypoint?.setOnClickListener {
             pendingWaypointAddition = true
-            showInPlaceSearchDialog()
+            showWaypointSearchModeChooser()
         }
+    }
+
+    // v: 재억 요청(2026-08-22) - 경유지 추가할 때 텍스트 입력창부터 뜨지 말고, "음성으로
+    // 찾기 / 텍스트로 찾기" 중 먼저 고르게 함. 운전 중엔 음성이 더 편해서 그쪽을 앞에 둠. #문제시 원복
+    private fun showWaypointSearchModeChooser() {
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("경유지 검색 방법")
+            .setItems(arrayOf("음성으로 찾기", "텍스트로 찾기")) { _, which ->
+                when (which) {
+                    0 -> startVoiceSearch()
+                    1 -> showInPlaceSearchDialog()
+                }
+            }
+            .setNegativeButton("취소") { _, _ -> pendingWaypointAddition = false }
+            .show()
     }
 
     private fun addWaypointToActiveGuidance(picked: HistoryEntry) {
