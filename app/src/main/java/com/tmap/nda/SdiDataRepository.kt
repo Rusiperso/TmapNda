@@ -6,6 +6,16 @@ object SdiDataRepository {
     // 8초 쿨다운) 겹쳐 울릴 수 있었음. 화면과 무관한 공용 쿨다운으로 통합. #문제시 원복
     @Volatile var lastOverSpeedWarningTime: Long = 0L
 
+    // v: 재억 제보(2026-08-22) - 카메라/방지턱에 접근하는 동안 300~500m 지점에서 한 번 울리고,
+    // 계속 속도를 안 줄이면 8초 쿨다운마다 계속 울리다가 100m 이내에서 또 울림(사용자 입장에선
+    // "또 운다"). 카메라에 접근하는 동안은 "이 카메라 하나당 딱 한 번"만 울리게 하고, 카메라를
+    // 지나가서 이벤트가 사라지면 다음 카메라를 위해 다시 무장(false)하도록 분리. 카메라가 없는
+    // 상태에서 그냥 계속 과속 중일 때 울리는 일반 경고는 기존 8초 반복 그대로 유지. #문제시 원복
+    @Volatile var cameraApproachWarned: Boolean = false
+
+    /** 지금 카메라/방지턱 등 안전이벤트에 근접 중인지(500m 이내) */
+    fun isNearCameraEvent(): Boolean = sdiType > 0 && sdiDistance in 1..500
+
     var roadLimitSpeed: Int = 80
 
     // v: 버그수정(재억 제보 - "10% 이하로 달렸는데도 경고음 남") - 카카오 화면은

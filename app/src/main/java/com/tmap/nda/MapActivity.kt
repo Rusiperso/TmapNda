@@ -1672,13 +1672,26 @@ class MapActivity : AppCompatActivity() {
             lastOverSpeedDiagLogTime = now
             NavLogger.d(this, "[과속경고음진단] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1})")
         }
-        if (speedKph > limit * 1.1 && now - SdiDataRepository.lastOverSpeedWarningTime > 8000L) {
+        // v: 재억 제보(2026-08-22) - 카메라 접근 중엔 300~500m에서 한 번, 100m 이내에서
+        // 또 한 번(8초 쿨다운마다 반복) 울리던 걸 "이 카메라 하나당 한 번"으로 제한.
+        // 카메라가 없을 때(그냥 과속 중)는 기존처럼 8초마다 반복 경고. #문제시 원복
+        val nearCamera = SdiDataRepository.isNearCameraEvent()
+        if (!nearCamera) {
+            SdiDataRepository.cameraApproachWarned = false
+        }
+        val shouldWarn = if (nearCamera) {
+            speedKph > limit * 1.1 && !SdiDataRepository.cameraApproachWarned
+        } else {
+            speedKph > limit * 1.1 && now - SdiDataRepository.lastOverSpeedWarningTime > 8000L
+        }
+        if (shouldWarn) {
             SdiDataRepository.lastOverSpeedWarningTime = now
+            if (nearCamera) SdiDataRepository.cameraApproachWarned = true
             // v4.23: "60도로에 65로 주행시 경고음(10% 안 넘는데)"(사용자 1번) - 발생 순간의
             // 실제 limit/speedKph 값을 못 남기고 있어서 원인 특정이 안 됐음. 트리거되는
             // 바로 그 순간의 값을 남겨서 다음 로그로 어떤 limit이 실제로 쓰였는지
             // 확정할 수 있게 함. #문제시 원복
-            NavLogger.e(this, "[과속경고음발생][Tmap화면] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1})")
+            NavLogger.e(this, "[과속경고음발생][Tmap화면] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1}) nearCamera=$nearCamera")
             try {
                 val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 100)
                 tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
