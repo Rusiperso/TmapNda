@@ -2578,7 +2578,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             if (nearCamera) SdiDataRepository.cameraApproachWarned = true
             NavLogger.e(this, "[과속경고음발생][카카오화면] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1}) nearCamera=$nearCamera")
             try {
-                val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 100)
+                // v: 재억 지적(2026-08-22) - MapActivity와 동일한 문제(안내음량 설정이 안 먹힘). #문제시 원복
+                val volumePercent = VolumeHelper.savedVolumePercent(this).coerceIn(1, 100)
+                val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, volumePercent)
                 tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ tone.release() }, 500)
             } catch (e: Exception) {
