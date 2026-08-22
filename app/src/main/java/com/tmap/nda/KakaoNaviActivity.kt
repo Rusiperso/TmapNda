@@ -1252,7 +1252,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             .setTitle(existing.name)
             // v14.10: MapActivity와 동일 - 순서를 "다시 검색 -> 이름 변경 -> 경로 방식 변경
             // -> 삭제 -> 취소"로 재변경, "안내 방법 변경"을 "경로 방식 변경"으로 이름도 변경(재억 요청). #문제시 원복
-            .setItems(arrayOf("다시 검색", "이름 변경", "경로 방식 변경", "삭제", "취소")) { _, which ->
+            // v: 재억 요청(2026-08-22) - "경로추가"(지금 안내 중인 목적지는 그대로 두고
+            // 이 즐겨찾기를 경유지로 끼워넣기) 항목 추가. #문제시 원복
+            .setItems(arrayOf("다시 검색", "이름 변경", "경로 방식 변경", "경로추가", "삭제", "취소")) { _, which ->
                 when (which) {
                     0 -> {
                         pendingQuickSlotRegistration = slot
@@ -1278,7 +1280,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     // v13.2-3: MapActivity와 동일 - 저장해둔 이동 방식만 바꾸고 싶을 때(재억 요청).
                     // v13.10부터 저장만 되고 바로 안내를 시작하지는 않음. #문제시 원복
                     2 -> showRoutePriorityDialog(existing, saveToSlot = slot)
-                    3 -> QuickSlotStore.delete(this, slot)
+                    3 -> addWaypointToActiveGuidance(existing)
+                    4 -> QuickSlotStore.delete(this, slot)
                 }
             }
             .show()
@@ -2344,7 +2347,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             val adapter = darkTextAdapter(ArrayList(currentLabels))
             listView.adapter = adapter
             listView.setOnItemClickListener { _, _, position, _ -> pickEntry(pageHits[position]) }
-            pickDialog.setTitle("검색 결과 ${hits.size}건 (${start + 1}-$end) - 목적지를 선택하세요")
+            // v: 재억 요청(2026-08-22) - 검색 결과에서도 길게 누르면 목적지를 갈아끼우지
+            // 않고 바로 경유지로 추가. pendingWaypointAddition 모드로 들어와 있었으면
+            // (이미 경유지 검색 중이었으면) 짧게 눌러도 되니 굳이 롱프레스 안내 불필요. #문제시 원복
+            listView.setOnItemLongClickListener { _, _, position, _ ->
+                val target = pageHits[position]
+                pickDialog.dismiss()
+                addWaypointToActiveGuidance(target)
+                true
+            }
+            pickDialog.setTitle("검색 결과 ${hits.size}건 (${start + 1}-$end) - 탭:목적지 선택 / 길게누르기:경유지 추가")
             pickDialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL)?.isEnabled = currentPage > 0
             pickDialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.isEnabled = currentPage < lastPage
 
