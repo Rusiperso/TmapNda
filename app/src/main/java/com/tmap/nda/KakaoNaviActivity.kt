@@ -204,6 +204,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             finish()
             return
         }
+        currentDestName = destName
+        currentDestLat = destLat
+        currentDestLon = destLon
+        setupWaypointAddButton()
 
         // v1.0.97: 예전엔 카카오 화면에 들어오면 무조건 티맵 볼륨을 0으로 강제해서, 사용자가
         // 원하는 "티맵 안내음량 버튼"이 있어도 의미가 없었음(항상 0으로 덮어써지니까).
@@ -1701,8 +1705,83 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 시점(guideNewDestinations)까지 들고 있기 위한 클래스 필드. #문제시 원복
     private var activeRoutePriority: KNRoutePriority = KNRoutePriority.KNRoutePriority_Recommand
     private var activeRouteAvoidOption: Int = 0
+    // v: 재억 요청(2026-08-22) - 안내 중 경유지 추가 기능. 현재 목적지 좌표/이름을
+    // guideNewDestinations() 호출 시 그대로 재사용해야 해서 클래스 필드로 보관. #문제시 원복
+    private var currentDestName: String = ""
+    private var currentDestLat: Double = Double.NaN
+    private var currentDestLon: Double = Double.NaN
     // v11.3: MapActivity와 동일 - 집/회사/즐겨찾기 칸 등록용 검색을 여는 중이면 어느 칸인지 담아둠. #문제시 원복
     private var pendingQuickSlotRegistration: String? = null
+
+    // v: 재억 요청(2026-08-22) - 안내 중 경유지 추가. 검색 결과 선택 시 목적지를
+    // 갈아끼우는(resolveCurrentPositionThenRequestRoute) 대신, 기존 목적지는 그대로 두고
+    // "현재위치 -> 경유지 -> 기존목적지" 순서로 경로를 다시 짜서 guideNewDestinations()로
+    // 갈아끼움. 기존 "재탐색" 메커니즘을 그대로 재사용하는 거라 안전함. #문제시 원복
+    private var pendingWaypointAddition: Boolean = false
+
+    private fun setupWaypointAddButton() {
+        binding.btnAddWaypoint?.setOnClickListener {
+            pendingWaypointAddition = true
+            showInPlaceSearchDialog()
+        }
+    }
+
+    private fun addWaypointToActiveGuidance(picked: HistoryEntry) {
+        if (currentDestLat.isNaN() || currentDestLon.isNaN()) {
+            NavLogger.e(this, "[경유지추가] 현재 목적지 정보가 없어 취소")
+            Toast.makeText(this, "경유지 추가 실패: 목적지 정보 없음", Toast.LENGTH_SHORT).show()
+            return
+        }
+        var startPoi: KNPOI? = null
+        val currentGps = KNSDK.sharedGpsManager()?.recentGpsData
+        if (currentGps != null && currentGps.pos.x > 0 && currentGps.pos.y > 0) {
+            startPoi = KNPOI("현 위치", currentGps.pos.x.toInt(), currentGps.pos.y.toInt(), "")
+        } else {
+            try {
+                val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+                val loc = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                    ?: locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                if (loc != null) {
+                    val katec = KNSDK.convertWGS84ToKATEC(loc.longitude, loc.latitude)
+                    startPoi = KNPOI("현 위치", katec.x.toInt(), katec.y.toInt(), "")
+                }
+            } catch (e: SecurityException) {
+                NavLogger.e(this, "[경유지추가] 위치 권한 없음: ${e.message}")
+            }
+        }
+        if (startPoi == null) {
+            Toast.makeText(this, "GPS 확인 중입니다. 잠시 후 다시 시도해주세요", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val viaKatec = KNSDK.convertWGS84ToKATEC(picked.lon, picked.lat)
+        val viaPoi = KNPOI(picked.name, viaKatec.x.toInt(), viaKatec.y.toInt(), "")
+        val goalKatec = KNSDK.convertWGS84ToKATEC(currentDestLon, currentDestLat)
+        val goalPoi = KNPOI(currentDestName, goalKatec.x.toInt(), goalKatec.y.toInt(), "")
+
+        NavLogger.d(this, "[경유지추가] 요청: 현재위치 -> ${picked.name} -> $currentDestName")
+        Toast.makeText(this, "'${picked.name}' 경유지로 추가 중...", Toast.LENGTH_SHORT).show()
+
+        KNSDK.makeTripWithStart(startPoi, goalPoi, listOf(viaPoi)) { error, trip ->
+            runOnUiThread {
+                if (error != null || trip == null) {
+                    NavLogger.e(this, "[경유지추가] 경로 재계산 실패: ${error?.msg ?: "알 수 없는 오류"}")
+                    Toast.makeText(this, "경유지 추가 실패: ${error?.msg ?: "알 수 없는 오류"}", Toast.LENGTH_SHORT).show()
+                    return@runOnUiThread
+                }
+                try {
+                    naviView.guideNewDestinations(trip, activeRoutePriority, activeRouteAvoidOption)
+                    naviView.requestLayout()
+                    naviView.invalidate()
+                    NavLogger.d(this, "[경유지추가] 성공: ${picked.name}")
+                    Toast.makeText(this, "'${picked.name}' 경유지로 추가됨", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    NavLogger.e(this, "[경유지추가] guideNewDestinations 예외: ${e.message}")
+                    Toast.makeText(this, "경유지 추가 실패(화면 반영 오류)", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
 
     private fun showInPlaceSearchDialog() {
         // v1.7: 기본 AlertDialog.Builder(this)는 앱 라이트 테마를 상속해서 다이얼로그
@@ -2093,6 +2172,23 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
         fun pickEntry(picked: HistoryEntry) {
             pickDialog.dismiss()
+            // v: 재억 요청(2026-08-22) - 경유지 추가 모드였으면 목적지를 갈아끼우지 않고
+            // 경유지로만 추가. 다른 분기(즐겨찾기 등록 등)보다 먼저 체크. #문제시 원복
+            if (pendingWaypointAddition) {
+                pendingWaypointAddition = false
+                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+                currentFocus?.let { imm?.hideSoftInputFromWindow(it.windowToken, 0) }
+                binding.etDestination?.apply {
+                    isFocusable = false
+                    isFocusableInTouchMode = false
+                    clearFocus()
+                    isFocusable = true
+                    isFocusableInTouchMode = true
+                    setText("")
+                }
+                addWaypointToActiveGuidance(picked)
+                return
+            }
             // v11.3: MapActivity와 동일 - 집/회사/즐겨찾기 칸 등록 목적이었으면 저장만 하고
             // 안내는 시작하지 않음(재억 지적 - 등록할 땐 안내까지 필요 없음). #문제시 원복
             val registeringSlot = pendingQuickSlotRegistration

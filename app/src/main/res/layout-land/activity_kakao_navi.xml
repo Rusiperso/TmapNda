@@ -547,4 +547,17 @@
         android:elevation="30dp"
         android:visibility="gone"/>
 
+    <!-- v: 재억 요청(2026-08-22) - 안내 중 경유지 추가 버튼 (세로 화면과 동일). #문제시 원복 -->
+    <ImageButton
+        android:id="@+id/btnAddWaypoint"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="16dp"
+        android:src="@drawable/ic_add_waypoint"
+        android:background="@drawable/shape_circle_gray"
+        android:scaleType="center"
+        android:contentDescription="경유지 추가"
+        android:elevation="20dp"/>
+
 </FrameLayout>
