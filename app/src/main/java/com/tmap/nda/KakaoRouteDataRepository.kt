@@ -144,7 +144,13 @@ object KakaoRouteDataRepository {
         this.roadName = roadName
         this.rgCodeName = rgCodeName
         this.directionAngle = directionAngle
-        this.destinationName = destinationName.ifBlank { "목적지" }
+        // v: 재억 요청(2026-08-22) - 안내 시작 직후 trip/goal이 아직 안 채워진 찰나에
+        // destinationName이 "목적지"(기본값)로 초기화되면서, 그 사이 잠깐 도로명으로
+        // 화면이 넘어가버리는 문제가 있었음. 새로 들어온 이름이 진짜 값(비어있지 않음)일
+        // 때만 갱신하고, 비어있으면 직전까지 갖고 있던 값을 그대로 유지. #문제시 원복
+        if (destinationName.isNotBlank()) {
+            this.destinationName = destinationName
+        }
 
         notifyListeners(snapshot())
     }

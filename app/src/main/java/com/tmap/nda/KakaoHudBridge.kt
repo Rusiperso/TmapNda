@@ -62,7 +62,6 @@ object KakaoHudBridge {
             rgCodeName = direction?.rgCode?.name.orEmpty(),
             directionAngle = direction?.directionAng ?: 0,
             destinationName = trip?.goal?.name.orEmpty()
-                .ifBlank { "목적지" }
         )
     }
 }
