@@ -25,6 +25,21 @@ object LaneSignalRepository {
     @Volatile var source: String = ""       // "tmap" | "kakao" | ""(없음)
     @Volatile var lastUpdateTime: Long = 0
 
+    // v: 재억 요청(2026-08-22) - "카카오 화면 뒤로 넘어가면(티맵 화면 일시정지) 차선정보 갱신도
+    // 같이 멈췄다가, 카카오 안내를 끝내고 티맵 화면으로 돌아오는 순간에만 그 사이 멈춰있던
+    // 마지막 값이 반짝 한 번 뜨고 사라짐"이 원인이었음(1초 주기 반복 루프가 화면이 활성화돼
+    // 있을 때만 도는 구조라서). 이제 새 차선 데이터가 "들어오는 바로 그 순간"에, 지금 실제로
+    // 보이는 화면이 어느 쪽이든 즉시 다시 그리도록 콜백을 등록해두고 직접 호출함. 이러면 다음
+    // 사거리/삼거리로 바뀔 때까지 계속 최신 값이 유지되고, 반복 주기를 기다릴 필요가 없어짐. #문제시 원복
+    @Volatile var activeRenderer: (() -> Unit)? = null
+    fun notifyChanged() {
+        try {
+            activeRenderer?.invoke()
+        } catch (e: Exception) {
+            // 렌더러 쪽 예외가 데이터 갱신 흐름을 끊으면 안 되므로 조용히 무시
+        }
+    }
+
     // 차선 안내: 차선 개수만큼 - recommended면 "이 경로엔 이 차선을 타야 함"(추천 차선),
     // busType!=0이면 버스전용차로로 추정
     @Volatile var lanes: List<LaneDisplayInfo> = emptyList()

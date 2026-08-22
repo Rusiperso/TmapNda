@@ -2339,6 +2339,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     override fun onResume() {
         super.onResume()
         NavLogger.d(this, "[lifecycle] onResume")
+        // v: 재억 요청(2026-08-22) - MapActivity와 동일한 패턴. 카카오 화면이 앞으로
+        // 오는 순간 최신 차선정보를 바로 그려주고, 이후 새 데이터가 들어올 때마다
+        // 곧바로 반영되도록 "지금 활성화된 화면" 자리에 이 화면을 등록. #문제시 원복
+        LaneSignalRepository.activeRenderer = {
+            renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "kakao")
+        }
+        LaneSignalRepository.notifyChanged()
         try {
             registerReceiver(
                 volumeChangeReceiver,
@@ -2352,6 +2359,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     override fun onPause() {
         super.onPause()
         NavLogger.d(this, "[lifecycle] onPause")
+        LaneSignalRepository.activeRenderer = null
         try {
             unregisterReceiver(volumeChangeReceiver)
         } catch (e: Exception) {

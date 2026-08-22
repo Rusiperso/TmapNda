@@ -385,9 +385,11 @@ class KakaoGuidanceDelegate(
                     .filter { m -> m.parameterTypes.isEmpty() && m.name.startsWith("get") }
                     .joinToString(", ") { m -> try { "${m.name}=${m.invoke(lane)}" } catch (e: Exception) { "${m.name}=<실패>" } }
                 NavLogger.d(context, "[차선정보] KNLane 전체덤프: $dump")
+                LaneSignalRepository.notifyChanged()
             } else if (lane == null) {
                 LaneSignalRepository.kakaoLane = null
                 NavLogger.d(context, "[차선정보] lane=null (이 구간엔 차선 안내 데이터 없음)")
+                LaneSignalRepository.notifyChanged()
             }
         } catch (e: Exception) {
             NavLogger.e(context, "차선정보 조회 예외: ${e.message}")

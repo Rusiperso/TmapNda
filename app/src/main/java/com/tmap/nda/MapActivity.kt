@@ -3737,6 +3737,13 @@ class MapActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         NavLogger.d(this, "[MapActivity lifecycle] onResume")
+        // v: 재억 요청(2026-08-22) - 카카오 화면에서 돌아오는 순간뿐 아니라, 티맵 화면이
+        // 다시 보이기 시작하는 즉시 최신 차선정보를 한 번 그려주고, 이후 새 데이터가 들어올
+        // 때마다 곧바로 반영되도록 "지금 활성화된 화면" 자리에 이 화면을 등록. #문제시 원복
+        LaneSignalRepository.activeRenderer = {
+            renderLaneSignalBar(this@MapActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "tmap")
+        }
+        LaneSignalRepository.notifyChanged()
         // v2.4: 볼륨 실시간 캡처 리시버 등록 (onPause에서 해제)
         try {
             registerReceiver(
@@ -3785,6 +3792,13 @@ class MapActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         NavLogger.d(this, "[MapActivity lifecycle] onPause (KakaoNaviActivity가 위에 뜨는 중일 수 있음 - handleWillResignActive가 이 타이밍에 KNSDK로 전달됨)")
+        // v: 이 화면이 지금 등록된 화면이었으면 해제(카카오 화면이 자기 걸로 다시 등록할 것). #문제시 원복
+        if (LaneSignalRepository.activeRenderer != null) {
+            // 다른 화면이 이미 자기 걸로 덮어썼을 수도 있어 무조건 null로 밀지 않고,
+            // 굳이 정밀 비교할 방법이 없으니(람다 동일성) 다음 화면의 onResume이 항상
+            // 곧이어 자기 렌더러로 다시 덮어쓴다는 전제로 여기서는 그냥 null 처리.
+            LaneSignalRepository.activeRenderer = null
+        }
         // v2.4: 볼륨 리시버 해제 (onResume에서 등록)
         try {
             unregisterReceiver(volumeChangeReceiver)
@@ -4322,6 +4336,7 @@ class MapActivity : AppCompatActivity() {
                 LaneSignalRepository.lanes = List(laneCount) { LaneDisplayInfo(recommended = false) }
                 LaneSignalRepository.source = "tmap"
                 LaneSignalRepository.lastUpdateTime = System.currentTimeMillis()
+                LaneSignalRepository.notifyChanged()
 
                 if (!aheadLaneInfoDataDumped) {
                     aheadLaneInfoDataDumped = true
@@ -4333,6 +4348,7 @@ class MapActivity : AppCompatActivity() {
                 }
             } else if (LaneSignalRepository.source == "tmap" && !laneActive) {
                 LaneSignalRepository.lanes = emptyList()
+                LaneSignalRepository.notifyChanged()
             }
         } catch (e: Exception) {
             NavLogger.e(this, "Tmap 차선정보 갱신 예외: ${e.message}")
