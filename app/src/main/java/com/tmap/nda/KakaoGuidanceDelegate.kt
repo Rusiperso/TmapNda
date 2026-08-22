@@ -180,24 +180,39 @@ class KakaoGuidanceDelegate(
             val exactGetter = route.javaClass.methods.firstOrNull {
                 it.parameterTypes.isEmpty() && it.name == "routePolylineWGS84"
             }
-            if (exactGetter != null) {
+            if (exactGetter == null) {
+                NavLogger.e(context, "[경로선 조사] routePolylineWGS84 게터를 못 찾음(이름이 또 바뀐 듯)")
+            } else {
                 val result = exactGetter.invoke(route) as? List<*>
-                if (result != null && result.isNotEmpty()) {
+                if (result == null) {
+                    NavLogger.e(context, "[경로선 조사] routePolylineWGS84() 반환값이 List가 아님")
+                } else if (result.isEmpty()) {
+                    NavLogger.e(context, "[경로선 조사] routePolylineWGS84() 반환 리스트가 비어있음")
+                } else {
                     val out = ArrayList<Pair<Double, Double>>(result.size)
+                    var xFailCount = 0
+                    var yFailCount = 0
                     for (point in result) {
                         if (point == null) continue
-                        val lon = findGetterDouble(point, "X").takeIf { it != 0.0 } ?: continue
-                        val lat = findGetterDouble(point, "Y").takeIf { it != 0.0 } ?: continue
-                        out.add(lon to lat)
+                        val lon = findGetterDouble(point, "X").takeIf { it != 0.0 }
+                        val lat = findGetterDouble(point, "Y").takeIf { it != 0.0 }
+                        if (lon == null) xFailCount++
+                        if (lat == null) yFailCount++
+                        if (lon != null && lat != null) out.add(lon to lat)
                     }
                     if (out.isNotEmpty()) {
                         NavLogger.d(context, "[경로선 조사] routePolylineWGS84() 개수=${out.size}")
                         return out
+                    } else {
+                        // v: 재억 제보(2026-08-22) - 리스트는 있는데 좌표 추출이 실패하는 진짜
+                        // 이유(X/Y 게터를 못 찾는 건지 값이 전부 0인 건지)를 정확히 남김. #문제시 원복
+                        val firstPointClass = result.firstOrNull { it != null }?.javaClass?.name
+                        NavLogger.e(context, "[경로선 조사] routePolylineWGS84() 리스트(${result.size}개)는 받았지만 좌표 추출 0개. xFail=$xFailCount yFail=$yFailCount 항목클래스=$firstPointClass")
                     }
                 }
             }
         } catch (e: Exception) {
-            NavLogger.e(context, "[경로선 조사] routePolylineWGS84() 실패: ${e.message}")
+            NavLogger.e(context, "[경로선 조사] routePolylineWGS84() 예외: ${e.javaClass.simpleName}: ${e.message}")
         }
 
         val lineCandidates = listOf("RoutePoints", "RouteLine", "Points", "Line", "Coords", "Coordinates")
