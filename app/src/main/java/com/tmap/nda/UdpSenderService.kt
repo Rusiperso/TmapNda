@@ -492,6 +492,13 @@ class UdpSenderService : Service() {
                     // 버그가 다른 통로로 남아있었음). 이번 프레임에 카메라 제한속도(firstSDIInfo의
                     // nSdiSpeedLimit)가 있으면 여기서도 generalRoadLimitSpeed는 안 건드림
                     // (roadLimitSpeed는 openpilot 카메라 감속용이라 그대로 반영해도 무방). #문제시 원복
+                    // v: 재억 제보(2026-08-22) - "300~500m 구간에서 계속 띵띵 울림". 원인:
+                    // 이 판단이 "카메라에 자기 제한속도(nSdiSpeedLimit) 숫자가 딸려있을 때"만
+                    // 카메라 근처로 인식했음. 방지턱이나 제한속도 숫자가 안 딸린 카메라는 이
+                    // 판단을 통과해버려서, 도로 기본 제한속도가 그 순간 카메라 근처값으로
+                    // 잘못 갱신되고 그걸로 10% 초과 경고음이 오탐 발생. 이제 제한속도 숫자
+                    // 유무와 무관하게, 이벤트 종류가 있고 거리가 500m 이내면 전부 카메라
+                    // 근처로 인식하게 넓힘. #문제시 원복
                     val cameraLimitPeekThisFrame = try {
                         val sdiObjPeek = bundle.get("firstSDIInfo")
                         val sdiJsonPeek = when {
@@ -499,7 +506,10 @@ class UdpSenderService : Service() {
                             sdiObjPeek != null -> JSONObject(gson.toJson(sdiObjPeek))
                             else -> null
                         }
-                        (sdiJsonPeek?.optInt("nSdiSpeedLimit", 0) ?: 0) >= 30
+                        val peekType = sdiJsonPeek?.optInt("nSdiType", 0) ?: 0
+                        val peekDist = sdiJsonPeek?.optInt("nSdiDist", 0) ?: 0
+                        (sdiJsonPeek?.optInt("nSdiSpeedLimit", 0) ?: 0) >= 30 ||
+                            (peekType > 0 && peekDist in 1..500)
                     } catch (e: Exception) { false }
                     if (currentLimitSpeed >= 30) {
                         roadLimitSpeed = currentLimitSpeed
@@ -580,8 +590,12 @@ class UdpSenderService : Service() {
                     if (realRoadLimit >= 30) {
                         roadLimitSpeed = realRoadLimit
                         lastRoadLimitUpdateTime = System.currentTimeMillis()
-                        val cameraEventThisFrame = lastSdiJsonStr != null &&
-                            JSONObject(lastSdiJsonStr).optInt("nSdiSpeedLimit", 0) >= 30
+                        val cameraEventThisFrame = lastSdiJsonStr != null && run {
+                            val j = JSONObject(lastSdiJsonStr)
+                            val evType = j.optInt("nSdiType", 0)
+                            val evDist = j.optInt("nSdiDist", 0)
+                            j.optInt("nSdiSpeedLimit", 0) >= 30 || (evType > 0 && evDist in 1..500)
+                        }
                         if (!cameraEventThisFrame) {
                             generalRoadLimitSpeed = realRoadLimit
                             lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
