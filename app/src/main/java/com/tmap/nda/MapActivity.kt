@@ -1696,8 +1696,11 @@ class MapActivity : AppCompatActivity() {
                 // v: 재억 지적(2026-08-22) - 안내음량을 20%/30%로 낮춰도 이 경고음만
                 // 항상 100% 고정 크기로 울렸음. 사용자가 설정해둔 안내음량 값을 그대로
                 // 가져다 씀(0이면 최소한 들리게 1로 보정). #문제시 원복
+                // v2: 숫자만 맞추고 채널은 STREAM_NOTIFICATION 그대로 둬서, 안내음성
+                // (미디어 볼륨)이랑 여전히 따로 놀았음(재억 지적) - 안내음성과 같은
+                // 미디어 채널로 재생해서 실제로 같이 움직이게 함. #문제시 원복
                 val volumePercent = VolumeHelper.savedVolumePercent(this).coerceIn(1, 100)
-                val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, volumePercent)
+                val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, volumePercent)
                 tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ tone.release() }, 500)
             } catch (e: Exception) {

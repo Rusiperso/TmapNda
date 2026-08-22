@@ -2553,7 +2553,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             try {
                 // v: 재억 지적(2026-08-22) - MapActivity와 동일한 문제(안내음량 설정이 안 먹힘). #문제시 원복
                 val volumePercent = VolumeHelper.savedVolumePercent(this).coerceIn(1, 100)
-                val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, volumePercent)
+                val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, volumePercent)
                 tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ tone.release() }, 500)
             } catch (e: Exception) {
