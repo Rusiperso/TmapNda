@@ -122,10 +122,48 @@ class KakaoGuidanceDelegate(
                     NavLogger.d(context, "[경로선 조사] 좌표 ${coords.size}개 추출 성공")
                 } else {
                     NavLogger.d(context, "[경로선 조사] 후보 게터 전부 실패 - KNRoute 구조 재조사 필요")
+                    dumpRouteStructureOnce(firstRoute)
                 }
             }
         } catch (e: Exception) {
             NavLogger.e(context, "[경로선 조사] 추출 실패: ${e.message}")
+        }
+    }
+
+    // v: 재억 요청(2026-08-22) - 지금까지 시도한 후보 이름(RoutePoints/RouteLine/Points/
+    // Line/Coords/Coordinates)이 전부 틀려서 경로선이 한 번도 추출된 적이 없었음. 추측을
+    // 더 늘리는 대신, KNRoute 객체가 실제로 갖고 있는 메서드 전부를 딱 한 번 로그로
+    // 통째로 남겨서, 다음 로그에서 진짜 이름을 확정할 수 있게 함(카메라알림음조사/
+    // 교통정보조사와 동일한 패턴). #문제시 원복
+    private var routeStructureDumped = false
+    private fun dumpRouteStructureOnce(route: KNRoute) {
+        if (routeStructureDumped) return
+        routeStructureDumped = true
+        try {
+            val methodNames = route.javaClass.methods
+                .filter { it.parameterTypes.isEmpty() && (it.name.startsWith("get") || it.name.startsWith("is")) }
+                .map { it.name }
+                .sorted()
+            NavLogger.e(context, "[경로선 조사][전체구조] KNRoute 메서드 목록: ${methodNames.joinToString(", ")}")
+            // 이름에 point/coord/line/path/geometry/shape가 들어간 후보는 실제 반환값까지 같이 찍음
+            val keywords = listOf("point", "coord", "line", "path", "geometry", "shape", "vertex", "poly")
+            for (m in route.javaClass.methods) {
+                if (m.parameterTypes.isNotEmpty()) continue
+                val lower = m.name.lowercase()
+                if (keywords.none { lower.contains(it) }) continue
+                try {
+                    val result = m.invoke(route)
+                    val preview = when (result) {
+                        is List<*> -> "List(size=${result.size}) 첫항목=${result.firstOrNull()}"
+                        else -> result?.toString()?.take(200)
+                    }
+                    NavLogger.e(context, "[경로선 조사][후보값] ${m.name}() = $preview")
+                } catch (e: Exception) {
+                    NavLogger.e(context, "[경로선 조사][후보값] ${m.name}() 호출 실패: ${e.message}")
+                }
+            }
+        } catch (e: Exception) {
+            NavLogger.e(context, "[경로선 조사][전체구조] 덤프 실패: ${e.message}")
         }
     }
 
