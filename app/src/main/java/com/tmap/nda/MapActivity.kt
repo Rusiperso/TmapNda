@@ -1700,6 +1700,7 @@ class MapActivity : AppCompatActivity() {
                 // (미디어 볼륨)이랑 여전히 따로 놀았음(재억 지적) - 안내음성과 같은
                 // 미디어 채널로 재생해서 실제로 같이 움직이게 함. #문제시 원복
                 val volumePercent = VolumeHelper.savedVolumePercent(this).coerceIn(1, 100)
+                AudioStreamDiagnostics.log(this, "경고음발생[Tmap화면]")
                 val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, volumePercent)
                 tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ tone.release() }, 500)

@@ -261,26 +261,13 @@ class KakaoGuidanceDelegate(
     // 화면이 안내 시작 지점에서 안 움직이던 핵심 원인으로 의심되는 지점 - naviView가 실제
     // 위치 갱신을 받아 현재위치 마커/카메라를 옮기려면 이 콜백을 받아야 함. #문제시 원복
     override fun guidanceDidUpdateLocation(guidance: KNGuidance, locationGuide: KNGuide_Location) {
-        // 이 콜백이 실제로 호출되는지, 좌표가 시간에 따라 바뀌는지 직접 확인하기 위한 로그.
-        // KNGuide_Location의 정확한 프로퍼티명이 확실치 않아 컴파일 안전하게 toString()과
-        // 리플렉션 getter 덤프로 남김. 매번 찍으면 시끄러워서 2초 스로틀. #문제시 원복
+        // 이 콜백이 실제로 호출되는지, 좌표가 시간에 따라 바뀌는지 직접 확인하기 위한 로그였음.
+        // 이미 오래전에 확인 끝났고(정상 호출됨), 바로 아래 [경로추적] 요약 한 줄이면 충분한데
+        // 여기서 원본 객체 전체를 리플렉션으로 통째로 덤프하고 있어서 로그 한 줄이 수천 자에
+        // 달했음(용량 낭비 1순위, 재억 요청으로 정리). 스로틀(2초)과 요약 로그는 유지. #문제시 원복
         val now = System.currentTimeMillis()
         if (now - lastLocationLogAt >= 2000) {
             lastLocationLogAt = now
-            val dump = try {
-                locationGuide.javaClass.methods
-                    .filter { it.parameterTypes.isEmpty() && (it.name.startsWith("get") || it.name.startsWith("is")) }
-                    .joinToString(", ") { m ->
-                        try {
-                            "${m.name}=${m.invoke(locationGuide)}"
-                        } catch (e: Exception) {
-                            "${m.name}=<err>"
-                        }
-                    }
-            } catch (e: Exception) {
-                "덤프 실패: ${e.message}"
-            }
-            NavLogger.d(context, "guidanceDidUpdateLocation 호출됨: $locationGuide | $dump")
             val summary = try {
                 val roadName = locationGuide.javaClass.methods.firstOrNull { it.name == "getRoadName" }?.invoke(locationGuide)
                 val distToDest = locationGuide.javaClass.methods.firstOrNull { it.name == "getDist" }?.invoke(locationGuide)
@@ -304,10 +291,17 @@ class KakaoGuidanceDelegate(
                     KakaoRouteDataRepository.remainDist = remainDist
                     KakaoRouteDataRepository.remainTime = remainTime
 
-                    NavLogger.d(
-                        context,
-                        "[카카오 ETA] remainDist=${remainDist}m remainTime=${remainTime}s"
-                    )
+                    // v: 재억 요청(2026-08-22) - 이 로그가 GPS 갱신마다(보통 초당 1회) 매번
+                    // 찍혀서 로그 파일에서 가장 큰 비중(4천줄 이상)을 차지하고 있었음.
+                    // 값 자체는 1초마다 봐야 할 이유가 없어서(남은 거리/시간은 서서히만
+                    // 바뀜) 다른 주기성 로그들과 동일하게 10초 간격으로 줄임. #문제시 원복
+                    if (System.currentTimeMillis() - lastEtaLogTime > 10_000L) {
+                        lastEtaLogTime = System.currentTimeMillis()
+                        NavLogger.d(
+                            context,
+                            "[카카오 ETA] remainDist=${remainDist}m remainTime=${remainTime}s"
+                        )
+                    }
                 }
             }
 
@@ -853,7 +847,14 @@ class KakaoGuidanceDelegate(
     // 결론지었던 걸 재검증 - Tmap의 rgData 리플렉션과 같은 방식으로, KNGuidance/KNSDK
     // 객체의 메서드 중 volume/sound/audio가 들어간 게 실제로 있는지 1회 스캔해서 로그로
     // 남김(SDK 버전이 바뀌었을 수도 있어서). #문제시 원복
-    private var audioApiScanDone = false
+    // v: 재억 요청(2026-08-22) - 이 스캔은 SDK 버전이 안 바뀌면 결과가 항상 똑같은데,
+    // 인스턴스 필드(private var)라서 카카오 안내를 새로 시작할 때마다(델리게이트가
+    // 새로 만들어질 때마다) 매번 다시 찍히고 있었음 - 불필요한 로그 낭비. 앱이 켜져
+    // 있는 동안(companion object) 딱 1번만 찍히게 함. #문제시 원복
+    companion object {
+        @Volatile private var audioApiScanDone = false
+    }
+    private var lastEtaLogTime = 0L
     private fun scanForVolumeApiOnce(guidance: KNGuidance) {
         if (audioApiScanDone) return
         audioApiScanDone = true
@@ -886,37 +887,9 @@ class KakaoGuidanceDelegate(
         }
     }
 
-    private fun logAudioStreamDiagnostics() {
-        try {
-            val am = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager ?: return
-            val streams = mapOf(
-                "MUSIC" to android.media.AudioManager.STREAM_MUSIC,
-                "SYSTEM" to android.media.AudioManager.STREAM_SYSTEM,
-                "NOTIFICATION" to android.media.AudioManager.STREAM_NOTIFICATION,
-                "RING" to android.media.AudioManager.STREAM_RING,
-                "ALARM" to android.media.AudioManager.STREAM_ALARM,
-                "VOICE_CALL" to android.media.AudioManager.STREAM_VOICE_CALL,
-                "DTMF" to android.media.AudioManager.STREAM_DTMF
-            )
-            val volDump = streams.entries.joinToString(", ") { (name, stream) ->
-                "$name=${am.getStreamVolume(stream)}/${am.getStreamMaxVolume(stream)}"
-            }
-            NavLogger.e(context, "[볼륨진단] 카카오 음성재생 시점 스트림볼륨: $volDump")
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                val configs = am.activePlaybackConfigurations
-                for (cfg in configs) {
-                    val attrs = cfg.audioAttributes
-                    NavLogger.e(context, "[볼륨진단] 활성재생: usage=${attrs.usage} contentType=${attrs.contentType}")
-                }
-            }
-        } catch (e: Exception) {
-            NavLogger.e(context, "[볼륨진단] 예외: ${e.message}")
-        }
-    }
-
     override fun willPlayVoiceGuide(guidance: KNGuidance, voiceGuide: KNGuide_Voice) {
         NavLogger.d(context, "[음성] willPlayVoiceGuide(카카오 음성 재생 시작) ${tmapMuteStateSnapshot()}")
-        logAudioStreamDiagnostics()
+        AudioStreamDiagnostics.log(context, "카카오음성시작")
         scanForVolumeApiOnce(guidance)
         if (!isRouteGuideActive()) return
         naviView?.willPlayVoiceGuide(guidance, voiceGuide)
@@ -924,6 +897,10 @@ class KakaoGuidanceDelegate(
 
     override fun didFinishPlayVoiceGuide(guidance: KNGuidance, voiceGuide: KNGuide_Voice) {
         NavLogger.d(context, "[음성] didFinishPlayVoiceGuide(카카오 음성 재생 끝) ${tmapMuteStateSnapshot()}")
+        // v: 재억 제보(2026-08-22) - "소리가 들락날락한다"는 원인을 잡으려면 재생 시작
+        // 순간뿐 아니라 끝나는 순간의 볼륨도 같이 봐야 비교가 됨(시작=X, 끝=Y처럼).
+        // 기존엔 시작 순간만 찍었음. #문제시 원복
+        AudioStreamDiagnostics.log(context, "카카오음성끝")
         naviView?.didFinishPlayVoiceGuide(guidance, voiceGuide)
     }
 

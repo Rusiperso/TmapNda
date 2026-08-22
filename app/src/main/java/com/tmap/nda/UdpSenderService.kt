@@ -877,7 +877,13 @@ class UdpSenderService : Service() {
                                 NavLogger.d(this@UdpSenderService, "[카카오 안전정보 검증용][실제전송안함 - 미검증 폴백] type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}")
                             }
                         }
-                        NavLogger.d(this@UdpSenderService, "[카카오->openpilot] UDP 페이로드 카카오 데이터로 덮어씀: nGoPosDist=${kr.remainDist} nTBTDist=$kakaoTbtDist turnType=${kr.tbtTurnType}")
+                        // v: 재억 요청(2026-08-22) - 이 로그가 UDP 전송 주기마다 매번 찍혀서
+                        // 로그 파일 용량을 많이 차지하고 있었음(1800줄 이상). 값 자체는
+                        // 자주 안 바뀌니 10초 간격으로 줄임. #문제시 원복
+                        if (System.currentTimeMillis() - lastKakaoOverwriteLogTime > 10_000L) {
+                            lastKakaoOverwriteLogTime = System.currentTimeMillis()
+                            NavLogger.d(this@UdpSenderService, "[카카오->openpilot] UDP 페이로드 카카오 데이터로 덮어씀: nGoPosDist=${kr.remainDist} nTBTDist=$kakaoTbtDist turnType=${kr.tbtTurnType}")
+                        }
                     }
 
                     // v: 2026-08-12 - carrot_serv.py의 update() 코드를 직접 확인해서 찾은 기능:
@@ -1264,6 +1270,7 @@ class UdpSenderService : Service() {
     private var httpNaviSuccessCount = 0
     private var httpNaviFailCount = 0
     private var lastHttpNaviLogTime = 0L
+    private var lastKakaoOverwriteLogTime = 0L
     private var lastHttpNaviErrorMsg: String? = null
 
     private fun startCommaHttpNaviLoop() {
