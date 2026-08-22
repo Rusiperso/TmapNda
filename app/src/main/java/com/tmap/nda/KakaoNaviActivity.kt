@@ -1355,6 +1355,38 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
+    // v: 재억 요청(2026-08-22) - 티맵 화면(MapActivity)에만 있던 "즐겨찾기 저장" 기능을
+    // 카카오 화면에도 이식. 티맵 쪽처럼 카드+그리드로 꾸미는 대신, 목록형으로 간단히
+    // 구현(같은 QuickSlotStore를 공유하므로 저장 결과는 동일). #문제시 원복
+    private fun showKakaoQuickSlotPickerForSave(entry: HistoryEntry) {
+        val favoriteCount = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .getInt("quickslot_favorite_count", 5).coerceIn(0, 5)
+        val slotLabels = mutableListOf("집" to QuickSlotStore.SLOT_HOME, "회사" to QuickSlotStore.SLOT_WORK)
+        val favoriteSlots = listOf(
+            "즐겨찾기 1" to QuickSlotStore.SLOT_FAV1,
+            "즐겨찾기 2" to QuickSlotStore.SLOT_FAV2,
+            "즐겨찾기 3" to QuickSlotStore.SLOT_FAV3,
+            "즐겨찾기 4" to QuickSlotStore.SLOT_FAV4,
+            "즐겨찾기 5" to QuickSlotStore.SLOT_FAV5
+        ).take(favoriteCount)
+        slotLabels.addAll(favoriteSlots)
+
+        val items = slotLabels.map { (label, slot) ->
+            val existing = QuickSlotStore.get(this, slot)
+            if (existing != null) "$label (현재: ${existing.name})" else "$label (비어있음)"
+        }.toTypedArray()
+
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("어디에 저장할까요? - ${entry.name}")
+            .setItems(items) { _, which ->
+                val (_, slot) = slotLabels[which]
+                QuickSlotStore.save(this, slot, entry)
+                Toast.makeText(this, "'${entry.name}' 저장됨", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("취소", null)
+            .show()
+    }
+
     private fun showFullSearchHistoryDialog() {
         var history = SearchHistoryStore.get(this)
         if (history.isEmpty()) {
@@ -1469,6 +1501,42 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         applyHistoryLabel(etaText, isFinal = true)
                     }
                 }
+                // v: 재억 요청(2026-08-22) - 이 화면(카카오)에는 원래 없었던 "저장"
+                // 버튼(티맵 화면 v14.4에만 있었음)을 이식하고, 새로 "경로추가"(지금 안내
+                // 중인 목적지는 그대로 두고 경유지로 끼워넣기) 버튼도 같이 추가. #문제시 원복
+                val saveText = android.widget.TextView(this@KakaoNaviActivity).apply {
+                    text = "저장"
+                    textSize = 14f
+                    setTextColor(android.graphics.Color.parseColor("#A0C8F0"))
+                    setBackgroundColor(android.graphics.Color.parseColor("#233A4A"))
+                    setPadding(36, 20, 36, 20)
+                    val marginParams = android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    marginParams.marginStart = 16
+                    layoutParams = marginParams
+                    setOnClickListener {
+                        showKakaoQuickSlotPickerForSave(entry)
+                    }
+                }
+                val addWaypointText = android.widget.TextView(this@KakaoNaviActivity).apply {
+                    text = "경로추가"
+                    textSize = 14f
+                    setTextColor(android.graphics.Color.parseColor("#A0E8B0"))
+                    setBackgroundColor(android.graphics.Color.parseColor("#233A2A"))
+                    setPadding(36, 20, 36, 20)
+                    val marginParams = android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    marginParams.marginStart = 16
+                    layoutParams = marginParams
+                    setOnClickListener {
+                        dialog.dismiss()
+                        addWaypointToActiveGuidance(entry)
+                    }
+                }
                 // v10.9-5: MapActivity와 동일 - "✕" 작은 글자 대신 배경 있는 "삭제" 버튼으로
                 // 바꾸고 누르는 영역도 넓힘(재억 지적). #문제시 원복
                 val deleteText = android.widget.TextView(this@KakaoNaviActivity).apply {
@@ -1495,6 +1563,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     }
                 }
                 row.addView(nameText)
+                row.addView(saveText)
+                row.addView(addWaypointText)
                 row.addView(deleteText)
                 return row
             }
