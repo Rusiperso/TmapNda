@@ -208,7 +208,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         currentDestName = destName
         currentDestLat = destLat
         currentDestLon = destLon
-        setupWaypointAddButton()
 
         // v1.0.97: 예전엔 카카오 화면에 들어오면 무조건 티맵 볼륨을 0으로 강제해서, 사용자가
         // 원하는 "티맵 안내음량 버튼"이 있어도 의미가 없었음(항상 0으로 덮어써지니까).
@@ -276,6 +275,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         binding = ActivityKakaoNaviBinding.inflate(layoutInflater)
         setContentView(binding.root)
         naviView = binding.naviView
+        setupWaypointAddButton()
 
         // v3.9: Tmap 화면과 동일하게 상단바 드래그 편집 기능 연결 (사용자: "기본 UI는
         // 티맵/카카오맵 차등을 주지 말고 동일하게 적용해야돼") - PanelDragHelper 공용
