@@ -568,14 +568,16 @@
         android:elevation="30dp"
         android:visibility="gone"/>
 
-    <!-- v: 재억 요청(2026-08-22) - 안내 중 경유지 추가 버튼. 편집모드 확정버튼(우측 상단)과
-         겹치지 않게 우측 하단에 배치. #문제시 원복 -->
+    <!-- v: 재억 요청(2026-08-22) - 우측 하단은 카카오 SDK 자체 버튼(경고/주유소/현위치)이
+         이미 차지하고 있어서 겹침(재억 지적). 우측 상단으로 이동. 편집모드 확정버튼도
+         top|end라 marginTop을 늘려서 그 아래에 오도록 함. #문제시 원복 -->
     <ImageButton
         android:id="@+id/btnAddWaypoint"
         android:layout_width="52dp"
         android:layout_height="52dp"
-        android:layout_gravity="bottom|end"
-        android:layout_margin="16dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="76dp"
+        android:layout_marginEnd="16dp"
         android:src="@drawable/ic_add_waypoint"
         android:background="@drawable/shape_circle_gray"
         android:scaleType="center"
