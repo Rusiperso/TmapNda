@@ -1249,6 +1249,7 @@ class UdpSenderService : Service() {
     private var httpNaviSuccessCount = 0
     private var httpNaviFailCount = 0
     private var lastHttpNaviLogTime = 0L
+    private var lastHttpNaviErrorMsg: String? = null
 
     private fun startCommaHttpNaviLoop() {
         serviceScope.launch(Dispatchers.IO) {
@@ -1291,10 +1292,18 @@ class UdpSenderService : Service() {
                             .build()
                         try {
                             httpClient.newCall(request).execute().use { resp ->
-                                if (resp.isSuccessful) httpNaviSuccessCount++ else httpNaviFailCount++
+                                if (resp.isSuccessful) httpNaviSuccessCount++ else {
+                                    httpNaviFailCount++
+                                    lastHttpNaviErrorMsg = "응답코드=${resp.code}"
+                                }
                             }
                         } catch (e: Exception) {
                             httpNaviFailCount++
+                            // v: 재억 제보(2026-08-22) - 지금까지 실패 이유를 안 남기고 그냥 넘어가서,
+                            // "매번 실패하는데 왜인지"를 로그만 보고는 알 방법이 없었음(결국 안드로이드
+                            // 평문 http 차단 문제였는데 실제 원인 메시지가 하나도 안 남아있었음). 다음에
+                            // 또 실패하면 5초 요약 옆에 마지막 실패 이유를 같이 남겨서 바로 보이게 함. #문제시 원복
+                            lastHttpNaviErrorMsg = "${e.javaClass.simpleName}: ${e.message}"
                         }
                     }
                 } catch (e: Exception) {
@@ -1302,7 +1311,7 @@ class UdpSenderService : Service() {
                 }
 
                 if (System.currentTimeMillis() - lastHttpNaviLogTime > 5000) {
-                    NavLogger.d(this@UdpSenderService, "[콤마 HTTP API] 5초 요약: 성공=$httpNaviSuccessCount 실패=$httpNaviFailCount")
+                    NavLogger.d(this@UdpSenderService, "[콤마 HTTP API] 5초 요약: 성공=$httpNaviSuccessCount 실패=$httpNaviFailCount ${if (httpNaviFailCount > 0) "마지막실패이유=$lastHttpNaviErrorMsg" else ""}")
                     httpNaviSuccessCount = 0
                     httpNaviFailCount = 0
                     lastHttpNaviLogTime = System.currentTimeMillis()
