@@ -38,12 +38,18 @@
         <package android:name="com.google.android.projection.gearhead" />
     </queries>
 
+    <!-- v: 재억 제보(2026-08-22) - 콤마로 경로선을 보내는 HTTP 채널(7713번 포트)이 로그상
+         단 한 번도 성공한 적 없음(UDP는 정상). 원인 - 안드로이드는 API 28부터 암호화 안 된
+         일반 http:// 통신을 기본 차단하는데, usesCleartextTraffic이 없어서 요청이 나가기도
+         전에 시스템이 막고 있었음. 콤마는 항상 같은 차 안 사설 네트워크에 있는 로컬 기기라
+         암호화가 필요 없는 통신 상대라서 허용함. #문제시 원복 -->
     <application
         android:allowBackup="true"
         android:icon="@drawable/icon"
         android:label="@string/app_name"
         android:roundIcon="@drawable/icon"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:windowSoftInputMode="adjustResize"
         android:theme="@style/Theme.TmapNda">
 
