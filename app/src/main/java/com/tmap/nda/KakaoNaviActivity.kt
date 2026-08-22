@@ -1784,7 +1784,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // 없었음 - 지난번 빌드 실패는 콜백 문법 오류 때문이었지, 이 자리(via 목록)
         // 자체는 원래도 문제없이 컴파일됐음. 이 앱 다른 곳에서 이미 검증된 것과 동일하게
         // 직접 호출로 되돌림. #문제시 원복
-        KNSDK.makeTripWithStart(startPoi, goalPoi, listOf(viaPoi)) { error, trip ->
+        KNSDK.makeTripWithStart(startPoi, goalPoi, mutableListOf(viaPoi)) { error, trip ->
             runOnUiThread {
                 if (error != null || trip == null) {
                     NavLogger.e(this, "[경유지추가] 경로 재계산 실패: ${error?.msg ?: "알 수 없는 오류"}")
