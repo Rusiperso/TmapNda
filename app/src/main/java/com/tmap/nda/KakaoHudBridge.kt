@@ -11,7 +11,9 @@ import com.kakaomobility.knsdk.guidance.knguidance.routeguide.KNGuide_Route
  * 컴파일 안 되는 API가 있으면 CI 로그로 바로 확인 가능하니 일단 시도. #문제시 원복
  */
 object KakaoHudBridge {
+    private var lastDestDiagLogTime = 0L
     fun publish(
+        context: android.content.Context,
         guidance: KNGuidance,
         locationGuide: KNGuide_Location?,
         routeGuide: KNGuide_Route?
@@ -38,6 +40,16 @@ object KakaoHudBridge {
             direction?.directionNames?.firstOrNull().orEmpty()
                 .ifBlank { direction?.nodeName.orEmpty() }
                 .ifBlank { currentRoad }
+
+        // v: 재억 요청(2026-08-22) - "동판교로"처럼 목적지명 대신 도로명이 뜨는 문제의 진짜
+        // 원인을 잡기 위해, trip.goal.name의 실제 원본값(비어있는지/뭐가 들어있는지)을
+        // 15초 간격으로 남김. 이 값이 계속 비어있으면 카카오 SDK가 애초에 목적지 이름을
+        // 안 채워주고 있다는 뜻이고, 가끔 채워졌다 비었다 한다면 타이밍 문제라는 뜻. #문제시 원복
+        val rawGoalName = trip?.goal?.name
+        if (System.currentTimeMillis() - lastDestDiagLogTime > 15000L) {
+            lastDestDiagLogTime = System.currentTimeMillis()
+            NavLogger.d(context, "[목적지명진단] trip?.goal?.name=\"$rawGoalName\" (trip=${trip != null}, goal=${trip?.goal != null}) currentRoad=\"$currentRoad\"")
+        }
 
         KakaoRouteDataRepository.publishGuidance(
             tbtDist = turnDistance,
