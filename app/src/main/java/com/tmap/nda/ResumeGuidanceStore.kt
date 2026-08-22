@@ -23,7 +23,9 @@ object ResumeGuidanceStore {
                 obj.optString("name"),
                 obj.optString("addr"),
                 obj.optDouble("lat"),
-                obj.optDouble("lon")
+                obj.optDouble("lon"),
+                routePriorityName = obj.optString("routePriorityName", null).takeIf { !it.isNullOrBlank() },
+                routeAvoidOption = obj.optInt("routeAvoidOption", 0)
             )
         } catch (e: Exception) {
             null
@@ -36,6 +38,14 @@ object ResumeGuidanceStore {
         obj.put("addr", entry.addr)
         obj.put("lat", entry.lat)
         obj.put("lon", entry.lon)
+        // v: 재억 지적(2026-08-22) - "무료도로로 가다가 끊기고 이어서 안내하면 매번
+        // 추천 경로로 다시 시작된다"는 문제. 원인은 이 저장소가 목적지 좌표만 저장하고
+        // 그때 골랐던 경로 방식(추천/고속도로/무료도로)은 저장하지 않아서, 이어할 때
+        // 항상 기본값(추천)으로 재시작됐던 것. 이제 같이 저장해서 그대로 이어감. #문제시 원복
+        if (entry.routePriorityName != null) {
+            obj.put("routePriorityName", entry.routePriorityName)
+            obj.put("routeAvoidOption", entry.routeAvoidOption)
+        }
         prefs(context).edit().putString(KEY, obj.toString()).apply()
     }
 

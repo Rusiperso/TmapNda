@@ -507,7 +507,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         if (cachedTrip != null) {
             try {
                 NavLogger.d(this, "[안내시작최적화] 캐시된 경로 재사용 시도: $destName")
-                ResumeGuidanceStore.save(this, HistoryEntry(destName, "", destLat, destLon))
+                ResumeGuidanceStore.save(this, HistoryEntry(destName, "", destLat, destLon, routePriorityName = activeRoutePriority.name, routeAvoidOption = activeRouteAvoidOption))
                 naviView.guideNewDestinations(cachedTrip, activeRoutePriority, activeRouteAvoidOption)
                 naviView.requestLayout()
                 naviView.invalidate()
@@ -559,7 +559,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 NavLogger.d(this, "카카오 경로요청 성공, 안내 시작: $destName")
                 // v12.9: 안내 이어가기 - 안내가 실제로 시작되는 이 시점에 목적지를 저장.
                 // 정상 도착 또는 안내종료 버튼 - 어느 쪽이든 finishGuidance()에서 지워짐. #문제시 원복
-                ResumeGuidanceStore.save(this, HistoryEntry(destName, "", destLat, destLon))
+                ResumeGuidanceStore.save(this, HistoryEntry(destName, "", destLat, destLon, routePriorityName = activeRoutePriority.name, routeAvoidOption = activeRouteAvoidOption))
                 // naviView는 setupContentAndStart()에서 이미 initWithGuidance(trip=null)로
                 // 초기화돼있는 상태(idle map) - 여기서 또 initWithGuidance()를 부르면 안 되고
                 // guideNewDestinations()로 이미 떠있는 세션에 실제 목적지만 갈아끼움.

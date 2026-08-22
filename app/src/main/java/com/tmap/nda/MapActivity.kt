@@ -475,7 +475,7 @@ class MapActivity : AppCompatActivity() {
                 .setTitle("안내 이어가기")
                 .setMessage("${saved.name}(으)로 가던 중이었어요. 이어서 안내할까요?")
                 .setPositiveButton("이어서 안내") { _, _ ->
-                    startKakaoOverlayGuidance(saved.name, saved.lat, saved.lon)
+                    startKakaoOverlayGuidance(saved.name, saved.lat, saved.lon, saved.routePriorityName, saved.routeAvoidOption)
                 }
                 .setNegativeButton("아니요") { _, _ ->
                     ResumeGuidanceStore.clear(this)
