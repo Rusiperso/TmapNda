@@ -1778,57 +1778,30 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         NavLogger.d(this, "[경유지추가] 요청: 현재위치 -> ${picked.name} -> $currentDestName")
         Toast.makeText(this, "'${picked.name}' 경유지로 추가 중...", Toast.LENGTH_SHORT).show()
 
-        // v: 재억 제보(2026-08-22) - 처음 시도에서 listOf(viaPoi)를 그냥 넘겼다가 빌드가 깨짐.
-        // 이 자리(makeTripWithStart 3번째 파라미터)는 지금까지 이 앱 어디서도 null이 아닌
-        // 실제 값을 넣어본 적이 없어서 진짜 타입을 검증한 적이 없었음. 리플렉션으로 실제
-        // 파라미터 타입을 확인해서, List/Array 등 뭐가 됐든 맞춰서 넣어줌. #문제시 원복
-        try {
-            val method = KNSDK::class.java.methods.firstOrNull {
-                it.name == "makeTripWithStart" && it.parameterTypes.size == 4
-            }
-            if (method == null) {
-                NavLogger.e(this, "[경유지추가] makeTripWithStart(4 params) 메서드를 못 찾음")
-                Toast.makeText(this, "경유지 추가 실패: SDK 메서드 불일치", Toast.LENGTH_SHORT).show()
-                return
-            }
-            val viaParamType = method.parameterTypes[2]
-            val viaArg: Any? = when {
-                java.util.List::class.java.isAssignableFrom(viaParamType) -> listOf(viaPoi)
-                viaParamType.isArray -> {
-                    val arr = java.lang.reflect.Array.newInstance(viaParamType.componentType, 1)
-                    java.lang.reflect.Array.set(arr, 0, viaPoi)
-                    arr
+        // v: 재억 제보(2026-08-22) - 리플렉션 방식이 실제 기기에서 "메서드를 못 찾음"으로
+        // 매번 조용히 실패하고 있었음(SDK 컴파일 결과물에서 리플렉션으로 찾는 조건과
+        // 실제 메서드 형태가 안 맞았던 것으로 추정). 확인해보니 애초에 리플렉션이 필요
+        // 없었음 - 지난번 빌드 실패는 콜백 문법 오류 때문이었지, 이 자리(via 목록)
+        // 자체는 원래도 문제없이 컴파일됐음. 이 앱 다른 곳에서 이미 검증된 것과 동일하게
+        // 직접 호출로 되돌림. #문제시 원복
+        KNSDK.makeTripWithStart(startPoi, goalPoi, listOf(viaPoi)) { error, trip ->
+            runOnUiThread {
+                if (error != null || trip == null) {
+                    NavLogger.e(this, "[경유지추가] 경로 재계산 실패: ${error?.msg ?: "알 수 없는 오류"}")
+                    Toast.makeText(this, "경유지 추가 실패: ${error?.msg ?: "알 수 없는 오류"}", Toast.LENGTH_SHORT).show()
+                    return@runOnUiThread
                 }
-                else -> {
-                    NavLogger.e(this, "[경유지추가] via 파라미터 타입 미확인: ${viaParamType.name}")
-                    null
+                try {
+                    naviView.guideNewDestinations(trip, activeRoutePriority, activeRouteAvoidOption)
+                    naviView.requestLayout()
+                    naviView.invalidate()
+                    NavLogger.d(this, "[경유지추가] 성공: ${picked.name}")
+                    Toast.makeText(this, "'${picked.name}' 경유지로 추가됨", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    NavLogger.e(this, "[경유지추가] guideNewDestinations 예외: ${e.message}")
+                    Toast.makeText(this, "경유지 추가 실패(화면 반영 오류)", Toast.LENGTH_SHORT).show()
                 }
             }
-            val callback = object : kotlin.jvm.functions.Function2<KNError?, KNTrip?, Unit> {
-                override fun invoke(error: KNError?, trip: KNTrip?) {
-                    runOnUiThread {
-                        if (error != null || trip == null) {
-                            NavLogger.e(this@KakaoNaviActivity, "[경유지추가] 경로 재계산 실패: ${error?.msg ?: "알 수 없는 오류"}")
-                            Toast.makeText(this@KakaoNaviActivity, "경유지 추가 실패: ${error?.msg ?: "알 수 없는 오류"}", Toast.LENGTH_SHORT).show()
-                            return@runOnUiThread
-                        }
-                        try {
-                            naviView.guideNewDestinations(trip, activeRoutePriority, activeRouteAvoidOption)
-                            naviView.requestLayout()
-                            naviView.invalidate()
-                            NavLogger.d(this@KakaoNaviActivity, "[경유지추가] 성공: ${picked.name}")
-                            Toast.makeText(this@KakaoNaviActivity, "'${picked.name}' 경유지로 추가됨", Toast.LENGTH_SHORT).show()
-                        } catch (e: Exception) {
-                            NavLogger.e(this@KakaoNaviActivity, "[경유지추가] guideNewDestinations 예외: ${e.message}")
-                            Toast.makeText(this@KakaoNaviActivity, "경유지 추가 실패(화면 반영 오류)", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
-            }
-            method.invoke(null, startPoi, goalPoi, viaArg, callback)
-        } catch (e: Exception) {
-            NavLogger.e(this, "[경유지추가] makeTripWithStart 리플렉션 호출 예외: ${e.message}")
-            Toast.makeText(this, "경유지 추가 실패(호출 오류)", Toast.LENGTH_SHORT).show()
         }
     }
 
