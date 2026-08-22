@@ -1936,7 +1936,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         )
         val optionAvoidOptions = listOf(0, 0, KNRouteAvoidOption.KNRouteAvoidOption_Fare.value)
 
+        // v: 재억 요청(2026-08-22) - 티맵 화면(MapActivity)에만 있던 "저장된 방식 삭제"
+        // 메뉴를 카카오 화면에도 이식. #문제시 원복
+        val CLEAR_OPTION_INDEX = 3
+
         fun goDirectly(index: Int) {
+            if (index == CLEAR_OPTION_INDEX && saveToSlot != null) {
+                QuickSlotStore.clearRoutePreference(this, saveToSlot)
+                Toast.makeText(this, "${picked.name}의 저장된 이동방식을 지웠어요.", Toast.LENGTH_SHORT).show()
+                return
+            }
             if (saveToSlot != null) {
                 // v13.10: MapActivity와 동일 - "이동방식 저장" 메뉴로 들어왔을 때도 옵션을
                 // 고르면 저장과 동시에 무조건 경로 변경까지 실행해버렸음(재억 지적). 저장
@@ -1955,6 +1964,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             val labels = optionLabels.mapIndexed { i, label ->
                 "$label\n${SearchRanking.formatEtaMinutes(minutesArr[i]) ?: "계산 실패"}"
             }.toMutableList()
+            // v: 재억 요청(2026-08-22) - MapActivity와 동일 - "경로 방식 변경" 메뉴로
+            // 들어왔을 때만 맨 아래에 "저장된 방식 삭제" 추가. #문제시 원복
+            if (saveToSlot != null) {
+                labels.add("저장된 방식 삭제")
+            }
             val listView = android.widget.ListView(this)
             val adapter = darkTextAdapter(ArrayList<CharSequence>(labels))
             listView.adapter = adapter
