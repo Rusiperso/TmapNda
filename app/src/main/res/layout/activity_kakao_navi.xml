@@ -568,16 +568,15 @@
         android:elevation="30dp"
         android:visibility="gone"/>
 
-    <!-- v: 재억 요청(2026-08-22) - 우측 하단은 카카오 SDK 자체 버튼(경고/주유소/현위치)이
-         이미 차지하고 있어서 겹침(재억 지적). 우측 상단으로 이동. 편집모드 확정버튼도
-         top|end라 marginTop을 늘려서 그 아래에 오도록 함. #문제시 원복 -->
+    <!-- v: 재억 요청(2026-08-22) - 우측 상단이 너무 멀어서(재억 지적), 왼쪽 회전안내
+         파란 패널(폭 약 120dp) 바로 위, 그 폭 기준 정중앙으로 이동. #문제시 원복 -->
     <ImageButton
         android:id="@+id/btnAddWaypoint"
         android:layout_width="52dp"
         android:layout_height="52dp"
-        android:layout_gravity="top|end"
+        android:layout_gravity="top|start"
         android:layout_marginTop="76dp"
-        android:layout_marginEnd="16dp"
+        android:layout_marginStart="34dp"
         android:src="@drawable/ic_add_waypoint"
         android:background="@drawable/shape_circle_gray"
         android:scaleType="center"
