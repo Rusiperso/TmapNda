@@ -173,6 +173,33 @@ class KakaoGuidanceDelegate(
     // 쌍으로 변환. 전부 실패하면 빈 리스트 반환(호출부에서 안전하게 무시됨). 실주행 로그로
     // 어떤 후보가 맞았는지 확인 후 나머지 후보는 정리할 예정. #문제시 원복
     private fun extractRouteLineCoordinates(route: KNRoute): List<Pair<Double, Double>> {
+        // v: 재억 제보(2026-08-22) - 로그 덤프로 실제 이름 확정됨: routePolylineWGS84().
+        // "get"+후보이름 패턴이 아니라 진짜 이름이 그대로 이거였음. 결과 각 항목은
+        // x(경도)/y(위도)/trfSt(교통상황) 필드를 가진 좌표 객체. #문제시 원복
+        try {
+            val exactGetter = route.javaClass.methods.firstOrNull {
+                it.parameterTypes.isEmpty() && it.name == "routePolylineWGS84"
+            }
+            if (exactGetter != null) {
+                val result = exactGetter.invoke(route) as? List<*>
+                if (result != null && result.isNotEmpty()) {
+                    val out = ArrayList<Pair<Double, Double>>(result.size)
+                    for (point in result) {
+                        if (point == null) continue
+                        val lon = findGetterDouble(point, "X").takeIf { it != 0.0 } ?: continue
+                        val lat = findGetterDouble(point, "Y").takeIf { it != 0.0 } ?: continue
+                        out.add(lon to lat)
+                    }
+                    if (out.isNotEmpty()) {
+                        NavLogger.d(context, "[경로선 조사] routePolylineWGS84() 개수=${out.size}")
+                        return out
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            NavLogger.e(context, "[경로선 조사] routePolylineWGS84() 실패: ${e.message}")
+        }
+
         val lineCandidates = listOf("RoutePoints", "RouteLine", "Points", "Line", "Coords", "Coordinates")
         for (candidateName in lineCandidates) {
             try {
