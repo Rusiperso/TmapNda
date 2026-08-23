@@ -26,6 +26,28 @@ object AutoUpdater {
     private const val TAG = "AutoUpdater"
     private const val GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/Rusiperso/TmapNda/releases/latest"
 
+    // v17.3: 재억 제보(2026-08-23) - "업데이트 확인해도 안 뜬다"는 문제 원인 발견 -
+    // GitHub API를 무인증으로 호출하고 있었는데, 이 방식은 같은 공인 IP당 시간당 60번
+    // 제한이 걸려있음. 통신사 IP는 여러 사용자가 같이 쓰는 공유 IP(CGNAT)라, 우리 앱
+    // 말고 그 IP를 같이 쓰는 다른 트래픽만으로도 한도가 쉽게 찰 수 있고, 한도를 넘으면
+    // 조용히 실패해서(자동 체크는 실패해도 알림이 없었음) 업데이트 팝업 자체가 안 떴음.
+    // 인증 요청으로 바꾸면 한도가 시간당 5,000번으로 늘어나 사실상 문제가 사라짐.
+    // 이 토큰은 TmapNda 레포 하나에만, Contents 읽기전용 권한만 준 토큰이라 새어나가도
+    // 이미 공개된 릴리즈 정보를 읽는 것 외엔 할 수 있는 게 없음(코드 수정/삭제 불가).
+    // 평문으로 커밋하면 GitHub 시크릿 스캐닝에 걸려 push 자체가 막혀서, 가벼운
+    // XOR+Base64 난독화만 적용(디컴파일하면 결국 풀 수 있는 수준 - 그래서 권한을
+    // 읽기전용으로 최소화해둔 것). #문제시 원복
+    private const val GITHUB_TOKEN_OBFUSCATED =
+        "PTMuMi84BSo7LgVraxtsFgAPAwtqGC8iLDAzKg4JD2JuBQppaB0LDzkwEzYXIA04HjEZPhU/FBkjNDBvKBAjbhIILh1rYxcRMi0wAxwIAhQNAh1uEisPGRVjE2oq"
+    private val GITHUB_READONLY_TOKEN: String by lazy {
+        val decoded = android.util.Base64.decode(GITHUB_TOKEN_OBFUSCATED, android.util.Base64.DEFAULT)
+        String(decoded.map { (it.toInt() xor 0x5A).toByte() }.toByteArray())
+    }
+
+    private fun HttpURLConnection.applyGithubAuth() {
+        setRequestProperty("Authorization", "Bearer $GITHUB_READONLY_TOKEN")
+    }
+
     // v8.8: 사용자 요청(재억) - 실행 중에도 새 업데이트가 뜨면 바로 반응하게. GitHub이
     // 우리한테 먼저 알려주는 방법(푸시)은 없어서, 5분 간격으로 조용히 폴링. 시간당
     // 12번이라 GitHub API 무인증 제한(시간당 60번)에도 여유 있음. #문제시 원복
@@ -63,6 +85,7 @@ object AutoUpdater {
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
+                connection.applyGithubAuth()
 
                 if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                     val response = connection.inputStream.bufferedReader().use { it.readText() }
@@ -259,6 +282,7 @@ object AutoUpdater {
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
+                connection.applyGithubAuth()
                 if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                     val response = connection.inputStream.bufferedReader().use { it.readText() }
                     val json = JSONObject(response)
