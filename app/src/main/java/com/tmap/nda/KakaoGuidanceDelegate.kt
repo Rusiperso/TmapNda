@@ -194,8 +194,19 @@ class KakaoGuidanceDelegate(
                     var yFailCount = 0
                     for (point in result) {
                         if (point == null) continue
-                        val lon = findGetterDouble(point, "X").takeIf { it != 0.0 }
-                        val lat = findGetterDouble(point, "Y").takeIf { it != 0.0 }
+                        // v: 재억 제보(2026-08-22) - 로그로 확정됨: 각 항목은 객체가 아니라
+                        // {x=..., y=..., trfSt=...} 형태의 LinkedHashMap(사실상 파싱된
+                        // JSON)이었음. getX()/getY() 함수를 찾던 리플렉션은 애초에 Map엔
+                        // 그런 함수가 없어서 매번 실패. map["x"]/map["y"]로 직접 꺼냄. #문제시 원복
+                        val lon: Double?
+                        val lat: Double?
+                        if (point is Map<*, *>) {
+                            lon = (point["x"] as? Number)?.toDouble()
+                            lat = (point["y"] as? Number)?.toDouble()
+                        } else {
+                            lon = findGetterDouble(point, "X").takeIf { it != 0.0 }
+                            lat = findGetterDouble(point, "Y").takeIf { it != 0.0 }
+                        }
                         if (lon == null) xFailCount++
                         if (lat == null) yFailCount++
                         if (lon != null && lat != null) out.add(lon to lat)
@@ -450,14 +461,14 @@ class KakaoGuidanceDelegate(
 
     // ===== RouteGuideDelegate =====
     override fun guidanceDidUpdateRouteGuide(guidance: KNGuidance, routeGuide: KNGuide_Route) {
-        val fieldDump = try {
-            routeGuide.javaClass.methods
-                .filter { it.parameterTypes.isEmpty() && it.name.startsWith("get") }
-                .joinToString(", ") { m ->
-                    try { "${m.name}=${m.invoke(routeGuide)}" } catch (e: Exception) { "${m.name}=<실패>" }
-                }
-        } catch (e: Exception) { "덤프 실패: ${e.message}" }
-        NavLogger.d(context, "guidanceDidUpdateRouteGuide 호출됨: $routeGuide | $fieldDump")
+        // v: 재억 제보(2026-08-22) - "티맵이 한 번씩 멈춰서 초기화면까지 나갔다 들어와야
+        // 한다"는 문제의 진짜 원인으로 확정됨. 이 콜백은 회전 안내가 바뀔 때마다(교차로
+        // 근처 등에서 꽤 잦음) 불리는데, 매번 아무 제한 없이 메인 스레드에서 객체 전체를
+        // 리플렉션으로 통째로 훑고 문자열로 풀어쓰고 있었음(수백~수천 자). 이게 반복되면서
+        // 화면이 순간순간 멈추다가, 안드로이드가 "응답 없음"으로 판단해서 화면 자체를
+        // 강제 종료시킨 것으로 보임. 필드 구조 확인은 이미 오래전에 끝났고 실제로 쓰는 값은
+        // 아래(KNLane 등)에서 정식 API로 따로 가져오고 있어서, 이 디버그용 통째 덤프는
+        // 완전히 제거함(용도 다함). #문제시 원복
 
         // v4.7: 공식 문서(developers.kakaomobility.com)에서 진짜 구조를 확인함 -
         // KNLane(linkIdx: Int, location: KNLocation, laneCode: List<Number>). 리플렉션
@@ -522,10 +533,11 @@ class KakaoGuidanceDelegate(
                 // KNLane 객체 보관. #문제시 원복
                 LaneSignalRepository.kakaoLane = lane
 
-                val dump = lane.javaClass.methods
-                    .filter { m -> m.parameterTypes.isEmpty() && m.name.startsWith("get") }
-                    .joinToString(", ") { m -> try { "${m.name}=${m.invoke(lane)}" } catch (e: Exception) { "${m.name}=<실패>" } }
-                NavLogger.d(context, "[차선정보] KNLane 전체덤프: $dump")
+                // v: 재억 제보(2026-08-22) - 위 guidanceDidUpdateRouteGuide 덤프와 똑같은
+                // 문제(메인 스레드에서 스로틀 없이 매번 리플렉션 통째 덤프 + 곧바로 화면
+                // 갱신 트리거) - 티맵 화면이 멈추는 원인 중 하나로 보여서 제거. 실제 차선
+                // 렌더링은 이미 아래 KNDriveLaneView 정식 API로 처리 중이라 이 덤프는
+                // 용도 다함. #문제시 원복
                 LaneSignalRepository.notifyChanged()
             } else if (lane == null) {
                 LaneSignalRepository.kakaoLane = null
