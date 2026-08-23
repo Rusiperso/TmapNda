@@ -969,6 +969,16 @@ class KakaoGuidanceDelegate(
     override fun willPlayVoiceGuide(guidance: KNGuidance, voiceGuide: KNGuide_Voice) {
         NavLogger.d(context, "[음성] willPlayVoiceGuide(카카오 음성 재생 시작) ${tmapMuteStateSnapshot()}")
         AudioStreamDiagnostics.log(context, "카카오음성시작")
+        // v: 재억 제보(2026-08-23) - 안내음량을 30%로 낮춰놔도 경로 중간에 카카오 음성이
+        // 나올 때 갑자기 소리가 커지는 증상. [볼륨진단] 로그로 확인해보니 카카오 음성이
+        // 시작되는 순간 정체불명의 두 번째 재생 세션(contentType=0)이 같이 뜨는데, 이건
+        // 카카오 SDK 내부에서 지가 알아서 트는 소리라 우리가 직접 볼륨을 지정해서 못 건드림
+        // (scanForVolumeApiOnce로 확인해도 KNGuidance/KNSDK/naviView 어디에도 볼륨 관련
+        // 공개 API가 없음). 대신 재억이 요청한 대로 "카카오 길안내 음량이 그 값 그대로
+        // 나오게" - 음성이 시작되는 바로 그 순간에 우리가 저장해둔 음량%를 시스템 볼륨에
+        // 즉시 다시 강제 적용해서, 카카오가 자기 마음대로 볼륨을 건드렸더라도 재생 시작
+        // 시점엔 항상 재억이 설정한 값으로 맞춰지게 함. #문제시 원복
+        VolumeHelper.applySavedSystemVolume(context)
         scanForVolumeApiOnce(guidance)
         if (!isRouteGuideActive()) return
         naviView?.willPlayVoiceGuide(guidance, voiceGuide)
@@ -980,6 +990,9 @@ class KakaoGuidanceDelegate(
         // 순간뿐 아니라 끝나는 순간의 볼륨도 같이 봐야 비교가 됨(시작=X, 끝=Y처럼).
         // 기존엔 시작 순간만 찍었음. #문제시 원복
         AudioStreamDiagnostics.log(context, "카카오음성끝")
+        // v: 재억 제보(2026-08-23) - 음성이 끝난 뒤에도 카카오가 건드려놓은 볼륨이 그대로
+        // 남아있을 수 있어서, 끝나는 시점에도 한 번 더 저장된 음량%로 재적용. #문제시 원복
+        VolumeHelper.applySavedSystemVolume(context)
         naviView?.didFinishPlayVoiceGuide(guidance, voiceGuide)
     }
 
