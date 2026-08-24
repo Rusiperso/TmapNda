@@ -548,17 +548,31 @@
         android:visibility="gone"/>
 
     <!-- v: 재억 요청(2026-08-22) - 왼쪽 회전안내 파란 패널 위 정중앙으로 이동 (세로 화면과 동일). #문제시 원복 -->
+    <!-- v: 신규기능(주변 카테고리 검색) - 경유지 버튼 옆에 나란히 추가, 간격 좁힘(세로 화면과 동일). #문제시 원복 -->
     <ImageButton
         android:id="@+id/btnAddWaypoint"
         android:layout_width="52dp"
         android:layout_height="52dp"
         android:layout_gravity="top|start"
         android:layout_marginTop="76dp"
-        android:layout_marginStart="34dp"
+        android:layout_marginStart="18dp"
         android:src="@drawable/ic_add_waypoint"
         android:background="@drawable/shape_circle_gray"
         android:scaleType="center"
         android:contentDescription="경유지 추가"
+        android:elevation="20dp"/>
+
+    <ImageButton
+        android:id="@+id/btnNearbyCategory"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_gravity="top|start"
+        android:layout_marginTop="76dp"
+        android:layout_marginStart="72dp"
+        android:src="@drawable/ic_category"
+        android:background="@drawable/shape_circle_gray"
+        android:scaleType="center"
+        android:contentDescription="주변 카테고리 검색"
         android:elevation="20dp"/>
 
 </FrameLayout>

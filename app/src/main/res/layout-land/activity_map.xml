@@ -717,4 +717,18 @@
         android:elevation="30dp"
         android:visibility="gone"/>
 
+    <!-- v: 신규기능(주변 카테고리 검색) - 우측 상단, 상단 HUD 바 바로 아래(세로 화면과 동일). #문제시 원복 -->
+    <ImageButton
+        android:id="@+id/btnNearbyCategory"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="64dp"
+        android:layout_marginEnd="12dp"
+        android:src="@drawable/ic_category"
+        android:background="@drawable/shape_circle_gray"
+        android:scaleType="center"
+        android:contentDescription="주변 카테고리 검색"
+        android:elevation="20dp"/>
+
 </FrameLayout>
