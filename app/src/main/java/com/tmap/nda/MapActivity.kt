@@ -3406,26 +3406,12 @@ class MapActivity : AppCompatActivity() {
             // TODO: Use ObservableRouteData instead of DriveStatusListener
             */
 
-            // v4.8: 사용자 요청으로 티맵 쪽도 차선/신호등 데이터 소스 계속 조사. 공식 문서에서
-            // ObservableRouteData의 확인된 필드(getNTotalDist/getNTotalTime/getTollFare/
-            // getTaxiFare/getRouteCoordinates/getRouteTrafficInfos)는 경로 요약·교통정체
-            // 수준이라 차선/신호등이 있을지 불확실 - 전체 getter를 리플렉션으로 덤프해서
-            // 다음 로그로 실제 필드를 확인. #문제시 원복
-            TmapUISDK.observableRouteData.observe(this@MapActivity, Observer { data ->
-                data?.let {
-                    NavLogger.e(this@MapActivity, "observableRouteData class: ${it.javaClass.name}")
-                    try {
-                        val dump = it.javaClass.methods
-                            .filter { m -> m.parameterTypes.isEmpty() && m.name.startsWith("get") }
-                            .joinToString(", ") { m ->
-                                try { "${m.name}=${m.invoke(it)}" } catch (e: Exception) { "${m.name}=<실패>" }
-                            }
-                        NavLogger.e(this@MapActivity, "[티맵 차선/신호등?] observableRouteData 전체덤프: $dump")
-                    } catch (e: Exception) {
-                        NavLogger.e(this@MapActivity, "observableRouteData 덤프 예외: ${e.message}")
-                    }
-                }
-            })
+            // v4.8~: 티맵 차선/신호등 데이터 소스 조사용으로 넣었던 observableRouteData
+            // 리플렉션 전수조사 코드 제거. 경로 데이터가 갱신될 때마다(주행 중 반복 발생)
+            // 메인 스레드에서 모든 getter를 리플렉션으로 실행하고 있어서, 예전에 고쳤던
+            // 화면 진입 시 멈춤과 같은 원인으로 주행 중 간헐적 티맵화면 멈춤을 유발하고
+            // 있었음. 필요한 조사는 이미 끝났고 기능적으로도 안 쓰이는 코드라 제거함.
+            // #문제시 원복: git 이력에서 이 커밋 이전 버전의 이 위치 코드 참고
             TmapUISDK.observableEDCData.observe(this@MapActivity, Observer { data ->
                 data?.let {
                     // 이전엔 매초 전체 Bundle을 그대로 파일에 찍어서 로그가 무한정 쌓였음.
