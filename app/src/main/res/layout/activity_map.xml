@@ -657,8 +657,8 @@
          다시 이동. #문제시 원복 -->
     <ImageButton
         android:id="@+id/btnNearbyCategory"
-        android:layout_width="52dp"
-        android:layout_height="52dp"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
         android:layout_gravity="top|start"
         android:layout_marginTop="76dp"
         android:layout_marginStart="34dp"

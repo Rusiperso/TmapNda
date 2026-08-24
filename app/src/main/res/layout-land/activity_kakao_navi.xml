@@ -551,8 +551,8 @@
     <!-- v: 신규기능(주변 카테고리 검색) - 경유지 버튼 옆에 나란히 추가, 간격 좁힘(세로 화면과 동일). #문제시 원복 -->
     <ImageButton
         android:id="@+id/btnAddWaypoint"
-        android:layout_width="52dp"
-        android:layout_height="52dp"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
         android:layout_gravity="top|start"
         android:layout_marginTop="76dp"
         android:layout_marginStart="18dp"
@@ -564,11 +564,11 @@
 
     <ImageButton
         android:id="@+id/btnNearbyCategory"
-        android:layout_width="52dp"
-        android:layout_height="52dp"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
         android:layout_gravity="top|start"
         android:layout_marginTop="76dp"
-        android:layout_marginStart="72dp"
+        android:layout_marginStart="82dp"
         android:src="@drawable/ic_category"
         android:background="@drawable/shape_circle_gray"
         android:scaleType="center"
