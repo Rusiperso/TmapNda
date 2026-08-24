@@ -1142,6 +1142,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // v3.8: 티맵 화면과 동일한 동작 - 업데이트확인/도움말은 화면과 무관한 앱 전체
         // 기능이라 그대로 재사용, 앱종료는 이 화면부터 전체 태스크 종료. #문제시 원복
         binding.btnCheckUpdate?.setOnClickListener {
+            NavLogger.d(this, "[업데이트확인] 버튼 클릭됨(카카오화면)")
             binding.svSecondaryPanel?.visibility = View.GONE
             Toast.makeText(this, "업데이트 확인 중...", Toast.LENGTH_SHORT).show()
             AutoUpdater.checkForUpdates(this, isManual = true)

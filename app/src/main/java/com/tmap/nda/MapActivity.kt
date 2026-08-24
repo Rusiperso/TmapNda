@@ -304,6 +304,7 @@ class MapActivity : AppCompatActivity() {
         }
 
         binding.btnCheckUpdate.setOnClickListener {
+            NavLogger.d(this, "[업데이트확인] 버튼 클릭됨(Tmap화면)")
             binding.svSecondaryPanel?.visibility = View.GONE
             Toast.makeText(this, "업데이트 확인 중...", Toast.LENGTH_SHORT).show()
             AutoUpdater.checkForUpdates(this, isManual = true)
