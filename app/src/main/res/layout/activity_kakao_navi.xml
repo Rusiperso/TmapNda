@@ -217,7 +217,7 @@
             <!-- 음소거 / 검색 -->
             <ImageButton
                 android:id="@+id/btnKakaoMuteToggle"
-                android:layout_width="34dp"
+                android:layout_width="38dp"
                 android:layout_height="34dp"
                 android:layout_marginEnd="8dp"
                 android:src="@android:drawable/ic_lock_silent_mode_off"
@@ -229,7 +229,7 @@
                  필드 안 아이콘은 최근검색으로 바꿈. #문제시 원복 -->
             <ImageButton
                 android:id="@+id/btnOpenSearch"
-                android:layout_width="34dp"
+                android:layout_width="38dp"
                 android:layout_height="34dp"
                 android:layout_marginEnd="8dp"
                 android:src="@drawable/ic_mic"
@@ -282,7 +282,7 @@
                  자체는 지금 크기(220dp 고정폭) 그대로 유지. #문제시 원복 -->
             <ImageButton
                 android:id="@+id/btnHomeQuickSlot"
-                android:layout_width="34dp"
+                android:layout_width="38dp"
                 android:layout_height="34dp"
                 android:layout_marginEnd="8dp"
                 android:src="@drawable/ic_home_quickslot"
@@ -291,7 +291,7 @@
 
             <ImageButton
                 android:id="@+id/btnWorkQuickSlot"
-                android:layout_width="34dp"
+                android:layout_width="38dp"
                 android:layout_height="34dp"
                 android:layout_marginEnd="8dp"
                 android:src="@drawable/ic_work_quickslot"
@@ -302,7 +302,7 @@
                  바로 왼쪽에 배치, 나머지 순서는 그대로 유지 (재억 요청). #문제시 원복 -->
             <ImageButton
                 android:id="@+id/btnShareLogTopBar"
-                android:layout_width="34dp"
+                android:layout_width="38dp"
                 android:layout_height="34dp"
                 android:layout_marginEnd="8dp"
                 android:src="@android:drawable/ic_menu_upload"
@@ -314,7 +314,7 @@
                  밀어내지 않게 함. #문제시 원복 -->
             <ImageButton
                 android:id="@+id/btnMoreMenu"
-                android:layout_width="34dp"
+                android:layout_width="38dp"
                 android:layout_height="34dp"
                 android:src="@drawable/ic_hamburger"
                 android:background="@drawable/shape_circle_gray"
@@ -393,9 +393,9 @@
                 <Button
                     android:id="@+id/btnEditPanelPosition"
                     android:layout_width="match_parent"
-                    android:layout_height="38dp"
+                    android:layout_height="42dp"
                     android:text="UI 편집"
-                    android:textSize="12sp"
+                    android:textSize="15sp"
                     android:textColor="#CCCCCC"
                     android:gravity="center_vertical|start"
                     android:paddingStart="10dp"
@@ -410,9 +410,9 @@
                 <Button
                     android:id="@+id/btnCheckUpdate"
                     android:layout_width="match_parent"
-                    android:layout_height="38dp"
+                    android:layout_height="42dp"
                     android:text="업데이트 확인"
-                    android:textSize="12sp"
+                    android:textSize="15sp"
                     android:textColor="#CCCCCC"
                     android:gravity="center_vertical|start"
                     android:paddingStart="10dp"
@@ -425,9 +425,9 @@
                 <Button
                     android:id="@+id/btnHelp"
                     android:layout_width="match_parent"
-                    android:layout_height="38dp"
+                    android:layout_height="42dp"
                     android:text="업데이트 내역"
-                    android:textSize="12sp"
+                    android:textSize="15sp"
                     android:textColor="#CCCCCC"
                     android:gravity="center_vertical|start"
                     android:paddingStart="10dp"
@@ -440,9 +440,9 @@
                 <Button
                     android:id="@+id/btnDeleteAllLogs"
                     android:layout_width="match_parent"
-                    android:layout_height="38dp"
+                    android:layout_height="42dp"
                     android:text="로그 전체 삭제"
-                    android:textSize="12sp"
+                    android:textSize="15sp"
                     android:textColor="#CCCCCC"
                     android:gravity="center_vertical|start"
                     android:paddingStart="10dp"
@@ -457,9 +457,9 @@
                 <Button
                     android:id="@+id/btnEditKey"
                     android:layout_width="match_parent"
-                    android:layout_height="38dp"
+                    android:layout_height="42dp"
                     android:text="설정"
-                    android:textSize="12sp"
+                    android:textSize="15sp"
                     android:textColor="#CCCCCC"
                     android:gravity="center_vertical|start"
                     android:paddingStart="10dp"
@@ -472,9 +472,9 @@
                 <Button
                     android:id="@+id/btnGuideHelp"
                     android:layout_width="match_parent"
-                    android:layout_height="38dp"
+                    android:layout_height="42dp"
                     android:text="도움말"
-                    android:textSize="12sp"
+                    android:textSize="15sp"
                     android:textColor="#CCCCCC"
                     android:gravity="center_vertical|start"
                     android:paddingStart="10dp"
@@ -487,9 +487,9 @@
                 <Button
                     android:id="@+id/btnExitApp"
                     android:layout_width="match_parent"
-                    android:layout_height="38dp"
+                    android:layout_height="42dp"
                     android:text="앱 종료"
-                    android:textSize="12sp"
+                    android:textSize="15sp"
                     android:textColor="#EF5350"
                     android:gravity="center_vertical|start"
                     android:paddingStart="10dp"
