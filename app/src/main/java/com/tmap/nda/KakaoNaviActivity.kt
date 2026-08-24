@@ -1128,6 +1128,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
         // v3.0: Tmap 화면과 동일한 ≡ 메뉴 - 이벤트상세/신호등/최근검색 등을 열고 닫음
         binding.btnMoreMenu?.setOnClickListener { anchorView ->
+            NavLogger.d(this, "[더보기메뉴] 버튼 클릭됨(카카오화면)")
             val panel = binding.svSecondaryPanel ?: return@setOnClickListener
             if (panel.visibility == View.VISIBLE) {
                 panel.visibility = View.GONE

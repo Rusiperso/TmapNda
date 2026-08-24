@@ -570,6 +570,7 @@ class MapActivity : AppCompatActivity() {
         // v2.6: 상단바 개편 - 자주 안 쓰는 항목(이벤트/신호등/최근검색/설정류)을
         // ≡ 버튼으로 열고 닫는 보조 패널로 뺌. #문제시 원복
         binding.btnMoreMenu?.setOnClickListener { anchorView ->
+            NavLogger.d(this, "[더보기메뉴] 버튼 클릭됨(Tmap화면)")
             val panel = binding.svSecondaryPanel ?: return@setOnClickListener
             if (panel.visibility == View.VISIBLE) {
                 panel.visibility = View.GONE
