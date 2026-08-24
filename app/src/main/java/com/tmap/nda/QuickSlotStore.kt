@@ -51,6 +51,9 @@ object QuickSlotStore {
         }
         obj.put("routeAvoidOption", entry.routeAvoidOption)
         prefs(context).edit().putString(slot, obj.toString()).apply()
+        // v: 신규기능(홈화면 바로가기 자동동기화) - 즐겨찾기 내용이 바뀔 때마다, 혹시 홈화면에
+        // 이미 고정된 바로가기가 있으면 내용도 같이 갱신. #문제시 원복
+        QuickSlotShortcutHelper.syncAfterUpdate(context, slot, entry)
     }
 
     // v13.2-3: 재억 요청 - 저장된 이동 방식(추천/고속도로/무료도로)만 따로 바꿀 때
@@ -71,5 +74,7 @@ object QuickSlotStore {
     // v12.3: 재억 요청 - 등록 해제(삭제) 기능. #문제시 원복
     fun delete(context: Context, slot: String) {
         prefs(context).edit().remove(slot).apply()
+        // v: 신규기능(홈화면 바로가기 자동동기화) - 즐겨찾기 삭제 시 홈화면 바로가기도 비활성화. #문제시 원복
+        QuickSlotShortcutHelper.syncAfterUpdate(context, slot, null)
     }
 }

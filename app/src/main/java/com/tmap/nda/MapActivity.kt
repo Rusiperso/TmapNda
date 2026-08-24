@@ -652,6 +652,7 @@ class MapActivity : AppCompatActivity() {
         binding.btnHistoryTopBar?.setOnClickListener { showFullSearchHistoryDialog() }
         wireTopBarQuickSlotButton(binding.btnHomeQuickSlot, QuickSlotStore.SLOT_HOME)
         wireTopBarQuickSlotButton(binding.btnWorkQuickSlot, QuickSlotStore.SLOT_WORK)
+        setupNearbyCategoryButton()
     }
 
     // v12.3: 재억 요청 - 등록된 칸을 길게 누르면 예전처럼 바로 재검색하지 않고,
@@ -668,7 +669,9 @@ class MapActivity : AppCompatActivity() {
             .setTitle(existing.name)
             // v14.10: 재억 요청 - 메뉴 순서를 "다시 검색 -> 이름 변경 -> 경로 방식 변경 ->
             // 삭제 -> 취소"로 재변경. "안내 방법 변경"은 "경로 방식 변경"으로 이름도 변경. #문제시 원복
-            .setItems(arrayOf("다시 검색", "이름 변경", "경로 방식 변경", "삭제", "취소")) { _, which ->
+            // v: 신규기능(홈화면 바로가기) - "경로 방식 변경"과 "삭제" 사이에 추가(재억 확인
+            // 완료). 즐겨찾기를 홈화면 아이콘으로 고정. #문제시 원복
+            .setItems(arrayOf("다시 검색", "이름 변경", "경로 방식 변경", "홈화면에 추가", "삭제", "취소")) { _, which ->
                 when (which) {
                     0 -> {
                         pendingQuickSlotRegistration = slot
@@ -694,7 +697,8 @@ class MapActivity : AppCompatActivity() {
                     // v13.2-3: 재억 요청 - 저장해둔 이동 방식(추천/고속도로/무료도로)만 바꾸고
                     // 싶을 때. 고르면 저장만 되고(v13.10부터) 바로 안내를 시작하지는 않음. #문제시 원복
                     2 -> showRoutePriorityDialog(existing, saveToSlot = slot)
-                    3 -> QuickSlotStore.delete(this, slot)
+                    3 -> QuickSlotShortcutHelper.requestPin(this, slot, existing)
+                    4 -> QuickSlotStore.delete(this, slot)
                 }
             }
             .show()
@@ -2937,6 +2941,27 @@ class MapActivity : AppCompatActivity() {
 
                 isRequestingKakaoRoute = false
                 hideKakaoOverlay()
+            }
+        }
+    }
+
+    // v: 신규기능(주변 카테고리 검색) - 카카오 화면과 동일한 팝업(NearbyCategoryPopup)을 공용으로
+    // 씀. 결과를 고르면 기존 startKakaoOverlayGuidance() 경로로 카카오 안내를 시작. #문제시 원복
+    private fun setupNearbyCategoryButton() {
+        binding.btnNearbyCategory?.setOnClickListener {
+            val restKey = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .getString("kakao_rest_api_key", null)
+            if (restKey.isNullOrBlank()) {
+                Toast.makeText(this, "카카오 REST API 키를 먼저 입력하세요.", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            val (curLat, curLon) = resolveCurrentWgs84LatLon()
+            if (curLat == null || curLon == null) {
+                Toast.makeText(this, "현재 위치를 확인할 수 없습니다", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            NearbyCategoryPopup.show(this, httpClient, restKey, curLat, curLon) { picked ->
+                startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon)
             }
         }
     }
