@@ -700,6 +700,10 @@ class UdpSenderService : Service() {
 
                     json.put("nGoPosDist", nGoPosDist)
                     json.put("nGoPosTime", nGoPosTime)
+                    // v: 신규기능(목적지 반경 도착알림) - 티맵 화면 안내 중에도 동일하게 적용. #문제시 원복
+                    if (nGoPosDist > 0 && ArrivalRadiusAlert.checkShouldWarn(this@UdpSenderService, nGoPosDist)) {
+                        ArrivalRadiusAlert.playAlert(this@UdpSenderService)
+                    }
 
                     // 상시 안내 텍스트 표시를 위한 필수 TBT 더미 값 주입
                     var tbtDist = json.optInt("nSdiDist", 0)
@@ -796,6 +800,11 @@ class UdpSenderService : Service() {
                             json.put("nGoPosTime", kr.remainTime)
                             lastValidKakaoGoPosTime = kr.remainTime
                             lastValidKakaoGoPosTimeAt = System.currentTimeMillis()
+                            // v: 신규기능(목적지 반경 도착알림) - 카카오 길안내 중 남은거리가
+                            // 설정된 반경 안으로 처음 들어오는 순간 알림. #문제시 원복
+                            if (ArrivalRadiusAlert.checkShouldWarn(this@UdpSenderService, kr.remainDist)) {
+                                ArrivalRadiusAlert.playAlert(this@UdpSenderService)
+                            }
                         } else if (kr.remainDist > 0 && lastValidKakaoGoPosTime > 0 &&
                             System.currentTimeMillis() - lastValidKakaoGoPosTimeAt < 5 * 60 * 1000L
                         ) {
@@ -851,6 +860,28 @@ class UdpSenderService : Service() {
                         // 다른 카카오 안전코드가 실수로 0에 매핑되면 여기서도 똑같이 조용히
                         // 무시(=카메라없음으로 오인식)될 수 있음. 동일한 안전장치를 걸어둠. #문제시 원복
                         val safeKakaoSdiType = if (kr.safetyType == 0 && kr.safetySpeedLimit > 0 && kr.safetyDist > 0) 1 else kr.safetyType
+
+                        // v: 신규기능(안전정보 불일치 감지) - 티맵/카카오 둘 다 이 지점에 안전정보를
+                        // 주고 있는데 서로 다른 값(카메라 있음/없음, 종류, 제한속도)을 말할 때를
+                        // 별도 로그로 자동 기록. 지금까지는 재억이 직접 "여기 이상하다" 제보해야만
+                        // 알 수 있었는데, 이제 두 SDK 값이 갈리는 순간을 놓치지 않고 잡아둠 -
+                        // 나중에 어느 쪽이 더 믿을만한지 패턴 분석하는 데 씀. 우선순위 판단 로직
+                        // 자체엔 영향 없음(로그만 남김). #문제시 원복
+                        if (tmapHasSdi && kakaoHasSdi) {
+                            val tmapSdiType = json.optInt("nSdiType", 0)
+                            val tmapSpeedLimit = json.optInt("nSdiSpeedLimit", 0)
+                            val mismatch = tmapSdiType != safeKakaoSdiType ||
+                                (tmapSpeedLimit > 0 && kr.safetySpeedLimit > 0 && kotlin.math.abs(tmapSpeedLimit - kr.safetySpeedLimit) > 5)
+                            if (mismatch && System.currentTimeMillis() - lastSdiMismatchLogTime > 3000L) {
+                                lastSdiMismatchLogTime = System.currentTimeMillis()
+                                NavLogger.e(
+                                    this@UdpSenderService,
+                                    "[안전정보불일치] Tmap(type=$tmapSdiType limit=$tmapSpeedLimit dist=${json.optInt("nSdiDist", 0)}) " +
+                                        "vs Kakao(type=${kr.safetyType} limit=${kr.safetySpeedLimit} dist=${kr.safetyDist} trusted=${kr.safetyDistTrusted})"
+                                )
+                            }
+                        }
+
                         if (kakaoHasSdi && kr.safetyDistTrusted) {
                             json.put("nSdiType", safeKakaoSdiType)
                             json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
@@ -901,6 +932,9 @@ class UdpSenderService : Service() {
                             json.put("heading", phoneLoc.bearing)
                             json.put("accuracy", phoneLoc.accuracy)
                             json.put("gps_speed", phoneLoc.speed)
+                            // v: 신규기능(주차위치 자동저장) - 오픈파일럿 왕복 GPS보다 폰 자체
+                            // GPS가 더 안정적으로 계속 들어오므로, 이쪽도 임시버퍼 갱신에 사용. #문제시 원복
+                            ParkedLocationRepository.updateLiveLocation(phoneLoc.latitude, phoneLoc.longitude)
                         }
                     } catch (e: Exception) {
                         NavLogger.e(this@UdpSenderService, "[GPS 백업] 폰 위치 조회 실패: ${e.message}")
@@ -1155,6 +1189,14 @@ class UdpSenderService : Service() {
                 ) {
                     NavLogger.e(this@UdpSenderService, "[감시타이머] ${elapsed}ms 동안 openpilot 패킷 없음 - 소켓 타임아웃이 안 걸려서 직접 강제 리셋함")
                     OpenpilotStateRepository.updateState("-", "-", 0, 0, false)
+                    // v: 신규기능(주차위치 자동저장) - 연결 끊김이 감지되는 이 시점을 "시동 꺼짐"
+                    // 추정 신호로 사용. 끊긴 뒤 기다리지 않고 즉시 마지막 위치를 저장(안드로이드가
+                    // 백그라운드 서비스를 강제종료할 수 있는 폰 사용자 환경 고려 - 지연 저장 시
+                    // 저장 전에 서비스가 죽을 위험). 일시적 끊김(터널 등) 오탐은 재연결 시
+                    // ParkedLocationRepository.onConnectionRestored()에서 사후에 걸러냄. #문제시 원복
+                    ParkedLocationRepository.onConnectionLost(this@UdpSenderService)
+                } else if (lastPacketReceivedTime > 0L && elapsed <= 5000) {
+                    ParkedLocationRepository.onConnectionRestored(this@UdpSenderService)
                 }
             }
         }
@@ -1228,6 +1270,10 @@ class UdpSenderService : Service() {
                                 "[NDA] GPS 역수신: lat=$lat lon=$lon speed=$speed acc=$accuracy"
                             )
                             OpenpilotStateRepository.updateNdaGps(lat, lon, alt, speed, bearing, accuracy, timeMs)
+                            // v: 신규기능(주차위치 자동저장) - 연결이 살아있는 동안 최신 위치를
+                            // 계속 임시버퍼에 갱신해둠. 연결이 끊기는 순간 이 마지막 값이 그대로
+                            // "주차 위치"로 확정 저장됨(위 감시타이머 참고). #문제시 원복
+                            ParkedLocationRepository.updateLiveLocation(lat, lon)
 
                             // 사용자 진단용: openpilot road_speed_limiter.py에서 GPS 패킷에 얹어보내는
                             // 방지턱/크루즈 디버그 값. 4,5,6번 문제 확인용. (없는 구버전 openpilot이면
@@ -1271,6 +1317,7 @@ class UdpSenderService : Service() {
     private var httpNaviFailCount = 0
     private var lastHttpNaviLogTime = 0L
     private var lastKakaoOverwriteLogTime = 0L
+    private var lastSdiMismatchLogTime = 0L
     private var lastHttpNaviErrorMsg: String? = null
 
     private fun startCommaHttpNaviLoop() {
