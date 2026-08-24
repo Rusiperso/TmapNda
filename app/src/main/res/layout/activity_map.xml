@@ -653,4 +653,20 @@
         android:elevation="30dp"
         android:visibility="gone"/>
 
+    <!-- v: 신규기능(주변 카테고리 검색) - 카카오 화면의 경유지 버튼과 같은 자리(정중앙, 34dp)를
+         그대로 물려받음. 티맵 화면엔 경유지 추가 기능 자체가 없어서 카테고리 버튼 혼자 이 자리를
+         씀. #문제시 원복 -->
+    <ImageButton
+        android:id="@+id/btnNearbyCategory"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_gravity="top|start"
+        android:layout_marginTop="76dp"
+        android:layout_marginStart="34dp"
+        android:src="@drawable/ic_category"
+        android:background="@drawable/shape_circle_gray"
+        android:scaleType="center"
+        android:contentDescription="주변 카테고리 검색"
+        android:elevation="20dp"/>
+
 </FrameLayout>

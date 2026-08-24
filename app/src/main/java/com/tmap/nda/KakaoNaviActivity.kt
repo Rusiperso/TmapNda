@@ -276,6 +276,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         setContentView(binding.root)
         naviView = binding.naviView
         setupWaypointAddButton()
+        setupNearbyCategoryButton()
 
         // v3.9: Tmap 화면과 동일하게 상단바 드래그 편집 기능 연결 (사용자: "기본 UI는
         // 티맵/카카오맵 차등을 주지 말고 동일하게 적용해야돼") - PanelDragHelper 공용
@@ -1797,6 +1798,25 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         binding.btnAddWaypoint?.setOnClickListener {
             pendingWaypointAddition = true
             showWaypointSearchModeChooser()
+        }
+    }
+
+    // v: 신규기능(주변 카테고리 검색) - 경유지 버튼 옆 카테고리 버튼. NearbyCategoryPopup
+    // 공용 헬퍼를 그대로 씀. 결과를 고르면 안내 중 여부와 무관하게 즉시 그 목적지로
+    // 새 안내를 시작(경유지 추가가 아니라 목적지 교체). #문제시 원복
+    private fun setupNearbyCategoryButton() {
+        binding.btnNearbyCategory?.setOnClickListener {
+            val restKey = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .getString("kakao_rest_api_key", null) ?: return@setOnClickListener
+            val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
+            if (curLat == null || curLon == null) {
+                Toast.makeText(this, "현재 위치를 확인할 수 없습니다", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            NearbyCategoryPopup.show(this, searchHttpClient, restKey, curLat, curLon) { picked ->
+                KakaoRouteDataRepository.reset()
+                resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
+            }
         }
     }
 
