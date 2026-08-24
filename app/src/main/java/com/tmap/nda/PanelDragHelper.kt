@@ -259,6 +259,15 @@ object PanelDragHelper {
             }
         } else null
 
+        // v: 신규기능(목적지 반경 도착알림) - 재억 요청으로 기본 기능에 바로 넣지 않고
+        // 켜고 끄는 옵션으로 추가. ArrivalRadiusAlert.KEY_ENABLED와 동일한 키 사용. #문제시 원복
+        val arrivalRadiusAlertCheckBox = android.widget.Switch(context).apply {
+            text = "목적지 근처 도착 알림 (소리+진동)"
+            isChecked = pref.getBoolean("arrival_radius_alert_enabled", true)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
+
         // v8.7: v8.5 조사로 확인된 Tmap MapLayerType(Default/Aerial) API를 사용자가 켜고 끌 수
         // 있게 노출. 카카오 화면엔 이런 API 자체가 없어서 Tmap 화면 한정 문구를 명시. #문제시 원복
         val satelliteViewCheckBox = android.widget.Switch(context).apply {
@@ -390,16 +399,20 @@ object PanelDragHelper {
         }
         val container = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.VERTICAL
-            addView(checkBox)
-            addView(disableMobileCamCheckBox)
-            addView(showTopBarEventCheckBox)
-            addView(showLaneOverlayTmapCheckBox)
-            addView(distanceFormatKmCheckBox)
-            unlockMapTouchCheckBox?.let { addView(it) }
-            addView(satelliteViewCheckBox)
-            addView(trafficInfoCheckBox)
-            addView(routeLineDisplayCheckBox)
-            addView(favoriteCountRow)
+            // v: 재억 요청(2026-08-24) - 설정 항목을 글자 길이 짧은 순 -> 긴 순으로 재배치.
+            // 즐겨찾기 표시 개수(라벨은 짧지만 -/+ 버튼까지 있어 예외적으로 맨 위). 음량
+            // 조절은 슬라이더가 있어서 항상 맨 아래 고정. #문제시 원복
+            addView(favoriteCountRow)               // 즐겨찾기 표시 개수
+            addView(satelliteViewCheckBox)          // 티맵 위성지도 보기
+            addView(disableMobileCamCheckBox)       // 이동식카메라 감속
+            addView(routeLineDisplayCheckBox)       // 경로선 콤마 화면에 표시
+            addView(checkBox)                       // 속도 10% 초과 시 경고음
+            addView(arrivalRadiusAlertCheckBox)     // 목적지 근처 도착 알림 (소리+진동)
+            addView(trafficInfoCheckBox)            // 티맵 교통 정보 (도로 정체 색깔 표시)
+            addView(distanceFormatKmCheckBox)       // 1000m 이상일 때 km 단위로 거리 표시
+            unlockMapTouchCheckBox?.let { addView(it) } // 티맵 터치 잠금 해제 (핀치줌/드래그 허용)
+            addView(showLaneOverlayTmapCheckBox)    // 차선 안내 오버레이 표시 (Tmap 화면 한정)
+            addView(showTopBarEventCheckBox)        // 상단바에 이벤트(카메라/구간단속/방지턱) 표시
             addView(volumeSectionTitle)
             addView(volumeSeekRow)
         }
@@ -422,6 +435,7 @@ object PanelDragHelper {
                     .putBoolean("topbar_event_enabled", showTopBarEventCheckBox.isChecked)
                     .putBoolean("lane_overlay_tmap_enabled", showLaneOverlayTmapCheckBox.isChecked)
                     .putBoolean("USE_KM_DISTANCE_FORMAT", distanceFormatKmCheckBox.isChecked)
+                    .putBoolean("arrival_radius_alert_enabled", arrivalRadiusAlertCheckBox.isChecked)
                     .putBoolean("tmap_satellite_view_enabled", satelliteViewCheckBox.isChecked)
                     .putBoolean("tmap_traffic_info_enabled", trafficInfoCheckBox.isChecked)
                     .putBoolean("route_line_display_enabled", routeLineDisplayCheckBox.isChecked)
