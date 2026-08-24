@@ -118,20 +118,47 @@ object NearbyCategoryPopup {
             setPadding(dp(context, 12), dp(context, 12), dp(context, 12), dp(context, 12))
             if (clickable) setOnClickListener { onClick() }
         }
-        val titleView = TextView(context).apply {
-            text = title
-            textSize = 14f
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        row.addView(titleView)
+        // v: 재억 제보(2026-08-25) - 배경(검정)에 글자색 지정을 안 해서 안 보였음. 흰색으로
+        // 명시. 거리는 왼쪽에 고정폭으로 먼저 두고(가독성), 이름은 남는 공간을 채우게 함.
+        // 예상 소요시간(거리 기반 대략치, 시속 40km 가정)을 노란색으로 같이 표시. #문제시 원복
         if (subtitle != null) {
             val subtitleView = TextView(context).apply {
                 text = subtitle
                 textSize = 13f
+                setTextColor(android.graphics.Color.WHITE)
+                minWidth = dp(context, 56)
             }
             row.addView(subtitleView)
         }
+        val titleView = TextView(context).apply {
+            text = title
+            textSize = 14f
+            setTextColor(android.graphics.Color.WHITE)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        row.addView(titleView)
+        val etaMinutes = estimateEtaMinutes(subtitle)
+        if (etaMinutes != null) {
+            val etaView = TextView(context).apply {
+                text = "약 ${etaMinutes}분"
+                textSize = 13f
+                setTextColor(android.graphics.Color.parseColor("#FFD54F"))
+            }
+            row.addView(etaView)
+        }
         return row
+    }
+
+    /** 검색 API가 소요시간을 안 줘서, 거리 기반 대략치(시속 40km 가정)로 추정. 정확한 값이 아님. */
+    private fun estimateEtaMinutes(distanceText: String?): Int? {
+        if (distanceText == null) return null
+        val meters = when {
+            distanceText.endsWith("km") -> distanceText.removeSuffix("km").trim().toDoubleOrNull()?.times(1000)
+            distanceText.endsWith("m") -> distanceText.removeSuffix("m").trim().toDoubleOrNull()
+            else -> null
+        } ?: return null
+        val minutes = (meters / 1000.0 / 40.0 * 60.0).toInt()
+        return minutes.coerceAtLeast(1)
     }
 
     private fun dp(context: Context, value: Int): Int =
