@@ -352,6 +352,11 @@ class MapActivity : AppCompatActivity() {
         // (속도초과 경고음/이동식카메라 감속 토글)은 길게 눌러야만 보였음 - 아무도
         // 그걸 몰라서 "설정 창에 그 기능이 안 보인다"는 문의로 이어짐. 우선순위를
         // 뒤집음: 짧게 누르기 = 앱 설정(토글들), 길게 누르기 = 카카오키 재입력(드묾). #문제시 원복
+        binding.btnParkedLocation?.setOnClickListener {
+            binding.svSecondaryPanel?.visibility = View.GONE
+            ParkedLocationPopup.show(this)
+        }
+
         binding.btnEditKey.setOnClickListener {
             binding.svSecondaryPanel?.visibility = View.GONE
             showAppSettingsDialog()
