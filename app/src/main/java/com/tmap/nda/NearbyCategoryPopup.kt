@@ -250,6 +250,11 @@ object NearbyCategoryPopup {
         // 있는 충전소만 걸러서 보여줌. #문제시 원복
         var evSpeedFilter: String? = null // null = 전체
 
+        // v: showEvSpeedChooser와 renderChargers가 서로를 호출하는 상호재귀라, 코틀린 로컬
+        // 함수는 선언 순서로만 참조가 풀려서 어느 순서로 둬도 컴파일 에러가 남. lateinit
+        // 함수변수로 미리 이름만 선언해두고 나중에 실제 구현을 대입해서 순환을 풂. #문제시 원복
+        lateinit var renderChargersFn: (List<HistoryEntry>, List<EvChargerHelper.ChargerStation>, Int) -> Unit
+
         /** 급속/완속/초급속/전체 고르는 팝업. */
         fun showEvSpeedChooser(kakaoHits: List<HistoryEntry>, envStations: List<EvChargerHelper.ChargerStation>) {
             val options = arrayOf("전체", "초급속", "급속", "완속")
@@ -257,12 +262,12 @@ object NearbyCategoryPopup {
                 .setTitle("충전기 속도 선택")
                 .setItems(options) { _, which ->
                     evSpeedFilter = if (which == 0) null else options[which]
-                    renderChargers(kakaoHits, envStations, 0)
+                    renderChargersFn(kakaoHits, envStations, 0)
                 }
                 .show()
         }
 
-        fun renderChargers(kakaoHits: List<HistoryEntry>, envStations: List<EvChargerHelper.ChargerStation>, page: Int = 0) {
+        renderChargersFn = { kakaoHits, envStations, page ->
             fun distMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
                 val dLat = Math.toRadians(lat2 - lat1)
                 val dLon = Math.toRadians(lon2 - lon1)
@@ -308,8 +313,12 @@ object NearbyCategoryPopup {
                     dialog.dismiss()
                     onPick(entry)
                 }
-            }) { newPage -> renderChargers(kakaoHits, envStations, newPage) }
+            }) { newPage -> renderChargersFn(kakaoHits, envStations, newPage) }
             rightList.addView(filterRow, 0)
+        }
+
+        fun renderChargers(kakaoHits: List<HistoryEntry>, envStations: List<EvChargerHelper.ChargerStation>, page: Int = 0) {
+            renderChargersFn(kakaoHits, envStations, page)
         }
 
         fun runEvSearch() {
