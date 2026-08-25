@@ -49,6 +49,27 @@ object QuickSlotShortcutHelper {
             val info = buildShortcutInfo(context, slot, entry)
             shortcutManager.requestPinShortcut(info, null)
             NavLogger.d(context, "[바로가기] 홈화면 고정 요청: slot=$slot name=${entry.name}")
+            // v: 재억 제보(2026-08-25) - isRequestPinShortcutSupported=true(지원한다고
+            // 응답)인데도 실제로 홈화면엔 아이콘이 안 생기는 런처가 있음(일부 커스텀 런처가
+            // 지원 여부만 true로 잘못 보고). 요청 직후가 아니라 몇 초 뒤 실제로 고정됐는지
+            // 재확인해서, 성공/실패를 화면에 명확히 알려줌. #문제시 원복
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                try {
+                    val pinned = shortcutManager.pinnedShortcuts.any { it.id == shortcutId(slot) }
+                    if (pinned) {
+                        NavLogger.d(context, "[바로가기] 고정 확인됨: slot=$slot")
+                    } else {
+                        NavLogger.e(context, "[바로가기] 요청은 성공했지만 실제로 고정 안 됨(런처 문제로 추정): slot=$slot")
+                        android.widget.Toast.makeText(
+                            context,
+                            "홈화면에 추가되지 않은 것 같습니다. 이 헤드유닛 런처가 자동 추가를 지원하지 않을 수 있습니다.",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
+                } catch (e: Exception) {
+                    NavLogger.e(context, "[바로가기] 고정 확인 실패: ${e.message}")
+                }
+            }, 3000L)
         } catch (e: Exception) {
             NavLogger.e(context, "[바로가기] 고정 요청 실패: ${e.message}")
             android.widget.Toast.makeText(context, "홈화면 추가에 실패했습니다: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
