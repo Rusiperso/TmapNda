@@ -54,85 +54,142 @@ object OpinetHelper {
     }
 
     /**
-     * WGS84(위경도) -> TM128(오피넷 좌표계) 변환. 오피넷은 KATEC이 아니라 TM128을 쓰기
-     * 때문에 카카오 SDK의 convertWGS84ToKATEC()을 그대로 쓰면 안 됨(수백m 오차 가능) -
-     * 표준 TM128 투영 공식으로 직접 계산.
+     * WGS84(위경도) -> TM128(오피넷 좌표계) 변환.
+     *
+     * v: 재억 제보(2026-08-25) - 이전 구현은 람베르트 정각원추도법(기상청/네이버 격자용
+     * KATEC-LCC 공식)을 썼는데, 오피넷 TM128은 그것과 전혀 다른 "베셀 타원체 기반
+     * 횡단 메르카토르(TM) 도법 + 좌표계 원점 이동(datum shift)"이라 좌표가 완전히
+     * 어긋나서 반경 검색 결과가 0건으로 나왔음. 검증된 공식(WGS84 지리좌표 -> WGS84
+     * 지심좌표 -> 베셀 지심좌표로 원점이동 -> 베셀 지리좌표 -> TM128 도법 투영)으로
+     * 교체. 파라미터: lat_0=38N, lon_0=128E, k=0.9999, x_0=400000, y_0=600000,
+     * ellps=bessel, towgs84=-146.43,507.89,681.46. #문제시 원복
      */
-    fun wgs84ToTm128(lon: Double, lat: Double): Pair<Double, Double> {
-        val re = 6371.00877
-        val grid = 5.0
-        val slat1 = 30.0
-        val slat2 = 60.0
-        val olon = 126.0
-        val olat = 38.0
-        val xo = 210.0 / grid
-        val yo = 675.0 / grid
+    private const val WGS84_A = 6378137.0
+    private const val WGS84_F = 1.0 / 298.257223563
+    private const val BESSEL_A = 6377397.155
+    private const val BESSEL_F = 1.0 / 299.1528128
+    private const val DX = 146.43
+    private const val DY = -507.89
+    private const val DZ = -681.46
+    private const val TM128_LAT0 = 38.0
+    private const val TM128_LON0 = 128.0
+    private const val TM128_K0 = 0.9999
+    private const val TM128_X0 = 400000.0
+    private const val TM128_Y0 = 600000.0
 
-        val degrad = PI / 180.0
-        val re2 = re / grid
-        val slat1r = slat1 * degrad
-        val slat2r = slat2 * degrad
-        val olonr = olon * degrad
-        val olatr = olat * degrad
+    private fun geographicToGeocentric(latDeg: Double, lonDeg: Double, a: Double, f: Double): Triple<Double, Double, Double> {
+        val e2 = 2 * f - f * f
+        val lat = Math.toRadians(latDeg)
+        val lon = Math.toRadians(lonDeg)
+        val n = a / sqrt(1 - e2 * sin(lat) * sin(lat))
+        val x = n * cos(lat) * cos(lon)
+        val y = n * cos(lat) * sin(lon)
+        val z = n * (1 - e2) * sin(lat)
+        return Triple(x, y, z)
+    }
 
-        var sn = tan(PI * 0.25 + slat2r * 0.5) / tan(PI * 0.25 + slat1r * 0.5)
-        sn = ln(cos(slat1r) / cos(slat2r)) / ln(sn)
-        var sf = tan(PI * 0.25 + slat1r * 0.5)
-        sf = sf.pow(sn) * cos(slat1r) / sn
-        var ro = tan(PI * 0.25 + olatr * 0.5)
-        ro = re2 * sf / ro.pow(sn)
+    private fun geocentricToGeographic(x: Double, y: Double, z: Double, a: Double, f: Double): Pair<Double, Double> {
+        val e2 = 2 * f - f * f
+        val lon = atan2(y, x)
+        val p = sqrt(x * x + y * y)
+        var lat = atan2(z, p * (1 - e2))
+        repeat(5) {
+            val n = a / sqrt(1 - e2 * sin(lat) * sin(lat))
+            val h = p / cos(lat) - n
+            lat = atan2(z, p * (1 - e2 * n / (n + h)))
+        }
+        return Pair(Math.toDegrees(lat), Math.toDegrees(lon))
+    }
 
-        val latr = lat * degrad
-        val lonr = lon * degrad
-        var ra = tan(PI * 0.25 + latr * 0.5)
-        ra = re2 * sf / ra.pow(sn)
-        var theta = lonr - olonr
-        if (theta > PI) theta -= 2.0 * PI
-        if (theta < -PI) theta += 2.0 * PI
-        theta *= sn
+    /** 베셀 타원체 위경도 -> TM128 평면좌표 (Gauss-Krüger 횡단 메르카토르 투영). */
+    private fun besselLatLonToTm(latDeg: Double, lonDeg: Double): Pair<Double, Double> {
+        val a = BESSEL_A
+        val f = BESSEL_F
+        val e2 = 2 * f - f * f
+        val ep2 = e2 / (1 - e2)
+        val lat0 = Math.toRadians(TM128_LAT0)
+        val lon0 = Math.toRadians(TM128_LON0)
+        val lat = Math.toRadians(latDeg)
+        val lon = Math.toRadians(lonDeg)
 
-        val x = (ra * sin(theta) + xo) * grid
-        val y = (ro - ra * cos(theta) + yo) * grid
+        fun meridianArc(phi: Double): Double {
+            val n = f / (2 - f)
+            val n2 = n * n
+            val n3 = n2 * n
+            val a0 = a / (1 + n) * (1 + n2 / 4 + n2 * n2 / 64)
+            return a0 * (phi - 1.5 * n * sin(2 * phi) + (15.0 / 16) * n2 * sin(4 * phi) - (35.0 / 48) * n3 * sin(6 * phi))
+        }
+
+        val m = meridianArc(lat)
+        val m0 = meridianArc(lat0)
+        val nu = a / sqrt(1 - e2 * sin(lat) * sin(lat))
+        val t = tan(lat)
+        val c = ep2 * cos(lat) * cos(lat)
+        val aTerm = (lon - lon0) * cos(lat)
+
+        val x = TM128_K0 * nu * (aTerm + (1 - t * t + c) * aTerm.pow(3) / 6 +
+            (5 - 18 * t * t + t.pow(4)) * aTerm.pow(5) / 120) + TM128_X0
+        val y = TM128_K0 * (m - m0 + nu * t * (aTerm.pow(2) / 2 +
+            (5 - t * t + 9 * c) * aTerm.pow(4) / 24)) + TM128_Y0
         return Pair(x, y)
+    }
+
+    /** TM128 평면좌표 -> 베셀 타원체 위경도 (역투영, 반복 계산). */
+    private fun tmToBesselLatLon(x: Double, y: Double): Pair<Double, Double> {
+        val a = BESSEL_A
+        val f = BESSEL_F
+        val e2 = 2 * f - f * f
+        val ep2 = e2 / (1 - e2)
+        val lat0 = Math.toRadians(TM128_LAT0)
+        val lon0 = Math.toRadians(TM128_LON0)
+
+        fun meridianArc(phi: Double): Double {
+            val n = f / (2 - f)
+            val n2 = n * n
+            val n3 = n2 * n
+            val a0 = a / (1 + n) * (1 + n2 / 4 + n2 * n2 / 64)
+            return a0 * (phi - 1.5 * n * sin(2 * phi) + (15.0 / 16) * n2 * sin(4 * phi) - (35.0 / 48) * n3 * sin(6 * phi))
+        }
+
+        val m0 = meridianArc(lat0)
+        val m = m0 + (y - TM128_Y0) / TM128_K0
+        var phi1 = m / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64))
+        repeat(5) {
+            val mCalc = meridianArc(phi1)
+            phi1 += (m - mCalc) / (a * (1 - e2 * sin(phi1) * sin(phi1)))
+        }
+        val nu1 = a / sqrt(1 - e2 * sin(phi1) * sin(phi1))
+        val t1 = tan(phi1)
+        val c1 = ep2 * cos(phi1) * cos(phi1)
+        val r1 = a * (1 - e2) / (1 - e2 * sin(phi1) * sin(phi1)).pow(1.5)
+        val d = (x - TM128_X0) / (nu1 * TM128_K0)
+
+        val lat = phi1 - (nu1 * t1 / r1) * (d * d / 2 -
+            (5 + 3 * t1 * t1 + 10 * c1 - 4 * c1 * c1) * d.pow(4) / 24)
+        val lon = lon0 + (d - (1 + 2 * t1 * t1 + c1) * d.pow(3) / 6) / cos(phi1)
+        return Pair(Math.toDegrees(lat), Math.toDegrees(lon))
+    }
+
+    fun wgs84ToTm128(lon: Double, lat: Double): Pair<Double, Double> {
+        val (gx, gy, gz) = geographicToGeocentric(lat, lon, WGS84_A, WGS84_F)
+        // WGS84 -> 베셀 지심좌표 원점 이동
+        val bx = gx + DX
+        val by = gy + DY
+        val bz = gz + DZ
+        val (bLat, bLon) = geocentricToGeographic(bx, by, bz, BESSEL_A, BESSEL_F)
+        return besselLatLonToTm(bLat, bLon)
     }
 
     /** TM128 -> WGS84 역변환. 오피넷 응답 좌표(GIS_X_COOR/GIS_Y_COOR)를 카카오 길안내에 쓰려면 필요. */
     fun tm128ToWgs84(x: Double, y: Double): Pair<Double, Double> {
-        val re = 6371.00877
-        val grid = 5.0
-        val slat1 = 30.0
-        val slat2 = 60.0
-        val olon = 126.0
-        val olat = 38.0
-        val xo = 210.0 / grid
-        val yo = 675.0 / grid
-
-        val degrad = PI / 180.0
-        val raddeg = 180.0 / PI
-        val re2 = re / grid
-        val slat1r = slat1 * degrad
-        val slat2r = slat2 * degrad
-        val olonr = olon * degrad
-        val olatr = olat * degrad
-
-        var sn = tan(PI * 0.25 + slat2r * 0.5) / tan(PI * 0.25 + slat1r * 0.5)
-        sn = ln(cos(slat1r) / cos(slat2r)) / ln(sn)
-        var sf = tan(PI * 0.25 + slat1r * 0.5)
-        sf = sf.pow(sn) * cos(slat1r) / sn
-        var ro = tan(PI * 0.25 + olatr * 0.5)
-        ro = re2 * sf / ro.pow(sn)
-
-        val xn = x / grid - xo
-        val yn = ro - y / grid + yo
-        var ra = sqrt(xn * xn + yn * yn)
-        if (sn < 0.0) ra = -ra
-        var alat = (re2 * sf / ra).pow(1.0 / sn)
-        alat = 2.0 * atan(alat) - PI * 0.5
-
-        val theta = if (abs(xn) <= 0.0) 0.0 else atan2(xn, yn)
-        val alon = theta / sn + olonr
-
-        return Pair(alon * raddeg, alat * raddeg)
+        val (bLat, bLon) = tmToBesselLatLon(x, y)
+        val (bx, by, bz) = geographicToGeocentric(bLat, bLon, BESSEL_A, BESSEL_F)
+        // 베셀 -> WGS84 지심좌표 원점 역이동
+        val gx = bx - DX
+        val gy = by - DY
+        val gz = bz - DZ
+        val (wLat, wLon) = geocentricToGeographic(gx, gy, gz, WGS84_A, WGS84_F)
+        return Pair(wLon, wLat)
     }
 
     fun fetchNearby(
@@ -146,6 +203,7 @@ object OpinetHelper {
         onResult: (List<GasStation>) -> Unit
     ) {
         val (x, y) = wgs84ToTm128(lon, lat)
+        NavLogger.d(context, "[오피넷] 좌표변환 wgs84(lat=$lat,lon=$lon) -> tm128(x=$x,y=$y)")
         val urlBuilder = StringBuilder("https://www.opinet.co.kr/api/aroundAll.do?out=json")
             .append("&x=").append(x)
             .append("&y=").append(y)
