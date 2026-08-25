@@ -113,6 +113,12 @@ object EvChargerHelper {
                                 onResult(emptyList())
                                 return@use
                             }
+                            if (items.length() == 0) {
+                                // v: 재억 제보(2026-08-25) - 요청은 성공(에러 없음)했는데 결과가 0건.
+                                // 파라미터명이 잘못됐는지, 진짜 그 지역에 데이터가 없는지 구분하기
+                                // 위해 0건일 때도 원본 응답을 로그로 남김. #문제시 원복
+                                NavLogger.d(context, "[전기차충전소] resultCode=$resultCode 결과 0건, 원본 응답: ${bodyStr.take(500)}")
+                            }
                             val stations = (0 until items.length()).map { idx ->
                                 val o = items.getJSONObject(idx)
                                 val slat = o.optDouble("lat", 0.0)
