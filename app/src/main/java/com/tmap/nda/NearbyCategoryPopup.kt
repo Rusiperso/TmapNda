@@ -136,7 +136,11 @@ object NearbyCategoryPopup {
                 android.widget.Toast.makeText(context, "오피넷 API 키를 설정에서 먼저 입력하세요 (opinet.co.kr 각자 발급)", android.widget.Toast.LENGTH_LONG).show()
                 rightList.removeAllViews()
                 rightList.addView(makeRow(context, "오피넷 키 없음 - 일반 검색으로 대체", null, true, 14f) {
-                    runSearch(CategoryItem("주유소", "OL7"))
+                    rightList.removeAllViews()
+                    rightList.addView(makeRow(context, "검색 중...", null, false, 16f) {})
+                    performCategorySearchShared(context, httpClient, restKey, "OL7", curLat, curLon) { hits ->
+                        (context as? android.app.Activity)?.runOnUiThread { renderResults(hits) }
+                    }
                 })
                 return
             }
