@@ -2601,11 +2601,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     override fun onResume() {
         super.onResume()
         NavLogger.d(this, "[lifecycle] onResume")
-        // v: 신규기능(경유지/카테고리 버튼 표시 옵션) - 설정에서 바꾼 값 바로 반영. #문제시 원복
-        val showWaypointCategoryButtons = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-            .getBoolean("show_waypoint_category_buttons", true)
-        binding.btnAddWaypoint?.visibility = if (showWaypointCategoryButtons) View.VISIBLE else View.GONE
-        binding.btnNearbyCategory?.visibility = if (showWaypointCategoryButtons) View.VISIBLE else View.GONE
+        // v: 신규기능(경유지/카테고리 버튼 표시 옵션) - 재억 지적으로 두 스위치로 분리해서
+        // 각각 독립적으로 켜고 끌 수 있게 함. #문제시 원복
+        val showWaypointButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .getBoolean("show_waypoint_button", true)
+        val showCategoryButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .getBoolean("show_category_button", true)
+        binding.btnAddWaypoint?.visibility = if (showWaypointButton) View.VISIBLE else View.GONE
+        binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
         // v: 재억 요청(2026-08-22) - MapActivity와 동일한 패턴. 카카오 화면이 앞으로
         // 오는 순간 최신 차선정보를 바로 그려주고, 이후 새 데이터가 들어올 때마다
         // 곧바로 반영되도록 "지금 활성화된 화면" 자리에 이 화면을 등록. #문제시 원복
