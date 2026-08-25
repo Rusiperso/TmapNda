@@ -1790,6 +1790,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // v: 재억 요청(2026-08-22) - 안내 중 경유지 추가 기능. 현재 목적지 좌표/이름을
     // guideNewDestinations() 호출 시 그대로 재사용해야 해서 클래스 필드로 보관. #문제시 원복
     private var currentDestName: String = ""
+    // v: 신규기능(주변검색 진행/역방향 표시) - Tmap 화면과 동일. #문제시 원복
+    private var lastKnownBearing: Float? = null
     private var currentDestLat: Double = Double.NaN
     private var currentDestLon: Double = Double.NaN
     // v11.3: MapActivity와 동일 - 집/회사/즐겨찾기 칸 등록용 검색을 여는 중이면 어느 칸인지 담아둠. #문제시 원복
@@ -1809,8 +1811,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     }
 
     // v: 신규기능(주변 카테고리 검색) - 경유지 버튼 옆 카테고리 버튼. NearbyCategoryPopup
-    // 공용 헬퍼를 그대로 씀. 결과를 고르면 안내 중 여부와 무관하게 즉시 그 목적지로
-    // 새 안내를 시작(경유지 추가가 아니라 목적지 교체). #문제시 원복
+    // 공용 헬퍼를 그대로 씀. 안내 중일 때는 경유지 추가/목적지 교체 중 고르게 확인창을
+    // 띄움(재억 요청) - 이미 있는 addWaypointToActiveGuidance()를 그대로 재사용. #문제시 원복
     private fun setupNearbyCategoryButton() {
         binding.btnNearbyCategory?.setOnClickListener {
             val restKey = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
@@ -1820,9 +1822,22 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 Toast.makeText(this, "현재 위치를 확인할 수 없습니다", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            NearbyCategoryPopup.show(this, searchHttpClient, restKey, curLat, curLon) { picked ->
-                KakaoRouteDataRepository.reset()
-                resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
+            NearbyCategoryPopup.show(this, searchHttpClient, restKey, curLat, curLon, lastKnownBearing) { picked ->
+                if (currentDestName.isNotBlank()) {
+                    android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                        .setTitle("경유지로 추가할까요?")
+                        .setMessage("'${picked.name}'을(를) 지금 안내(${currentDestName})의 경유지로 추가할까요, 아니면 새 목적지로 바꿀까요?")
+                        .setPositiveButton("경유지 추가") { _, _ -> addWaypointToActiveGuidance(picked) }
+                        .setNegativeButton("새 목적지로") { _, _ ->
+                            KakaoRouteDataRepository.reset()
+                            resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
+                        }
+                        .setNeutralButton("취소", null)
+                        .show()
+                } else {
+                    KakaoRouteDataRepository.reset()
+                    resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
+                }
             }
         }
     }
@@ -2586,6 +2601,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     override fun onResume() {
         super.onResume()
         NavLogger.d(this, "[lifecycle] onResume")
+        // v: 신규기능(경유지/카테고리 버튼 표시 옵션) - 설정에서 바꾼 값 바로 반영. #문제시 원복
+        val showWaypointCategoryButtons = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .getBoolean("show_waypoint_category_buttons", true)
+        binding.btnAddWaypoint?.visibility = if (showWaypointCategoryButtons) View.VISIBLE else View.GONE
+        binding.btnNearbyCategory?.visibility = if (showWaypointCategoryButtons) View.VISIBLE else View.GONE
         // v: 재억 요청(2026-08-22) - MapActivity와 동일한 패턴. 카카오 화면이 앞으로
         // 오는 순간 최신 차선정보를 바로 그려주고, 이후 새 데이터가 들어올 때마다
         // 곧바로 반영되도록 "지금 활성화된 화면" 자리에 이 화면을 등록. #문제시 원복
@@ -2716,6 +2736,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             val speedKph = (location.speed * 3.6).toInt()
             binding.tvCurrentSpeed?.text = speedKph.toString()
             checkOverSpeedWarning(speedKph)
+            if (location.hasBearing() && location.speed > 1.0f) {
+                lastKnownBearing = location.bearing
+            }
             binding.btnGpsStatus?.text = "GOOD (정확도 ${location.accuracy.toInt()}m)"
             binding.btnGpsStatus?.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
             val gpsManager = KNSDK.sharedGpsManager()
