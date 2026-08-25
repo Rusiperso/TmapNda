@@ -53,6 +53,26 @@ object OpinetHelper {
         context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).edit().remove(PREF_FUEL_TYPE).apply()
     }
 
+    // v: 신규기능(주유소 브랜드 다중선택 필터) - 재억 요청 - 여러 브랜드(GS,현대오일뱅크,
+    // S-OIL 등)를 동시에 골라 저장해두면, 다음부터 계속 그 브랜드들만 걸러서 보여줌.
+    // 콤마로 구분된 브랜드 코드 문자열로 저장, 비어있으면(null) 전체. #문제시 원복
+    private const val PREF_BRAND_FILTER = "opinet_brand_filter_codes"
+
+    fun savedBrandFilter(context: Context): Set<String>? {
+        val raw = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getString(PREF_BRAND_FILTER, null)
+        if (raw.isNullOrBlank()) return null
+        return raw.split(",").toSet()
+    }
+
+    fun saveBrandFilter(context: Context, codes: Set<String>) {
+        val prefs = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        if (codes.isEmpty()) {
+            prefs.edit().remove(PREF_BRAND_FILTER).apply()
+        } else {
+            prefs.edit().putString(PREF_BRAND_FILTER, codes.joinToString(",")).apply()
+        }
+    }
+
     /**
      * WGS84(위경도) -> TM128(오피넷 좌표계) 변환.
      *
