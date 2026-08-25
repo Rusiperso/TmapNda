@@ -4,7 +4,6 @@ import android.content.Context
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
-import java.net.URLEncoder
 import kotlin.math.*
 
 /**
@@ -72,9 +71,11 @@ object EvChargerHelper {
                 onResult(emptyList())
                 return@resolveZcode
             }
-            val encodedKey = URLEncoder.encode(evApiKey, "UTF-8")
+            // v: 재억 제보(2026-08-25) - 공공데이터포털 키를 URLEncoder로 또 인코딩해서
+            // 이중 인코딩이 되어 "SERVICE_KEY_IS_NOT_REGISTERED_ERROR"가 났음. 포털이 주는
+            // 키는 이미 Encoding 형태(특수문자가 %XX로 인코딩된 상태)라 그대로 붙여야 함. #문제시 원복
             val url = "http://apis.data.go.kr/B552584/EvCharger/getChargerInfo" +
-                "?serviceKey=$encodedKey&zcode=$zcode&numOfRows=100&pageNo=1&dataType=JSON"
+                "?serviceKey=$evApiKey&zcode=$zcode&numOfRows=100&pageNo=1&dataType=JSON"
             val request = Request.Builder().url(url).build()
             httpClient.newCall(request).enqueue(object : okhttp3.Callback {
                 override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
