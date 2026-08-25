@@ -447,6 +447,16 @@ object NearbyCategoryPopup {
                 textSize = 13f
                 setTextColor(android.graphics.Color.WHITE)
             })
+            // v: 재억 지적(2026-08-25) - 주유소/전기차충전소는 일반 카테고리와 달리 예상
+            // 소요시간이 안 붙어 있었음. 같은 추정 로직(거리 기반, 시속 40km 가정) 적용. #문제시 원복
+            val etaMinutes = estimateEtaMinutes(distText)
+            if (etaMinutes != null) {
+                topRow.addView(TextView(context).apply {
+                    text = "  약 ${etaMinutes}분"
+                    textSize = 13f
+                    setTextColor(android.graphics.Color.parseColor("#FFD54F"))
+                })
+            }
         }
         row.addView(topRow)
         if (priceText != null) {
@@ -466,9 +476,16 @@ object NearbyCategoryPopup {
             setPadding(dp(context, 16), dp(context, 16), dp(context, 16), dp(context, 16))
             if (clickable) setOnClickListener { onClick() }
         }
-        // v: 재억 제보(2026-08-25) - 배경(검정)에 글자색 지정을 안 해서 안 보였음. 흰색으로
-        // 명시. 거리는 왼쪽에 고정폭으로 먼저 두고(가독성), 이름은 남는 공간을 채우게 함.
-        // 예상 소요시간(거리 기반 대략치, 시속 40km 가정)을 노란색으로 같이 표시. #문제시 원복
+        // v: 재억 요청(2026-08-25) - "00m 이름 시간" 순서가 헷갈린다는 지적. "이름 00m 시간"
+        // 순서로 변경(이름 먼저, 그다음 거리, 그다음 예상시간) - 편의점뿐 아니라 이 공용
+        // 함수를 쓰는 모든 일반 카테고리(카페/약국/은행/병원/마트 등)에 다 적용됨. #문제시 원복
+        val titleView = TextView(context).apply {
+            text = title
+            textSize = titleSize
+            setTextColor(android.graphics.Color.WHITE)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        row.addView(titleView)
         if (subtitle != null) {
             val subtitleView = TextView(context).apply {
                 text = subtitle
@@ -478,13 +495,6 @@ object NearbyCategoryPopup {
             }
             row.addView(subtitleView)
         }
-        val titleView = TextView(context).apply {
-            text = title
-            textSize = titleSize
-            setTextColor(android.graphics.Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        row.addView(titleView)
         val etaMinutes = estimateEtaMinutes(subtitle)
         if (etaMinutes != null) {
             val etaView = TextView(context).apply {
