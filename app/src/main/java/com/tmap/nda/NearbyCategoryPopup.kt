@@ -166,6 +166,12 @@ object NearbyCategoryPopup {
 
         fun renderGasStations(stations: List<OpinetHelper.GasStation>, page: Int = 0) {
             val sorted = sortByPriceAndDistance(stations)
+            val savedBrands = OpinetHelper.savedBrandFilter(context)
+            val brandLabel = if (savedBrands.isNullOrEmpty()) {
+                "전체"
+            } else {
+                OpinetHelper.BRANDS.filter { it.second in savedBrands }.joinToString(",") { it.first }
+            }
             renderPaged(sorted, page, { st ->
                 val distText = SearchRanking.formatDistance(st.distanceMeters)
                 val fuelLabel = OpinetHelper.FUEL_TYPES.firstOrNull { it.second == OpinetHelper.savedFuelType(context) }?.first ?: "가격"
@@ -175,6 +181,14 @@ object NearbyCategoryPopup {
                     onPick(HistoryEntry(st.name, "", st.lat, st.lon, st.distanceMeters))
                 }
             }) { newPage -> renderGasStations(stations, newPage) }
+            // v: 재억 지적(2026-08-25) - 유종/브랜드 확정 후엔 팝업 없이 바로 결과가 뜨는
+            // 대신, 결과 화면 맨 위에 지금 필터를 보여주고 탭하면 다시 바꿀 수 있게 함. #문제시 원복
+            val filterRow = makeRow(context, "브랜드 필터: $brandLabel (탭해서 변경)", null, true, 13f) {
+                showBrandMultiChooser(context, OpinetHelper.FUEL_TYPES.firstOrNull { it.second == OpinetHelper.savedFuelType(context) }?.first) {
+                    runGasSearch()
+                }
+            }
+            rightList.addView(filterRow, 0)
         }
 
         fun runGasSearch() {
@@ -206,8 +220,9 @@ object NearbyCategoryPopup {
             }
         }
 
-        // v: 신규기능(유종 선택) - 처음 한 번만 물어보고 계속 그 유종으로 검색됨. 재억 요청 -
-        // 다시 바꿀 수 있게 브랜드 선택 창 맨 위에 "유종 변경" 항목을 항상 넣어둠. #문제시 원복
+        // v: 재억 지적(2026-08-25) - 유종/브랜드가 이미 확정돼 있는데도 주유소 탭할 때마다
+        // 팝업이 다시 떠서 불편하다는 지적 - 둘 다 확정됐으면 팝업 없이 바로 검색, 결과
+        // 화면 위 "브랜드 필터 변경" 행으로만 재변경 가능하게 함. #문제시 원복
         fun showBrandChooserForGas() {
             val currentFuelLabel = OpinetHelper.FUEL_TYPES.firstOrNull { it.second == OpinetHelper.savedFuelType(context) }?.first
             showBrandMultiChooser(context, currentFuelLabel) { runGasSearch() }
@@ -219,8 +234,10 @@ object NearbyCategoryPopup {
                     OpinetHelper.saveFuelType(context, prodcd)
                     showBrandChooserForGas()
                 }
-            } else {
+            } else if (!OpinetHelper.isBrandFilterConfigured(context)) {
                 showBrandChooserForGas()
+            } else {
+                runGasSearch()
             }
         }
 
@@ -324,7 +341,7 @@ object NearbyCategoryPopup {
         fun runEvSearch() {
             rightList.removeAllViews()
             rightList.addView(makeRow(context, "검색 중...", null, false, 16f) {})
-            performKeywordSearchShared(context, httpClient, restKey, "전기차 충전소", curLat, curLon) { kakaoHits ->
+            performKeywordSearchShared(context, httpClient, restKey, "전기차 충전소", curLat, curLon, maxPages = 3) { kakaoHits ->
                 val evKey = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                     .getString("ev_charger_api_key", null)
                 if (evKey.isNullOrBlank()) {
@@ -489,6 +506,8 @@ object NearbyCategoryPopup {
 
     /** MapActivity.performCategorySearch()와 동일한 API 호출 - 두 화면이 같은 결과 형식을 쓰게 공용화. */
     /** 카카오 키워드 검색 - 카테고리 코드가 없는 "전기차 충전소" 같은 경우 사용. */
+    /** 재억 요청(2026-08-25) - 전기차 충전소 등 결과가 부족한 경우, 카카오 페이지를
+     * 여러 장(최대 3장=45건) 이어붙여서 더 많이 받아옴. #문제시 원복 */
     private fun performKeywordSearchShared(
         context: Context,
         httpClient: OkHttpClient,
@@ -496,50 +515,60 @@ object NearbyCategoryPopup {
         keyword: String,
         lat: Double,
         lon: Double,
+        maxPages: Int = 1,
         onResult: (List<HistoryEntry>) -> Unit
     ) {
-        NavLogger.d(context, "[주변카테고리검색] 키워드 요청 시작 keyword=$keyword lat=$lat lon=$lon")
-        val encodedKeyword = java.net.URLEncoder.encode(keyword, "UTF-8")
-        val url = "https://dapi.kakao.com/v2/local/search/keyword.json?query=$encodedKeyword" +
-            "&x=$lon&y=$lat&radius=20000&sort=distance"
-        val request = Request.Builder()
-            .url(url)
-            .header("Authorization", "KakaoAK $restKey")
-            .build()
-        httpClient.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                NavLogger.e(context, "[주변카테고리검색] 키워드 요청 실패: ${e.message}")
-                onResult(emptyList())
-            }
-
-            override fun onResponse(call: Call, response: okhttp3.Response) {
-                response.use {
-                    if (!it.isSuccessful) {
-                        NavLogger.e(context, "[주변카테고리검색] 키워드 실패 code=${it.code}")
-                        onResult(emptyList())
-                        return@use
-                    }
-                    val json = JSONObject(it.body?.string() ?: "{}")
-                    val documents = json.optJSONArray("documents")
-                    if (documents == null || documents.length() == 0) {
-                        onResult(emptyList())
-                        return@use
-                    }
-                    val hits = (0 until documents.length()).map { idx ->
-                        val d = documents.getJSONObject(idx)
-                        HistoryEntry(
-                            d.optString("place_name", "이름 없음"),
-                            d.optString("road_address_name", d.optString("address_name", "")),
-                            d.optDouble("y"),
-                            d.optDouble("x"),
-                            d.optString("distance").toDoubleOrNull()
-                        )
-                    }
-                    NavLogger.d(context, "[주변카테고리검색] 키워드 결과 ${hits.size}건")
-                    onResult(hits)
+        val accumulated = mutableListOf<HistoryEntry>()
+        fun fetchPage(page: Int) {
+            NavLogger.d(context, "[주변카테고리검색] 키워드 요청 시작 keyword=$keyword page=$page lat=$lat lon=$lon")
+            val encodedKeyword = java.net.URLEncoder.encode(keyword, "UTF-8")
+            val url = "https://dapi.kakao.com/v2/local/search/keyword.json?query=$encodedKeyword" +
+                "&x=$lon&y=$lat&radius=20000&sort=distance&size=15&page=$page"
+            val request = Request.Builder()
+                .url(url)
+                .header("Authorization", "KakaoAK $restKey")
+                .build()
+            httpClient.newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    NavLogger.e(context, "[주변카테고리검색] 키워드 요청 실패: ${e.message}")
+                    onResult(accumulated)
                 }
-            }
-        })
+
+                override fun onResponse(call: Call, response: okhttp3.Response) {
+                    response.use {
+                        if (!it.isSuccessful) {
+                            NavLogger.e(context, "[주변카테고리검색] 키워드 실패 code=${it.code}")
+                            onResult(accumulated)
+                            return@use
+                        }
+                        val json = JSONObject(it.body?.string() ?: "{}")
+                        val documents = json.optJSONArray("documents")
+                        val isEnd = json.optJSONObject("meta")?.optBoolean("is_end", true) ?: true
+                        if (documents != null) {
+                            for (idx in 0 until documents.length()) {
+                                val d = documents.getJSONObject(idx)
+                                accumulated.add(
+                                    HistoryEntry(
+                                        d.optString("place_name", "이름 없음"),
+                                        d.optString("road_address_name", d.optString("address_name", "")),
+                                        d.optDouble("y"),
+                                        d.optDouble("x"),
+                                        d.optString("distance").toDoubleOrNull()
+                                    )
+                                )
+                            }
+                        }
+                        if (!isEnd && page < maxPages) {
+                            fetchPage(page + 1)
+                        } else {
+                            NavLogger.d(context, "[주변카테고리검색] 키워드 최종 결과 ${accumulated.size}건")
+                            onResult(accumulated)
+                        }
+                    }
+                }
+            })
+        }
+        fetchPage(1)
     }
 
     private fun performCategorySearchShared(
