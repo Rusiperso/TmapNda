@@ -250,6 +250,18 @@ object NearbyCategoryPopup {
         // 있는 충전소만 걸러서 보여줌. #문제시 원복
         var evSpeedFilter: String? = null // null = 전체
 
+        /** 급속/완속/초급속/전체 고르는 팝업. */
+        fun showEvSpeedChooser(kakaoHits: List<HistoryEntry>, envStations: List<EvChargerHelper.ChargerStation>) {
+            val options = arrayOf("전체", "초급속", "급속", "완속")
+            AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("충전기 속도 선택")
+                .setItems(options) { _, which ->
+                    evSpeedFilter = if (which == 0) null else options[which]
+                    renderChargers(kakaoHits, envStations, 0)
+                }
+                .show()
+        }
+
         fun renderChargers(kakaoHits: List<HistoryEntry>, envStations: List<EvChargerHelper.ChargerStation>, page: Int = 0) {
             fun distMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
                 val dLat = Math.toRadians(lat2 - lat1)
@@ -298,18 +310,6 @@ object NearbyCategoryPopup {
                 }
             }) { newPage -> renderChargers(kakaoHits, envStations, newPage) }
             rightList.addView(filterRow, 0)
-        }
-
-        /** 급속/완속/초급속/전체 고르는 팝업. */
-        fun showEvSpeedChooser(kakaoHits: List<HistoryEntry>, envStations: List<EvChargerHelper.ChargerStation>) {
-            val options = arrayOf("전체", "초급속", "급속", "완속")
-            AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle("충전기 속도 선택")
-                .setItems(options) { _, which ->
-                    evSpeedFilter = if (which == 0) null else options[which]
-                    renderChargers(kakaoHits, envStations, 0)
-                }
-                .show()
         }
 
         fun runEvSearch() {
