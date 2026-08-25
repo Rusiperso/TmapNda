@@ -46,6 +46,9 @@ object NearbyCategoryPopup {
         restKey: String,
         curLat: Double,
         curLon: Double,
+        // v: 신규기능(주변검색 진행/역방향 표시) - 현재 진행방향(bearing, 0~360도).
+        // null이면(정지 중이라 아직 안 잡혔거나) 방향 표시를 생략. #문제시 원복
+        currentBearing: Float? = null,
         onPick: (HistoryEntry) -> Unit
     ) {
         val root = LinearLayout(context).apply {
@@ -139,10 +142,28 @@ object NearbyCategoryPopup {
             }
         }
 
+        // v: 신규기능(주변검색 진행/역방향 표시) - GPS bearing과 "현재위치->후보" 방향을
+        // 단순 비교(직선거리 기준, API 추가 호출 없음). 각도차 90도 이내면 진행방향으로
+        // 대략 간주, 넘으면 역방향. 도로가 구불구불하면 부정확할 수 있음(직선 기준 추정치). #문제시 원복
+        fun directionLabel(targetLat: Double, targetLon: Double): String? {
+            val bearing = currentBearing ?: return null
+            val dLon = Math.toRadians(targetLon - curLon)
+            val lat1 = Math.toRadians(curLat)
+            val lat2 = Math.toRadians(targetLat)
+            val y = Math.sin(dLon) * Math.cos(lat2)
+            val x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon)
+            val targetBearing = (Math.toDegrees(Math.atan2(y, x)) + 360) % 360
+            var diff = Math.abs(targetBearing - bearing)
+            if (diff > 180) diff = 360 - diff
+            return if (diff <= 90) "진행방향" else "역방향"
+        }
+
         fun renderResults(hits: List<HistoryEntry>, page: Int = 0) {
             renderPaged(hits, page, { entry ->
                 val distText = entry.distanceMeters?.let { SearchRanking.formatDistance(it) }
-                makeRow(context, entry.name, distText, true, 14f) {
+                val dirLabel = directionLabel(entry.lat, entry.lon)
+                val fullDist = if (dirLabel != null && distText != null) "$distText · $dirLabel" else distText
+                makeRow(context, entry.name, fullDist, true, 14f) {
                     dialog.dismiss()
                     onPick(entry)
                 }
@@ -178,9 +199,11 @@ object NearbyCategoryPopup {
             }
             renderPaged(sorted, page, { st ->
                 val distText = SearchRanking.formatDistance(st.distanceMeters)
+                val dirLabel = directionLabel(st.lat, st.lon)
+                val fullDist = if (dirLabel != null) "$distText · $dirLabel" else distText
                 val fuelLabel = OpinetHelper.FUEL_TYPES.firstOrNull { it.second == OpinetHelper.savedFuelType(context) }?.first ?: "가격"
                 val priceText = st.gasolinePrice?.let { "$fuelLabel ${it}원" }
-                makeGasRow(context, "${st.brandName} ${st.name}", distText, priceText) {
+                makeGasRow(context, "${st.brandName} ${st.name}", fullDist, priceText) {
                     dialog.dismiss()
                     onPick(HistoryEntry(st.name, "", st.lat, st.lon, st.distanceMeters))
                 }
@@ -315,6 +338,8 @@ object NearbyCategoryPopup {
             }
             renderPaged(filteredHits, page, { entry ->
                 val distText = entry.distanceMeters?.let { SearchRanking.formatDistance(it) }
+                val dirLabel = directionLabel(entry.lat, entry.lon)
+                val fullDist = if (dirLabel != null && distText != null) "$distText · $dirLabel" else distText
                 val nearby = envStations.filter { st -> distMeters(entry.lat, entry.lon, st.lat, st.lon) <= 150.0 }
                 val statusText = if (nearby.isEmpty()) {
                     "충전기 정보 없음"
@@ -334,7 +359,7 @@ object NearbyCategoryPopup {
                     "충전기 ${nearby.size}대$speedText · 대기 $waiting · 충전중 $charging" +
                         (if (trouble > 0) " · 이상 $trouble" else "")
                 }
-                makeGasRow(context, entry.name, distText, statusText) {
+                makeGasRow(context, entry.name, fullDist, statusText) {
                     dialog.dismiss()
                     onPick(entry)
                 }

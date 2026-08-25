@@ -550,6 +550,9 @@ class MapActivity : AppCompatActivity() {
 
     private var lastKnownLat: Double? = null
     private var lastKnownLon: Double? = null
+    // v: 신규기능(주변검색 진행/역방향 표시) - GPS의 bearing(진행방향)을 저장해뒀다가
+    // 주변 카테고리 검색 결과 표시에 씀. API 추가 호출 없이 이미 들어오는 GPS 값만 사용. #문제시 원복
+    private var lastKnownBearing: Float? = null
 
     private var lastSearchClickAt = 0L
     // v11.3: 집/회사/즐겨찾기 칸을 등록하려고 검색을 여는 중이면 여기에 어느 칸인지
@@ -2974,7 +2977,7 @@ class MapActivity : AppCompatActivity() {
                 Toast.makeText(this, "현재 위치를 확인할 수 없습니다", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            NearbyCategoryPopup.show(this, httpClient, restKey, curLat, curLon) { picked ->
+            NearbyCategoryPopup.show(this, httpClient, restKey, curLat, curLon, lastKnownBearing) { picked ->
                 startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon)
             }
         }
@@ -3557,6 +3560,9 @@ class MapActivity : AppCompatActivity() {
                 val locationListener = android.location.LocationListener { location ->
                     lastKnownLat = location.latitude
                     lastKnownLon = location.longitude
+                    if (location.hasBearing() && location.speed > 1.0f) { // 저속/정지 시 bearing이 부정확해서 어느정도 속도 있을 때만 갱신
+                        lastKnownBearing = location.bearing
+                    }
                     val speedKph = (location.speed * 3.6).toInt()
                     if (speedKph > 0) {
                         runOnUiThread {
@@ -3780,6 +3786,11 @@ class MapActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         NavLogger.d(this, "[MapActivity lifecycle] onResume")
+        // v: 신규기능(경유지/카테고리 버튼 표시 옵션) - 설정 화면에서 바꾼 값이 바로
+        // 반영되도록 화면이 다시 보일 때마다 다시 읽어서 적용. #문제시 원복
+        val showWaypointCategoryButtons = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .getBoolean("show_waypoint_category_buttons", true)
+        binding.btnNearbyCategory?.visibility = if (showWaypointCategoryButtons) View.VISIBLE else View.GONE
         // v: 재억 요청(2026-08-22) - 카카오 화면에서 돌아오는 순간뿐 아니라, 티맵 화면이
         // 다시 보이기 시작하는 즉시 최신 차선정보를 한 번 그려주고, 이후 새 데이터가 들어올
         // 때마다 곧바로 반영되도록 "지금 활성화된 화면" 자리에 이 화면을 등록. #문제시 원복
