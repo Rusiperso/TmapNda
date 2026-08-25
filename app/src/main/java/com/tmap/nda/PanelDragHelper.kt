@@ -268,6 +268,15 @@ object PanelDragHelper {
             setPadding(40, 0, 40, 30)
         }
 
+        // v: 신규기능(경유지/카테고리 버튼 표시) - 재억 요청으로 켜고 끄는 옵션 추가.
+        // 기본값 켜짐(true). #문제시 원복
+        val showWaypointCategoryButtonsCheckBox = android.widget.Switch(context).apply {
+            text = "경유지/카테고리 버튼 표시"
+            isChecked = pref.getBoolean("show_waypoint_category_buttons", true)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
+
         // v8.7: v8.5 조사로 확인된 Tmap MapLayerType(Default/Aerial) API를 사용자가 켜고 끌 수
         // 있게 노출. 카카오 화면엔 이런 API 자체가 없어서 Tmap 화면 한정 문구를 명시. #문제시 원복
         val satelliteViewCheckBox = android.widget.Switch(context).apply {
@@ -387,6 +396,7 @@ object PanelDragHelper {
             addView(routeLineDisplayCheckBox)       // 경로선 콤마 화면에 표시
             addView(checkBox)                       // 속도 10% 초과 시 경고음
             addView(arrivalRadiusAlertCheckBox)     // 목적지 근처 도착 알림 (소리+진동)
+            addView(showWaypointCategoryButtonsCheckBox) // 경유지/카테고리 버튼 표시
             addView(trafficInfoCheckBox)            // 티맵 교통 정보 (도로 정체 색깔 표시)
             addView(distanceFormatKmCheckBox)       // 1000m 이상일 때 km 단위로 거리 표시
             unlockMapTouchCheckBox?.let { addView(it) } // 티맵 터치 잠금 해제 (핀치줌/드래그 허용)
@@ -415,6 +425,7 @@ object PanelDragHelper {
                     .putBoolean("lane_overlay_tmap_enabled", showLaneOverlayTmapCheckBox.isChecked)
                     .putBoolean("USE_KM_DISTANCE_FORMAT", distanceFormatKmCheckBox.isChecked)
                     .putBoolean("arrival_radius_alert_enabled", arrivalRadiusAlertCheckBox.isChecked)
+                    .putBoolean("show_waypoint_category_buttons", showWaypointCategoryButtonsCheckBox.isChecked)
                     .putBoolean("tmap_satellite_view_enabled", satelliteViewCheckBox.isChecked)
                     .putBoolean("tmap_traffic_info_enabled", trafficInfoCheckBox.isChecked)
                     .putBoolean("route_line_display_enabled", routeLineDisplayCheckBox.isChecked)
