@@ -349,7 +349,7 @@ object NearbyCategoryPopup {
         fun runEvSearch() {
             rightList.removeAllViews()
             rightList.addView(makeRow(context, "검색 중...", null, false, 16f) {})
-            performKeywordSearchShared(context, httpClient, restKey, "전기차 충전소", curLat, curLon, maxPages = 3) { kakaoHits ->
+            performKeywordSearchShared(context, httpClient, restKey, "전기차 충전소", curLat, curLon, maxPages = 5) { kakaoHits ->
                 val evKey = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                     .getString("ev_charger_api_key", null)
                 if (evKey.isNullOrBlank()) {
@@ -589,6 +589,9 @@ object NearbyCategoryPopup {
         fetchPage(1)
     }
 
+    // v: 재억 요청(2026-08-25) - 카테고리별로 검색 범위가 제각각이었던 걸 통일 -
+    // 일반 카테고리(편의점/카페/약국 등)도 전기차충전소와 동일하게 최대 5페이지(75건)까지
+    // 이어받음. #문제시 원복
     private fun performCategorySearchShared(
         context: Context,
         httpClient: OkHttpClient,
@@ -598,45 +601,55 @@ object NearbyCategoryPopup {
         lon: Double,
         onResult: (List<HistoryEntry>) -> Unit
     ) {
-        NavLogger.d(context, "[주변카테고리검색] 요청 시작 code=$categoryCode lat=$lat lon=$lon")
-        val url = "https://dapi.kakao.com/v2/local/search/category.json?category_group_code=$categoryCode" +
-            "&x=$lon&y=$lat&radius=20000&sort=distance"
-        val request = Request.Builder()
-            .url(url)
-            .header("Authorization", "KakaoAK $restKey")
-            .build()
-        httpClient.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                NavLogger.e(context, "[주변카테고리검색] 요청 실패: ${e.message}")
-                onResult(emptyList())
-            }
-
-            override fun onResponse(call: Call, response: okhttp3.Response) {
-                response.use {
-                    if (!it.isSuccessful) {
-                        NavLogger.e(context, "[주변카테고리검색] 실패 code=${it.code}")
-                        onResult(emptyList())
-                        return@use
-                    }
-                    val json = JSONObject(it.body?.string() ?: "{}")
-                    val documents = json.optJSONArray("documents")
-                    if (documents == null || documents.length() == 0) {
-                        onResult(emptyList())
-                        return@use
-                    }
-                    val hits = (0 until documents.length()).map { idx ->
-                        val d = documents.getJSONObject(idx)
-                        HistoryEntry(
-                            d.optString("place_name", "이름 없음"),
-                            d.optString("road_address_name", d.optString("address_name", "")),
-                            d.optDouble("y"),
-                            d.optDouble("x"),
-                            d.optString("distance").toDoubleOrNull()
-                        )
-                    }
-                    onResult(hits)
+        val accumulated = mutableListOf<HistoryEntry>()
+        fun fetchPage(page: Int) {
+            NavLogger.d(context, "[주변카테고리검색] 요청 시작 code=$categoryCode page=$page lat=$lat lon=$lon")
+            val url = "https://dapi.kakao.com/v2/local/search/category.json?category_group_code=$categoryCode" +
+                "&x=$lon&y=$lat&radius=20000&sort=distance&size=15&page=$page"
+            val request = Request.Builder()
+                .url(url)
+                .header("Authorization", "KakaoAK $restKey")
+                .build()
+            httpClient.newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    NavLogger.e(context, "[주변카테고리검색] 요청 실패: ${e.message}")
+                    onResult(accumulated)
                 }
-            }
-        })
+
+                override fun onResponse(call: Call, response: okhttp3.Response) {
+                    response.use {
+                        if (!it.isSuccessful) {
+                            NavLogger.e(context, "[주변카테고리검색] 실패 code=${it.code}")
+                            onResult(accumulated)
+                            return@use
+                        }
+                        val json = JSONObject(it.body?.string() ?: "{}")
+                        val documents = json.optJSONArray("documents")
+                        val isEnd = json.optJSONObject("meta")?.optBoolean("is_end", true) ?: true
+                        if (documents != null) {
+                            for (idx in 0 until documents.length()) {
+                                val d = documents.getJSONObject(idx)
+                                accumulated.add(
+                                    HistoryEntry(
+                                        d.optString("place_name", "이름 없음"),
+                                        d.optString("road_address_name", d.optString("address_name", "")),
+                                        d.optDouble("y"),
+                                        d.optDouble("x"),
+                                        d.optString("distance").toDoubleOrNull()
+                                    )
+                                )
+                            }
+                        }
+                        if (!isEnd && page < 5) {
+                            fetchPage(page + 1)
+                        } else {
+                            NavLogger.d(context, "[주변카테고리검색] 최종 결과 ${accumulated.size}건")
+                            onResult(accumulated)
+                        }
+                    }
+                }
+            })
+        }
+        fetchPage(1)
     }
 }
