@@ -368,34 +368,13 @@ object PanelDragHelper {
             textSize = 15f
             setPadding(40, 20, 40, 10)
         }
-        var pendingVolumePercent = VolumeHelper.savedVolumePercent(context)
-        val volumeValueText = android.widget.TextView(context).apply {
-            text = "$pendingVolumePercent%"
-            setTextColor(android.graphics.Color.WHITE)
-            textSize = 14f
-            minWidth = 70
-            gravity = android.view.Gravity.END
-        }
-        val volumeSeekBar = android.widget.SeekBar(context).apply {
-            max = 100
-            progress = pendingVolumePercent
-            setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: android.widget.SeekBar?, value: Int, fromUser: Boolean) {
-                    pendingVolumePercent = value
-                    volumeValueText.text = "$value%"
-                }
-                override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
-                override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
-            })
-        }
-        val volumeSeekRow = android.widget.LinearLayout(context).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(40, 0, 40, 4)
-            addView(volumeSeekBar, android.widget.LinearLayout.LayoutParams(
-                0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
-            ))
-            addView(volumeValueText)
+        // v: 재억 요청(2026-08-25) - 물리 볼륨버튼으로 실시간 조절/동기화가 되므로 슬라이더
+        // 제거. "길안내 음량" 제목만 남기고 그 아래 안내 문구로 대체. #문제시 원복
+        val volumeHintText = android.widget.TextView(context).apply {
+            text = "차량/헤드유닛 물리 볼륨버튼으로 조절하세요"
+            setTextColor(android.graphics.Color.parseColor("#999999"))
+            textSize = 13f
+            setPadding(40, 0, 40, 10)
         }
         val container = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.VERTICAL
@@ -414,7 +393,7 @@ object PanelDragHelper {
             addView(showLaneOverlayTmapCheckBox)    // 차선 안내 오버레이 표시 (Tmap 화면 한정)
             addView(showTopBarEventCheckBox)        // 상단바에 이벤트(카메라/구간단속/방지턱) 표시
             addView(volumeSectionTitle)
-            addView(volumeSeekRow)
+            addView(volumeHintText)
         }
         // v15.3: 설정 항목이 많아져서 다이얼로그 세로 길이가 화면을 넘길 수 있으므로
         // ScrollView로 감쌈. AlertDialog는 setView(content)의 버튼 줄을 항상 콘텐츠
@@ -446,8 +425,6 @@ object PanelDragHelper {
                         }
                     }
                     .apply()
-                // v15.3: 음량도 다른 항목들과 같은 저장 버튼 한 번으로 같이 저장(별도 버튼 제거)
-                VolumeHelper.saveExplicitVolumePercent(context, pendingVolumePercent)
                 if (touchLockOverlay != null && unlockMapTouchCheckBox != null) {
                     if (unlockMapTouchCheckBox.isChecked) {
                         touchLockOverlay.setOnTouchListener { _, _ -> false }
