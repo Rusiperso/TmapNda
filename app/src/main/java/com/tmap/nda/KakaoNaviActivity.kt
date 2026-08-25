@@ -1792,6 +1792,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private var currentDestName: String = ""
     // v: 신규기능(주변검색 진행/역방향 표시) - Tmap 화면과 동일. #문제시 원복
     private var lastKnownBearing: Float? = null
+    // v: 신규기능(경유지 취소 버튼) - 경유지가 추가돼 있는지, 그 경유지 정보가 뭔지 기억.
+    // 취소 버튼은 이 값이 있을 때만 보임. #문제시 원복
+    private var activeWaypoint: HistoryEntry? = null
     private var currentDestLat: Double = Double.NaN
     private var currentDestLon: Double = Double.NaN
     // v11.3: MapActivity와 동일 - 집/회사/즐겨찾기 칸 등록용 검색을 여는 중이면 어느 칸인지 담아둠. #문제시 원복
@@ -1807,6 +1810,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         binding.btnAddWaypoint?.setOnClickListener {
             pendingWaypointAddition = true
             showWaypointSearchModeChooser()
+        }
+        binding.btnCancelWaypoint?.setOnClickListener {
+            android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("경유지 취소")
+                .setMessage("'${activeWaypoint?.name ?: "경유지"}'를 경로에서 뺄까요?")
+                .setPositiveButton("취소하기") { _, _ -> cancelActiveWaypoint() }
+                .setNegativeButton("아니요", null)
+                .show()
         }
     }
 
@@ -1855,6 +1866,61 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
             .setNegativeButton("취소") { _, _ -> pendingWaypointAddition = false }
             .show()
+    }
+
+    // v: 신규기능(경유지 취소 버튼) - 경유지 없이 현재위치->원래 목적지로 다시 경로 계산.
+    // addWaypointToActiveGuidance()와 거의 같은 구조, via 목록만 비움. #문제시 원복
+    private fun cancelActiveWaypoint() {
+        if (currentDestLat.isNaN() || currentDestLon.isNaN()) {
+            Toast.makeText(this, "경유지 취소 실패: 목적지 정보 없음", Toast.LENGTH_SHORT).show()
+            return
+        }
+        var startPoi: KNPOI? = null
+        val currentGps = KNSDK.sharedGpsManager()?.recentGpsData
+        if (currentGps != null && currentGps.pos.x > 0 && currentGps.pos.y > 0) {
+            startPoi = KNPOI("현 위치", currentGps.pos.x.toInt(), currentGps.pos.y.toInt(), "")
+        } else {
+            try {
+                val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+                val loc = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                    ?: locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                if (loc != null) {
+                    val katec = KNSDK.convertWGS84ToKATEC(loc.longitude, loc.latitude)
+                    startPoi = KNPOI("현 위치", katec.x.toInt(), katec.y.toInt(), "")
+                }
+            } catch (e: SecurityException) {
+                NavLogger.e(this, "[경유지취소] 위치 권한 없음: ${e.message}")
+            }
+        }
+        if (startPoi == null) {
+            Toast.makeText(this, "GPS 확인 중입니다. 잠시 후 다시 시도해주세요", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val goalKatec = KNSDK.convertWGS84ToKATEC(currentDestLon, currentDestLat)
+        val goalPoi = KNPOI(currentDestName, goalKatec.x.toInt(), goalKatec.y.toInt(), "")
+
+        NavLogger.d(this, "[경유지취소] 요청: 현재위치 -> $currentDestName (경유지 제거)")
+        KNSDK.makeTripWithStart(startPoi, goalPoi, mutableListOf()) { error, trip ->
+            runOnUiThread {
+                if (error != null || trip == null) {
+                    NavLogger.e(this, "[경유지취소] 경로 재계산 실패: ${error?.msg ?: "알 수 없는 오류"}")
+                    Toast.makeText(this, "경유지 취소 실패: ${error?.msg ?: "알 수 없는 오류"}", Toast.LENGTH_SHORT).show()
+                    return@runOnUiThread
+                }
+                try {
+                    naviView.guideNewDestinations(trip, activeRoutePriority, activeRouteAvoidOption)
+                    naviView.requestLayout()
+                    naviView.invalidate()
+                    NavLogger.d(this, "[경유지취소] 성공")
+                    Toast.makeText(this, "경유지가 취소됐습니다", Toast.LENGTH_SHORT).show()
+                    activeWaypoint = null
+                    binding.btnCancelWaypoint?.visibility = View.GONE
+                } catch (e: Exception) {
+                    NavLogger.e(this, "[경유지취소] guideNewDestinations 예외: ${e.message}")
+                    Toast.makeText(this, "경유지 취소 실패(화면 반영 오류)", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
     }
 
     private fun addWaypointToActiveGuidance(picked: HistoryEntry) {
@@ -1912,6 +1978,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     naviView.invalidate()
                     NavLogger.d(this, "[경유지추가] 성공: ${picked.name}")
                     Toast.makeText(this, "'${picked.name}' 경유지로 추가됨", Toast.LENGTH_SHORT).show()
+                    // v: 신규기능(경유지 취소 버튼) - 추가 성공 시 취소 버튼 표시. #문제시 원복
+                    activeWaypoint = picked
+                    val showCancelBtn = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                        .getBoolean("show_cancel_waypoint_button", true)
+                    binding.btnCancelWaypoint?.visibility = if (showCancelBtn) View.VISIBLE else View.GONE
                 } catch (e: Exception) {
                     NavLogger.e(this, "[경유지추가] guideNewDestinations 예외: ${e.message}")
                     Toast.makeText(this, "경유지 추가 실패(화면 반영 오류)", Toast.LENGTH_SHORT).show()
@@ -2610,8 +2681,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 .getBoolean("show_waypoint_button", true)
             val showCategoryButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 .getBoolean("show_category_button", true)
+            val showCancelWaypointButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .getBoolean("show_cancel_waypoint_button", true)
             binding.btnAddWaypoint?.visibility = if (showWaypointButton) View.VISIBLE else View.GONE
             binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
+            binding.btnCancelWaypoint?.visibility = if (showCancelWaypointButton && activeWaypoint != null) View.VISIBLE else View.GONE
         }
         // v: 재억 요청(2026-08-22) - MapActivity와 동일한 패턴. 카카오 화면이 앞으로
         // 오는 순간 최신 차선정보를 바로 그려주고, 이후 새 데이터가 들어올 때마다
