@@ -2735,6 +2735,17 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
+    // v: 신규기능(물리 볼륨버튼으로 안내음량 조절) - Tmap 화면과 동일한 방식. #문제시 원복
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        if (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP ||
+            keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN
+        ) {
+            VolumeHelper.adjustGuideVolumeByHardwareKey(this, keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP)
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         // v4.24: MapActivity와 동일 이유로 추가. #문제시 원복

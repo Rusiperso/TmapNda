@@ -104,4 +104,25 @@ object VolumeHelper {
             NavLogger.e(context, "VolumeHelper 시스템볼륨 적용 예외: ${e.message}")
         }
     }
+
+    // v: 신규기능(물리 볼륨버튼으로 안내음량 조절) - dispatchKeyEvent로 가로챈 볼륨키를
+    // 처리. 안내 음성이 STREAM_MUSIC이라 물리 버튼이 자연스럽게도 어느 정도 이 스트림을
+    // 건드리긴 하지만, 조용한 순간엔 안드로이드가 다른 스트림을 잡을 수 있어 무조건
+    // STREAM_MUSIC을 직접 조절하도록 고정. UI 음량 안내(토스트)도 같이 띄움. #문제시 원복
+    fun adjustGuideVolumeByHardwareKey(context: Context, up: Boolean) {
+        try {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            val current = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+            val step = (max / 30).coerceAtLeast(1) // 재억 요청 - 15단계는 너무 크게 움직여서 30단계로 세분화
+            val target = if (up) (current + step).coerceAtMost(max) else (current - step).coerceAtLeast(0)
+            am.setStreamVolume(AudioManager.STREAM_MUSIC, target, AudioManager.FLAG_SHOW_UI)
+            val percent = if (max > 0) (target * 100) / max else 0
+            context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .edit().putInt(PREF_KEY, percent).apply()
+            NavLogger.d(context, "[안내음량] 물리버튼으로 조절: ${percent}%")
+        } catch (e: Exception) {
+            NavLogger.e(context, "VolumeHelper 물리버튼 조절 예외: ${e.message}")
+        }
+    }
 }

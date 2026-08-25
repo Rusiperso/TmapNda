@@ -3706,6 +3706,16 @@ class MapActivity : AppCompatActivity() {
             startVoiceSearch()
             return true
         }
+        // v: 신규기능(물리 볼륨버튼으로 안내음량 조절) - 안내 음성이 STREAM_MUSIC으로 나가서
+        // 물리 볼륨키가 기본적으로도 어느 정도는 이 스트림을 건드리긴 하지만, 안내 음성이
+        // 안 나오는 조용한 순간엔 안드로이드가 다른 스트림(벨소리 등)을 잡을 수 있어 들쭉날쭉
+        // 했음. 볼륨키를 직접 가로채서 무조건 STREAM_MUSIC을 조절하도록 고정. #문제시 원복
+        if (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP ||
+            keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN
+        ) {
+            VolumeHelper.adjustGuideVolumeByHardwareKey(this, keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP)
+            return true
+        }
         return super.onKeyDown(keyCode, event)
     }
 
