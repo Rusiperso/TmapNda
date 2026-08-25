@@ -423,11 +423,13 @@
                 android:layout_marginEnd="10dp"/>
 
             <!-- 카메라/구간단속/방지턱 등 이벤트 - 항상 맨 끝 -->
+            <!-- v: 재억 요청(2026-08-25) - 상단바 아이콘이 34dp->38dp로 커진 것에 맞춰
+                 이벤트 아이콘/글자도 비율 맞게 확대(16dp->18dp, 11sp->13sp). #문제시 원복 -->
             <ImageView
                 android:id="@+id/ivTopBarEvent"
-                android:layout_width="16dp"
-                android:layout_height="16dp"
-                android:layout_marginEnd="3dp"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:layout_marginEnd="4dp"
                 android:visibility="gone"
                 android:contentDescription="@null"/>
 
@@ -437,7 +439,7 @@
                 android:layout_height="wrap_content"
                 android:text=""
                 android:textColor="#FFC107"
-                android:textSize="11sp"
+                android:textSize="13sp"
                 android:textStyle="bold"
                 android:maxLines="1"
                 android:gravity="center_vertical"
