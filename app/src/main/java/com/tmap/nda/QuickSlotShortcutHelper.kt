@@ -25,11 +25,25 @@ object QuickSlotShortcutHelper {
 
     /** 홈화면에 이 즐겨찾기를 고정 요청. 사용자가 확인 팝업에서 승인해야 실제로 깔림(OS 표준 동작). */
     fun requestPin(context: Context, slot: String, entry: HistoryEntry) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        // v: 재억 제보(2026-08-25) - 눌러도 홈화면에 아무것도 안 생김. 재억 헤드유닛은
+        // 아프터마켓 LineageOS/Treble GSI 기반 런처라, 최신 ShortcutManager 고정 API
+        // 자체를 지원 안 할 가능성이 높음(isRequestPinShortcutSupported=false) - 이 경우
+        // 예전엔 그냥 조용히 리턴만 해서 사용자가 실패 사실을 알 방법이 없었음. 화면에
+        // 안내를 띄우고, 구형 런처용 브로드캐스트 방식도 같이 시도. #문제시 원복
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            requestPinLegacy(context, slot, entry)
+            return
+        }
         try {
-            val shortcutManager = context.getSystemService(ShortcutManager::class.java) ?: return
-            if (!shortcutManager.isRequestPinShortcutSupported) {
-                NavLogger.d(context, "[바로가기] 이 런처는 홈화면 고정을 지원 안 함")
+            val shortcutManager = context.getSystemService(ShortcutManager::class.java)
+            if (shortcutManager == null || !shortcutManager.isRequestPinShortcutSupported) {
+                NavLogger.e(context, "[바로가기] 이 런처는 홈화면 고정을 지원 안 함(slot=$slot) - 구형 방식으로 재시도")
+                android.widget.Toast.makeText(
+                    context,
+                    "이 헤드유닛 화면(런처)은 표준 홈화면 고정을 지원하지 않아 다른 방식으로 시도합니다. 그래도 안 생기면 이 런처에서는 지원이 어렵습니다.",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+                requestPinLegacy(context, slot, entry)
                 return
             }
             val info = buildShortcutInfo(context, slot, entry)
@@ -37,6 +51,30 @@ object QuickSlotShortcutHelper {
             NavLogger.d(context, "[바로가기] 홈화면 고정 요청: slot=$slot name=${entry.name}")
         } catch (e: Exception) {
             NavLogger.e(context, "[바로가기] 고정 요청 실패: ${e.message}")
+            android.widget.Toast.makeText(context, "홈화면 추가에 실패했습니다: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** 안드로이드 8 미만이거나 신형 API 미지원 런처를 위한 구형 브로드캐스트 방식. */
+    @Suppress("DEPRECATION")
+    private fun requestPinLegacy(context: Context, slot: String, entry: HistoryEntry) {
+        try {
+            val shortcutIntent = Intent(context, MainActivity::class.java).apply {
+                action = Intent.ACTION_VIEW
+                putExtra(EXTRA_SHORTCUT_SLOT, slot)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val addIntent = Intent().apply {
+                putExtra(Intent.EXTRA_SHORTCUT_INTENT, shortcutIntent)
+                putExtra(Intent.EXTRA_SHORTCUT_NAME, entry.name.take(10).ifBlank { "즐겨찾기" })
+                putExtra(Intent.EXTRA_SHORTCUT_ICON_RESOURCE, android.content.Intent.ShortcutIconResource.fromContext(context, R.mipmap.ic_launcher))
+                action = "com.android.launcher.action.INSTALL_SHORTCUT"
+            }
+            context.sendBroadcast(addIntent)
+            NavLogger.d(context, "[바로가기] 구형 방식으로 홈화면 고정 시도: slot=$slot")
+        } catch (e: Exception) {
+            NavLogger.e(context, "[바로가기] 구형 방식도 실패: ${e.message}")
+            android.widget.Toast.makeText(context, "이 헤드유닛에서는 홈화면 바로가기를 지원하지 않는 것 같습니다.", android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
