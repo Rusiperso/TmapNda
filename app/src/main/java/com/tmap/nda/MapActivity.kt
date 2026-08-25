@@ -3787,10 +3787,13 @@ class MapActivity : AppCompatActivity() {
         super.onResume()
         NavLogger.d(this, "[MapActivity lifecycle] onResume")
         // v: 신규기능(경유지/카테고리 버튼 표시 옵션) - 재억 지적으로 두 스위치로 분리.
-        // 설정 화면에서 바꾼 값이 바로 반영되도록 화면이 다시 보일 때마다 다시 읽어서 적용. #문제시 원복
-        val showCategoryButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-            .getBoolean("show_category_button", true)
-        binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
+        // 설정 화면에서 바꾼 값이 바로 반영되도록 화면이 다시 보일 때마다 다시 읽어서 적용.
+        // KakaoNaviActivity와 동일한 크래시 방지 목적으로 isInitialized 방어 추가. #문제시 원복
+        if (::binding.isInitialized) {
+            val showCategoryButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .getBoolean("show_category_button", true)
+            binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
+        }
         // v: 재억 요청(2026-08-22) - 카카오 화면에서 돌아오는 순간뿐 아니라, 티맵 화면이
         // 다시 보이기 시작하는 즉시 최신 차선정보를 한 번 그려주고, 이후 새 데이터가 들어올
         // 때마다 곧바로 반영되도록 "지금 활성화된 화면" 자리에 이 화면을 등록. #문제시 원복

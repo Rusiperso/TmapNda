@@ -2601,14 +2601,18 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     override fun onResume() {
         super.onResume()
         NavLogger.d(this, "[lifecycle] onResume")
-        // v: 신규기능(경유지/카테고리 버튼 표시 옵션) - 재억 지적으로 두 스위치로 분리해서
-        // 각각 독립적으로 켜고 끌 수 있게 함. #문제시 원복
-        val showWaypointButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-            .getBoolean("show_waypoint_button", true)
-        val showCategoryButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-            .getBoolean("show_category_button", true)
-        binding.btnAddWaypoint?.visibility = if (showWaypointButton) View.VISIBLE else View.GONE
-        binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
+        // v: 재억 제보(2026-08-26) - "lateinit property binding has not been initialized"
+        // 크래시 발생. KNSDK 초기화(비동기)가 끝나서 setupContentAndStart()가 binding을
+        // 실제로 만들기 전에 onResume이 먼저 호출될 수 있는데, 이 코드가 그 순간 즉시
+        // binding에 접근해서 죽었음. isInitialized로 방어. #문제시 원복
+        if (::binding.isInitialized) {
+            val showWaypointButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .getBoolean("show_waypoint_button", true)
+            val showCategoryButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .getBoolean("show_category_button", true)
+            binding.btnAddWaypoint?.visibility = if (showWaypointButton) View.VISIBLE else View.GONE
+            binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
+        }
         // v: 재억 요청(2026-08-22) - MapActivity와 동일한 패턴. 카카오 화면이 앞으로
         // 오는 순간 최신 차선정보를 바로 그려주고, 이후 새 데이터가 들어올 때마다
         // 곧바로 반영되도록 "지금 활성화된 화면" 자리에 이 화면을 등록. #문제시 원복
