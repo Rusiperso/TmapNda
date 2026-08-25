@@ -164,6 +164,10 @@ object NearbyCategoryPopup {
             return sorted + withoutPrice.sortedBy { it.distanceMeters }
         }
 
+        // v: renderGasStations와 runGasSearch가 서로를 호출하는 상호재귀라 선언 순서만으론
+        // 안 풀림 - lateinit 함수변수로 미리 이름만 선언. #문제시 원복
+        lateinit var runGasSearchFn: () -> Unit
+
         fun renderGasStations(stations: List<OpinetHelper.GasStation>, page: Int = 0) {
             val sorted = sortByPriceAndDistance(stations)
             val savedBrands = OpinetHelper.savedBrandFilter(context)
@@ -185,13 +189,13 @@ object NearbyCategoryPopup {
             // 대신, 결과 화면 맨 위에 지금 필터를 보여주고 탭하면 다시 바꿀 수 있게 함. #문제시 원복
             val filterRow = makeRow(context, "브랜드 필터: $brandLabel (탭해서 변경)", null, true, 13f) {
                 showBrandMultiChooser(context, OpinetHelper.FUEL_TYPES.firstOrNull { it.second == OpinetHelper.savedFuelType(context) }?.first) {
-                    runGasSearch()
+                    runGasSearchFn()
                 }
             }
             rightList.addView(filterRow, 0)
         }
 
-        fun runGasSearch() {
+        runGasSearchFn = {
             val opinetKey = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 .getString("opinet_api_key", null)
             if (opinetKey.isNullOrBlank()) {
@@ -204,20 +208,24 @@ object NearbyCategoryPopup {
                         (context as? android.app.Activity)?.runOnUiThread { renderResults(hits) }
                     }
                 })
-                return
+            } else {
+                val prodcd = OpinetHelper.savedFuelType(context) ?: OpinetHelper.FUEL_TYPES[0].second
+                rightList.removeAllViews()
+                rightList.addView(makeRow(context, "검색 중...", null, false, 16f) {})
+                // v: 신규기능(브랜드 다중선택 필터) - 재억 요청 - 서버는 항상 전체로 받아오고,
+                // 저장된 브랜드 필터(여러 개 가능)로 클라이언트에서 걸러냄. 오피넷 API의
+                // pooltype은 브랜드 하나만 지원해서 다중선택은 서버가 아니라 앱에서 처리. #문제시 원복
+                OpinetHelper.fetchNearby(context, httpClient, opinetKey, curLat, curLon, null, prodcd) { stations ->
+                    val savedBrands = OpinetHelper.savedBrandFilter(context)
+                    val filtered = if (savedBrands.isNullOrEmpty()) stations else stations.filter { it.brandCode in savedBrands }
+                    NavLogger.d(context, "[오피넷] 주유소 검색 결과 ${stations.size}건 중 브랜드필터 후 ${filtered.size}건")
+                    (context as? android.app.Activity)?.runOnUiThread { renderGasStations(filtered) }
+                }
             }
-            val prodcd = OpinetHelper.savedFuelType(context) ?: OpinetHelper.FUEL_TYPES[0].second
-            rightList.removeAllViews()
-            rightList.addView(makeRow(context, "검색 중...", null, false, 16f) {})
-            // v: 신규기능(브랜드 다중선택 필터) - 재억 요청 - 서버는 항상 전체로 받아오고,
-            // 저장된 브랜드 필터(여러 개 가능)로 클라이언트에서 걸러냄. 오피넷 API의
-            // pooltype은 브랜드 하나만 지원해서 다중선택은 서버가 아니라 앱에서 처리. #문제시 원복
-            OpinetHelper.fetchNearby(context, httpClient, opinetKey, curLat, curLon, null, prodcd) { stations ->
-                val savedBrands = OpinetHelper.savedBrandFilter(context)
-                val filtered = if (savedBrands.isNullOrEmpty()) stations else stations.filter { it.brandCode in savedBrands }
-                NavLogger.d(context, "[오피넷] 주유소 검색 결과 ${stations.size}건 중 브랜드필터 후 ${filtered.size}건")
-                (context as? android.app.Activity)?.runOnUiThread { renderGasStations(filtered) }
-            }
+        }
+
+        fun runGasSearch() {
+            runGasSearchFn()
         }
 
         // v: 재억 지적(2026-08-25) - 유종/브랜드가 이미 확정돼 있는데도 주유소 탭할 때마다
