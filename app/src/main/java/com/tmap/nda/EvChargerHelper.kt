@@ -22,6 +22,7 @@ object EvChargerHelper {
     data class ChargerStation(
         val name: String,
         val chargerType: String,
+        val outputKw: Double?,
         val statusText: String,
         val distanceMeters: Double,
         val lat: Double,
@@ -86,6 +87,10 @@ object EvChargerHelper {
                             ChargerStation(
                                 name = o.optString("statNm", "이름 없음"),
                                 chargerType = o.optString("chgerType", ""),
+                                // v: 재억 요청(2026-08-25) - 초급속(100kW 이상)까지 구분하려면
+                                // 코드값만으론 부족해서 충전용량(kW) 필드도 같이 파싱. 필드명은
+                                // 이 API에서 보통 output으로 옴(확인 안 되면 null 처리). #문제시 원복
+                                outputKw = o.optString("output", "").toDoubleOrNull(),
                                 statusText = when (o.optString("stat", "")) {
                                     "2" -> "충전대기"
                                     "3" -> "충전중"
