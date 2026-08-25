@@ -489,6 +489,13 @@ class MapActivity : AppCompatActivity() {
                 .setCancelable(false)
                 .show()
         }
+
+        // v: 재억 제보(2026-08-25) - 홈화면 바로가기로 열었는데 그냥 시작화면만 뜨고
+        // 길안내로 안 이어지던 문제 - MainActivity가 넘겨준 slot을 받아 실제로 처리.
+        // 이 시점(방금 새로 켜진 화면)엔 다른 안내 중일 수 없어 확인팝업 없이 바로 시작. #문제시 원복
+        QuickSlotShortcutHelper.handleShortcutIntent(this, intent, { false }) { entry ->
+            startKakaoOverlayGuidance(entry.name, entry.lat, entry.lon)
+        }
     }
 
     private fun initTmapSdk(appKey: String) {

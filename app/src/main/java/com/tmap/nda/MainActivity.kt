@@ -196,6 +196,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun startMapActivity() {
         val intent = Intent(this, MapActivity::class.java)
+        // v: 재억 제보(2026-08-25) - 홈화면 바로가기로 앱을 열어도 그냥 평소 시작화면만
+        // 뜨고 길안내로 안 이어짐. handleShortcutIntent()를 만들어놓고 실제로 아무 데서도
+        // 호출을 안 했던 게 원인 - 바로가기 slot을 MapActivity로 그대로 전달. #문제시 원복
+        this.intent.getStringExtra(QuickSlotShortcutHelper.EXTRA_SHORTCUT_SLOT)?.let { slot ->
+            intent.putExtra(QuickSlotShortcutHelper.EXTRA_SHORTCUT_SLOT, slot)
+        }
         startActivity(intent)
     }
 
