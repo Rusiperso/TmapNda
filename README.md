@@ -168,11 +168,35 @@ TmapNda를 쓰려면 **① Tmap AppKey**, **② 카카오 REST API 키 + Default
 
 주변 카테고리 검색에서 "전기차 충전"을 쓰려면 한국환경공단 API 키가 필요합니다. 이것도 각자 발급받아 각자 넣습니다.
 
-**1.** [공공데이터포털](https://www.data.go.kr) 접속 → 회원가입/로그인 → "한국환경공단_전기자동차 충전소 정보" 검색 → **활용신청** (개발계정, 자동승인)
+**1.** [data.go.kr](https://www.data.go.kr) 접속 → 우측 상단 **회원가입** → **일반회원(만 14세 이상 내국인)** 선택 → 약관동의 → 정보입력 → 본인인증까지 진행
 
-**2.** 마이페이지 → 개발계정 상세에서 **일반 인증키(Encoding)** 복사
+<p align="center"><img src="docs/images/data-go-kr-signup-step1.png" width="620" alt="공공데이터포털 회원가입 - 회원구분 선택 화면"></p>
 
-**3.** TmapNda 앱 초기 화면의 **전기차 충전소 API 키** 입력란에 붙여넣기 → 저장
+가입이 끝나면 아래처럼 완료 화면이 뜹니다.
+
+<p align="center"><img src="docs/images/data-go-kr-signup-done.png" width="520" alt="공공데이터포털 회원가입 완료 화면"></p>
+
+**2.** 로그인 후 홈 화면 검색창에 **"한국환경공단 전기자동차 충전소 정보"** 입력해서 검색
+
+<p align="center"><img src="docs/images/data-go-kr-search.png" width="620" alt="공공데이터포털 검색창에 한국환경공단 전기자동차 충전소 정보 입력"></p>
+
+검색 결과에서 관련 데이터 목록이 뜨면, 그중 **오픈API "한국환경공단_전기자동차 충전소 정보"**를 찾습니다.
+
+<p align="center"><img src="docs/images/data-go-kr-related-data.png" width="620" alt="검색 결과 - 한국환경공단 전기자동차 충전소 정보 오픈API 항목"></p>
+
+**3.** 해당 데이터 상세 페이지로 들어가면 아래처럼 API 설명이 나옵니다. **활용신청** 버튼 클릭
+
+<p align="center"><img src="docs/images/data-go-kr-api-detail.png" width="620" alt="한국환경공단 전기자동차 충전소 정보 오픈API 상세 화면 - 활용신청 버튼"></p>
+
+**4.** 활용 목적 등 간단히 작성 → 라이선스 표시(저작자표시) **동의합니다** 체크 → **활용신청** 클릭 (이 API는 자동승인이라 바로 승인됩니다)
+
+<p align="center"><img src="docs/images/data-go-kr-license-agree.png" width="520" alt="라이선스 표시 동의 및 활용신청 버튼 화면"></p>
+
+**5.** 마이페이지 → 활용신청 현황에서 승인된 걸 확인 → 상세 항목 클릭 → **일반 인증키(Encoding)** 복사
+
+<p align="center"><img src="docs/images/data-go-kr-apply-status.png" width="620" alt="활용신청 현황 - 승인된 한국환경공단 전기자동차 충전소 정보 항목"></p>
+
+**6.** TmapNda 앱 초기 화면의 **전기차 충전소 API 키** 입력란에 붙여넣기 → 저장 (이미 실행했다면 상단바 **≡ 메뉴 → 설정을 길게 누르면** 재입력 화면으로 이동)
 
 ---
 
