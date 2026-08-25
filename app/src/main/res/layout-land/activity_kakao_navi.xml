@@ -564,32 +564,47 @@
         android:elevation="30dp"
         android:visibility="gone"/>
 
-    <!-- v: 재억 요청(2026-08-22) - 왼쪽 회전안내 파란 패널 위 정중앙으로 이동 (세로 화면과 동일). #문제시 원복 -->
-    <!-- v: 신규기능(주변 카테고리 검색) - 경유지 버튼 옆에 나란히 추가, 간격 좁힘(세로 화면과 동일). #문제시 원복 -->
-    <ImageButton
-        android:id="@+id/btnAddWaypoint"
-        android:layout_width="60dp"
-        android:layout_height="60dp"
-        android:layout_gravity="top|start"
-        android:layout_marginTop="76dp"
-        android:layout_marginStart="18dp"
-        android:src="@drawable/ic_add_waypoint"
-        android:background="@drawable/shape_circle_gray"
-        android:scaleType="center"
-        android:contentDescription="경유지 추가"
-        android:elevation="20dp"/>
-
+    <!-- v: 재억 요청(2026-08-26) - 카테고리 버튼을 앞으로, 경유지 버튼을 뒤로 순서 변경(세로화면과 동일). #문제시 원복 -->
     <ImageButton
         android:id="@+id/btnNearbyCategory"
         android:layout_width="60dp"
         android:layout_height="60dp"
         android:layout_gravity="top|start"
         android:layout_marginTop="76dp"
-        android:layout_marginStart="82dp"
+        android:layout_marginStart="18dp"
         android:src="@drawable/ic_category"
         android:background="@drawable/shape_circle_gray"
         android:scaleType="center"
         android:contentDescription="주변 카테고리 검색"
+        android:elevation="20dp"/>
+
+    <ImageButton
+        android:id="@+id/btnAddWaypoint"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:layout_gravity="top|start"
+        android:layout_marginTop="76dp"
+        android:layout_marginStart="82dp"
+        android:src="@drawable/ic_add_waypoint"
+        android:background="@drawable/shape_circle_gray"
+        android:scaleType="center"
+        android:contentDescription="경유지 추가"
+        android:elevation="20dp"/>
+
+    <!-- v: 신규기능(경유지 취소 버튼) - 경유지가 실제로 추가돼 있을 때만 보임(코드에서
+         visibility 제어). #문제시 원복 -->
+    <ImageButton
+        android:id="@+id/btnCancelWaypoint"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:layout_gravity="top|start"
+        android:layout_marginTop="76dp"
+        android:layout_marginStart="146dp"
+        android:src="@drawable/ic_cancel_waypoint"
+        android:background="@drawable/shape_circle_red"
+        android:scaleType="center"
+        android:contentDescription="경유지 취소"
+        android:visibility="gone"
         android:elevation="20dp"/>
 
 </FrameLayout>
