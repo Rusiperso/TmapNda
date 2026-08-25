@@ -31,7 +31,7 @@ object NearbyCategoryPopup {
     private val CATEGORIES = listOf(
         CategoryItem("편의점", "CS2"),
         CategoryItem("주유소", "OL7"),
-        CategoryItem("전기차 충전", "EV"),
+        CategoryItem("전기차 충전소", "EV"),
         CategoryItem("주차장", "PK6"),
         CategoryItem("카페", "CE7"),
         CategoryItem("약국", "PM9"),
@@ -224,7 +224,7 @@ object NearbyCategoryPopup {
             saveLastCategory(item.label)
             when (item.label) {
                 "주유소" -> { runGasSearchFlow(); return }
-                "전기차 충전" -> { runEvSearch(); return }
+                "전기차 충전소" -> { runEvSearch(); return }
             }
             rightList.removeAllViews()
             rightList.addView(makeRow(context, "검색 중...", null, false, 16f) {})
