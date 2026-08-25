@@ -65,19 +65,25 @@ object EvChargerHelper {
         lon: Double,
         onResult: (List<ChargerStation>) -> Unit
     ) {
-        resolveZcode(httpClient, kakaoRestKey, lat, lon) { zcode ->
-            if (zcode == null) {
+        resolveZcode(httpClient, kakaoRestKey, lat, lon) { fullCode ->
+            if (fullCode == null || fullCode.length < 4) {
                 NavLogger.e(context, "[전기차충전소] 행정구역 코드 조회 실패 lat=$lat lon=$lon")
                 onResult(emptyList())
                 return@resolveZcode
             }
-            NavLogger.d(context, "[전기차충전소] 요청 시작 zcode=$zcode lat=$lat lon=$lon")
+            // v: 재억 제보(2026-08-25) - zcode=41220(5자리 표준코드) 그대로 넣었더니
+            // resultCode=00(정상)인데 totalCount=0으로 옴 - 이 API는 5자리 표준코드가 아니라
+            // 시도코드(2자리)+시군구코드(2자리)를 따로 받는 방식으로 추정됨. 41220 ->
+            // zcode=41(경기도), zscode=22(평택시)로 분리해서 시도. #문제시 원복
+            val sidoCode = fullCode.take(2)
+            val sigunguCode = fullCode.drop(2).take(2)
+            NavLogger.d(context, "[전기차충전소] 요청 시작 sido=$sidoCode sigungu=$sigunguCode lat=$lat lon=$lon")
             // v: 재억 제보(2026-08-25) - 공공데이터포털 키를 URLEncoder로 또 인코딩해서
             // 이중 인코딩이 되어 "SERVICE_KEY_IS_NOT_REGISTERED_ERROR"가 났음. 포털이 주는
             // 키는 이미 Encoding 형태(특수문자가 %XX로 인코딩된 상태)라 그대로 붙여야 함. #문제시 원복
             // v: https로 변경 - 공공데이터포털 최신 API는 http 요청을 막거나 리다이렉트할 수 있음. #문제시 원복
             val url = "https://apis.data.go.kr/B552584/EvCharger/getChargerInfo" +
-                "?serviceKey=$evApiKey&zcode=$zcode&numOfRows=100&pageNo=1&dataType=JSON"
+                "?serviceKey=$evApiKey&zcode=$sidoCode&zscode=$sigunguCode&numOfRows=100&pageNo=1&dataType=JSON"
             val request = Request.Builder().url(url).build()
             httpClient.newCall(request).enqueue(object : okhttp3.Callback {
                 override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
