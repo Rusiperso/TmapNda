@@ -57,6 +57,13 @@ object OpinetHelper {
     // S-OIL 등)를 동시에 골라 저장해두면, 다음부터 계속 그 브랜드들만 걸러서 보여줌.
     // 콤마로 구분된 브랜드 코드 문자열로 저장, 비어있으면(null) 전체. #문제시 원복
     private const val PREF_BRAND_FILTER = "opinet_brand_filter_codes"
+    // v: 재억 지적(2026-08-25) - 브랜드 필터를 "전체"로 확정해도 저장값이 비어있어서
+    // savedBrandFilter()가 null을 반환 -> "아직 한 번도 안 골랐다"와 구분이 안 돼서
+    // 매번 팝업이 다시 떴음. 확정 여부를 별도 플래그로 기억. #문제시 원복
+    private const val PREF_BRAND_FILTER_CONFIGURED = "opinet_brand_filter_configured"
+
+    fun isBrandFilterConfigured(context: Context): Boolean =
+        context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean(PREF_BRAND_FILTER_CONFIGURED, false)
 
     fun savedBrandFilter(context: Context): Set<String>? {
         val raw = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getString(PREF_BRAND_FILTER, null)
@@ -66,11 +73,13 @@ object OpinetHelper {
 
     fun saveBrandFilter(context: Context, codes: Set<String>) {
         val prefs = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        val editor = prefs.edit().putBoolean(PREF_BRAND_FILTER_CONFIGURED, true)
         if (codes.isEmpty()) {
-            prefs.edit().remove(PREF_BRAND_FILTER).apply()
+            editor.remove(PREF_BRAND_FILTER)
         } else {
-            prefs.edit().putString(PREF_BRAND_FILTER, codes.joinToString(",")).apply()
+            editor.putString(PREF_BRAND_FILTER, codes.joinToString(","))
         }
+        editor.apply()
     }
 
     /**
