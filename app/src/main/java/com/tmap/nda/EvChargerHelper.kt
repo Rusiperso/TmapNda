@@ -1,0 +1,139 @@
+package com.tmap.nda
+
+import android.content.Context
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
+import java.net.URLEncoder
+import kotlin.math.*
+
+/**
+ * 한국환경공단 전기자동차 충전소 정보 API(공공데이터포털) 연동. 각자 발급받은 키
+ * (ev_charger_api_key)가 필요. 이 API는 위경도 반경검색이 아니라 시군구코드(zcode)
+ * 기준 조회라서, 먼저 카카오 좌표->행정구역 API로 시군구코드를 구한 뒤 그 지역
+ * 충전소를 받아와 클라이언트에서 거리순 정렬함.
+ *
+ * 참고: 필드명이 실제 응답과 다를 수 있어(문서만으로 100% 확정 어려움), 파싱 실패 시
+ * 원인 파악용으로 원본 응답 일부를 로그에 남김.
+ */
+object EvChargerHelper {
+    data class ChargerStation(
+        val name: String,
+        val chargerType: String,
+        val statusText: String,
+        val distanceMeters: Double,
+        val lat: Double,
+        val lon: Double
+    )
+
+    /** 카카오 좌표->행정구역 API로 시군구 코드(5자리) 조회. */
+    private fun resolveZcode(
+        httpClient: OkHttpClient,
+        kakaoRestKey: String,
+        lat: Double,
+        lon: Double,
+        onResult: (String?) -> Unit
+    ) {
+        val url = "https://dapi.kakao.com/v2/local/geo/coord2regioncode.json?x=$lon&y=$lat"
+        val request = Request.Builder().url(url).header("Authorization", "KakaoAK $kakaoRestKey").build()
+        httpClient.newCall(request).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) = onResult(null)
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                response.use {
+                    if (!it.isSuccessful) { onResult(null); return@use }
+                    try {
+                        val json = JSONObject(it.body?.string() ?: "{}")
+                        val docs = json.optJSONArray("documents")
+                        val region = (0 until (docs?.length() ?: 0))
+                            .map { i -> docs!!.getJSONObject(i) }
+                            .firstOrNull { d -> d.optString("region_type") == "H" }
+                        val fullCode = region?.optString("code")
+                        onResult(fullCode?.take(5))
+                    } catch (e: Exception) {
+                        onResult(null)
+                    }
+                }
+            }
+        })
+    }
+
+    fun fetchNearby(
+        context: Context,
+        httpClient: OkHttpClient,
+        evApiKey: String,
+        kakaoRestKey: String,
+        lat: Double,
+        lon: Double,
+        onResult: (List<ChargerStation>) -> Unit
+    ) {
+        resolveZcode(httpClient, kakaoRestKey, lat, lon) { zcode ->
+            if (zcode == null) {
+                NavLogger.e(context, "[전기차충전소] 행정구역 코드 조회 실패")
+                onResult(emptyList())
+                return@resolveZcode
+            }
+            val encodedKey = URLEncoder.encode(evApiKey, "UTF-8")
+            val url = "http://apis.data.go.kr/B552584/EvCharger/getChargerInfo" +
+                "?serviceKey=$encodedKey&zcode=$zcode&numOfRows=100&pageNo=1&dataType=JSON"
+            val request = Request.Builder().url(url).build()
+            httpClient.newCall(request).enqueue(object : okhttp3.Callback {
+                override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                    NavLogger.e(context, "[전기차충전소] 요청 실패: ${e.message}")
+                    onResult(emptyList())
+                }
+
+                override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                    response.use {
+                        val bodyStr = it.body?.string() ?: "{}"
+                        if (!it.isSuccessful) {
+                            NavLogger.e(context, "[전기차충전소] 실패 code=${it.code} body=${bodyStr.take(200)}")
+                            onResult(emptyList())
+                            return@use
+                        }
+                        try {
+                            val json = JSONObject(bodyStr)
+                            val items = json.optJSONObject("items")?.optJSONArray("item")
+                            if (items == null) {
+                                NavLogger.e(context, "[전기차충전소] 응답 형식 다름(필드명 확인 필요): ${bodyStr.take(300)}")
+                                onResult(emptyList())
+                                return@use
+                            }
+                            val stations = (0 until items.length()).map { idx ->
+                                val o = items.getJSONObject(idx)
+                                val slat = o.optDouble("lat", 0.0)
+                                val slon = o.optDouble("lng", o.optDouble("lon", 0.0))
+                                ChargerStation(
+                                    name = o.optString("statNm", "이름 없음"),
+                                    chargerType = o.optString("chgerType", ""),
+                                    statusText = when (o.optString("stat", "")) {
+                                        "2" -> "충전대기"
+                                        "3" -> "충전중"
+                                        "1" -> "통신이상"
+                                        "4", "5" -> "운영중지"
+                                        else -> "상태 미확인"
+                                    },
+                                    distanceMeters = haversineMeters(lat, lon, slat, slon),
+                                    lat = slat,
+                                    lon = slon
+                                )
+                            }.distinctBy { it.name to it.lat to it.lon }
+                                .sortedBy { it.distanceMeters }
+                            onResult(stations)
+                        } catch (e: Exception) {
+                            NavLogger.e(context, "[전기차충전소] 파싱 실패: ${e.message} body=${bodyStr.take(300)}")
+                            onResult(emptyList())
+                        }
+                    }
+                }
+            })
+        }
+    }
+
+    private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6371000.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = sin(dLat / 2).pow(2) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2).pow(2)
+        return r * 2 * atan2(sqrt(a), sqrt(1 - a))
+    }
+}
