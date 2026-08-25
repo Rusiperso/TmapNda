@@ -284,6 +284,14 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
+        // v: 신규기능(경유지 취소 버튼) - 재억 요청으로 켜고끄기 옵션 추가. 꺼두면 경유지가
+        // 있어도 취소 버튼 자체가 안 뜸. #문제시 원복
+        val showCancelWaypointButtonCheckBox = android.widget.Switch(context).apply {
+            text = "경유지 취소 버튼 표시"
+            isChecked = pref.getBoolean("show_cancel_waypoint_button", true)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
 
         // v8.7: v8.5 조사로 확인된 Tmap MapLayerType(Default/Aerial) API를 사용자가 켜고 끌 수
         // 있게 노출. 카카오 화면엔 이런 API 자체가 없어서 Tmap 화면 한정 문구를 명시. #문제시 원복
@@ -395,25 +403,81 @@ object PanelDragHelper {
         }
         val container = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.VERTICAL
-            // v: 재억 요청(2026-08-24) - 설정 항목을 글자 길이 짧은 순 -> 긴 순으로 재배치.
-            // 즐겨찾기 표시 개수(라벨은 짧지만 -/+ 버튼까지 있어 예외적으로 맨 위). 음량
-            // 조절은 슬라이더가 있어서 항상 맨 아래 고정. #문제시 원복
-            addView(favoriteCountRow)               // 즐겨찾기 표시 개수
-            addView(satelliteViewCheckBox)          // 티맵 위성지도 보기
-            addView(disableMobileCamCheckBox)       // 이동식카메라 감속
-            addView(routeLineDisplayCheckBox)       // 경로선 콤마 화면에 표시
-            addView(checkBox)                       // 속도 10% 초과 시 경고음
-            addView(arrivalRadiusAlertCheckBox)     // 목적지 근처 도착 알림 (소리+진동)
-            addView(showWaypointButtonCheckBox)     // 경유지 버튼 표시
-            addView(showCategoryButtonCheckBox)     // 카테고리 버튼 표시
-            addView(trafficInfoCheckBox)            // 티맵 교통 정보 (도로 정체 색깔 표시)
-            addView(distanceFormatKmCheckBox)       // 1000m 이상일 때 km 단위로 거리 표시
-            unlockMapTouchCheckBox?.let { addView(it) } // 티맵 터치 잠금 해제 (핀치줌/드래그 허용)
-            addView(showLaneOverlayTmapCheckBox)    // 차선 안내 오버레이 표시 (Tmap 화면 한정)
-            addView(showTopBarEventCheckBox)        // 상단바에 이벤트(카메라/구간단속/방지턱) 표시
-            addView(volumeSectionTitle)
-            addView(volumeHintText)
         }
+
+        // v: 재억 요청(2026-08-26) - 항목이 많아져서 쭉 나열하지 말고 4개 그룹(안전운전
+        // 알림/화면 표시/버튼 표시)으로 묶어서 아코디언(눌러야 펼쳐짐)으로 정리. 즐겨찾기
+        // 개수와 길안내 음량은 그룹 밖에 항상 보이게 둠. 각 그룹 안은 글자 길이 짧은 순
+        // -> 긴 순 정렬 유지. #문제시 원복
+        fun addAccordionGroup(title: String, items: List<View>) {
+            var expanded = false
+            val headerRow = android.widget.LinearLayout(context).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(40, 24, 40, 24)
+                setBackgroundColor(android.graphics.Color.parseColor("#1F1F1F"))
+            }
+            val headerText = android.widget.TextView(context).apply {
+                text = title
+                setTextColor(android.graphics.Color.parseColor("#8AB4FF"))
+                textSize = 14f
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                )
+            }
+            val chevron = android.widget.TextView(context).apply {
+                text = "▾"
+                setTextColor(android.graphics.Color.parseColor("#8AB4FF"))
+                textSize = 14f
+            }
+            headerRow.addView(headerText)
+            headerRow.addView(chevron)
+            val itemsContainer = android.widget.LinearLayout(context).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                visibility = View.GONE
+                items.forEach { addView(it) }
+            }
+            headerRow.setOnClickListener {
+                expanded = !expanded
+                itemsContainer.visibility = if (expanded) View.VISIBLE else View.GONE
+                chevron.text = if (expanded) "▴" else "▾"
+            }
+            container.addView(headerRow)
+            container.addView(itemsContainer)
+        }
+
+        addAccordionGroup("안전운전 알림", listOf(
+            disableMobileCamCheckBox,   // 이동식카메라 감속
+            checkBox,                   // 속도 10% 초과 시 경고음
+            arrivalRadiusAlertCheckBox, // 목적지 근처 도착 알림 (소리+진동)
+            showTopBarEventCheckBox     // 상단바에 이벤트(카메라/구간단속/방지턱) 표시
+        ))
+        addAccordionGroup("화면 표시", listOfNotNull(
+            satelliteViewCheckBox,          // 티맵 위성지도 보기
+            routeLineDisplayCheckBox,       // 경로선 콤마 화면에 표시
+            trafficInfoCheckBox,            // 티맵 교통 정보 (도로 정체 색깔 표시)
+            distanceFormatKmCheckBox,       // 1000m 이상일 때 km 단위로 거리 표시
+            unlockMapTouchCheckBox,         // 티맵 터치 잠금 해제 (핀치줌/드래그 허용) - 화면표시로 이동
+            showLaneOverlayTmapCheckBox     // 차선 안내 오버레이 표시 (Tmap 화면 한정)
+        ))
+        addAccordionGroup("버튼 표시", listOf(
+            showWaypointButtonCheckBox,      // 경유지 버튼 표시
+            showCategoryButtonCheckBox,      // 카테고리 버튼 표시
+            showCancelWaypointButtonCheckBox // 경유지 취소 버튼 표시
+        ))
+
+        // v: 재억 요청(2026-08-26) - 즐겨찾기 개수/길안내 음량은 아코디언 안에 넣지 않고
+        // 항상 바로 보이게 그룹들 아래에 고정 배치. #문제시 원복
+        val divider = View(context).apply {
+            setBackgroundColor(android.graphics.Color.parseColor("#333333"))
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 2
+            ).apply { topMargin = 10 }
+        }
+        container.addView(divider)
+        container.addView(favoriteCountRow)
+        container.addView(volumeSectionTitle)
+        container.addView(volumeHintText)
         // v15.3: 설정 항목이 많아져서 다이얼로그 세로 길이가 화면을 넘길 수 있으므로
         // ScrollView로 감쌈. AlertDialog는 setView(content)의 버튼 줄을 항상 콘텐츠
         // 바깥에 별도로 그리기 때문에, 콘텐츠만 스크롤되고 취소/저장 버튼은 화면에
@@ -436,6 +500,7 @@ object PanelDragHelper {
                     .putBoolean("arrival_radius_alert_enabled", arrivalRadiusAlertCheckBox.isChecked)
                     .putBoolean("show_waypoint_button", showWaypointButtonCheckBox.isChecked)
                     .putBoolean("show_category_button", showCategoryButtonCheckBox.isChecked)
+                    .putBoolean("show_cancel_waypoint_button", showCancelWaypointButtonCheckBox.isChecked)
                     .putBoolean("tmap_satellite_view_enabled", satelliteViewCheckBox.isChecked)
                     .putBoolean("tmap_traffic_info_enabled", trafficInfoCheckBox.isChecked)
                     .putBoolean("route_line_display_enabled", routeLineDisplayCheckBox.isChecked)
