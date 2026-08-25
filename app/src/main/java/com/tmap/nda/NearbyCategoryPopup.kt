@@ -24,6 +24,8 @@ import java.io.IOException
 object NearbyCategoryPopup {
     data class CategoryItem(val label: String, val code: String)
 
+    private const val PREF_LAST_CATEGORY = "nearby_category_last_selected"
+
     // v: 왼쪽 목록 - SearchRanking.CATEGORY_KEYWORDS 중 재억이 실제로 자주 쓸 법한 것만
     // 순서대로 고정. 순서 자체가 UI라 SearchRanking과 별도로 여기서 관리. #문제시 원복
     private val CATEGORIES = listOf(
@@ -81,6 +83,17 @@ object NearbyCategoryPopup {
             .setView(root)
             .setNegativeButton("닫기", null)
             .create()
+
+        // v: 재억 요청(2026-08-25) - 팝업 제목에 지금 선택된 카테고리를 같이 표시.
+        // 마지막으로 선택한 카테고리도 기억해서 다음에 열 때 그걸로 바로 검색(유종처럼). #문제시 원복
+        fun setTitleFor(label: String) {
+            dialog.setTitle("주변 검색 - $label")
+        }
+
+        fun saveLastCategory(label: String) {
+            context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .edit().putString(PREF_LAST_CATEGORY, label).apply()
+        }
 
         fun renderResults(hits: List<HistoryEntry>) {
             rightList.removeAllViews()
@@ -148,6 +161,7 @@ object NearbyCategoryPopup {
             rightList.removeAllViews()
             rightList.addView(makeRow(context, "검색 중...", null, false, 16f) {})
             OpinetHelper.fetchNearby(context, httpClient, opinetKey, curLat, curLon, brandCode, prodcd) { stations ->
+                NavLogger.d(context, "[오피넷] 주유소 검색 결과 ${stations.size}건")
                 (context as? android.app.Activity)?.runOnUiThread { renderGasStations(stations) }
             }
         }
@@ -200,11 +214,14 @@ object NearbyCategoryPopup {
             rightList.removeAllViews()
             rightList.addView(makeRow(context, "검색 중...", null, false, 16f) {})
             EvChargerHelper.fetchNearby(context, httpClient, evKey, restKey, curLat, curLon) { stations ->
+                NavLogger.d(context, "[전기차충전소] 검색 결과 ${stations.size}건")
                 (context as? android.app.Activity)?.runOnUiThread { renderChargers(stations) }
             }
         }
 
         fun runSearch(item: CategoryItem) {
+            setTitleFor(item.label)
+            saveLastCategory(item.label)
             when (item.label) {
                 "주유소" -> { runGasSearchFlow(); return }
                 "전기차 충전" -> { runEvSearch(); return }
@@ -212,14 +229,19 @@ object NearbyCategoryPopup {
             rightList.removeAllViews()
             rightList.addView(makeRow(context, "검색 중...", null, false, 16f) {})
             performCategorySearchShared(context, httpClient, restKey, item.code, curLat, curLon) { hits ->
+                NavLogger.d(context, "[주변카테고리검색] ${item.label} 결과 ${hits.size}건")
                 (context as? android.app.Activity)?.runOnUiThread { renderResults(hits) }
             }
         }
 
+        val lastCategoryLabel = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .getString(PREF_LAST_CATEGORY, null)
+        val startIndex = CATEGORIES.indexOfFirst { it.label == lastCategoryLabel }.takeIf { it >= 0 } ?: 0
+
         CATEGORIES.forEachIndexed { index, item ->
             val row = makeRow(context, item.label, null, true, 16f) { runSearch(item) }
             leftList.addView(row)
-            if (index == 0) runSearch(item) // 첫 카테고리 기본 선택
+            if (index == startIndex) runSearch(item) // 마지막 선택 카테고리(없으면 첫 카테고리) 기본 선택
         }
 
         dialog.show()
@@ -349,6 +371,7 @@ object NearbyCategoryPopup {
         lon: Double,
         onResult: (List<HistoryEntry>) -> Unit
     ) {
+        NavLogger.d(context, "[주변카테고리검색] 요청 시작 code=$categoryCode lat=$lat lon=$lon")
         val url = "https://dapi.kakao.com/v2/local/search/category.json?category_group_code=$categoryCode" +
             "&x=$lon&y=$lat&radius=20000&sort=distance"
         val request = Request.Builder()
