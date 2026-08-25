@@ -88,12 +88,16 @@ class MainActivity : AppCompatActivity() {
         val savedAppKey = sharedPref.getString("APP_KEY", "")
         val savedKakaoKey = sharedPref.getString("kakao_rest_api_key", "")
         val savedKakaoNativeKey = sharedPref.getString("kakao_native_app_key", "")
+        val savedOpinetKey = sharedPref.getString("opinet_api_key", "")
+        val savedEvChargerKey = sharedPref.getString("ev_charger_api_key", "")
         val savedTargetIp = sharedPref.getString("TARGET_IP", "255.255.255.255")
         val savedReqBackground = sharedPref.getBoolean("REQ_BACKGROUND", false)
 
         binding.etAppKey.setText(savedAppKey)
         binding.etKakaoAppKey.setText(savedKakaoKey)
         binding.etKakaoNativeAppKey.setText(savedKakaoNativeKey)
+        binding.etOpinetApiKey.setText(savedOpinetKey)
+        binding.etEvChargerApiKey.setText(savedEvChargerKey)
         binding.etTargetIp.setText(savedTargetIp)
         binding.cbBackgroundLocation.isChecked = savedReqBackground
 
@@ -114,6 +118,8 @@ class MainActivity : AppCompatActivity() {
             val appKey = binding.etAppKey.text.toString().trim()
             val kakaoKey = binding.etKakaoAppKey.text.toString().trim()
             val kakaoNativeKey = binding.etKakaoNativeAppKey.text.toString().trim()
+            val opinetKey = binding.etOpinetApiKey.text.toString().trim()
+            val evChargerKey = binding.etEvChargerApiKey.text.toString().trim()
             val targetIp = binding.etTargetIp.text.toString().trim()
             val reqBackground = binding.cbBackgroundLocation.isChecked
 
@@ -127,6 +133,8 @@ class MainActivity : AppCompatActivity() {
                 putString("APP_KEY", appKey)
                 putString("kakao_rest_api_key", kakaoKey)
                 putString("kakao_native_app_key", kakaoNativeKey)
+                putString("opinet_api_key", opinetKey)
+                putString("ev_charger_api_key", evChargerKey)
                 putString("TARGET_IP", targetIp)
                 putBoolean("REQ_BACKGROUND", reqBackground)
                 apply()

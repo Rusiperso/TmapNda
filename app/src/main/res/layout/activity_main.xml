@@ -58,6 +58,37 @@
 
     </com.google.android.material.textfield.TextInputLayout>
 
+    <!-- v: 신규기능(주유소 브랜드/유가 검색) - 오피넷 API도 각자 발급받아 넣는 방식(재억
+         지적: 한 명 키를 공유하면 하루 1500건 한도가 금방 소진됨). #문제시 원복 -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="오피넷 API 키 (주유소 유가정보용, 선택 - opinet.co.kr 각자 발급)"
+        android:layout_marginBottom="16dp">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etOpinetApiKey"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"/>
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- v: 신규기능(전기차 충전소) - 한국환경공단 API도 각자 발급받아 넣는 방식(공공데이터포털). #문제시 원복 -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="전기차 충전소 API 키 (선택 - data.go.kr 각자 발급)"
+        android:layout_marginBottom="16dp">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etEvChargerApiKey"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"/>
+
+    </com.google.android.material.textfield.TextInputLayout>
+
     <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
