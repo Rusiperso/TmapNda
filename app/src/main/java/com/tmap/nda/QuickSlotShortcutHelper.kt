@@ -126,6 +126,15 @@ object QuickSlotShortcutHelper {
         }
     }
 
+    // v: 재억 지적(2026-08-25) - 모든 홈화면 아이콘이 앱 기본 아이콘 하나로 똑같이
+    // 보여서 뭐가 뭔지 구분이 안 됐음. 슬롯 종류에 맞춰(집/회사/즐겨찾기) 아이콘 자체를
+    // 다르게 지정 - 라벨 텍스트에 의존하지 않고 아이콘만 봐도 구분되게. #문제시 원복
+    private fun iconResFor(slot: String): Int = when (slot) {
+        QuickSlotStore.SLOT_HOME -> R.drawable.ic_shortcut_home
+        QuickSlotStore.SLOT_WORK -> R.drawable.ic_shortcut_work
+        else -> R.drawable.ic_shortcut_favorite
+    }
+
     private fun buildShortcutInfo(context: Context, slot: String, entry: HistoryEntry): ShortcutInfo {
         val intent = Intent(context, MainActivity::class.java).apply {
             action = Intent.ACTION_VIEW
@@ -135,7 +144,7 @@ object QuickSlotShortcutHelper {
         return ShortcutInfo.Builder(context, shortcutId(slot))
             .setShortLabel(entry.name.take(10).ifBlank { "즐겨찾기" })
             .setLongLabel("${entry.name} 안내 시작")
-            .setIcon(Icon.createWithResource(context, R.mipmap.ic_launcher))
+            .setIcon(Icon.createWithResource(context, iconResFor(slot)))
             .setIntent(intent)
             .build()
     }
