@@ -43,7 +43,7 @@ object EvChargerHelper {
         // 대량으로 받아온 뒤 앱에서 직접 거리(15km)로 걸러내는 방식으로 전환. #문제시 원복
         NavLogger.d(context, "[전기차충전소] 요청 시작(전국, 거리필터) lat=$lat lon=$lon")
         val url = "https://apis.data.go.kr/B552584/EvCharger/getChargerInfo" +
-            "?serviceKey=$evApiKey&numOfRows=3000&pageNo=1&dataType=JSON"
+            "?serviceKey=$evApiKey&numOfRows=9999&pageNo=1&dataType=JSON"
         val request = Request.Builder().url(url).build()
         httpClient.newCall(request).enqueue(object : okhttp3.Callback {
             override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
@@ -63,6 +63,7 @@ object EvChargerHelper {
                         val json = JSONObject(bodyStr)
                         val body = json.optJSONObject("response")?.optJSONObject("body")
                         val resultCode = json.optJSONObject("response")?.optJSONObject("header")?.optString("resultCode")
+                        val totalCount = body?.optInt("totalCount", -1) ?: -1
                         val itemsContainer = body?.optJSONObject("items") ?: json.optJSONObject("items")
                         val itemsRaw = itemsContainer?.opt("item")
                         val items = when (itemsRaw) {
@@ -99,7 +100,7 @@ object EvChargerHelper {
                         }.distinctBy { it.name to it.lat to it.lon }
                             .filter { it.distanceMeters in 0.1..15000.0 } // 좌표 없는(0,0) 항목 제외 + 15km 이내만
                             .sortedBy { it.distanceMeters }
-                        NavLogger.d(context, "[전기차충전소] 전국 ${items.length()}건 중 15km 이내 ${stations.size}건")
+                        NavLogger.d(context, "[전기차충전소] 전국 ${items.length()}건(totalCount=$totalCount) 중 15km 이내 ${stations.size}건")
                         onResult(stations)
                     } catch (e: Exception) {
                         NavLogger.e(context, "[전기차충전소] 파싱 실패: ${e.message} body=${bodyStr.take(300)}")
