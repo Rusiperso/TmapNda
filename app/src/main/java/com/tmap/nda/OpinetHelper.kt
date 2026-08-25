@@ -236,7 +236,7 @@ object OpinetHelper {
         val urlBuilder = StringBuilder("https://www.opinet.co.kr/api/aroundAll.do?out=json")
             .append("&x=").append(x)
             .append("&y=").append(y)
-            .append("&radius=5000")
+            .append("&radius=20000") // v: 재억 요청(2026-08-25) - 다른 카테고리(20km)와 반경 통일, 원래 5km라 너무 좁았음 #문제시 원복
             .append("&sort=1") // 거리순(오피넷 자체 정렬 - 최종 정렬은 앱에서 가격+거리로 재계산)
             .append("&prodcd=").append(prodcd)
             .append("&code=").append(apiKey)
