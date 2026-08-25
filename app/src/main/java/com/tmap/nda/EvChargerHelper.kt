@@ -67,14 +67,16 @@ object EvChargerHelper {
     ) {
         resolveZcode(httpClient, kakaoRestKey, lat, lon) { zcode ->
             if (zcode == null) {
-                NavLogger.e(context, "[전기차충전소] 행정구역 코드 조회 실패")
+                NavLogger.e(context, "[전기차충전소] 행정구역 코드 조회 실패 lat=$lat lon=$lon")
                 onResult(emptyList())
                 return@resolveZcode
             }
+            NavLogger.d(context, "[전기차충전소] 요청 시작 zcode=$zcode lat=$lat lon=$lon")
             // v: 재억 제보(2026-08-25) - 공공데이터포털 키를 URLEncoder로 또 인코딩해서
             // 이중 인코딩이 되어 "SERVICE_KEY_IS_NOT_REGISTERED_ERROR"가 났음. 포털이 주는
             // 키는 이미 Encoding 형태(특수문자가 %XX로 인코딩된 상태)라 그대로 붙여야 함. #문제시 원복
-            val url = "http://apis.data.go.kr/B552584/EvCharger/getChargerInfo" +
+            // v: https로 변경 - 공공데이터포털 최신 API는 http 요청을 막거나 리다이렉트할 수 있음. #문제시 원복
+            val url = "https://apis.data.go.kr/B552584/EvCharger/getChargerInfo" +
                 "?serviceKey=$evApiKey&zcode=$zcode&numOfRows=100&pageNo=1&dataType=JSON"
             val request = Request.Builder().url(url).build()
             httpClient.newCall(request).enqueue(object : okhttp3.Callback {
@@ -93,9 +95,21 @@ object EvChargerHelper {
                         }
                         try {
                             val json = JSONObject(bodyStr)
-                            val items = json.optJSONObject("items")?.optJSONArray("item")
+                            // v: 재억 제보(2026-08-25) - 승인됐는데도 검색이 안 됨. 공공데이터포털
+                            // 표준 REST 응답은 response->body->items->item으로 감싸져 있는데,
+                            // 예전엔 최상위 items만 봐서 못 찾았을 가능성. 두 형태 다 지원하고,
+                            // resultCode도 확인해서 "정상인데 결과가 0건"인 경우와 구분. #문제시 원복
+                            val body = json.optJSONObject("response")?.optJSONObject("body")
+                            val resultCode = json.optJSONObject("response")?.optJSONObject("header")?.optString("resultCode")
+                            val itemsContainer = body?.optJSONObject("items") ?: json.optJSONObject("items")
+                            val itemsRaw = itemsContainer?.opt("item")
+                            val items = when (itemsRaw) {
+                                is org.json.JSONArray -> itemsRaw
+                                is JSONObject -> org.json.JSONArray().put(itemsRaw) // 결과 1건일 때 배열이 아니라 단일 객체로 오는 경우
+                                else -> null
+                            }
                             if (items == null) {
-                                NavLogger.e(context, "[전기차충전소] 응답 형식 다름(필드명 확인 필요): ${bodyStr.take(300)}")
+                                NavLogger.e(context, "[전기차충전소] 응답 형식 다름(resultCode=$resultCode, 필드명 확인 필요): ${bodyStr.take(500)}")
                                 onResult(emptyList())
                                 return@use
                             }
