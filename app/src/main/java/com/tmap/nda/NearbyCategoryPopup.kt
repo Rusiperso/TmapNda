@@ -95,19 +95,58 @@ object NearbyCategoryPopup {
                 .edit().putString(PREF_LAST_CATEGORY, label).apply()
         }
 
-        fun renderResults(hits: List<HistoryEntry>) {
+        // v: 재억 요청(2026-08-25) - 결과가 많을 때 한 화면에 다 몰아넣지 말고 10개씩
+        // 페이지로 나눠서 "이전/다음" 버튼으로 넘겨보게 함(기존 목적지 검색과 동일 패턴). #문제시 원복
+        fun <T> renderPaged(items: List<T>, page: Int, makeItemRow: (T) -> View, onPageChange: (Int) -> Unit) {
             rightList.removeAllViews()
-            if (hits.isEmpty()) {
+            if (items.isEmpty()) {
                 rightList.addView(makeRow(context, "검색 결과 없음", null, false, 16f) {})
                 return
             }
-            hits.forEach { entry ->
+            val pageSize = 10
+            val totalPages = (items.size + pageSize - 1) / pageSize
+            val safePage = page.coerceIn(0, totalPages - 1)
+            val start = safePage * pageSize
+            val end = (start + pageSize).coerceAtMost(items.size)
+            items.subList(start, end).forEach { rightList.addView(makeItemRow(it)) }
+            if (totalPages > 1) {
+                val navRow = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER
+                    setPadding(dp(context, 8), dp(context, 12), dp(context, 8), dp(context, 8))
+                }
+                navRow.addView(TextView(context).apply {
+                    text = "이전"
+                    textSize = 14f
+                    setTextColor(if (safePage > 0) android.graphics.Color.WHITE else android.graphics.Color.GRAY)
+                    setPadding(dp(context, 20), dp(context, 8), dp(context, 20), dp(context, 8))
+                    if (safePage > 0) setOnClickListener { onPageChange(safePage - 1) }
+                })
+                navRow.addView(TextView(context).apply {
+                    text = "${safePage + 1} / $totalPages"
+                    textSize = 14f
+                    setTextColor(android.graphics.Color.WHITE)
+                    setPadding(dp(context, 12), dp(context, 8), dp(context, 12), dp(context, 8))
+                })
+                navRow.addView(TextView(context).apply {
+                    text = "다음"
+                    textSize = 14f
+                    setTextColor(if (safePage < totalPages - 1) android.graphics.Color.WHITE else android.graphics.Color.GRAY)
+                    setPadding(dp(context, 20), dp(context, 8), dp(context, 20), dp(context, 8))
+                    if (safePage < totalPages - 1) setOnClickListener { onPageChange(safePage + 1) }
+                })
+                rightList.addView(navRow)
+            }
+        }
+
+        fun renderResults(hits: List<HistoryEntry>, page: Int = 0) {
+            renderPaged(hits, page, { entry ->
                 val distText = entry.distanceMeters?.let { SearchRanking.formatDistance(it) }
-                rightList.addView(makeRow(context, entry.name, distText, true, 14f) {
+                makeRow(context, entry.name, distText, true, 14f) {
                     dialog.dismiss()
                     onPick(entry)
-                })
-            }
+                }
+            }) { newPage -> renderResults(hits, newPage) }
         }
 
         // v: 신규기능(주유소 브랜드/유가 검색) - 오피넷 API로 조회, 결과에 브랜드+가격 표시.
@@ -125,24 +164,20 @@ object NearbyCategoryPopup {
             return sorted + withoutPrice.sortedBy { it.distanceMeters }
         }
 
-        fun renderGasStations(stations: List<OpinetHelper.GasStation>) {
-            rightList.removeAllViews()
-            if (stations.isEmpty()) {
-                rightList.addView(makeRow(context, "검색 결과 없음", null, false, 16f) {})
-                return
-            }
-            sortByPriceAndDistance(stations).forEach { st ->
+        fun renderGasStations(stations: List<OpinetHelper.GasStation>, page: Int = 0) {
+            val sorted = sortByPriceAndDistance(stations)
+            renderPaged(sorted, page, { st ->
                 val distText = SearchRanking.formatDistance(st.distanceMeters)
                 val fuelLabel = OpinetHelper.FUEL_TYPES.firstOrNull { it.second == OpinetHelper.savedFuelType(context) }?.first ?: "가격"
                 val priceText = st.gasolinePrice?.let { "$fuelLabel ${it}원" }
-                rightList.addView(makeGasRow(context, "${st.brandName} ${st.name}", distText, priceText) {
+                makeGasRow(context, "${st.brandName} ${st.name}", distText, priceText) {
                     dialog.dismiss()
                     onPick(HistoryEntry(st.name, "", st.lat, st.lon, st.distanceMeters))
-                })
-            }
+                }
+            }) { newPage -> renderGasStations(stations, newPage) }
         }
 
-        fun runGasSearch(brandCode: String?) {
+        fun runGasSearch() {
             val opinetKey = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 .getString("opinet_api_key", null)
             if (opinetKey.isNullOrBlank()) {
@@ -160,9 +195,14 @@ object NearbyCategoryPopup {
             val prodcd = OpinetHelper.savedFuelType(context) ?: OpinetHelper.FUEL_TYPES[0].second
             rightList.removeAllViews()
             rightList.addView(makeRow(context, "검색 중...", null, false, 16f) {})
-            OpinetHelper.fetchNearby(context, httpClient, opinetKey, curLat, curLon, brandCode, prodcd) { stations ->
-                NavLogger.d(context, "[오피넷] 주유소 검색 결과 ${stations.size}건")
-                (context as? android.app.Activity)?.runOnUiThread { renderGasStations(stations) }
+            // v: 신규기능(브랜드 다중선택 필터) - 재억 요청 - 서버는 항상 전체로 받아오고,
+            // 저장된 브랜드 필터(여러 개 가능)로 클라이언트에서 걸러냄. 오피넷 API의
+            // pooltype은 브랜드 하나만 지원해서 다중선택은 서버가 아니라 앱에서 처리. #문제시 원복
+            OpinetHelper.fetchNearby(context, httpClient, opinetKey, curLat, curLon, null, prodcd) { stations ->
+                val savedBrands = OpinetHelper.savedBrandFilter(context)
+                val filtered = if (savedBrands.isNullOrEmpty()) stations else stations.filter { it.brandCode in savedBrands }
+                NavLogger.d(context, "[오피넷] 주유소 검색 결과 ${stations.size}건 중 브랜드필터 후 ${filtered.size}건")
+                (context as? android.app.Activity)?.runOnUiThread { renderGasStations(filtered) }
             }
         }
 
@@ -170,7 +210,7 @@ object NearbyCategoryPopup {
         // 다시 바꿀 수 있게 브랜드 선택 창 맨 위에 "유종 변경" 항목을 항상 넣어둠. #문제시 원복
         fun showBrandChooserForGas() {
             val currentFuelLabel = OpinetHelper.FUEL_TYPES.firstOrNull { it.second == OpinetHelper.savedFuelType(context) }?.first
-            showBrandChooser(context, currentFuelLabel) { brandCode -> runGasSearch(brandCode) }
+            showBrandMultiChooser(context, currentFuelLabel) { runGasSearch() }
         }
 
         fun runGasSearchFlow() {
@@ -184,19 +224,33 @@ object NearbyCategoryPopup {
             }
         }
 
-        // v: 재억 요청(2026-08-25) - 환경공단 API 단독 방식(지역코드 필터/전국+거리필터 둘 다
-        // 시도)이 위치 커버리지가 부실해서(카카오맵엔 209곳인데 우리는 1곳만 잡음), 위치는
-        // 이미 검증된 카카오 키워드 검색으로 정확하게 가져오고, 환경공단 데이터는 "있으면
-        // 상태만 덧붙이는" 보조 역할로 전환. #문제시 원복
-        // v: 재억 요청(2026-08-25) - "04·충전대기"처럼 충전기 1대 상태만 보이던 걸, 같은
-        // 위치(150m 이내)의 충전기를 다 모아서 "충전기 4대 · 충전중 2 · 대기 1 · 이상 1"
-        // 식으로 세분화. #문제시 원복
-        fun renderChargers(kakaoHits: List<HistoryEntry>, envStations: List<EvChargerHelper.ChargerStation>) {
-            rightList.removeAllViews()
-            if (kakaoHits.isEmpty()) {
-                rightList.addView(makeRow(context, "검색 결과 없음", null, false, 16f) {})
-                return
+        // v: 재억 요청(2026-08-25) - 충전용량(kW)이 있으면 그걸로 초급속(100kW+)/급속(40kW+)/
+        // 완속(40kW 미만) 구분(법령상 40kW 기준과 동일). kW 정보가 없는 경우에만 타입 코드로
+        // 대략 추정(01,03,04,05,07=급속 계열, 02,06=완속) - 확실치 않은 값이라 로그로 남김. #문제시 원복
+        fun speedLabel(st: EvChargerHelper.ChargerStation): String {
+            val kw = st.outputKw
+            if (kw != null) {
+                return when {
+                    kw >= 100.0 -> "초급속"
+                    kw >= 40.0 -> "급속"
+                    else -> "완속"
+                }
             }
+            return when (st.chargerType) {
+                "01", "03", "04", "05", "07" -> "급속"
+                "02", "06" -> "완속"
+                else -> {
+                    NavLogger.d(context, "[전기차충전소] 미분류 충전기타입 코드=${st.chargerType}")
+                    "종류미상"
+                }
+            }
+        }
+
+        // v: 신규기능(충전기 속도 필터) - 전체/초급속/급속/완속 중 골라서, 그 속도의 충전기가
+        // 있는 충전소만 걸러서 보여줌. #문제시 원복
+        var evSpeedFilter: String? = null // null = 전체
+
+        fun renderChargers(kakaoHits: List<HistoryEntry>, envStations: List<EvChargerHelper.ChargerStation>, page: Int = 0) {
             fun distMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
                 val dLat = Math.toRadians(lat2 - lat1)
                 val dLon = Math.toRadians(lon2 - lon1)
@@ -205,23 +259,57 @@ object NearbyCategoryPopup {
                     Math.sin(dLon / 2).let { it * it }
                 return 6371000.0 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
             }
-            kakaoHits.forEach { entry ->
+            val filteredHits = if (evSpeedFilter == null) {
+                kakaoHits
+            } else {
+                kakaoHits.filter { entry ->
+                    envStations.any { st ->
+                        distMeters(entry.lat, entry.lon, st.lat, st.lon) <= 150.0 && speedLabel(st) == evSpeedFilter
+                    }
+                }
+            }
+            val filterRow = makeRow(context, "속도 필터: ${evSpeedFilter ?: "전체"} (탭해서 변경)", null, true, 13f) {
+                showEvSpeedChooser(kakaoHits, envStations)
+            }
+            renderPaged(filteredHits, page, { entry ->
                 val distText = entry.distanceMeters?.let { SearchRanking.formatDistance(it) }
                 val nearby = envStations.filter { st -> distMeters(entry.lat, entry.lon, st.lat, st.lon) <= 150.0 }
                 val statusText = if (nearby.isEmpty()) {
-                    "상태 미확인"
+                    "충전기 정보 없음"
                 } else {
                     val charging = nearby.count { it.statusText == "충전중" }
                     val waiting = nearby.count { it.statusText == "충전대기" }
                     val trouble = nearby.count { it.statusText == "통신이상" || it.statusText == "운영중지" }
-                    "충전기 ${nearby.size}대 · 대기 $waiting · 충전중 $charging" +
+                    val fastCount = nearby.count { speedLabel(it) == "급속" }
+                    val slowCount = nearby.count { speedLabel(it) == "완속" }
+                    val ultraCount = nearby.count { speedLabel(it) == "초급속" }
+                    val speedParts = listOfNotNull(
+                        if (ultraCount > 0) "초급속 $ultraCount" else null,
+                        if (fastCount > 0) "급속 $fastCount" else null,
+                        if (slowCount > 0) "완속 $slowCount" else null
+                    )
+                    val speedText = if (speedParts.isNotEmpty()) " (${speedParts.joinToString("·")})" else ""
+                    "충전기 ${nearby.size}대$speedText · 대기 $waiting · 충전중 $charging" +
                         (if (trouble > 0) " · 이상 $trouble" else "")
                 }
-                rightList.addView(makeGasRow(context, entry.name, distText, statusText) {
+                makeGasRow(context, entry.name, distText, statusText) {
                     dialog.dismiss()
                     onPick(entry)
-                })
-            }
+                }
+            }) { newPage -> renderChargers(kakaoHits, envStations, newPage) }
+            rightList.addView(filterRow, 0)
+        }
+
+        /** 급속/완속/초급속/전체 고르는 팝업. */
+        fun showEvSpeedChooser(kakaoHits: List<HistoryEntry>, envStations: List<EvChargerHelper.ChargerStation>) {
+            val options = arrayOf("전체", "초급속", "급속", "완속")
+            AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("충전기 속도 선택")
+                .setItems(options) { _, which ->
+                    evSpeedFilter = if (which == 0) null else options[which]
+                    renderChargers(kakaoHits, envStations, 0)
+                }
+                .show()
         }
 
         fun runEvSearch() {
@@ -270,24 +358,30 @@ object NearbyCategoryPopup {
         dialog.show()
     }
 
-    /** 주유소 선택 시 브랜드 고르는 작은 팝업. 맨 위에 "유종 변경" 항목을 항상 넣어둠. */
-    private fun showBrandChooser(context: Context, currentFuelLabel: String?, onPick: (String?) -> Unit) {
-        val fuelChangeLabel = "유종 변경 (현재: ${currentFuelLabel ?: "미선택"})"
-        val labels = (listOf(fuelChangeLabel) + OpinetHelper.BRANDS.map { it.first }).toTypedArray()
-        AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("주유소 브랜드 선택")
-            .setItems(labels) { _, which ->
-                if (which == 0) {
-                    OpinetHelper.clearFuelType(context)
-                    showFuelChooser(context) { prodcd ->
-                        OpinetHelper.saveFuelType(context, prodcd)
-                        showBrandChooser(context, OpinetHelper.FUEL_TYPES.firstOrNull { it.second == prodcd }?.first, onPick)
-                    }
-                } else {
-                    onPick(OpinetHelper.BRANDS[which - 1].second)
+    /** 주유소 선택 시 브랜드 여러 개를 체크박스로 골라 저장하는 팝업. "유종 변경" 버튼도 같이 둠. */
+    private fun showBrandMultiChooser(context: Context, currentFuelLabel: String?, onApply: () -> Unit) {
+        val actualBrands = OpinetHelper.BRANDS.filter { it.second != null } // "전체" 항목 제외
+        val currentSaved = OpinetHelper.savedBrandFilter(context) ?: emptySet()
+        val checkedStates = BooleanArray(actualBrands.size) { i -> actualBrands[i].second in currentSaved }
+        val labels = actualBrands.map { it.first }.toTypedArray()
+
+        val builder = AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("주유소 브랜드 선택 (여러 개 가능, 전체 해제 시 전체표시)")
+            .setMultiChoiceItems(labels, checkedStates) { _, which, isChecked -> checkedStates[which] = isChecked }
+            .setPositiveButton("적용") { _, _ ->
+                val selected = actualBrands.filterIndexed { i, _ -> checkedStates[i] }.mapNotNull { it.second }.toSet()
+                OpinetHelper.saveBrandFilter(context, selected)
+                onApply()
+            }
+            .setNeutralButton("유종 변경") { _, _ ->
+                OpinetHelper.clearFuelType(context)
+                showFuelChooser(context) { prodcd ->
+                    OpinetHelper.saveFuelType(context, prodcd)
+                    showBrandMultiChooser(context, OpinetHelper.FUEL_TYPES.firstOrNull { it.second == prodcd }?.first, onApply)
                 }
             }
-            .show()
+            .setNegativeButton("취소", null)
+        builder.show()
     }
 
     /** 유종(휘발유/경유/LPG) 선택 팝업. 처음 한 번만 뜨고 이후엔 저장된 값을 계속 씀. */
