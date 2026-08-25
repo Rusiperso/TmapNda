@@ -184,38 +184,61 @@ object NearbyCategoryPopup {
             }
         }
 
-        // v: 신규기능(전기차 충전소) - 한국환경공단 API. 오피넷과 별개 키(ev_charger_api_key)
-        // 필요. 카카오 REST 키로 좌표->시군구코드 변환 후 조회. #문제시 원복
-        fun renderChargers(stations: List<EvChargerHelper.ChargerStation>) {
+        // v: 재억 요청(2026-08-25) - 환경공단 API 단독 방식(지역코드 필터/전국+거리필터 둘 다
+        // 시도)이 위치 커버리지가 부실해서(카카오맵엔 209곳인데 우리는 1곳만 잡음), 위치는
+        // 이미 검증된 카카오 키워드 검색으로 정확하게 가져오고, 환경공단 데이터는 "있으면
+        // 상태만 덧붙이는" 보조 역할로 전환. #문제시 원복
+        // v: 재억 요청(2026-08-25) - "04·충전대기"처럼 충전기 1대 상태만 보이던 걸, 같은
+        // 위치(150m 이내)의 충전기를 다 모아서 "충전기 4대 · 충전중 2 · 대기 1 · 이상 1"
+        // 식으로 세분화. #문제시 원복
+        fun renderChargers(kakaoHits: List<HistoryEntry>, envStations: List<EvChargerHelper.ChargerStation>) {
             rightList.removeAllViews()
-            if (stations.isEmpty()) {
+            if (kakaoHits.isEmpty()) {
                 rightList.addView(makeRow(context, "검색 결과 없음", null, false, 16f) {})
                 return
             }
-            stations.take(30).forEach { st ->
-                val distText = SearchRanking.formatDistance(st.distanceMeters)
-                val statusText = "${st.chargerType} · ${st.statusText}"
-                rightList.addView(makeGasRow(context, st.name, distText, statusText) {
+            fun distMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+                val dLat = Math.toRadians(lat2 - lat1)
+                val dLon = Math.toRadians(lon2 - lon1)
+                val a = Math.sin(dLat / 2).let { it * it } +
+                    Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                    Math.sin(dLon / 2).let { it * it }
+                return 6371000.0 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+            }
+            kakaoHits.forEach { entry ->
+                val distText = entry.distanceMeters?.let { SearchRanking.formatDistance(it) }
+                val nearby = envStations.filter { st -> distMeters(entry.lat, entry.lon, st.lat, st.lon) <= 150.0 }
+                val statusText = if (nearby.isEmpty()) {
+                    "상태 미확인"
+                } else {
+                    val charging = nearby.count { it.statusText == "충전중" }
+                    val waiting = nearby.count { it.statusText == "충전대기" }
+                    val trouble = nearby.count { it.statusText == "통신이상" || it.statusText == "운영중지" }
+                    "충전기 ${nearby.size}대 · 대기 $waiting · 충전중 $charging" +
+                        (if (trouble > 0) " · 이상 $trouble" else "")
+                }
+                rightList.addView(makeGasRow(context, entry.name, distText, statusText) {
                     dialog.dismiss()
-                    onPick(HistoryEntry(st.name, "", st.lat, st.lon, st.distanceMeters))
+                    onPick(entry)
                 })
             }
         }
 
         fun runEvSearch() {
-            val evKey = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-                .getString("ev_charger_api_key", null)
-            if (evKey.isNullOrBlank()) {
-                android.widget.Toast.makeText(context, "전기차 충전소 API 키를 설정에서 먼저 입력하세요 (공공데이터포털 각자 발급)", android.widget.Toast.LENGTH_LONG).show()
-                rightList.removeAllViews()
-                rightList.addView(makeRow(context, "충전소 API 키가 없습니다", null, false, 14f) {})
-                return
-            }
             rightList.removeAllViews()
             rightList.addView(makeRow(context, "검색 중...", null, false, 16f) {})
-            EvChargerHelper.fetchNearby(context, httpClient, evKey, restKey, curLat, curLon) { stations ->
-                NavLogger.d(context, "[전기차충전소] 검색 결과 ${stations.size}건")
-                (context as? android.app.Activity)?.runOnUiThread { renderChargers(stations) }
+            performKeywordSearchShared(context, httpClient, restKey, "전기차 충전소", curLat, curLon) { kakaoHits ->
+                val evKey = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                    .getString("ev_charger_api_key", null)
+                if (evKey.isNullOrBlank()) {
+                    // 상태 정보용 키가 없어도 위치 검색(카카오)은 그대로 보여줌
+                    (context as? android.app.Activity)?.runOnUiThread { renderChargers(kakaoHits, emptyList()) }
+                    return@performKeywordSearchShared
+                }
+                EvChargerHelper.fetchNearby(context, httpClient, evKey, restKey, curLat, curLon) { envStations ->
+                    NavLogger.d(context, "[전기차충전소] 카카오 ${kakaoHits.size}건 + 환경공단 ${envStations.size}건 매칭")
+                    (context as? android.app.Activity)?.runOnUiThread { renderChargers(kakaoHits, envStations) }
+                }
             }
         }
 
@@ -362,6 +385,60 @@ object NearbyCategoryPopup {
         (value * context.resources.displayMetrics.density).toInt()
 
     /** MapActivity.performCategorySearch()와 동일한 API 호출 - 두 화면이 같은 결과 형식을 쓰게 공용화. */
+    /** 카카오 키워드 검색 - 카테고리 코드가 없는 "전기차 충전소" 같은 경우 사용. */
+    private fun performKeywordSearchShared(
+        context: Context,
+        httpClient: OkHttpClient,
+        restKey: String,
+        keyword: String,
+        lat: Double,
+        lon: Double,
+        onResult: (List<HistoryEntry>) -> Unit
+    ) {
+        NavLogger.d(context, "[주변카테고리검색] 키워드 요청 시작 keyword=$keyword lat=$lat lon=$lon")
+        val encodedKeyword = java.net.URLEncoder.encode(keyword, "UTF-8")
+        val url = "https://dapi.kakao.com/v2/local/search/keyword.json?query=$encodedKeyword" +
+            "&x=$lon&y=$lat&radius=20000&sort=distance"
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", "KakaoAK $restKey")
+            .build()
+        httpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                NavLogger.e(context, "[주변카테고리검색] 키워드 요청 실패: ${e.message}")
+                onResult(emptyList())
+            }
+
+            override fun onResponse(call: Call, response: okhttp3.Response) {
+                response.use {
+                    if (!it.isSuccessful) {
+                        NavLogger.e(context, "[주변카테고리검색] 키워드 실패 code=${it.code}")
+                        onResult(emptyList())
+                        return@use
+                    }
+                    val json = JSONObject(it.body?.string() ?: "{}")
+                    val documents = json.optJSONArray("documents")
+                    if (documents == null || documents.length() == 0) {
+                        onResult(emptyList())
+                        return@use
+                    }
+                    val hits = (0 until documents.length()).map { idx ->
+                        val d = documents.getJSONObject(idx)
+                        HistoryEntry(
+                            d.optString("place_name", "이름 없음"),
+                            d.optString("road_address_name", d.optString("address_name", "")),
+                            d.optDouble("y"),
+                            d.optDouble("x"),
+                            d.optString("distance").toDoubleOrNull()
+                        )
+                    }
+                    NavLogger.d(context, "[주변카테고리검색] 키워드 결과 ${hits.size}건")
+                    onResult(hits)
+                }
+            }
+        })
+    }
+
     private fun performCategorySearchShared(
         context: Context,
         httpClient: OkHttpClient,
