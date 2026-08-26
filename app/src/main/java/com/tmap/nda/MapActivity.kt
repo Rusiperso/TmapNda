@@ -397,6 +397,16 @@ class MapActivity : AppCompatActivity() {
                 PanelDragHelper.restorePosition(this, panel, "llLeftHudPanel", isLandscape, emptyList())
             }
         }
+
+        // v: 재억 지적(2026-08-26) - "UI 편집"을 눌러도 카테고리 버튼은 반응이 없다는
+        // 지적 - llLeftHudPanel만 드래그 대상이었고 이 버튼은 아예 빠져있었음. 같은
+        // 방식(makeDraggable/restorePosition)으로 편집모드에서 같이 옮길 수 있게 추가. #문제시 원복
+        binding.btnNearbyCategory?.let { btn ->
+            PanelDragHelper.makeDraggable(this, btn, "btnNearbyCategory", isLandscape, emptyList())
+            btn.post {
+                PanelDragHelper.restorePosition(this, btn, "btnNearbyCategory", isLandscape, emptyList())
+            }
+        }
         // v3.9: Tmap/카카오 화면 동일 동작을 위해 공용 함수로 교체 (사용자: "기본 UI는 차등 두지 말 것")
         binding.btnEditPanelPosition?.let {
             PanelDragHelper.wireEditToggleButton(this, it, binding.svSecondaryPanel, binding.btnMoreMenu, binding.btnConfirmEditPosition, binding.llLeftHudPanel)

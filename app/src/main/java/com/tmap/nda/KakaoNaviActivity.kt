@@ -289,6 +289,28 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
         }
 
+        // v: 재억 지적(2026-08-26) - "UI 편집"을 눌러도 경유지/카테고리/경유지취소 버튼은
+        // 반응이 없다는 지적 - llLeftHudPanel만 드래그 대상이었고 이 버튼들은 빠져있었음.
+        // 같은 방식으로 편집모드에서 같이 옮길 수 있게 추가. #문제시 원복
+        binding.btnAddWaypoint?.let { btn ->
+            PanelDragHelper.makeDraggable(this, btn, "btnAddWaypoint", isLandscape, emptyList())
+            btn.post {
+                PanelDragHelper.restorePosition(this, btn, "btnAddWaypoint", isLandscape, emptyList())
+            }
+        }
+        binding.btnNearbyCategory?.let { btn ->
+            PanelDragHelper.makeDraggable(this, btn, "btnNearbyCategory", isLandscape, emptyList())
+            btn.post {
+                PanelDragHelper.restorePosition(this, btn, "btnNearbyCategory", isLandscape, emptyList())
+            }
+        }
+        binding.btnCancelWaypoint?.let { btn ->
+            PanelDragHelper.makeDraggable(this, btn, "btnCancelWaypoint", isLandscape, emptyList())
+            btn.post {
+                PanelDragHelper.restorePosition(this, btn, "btnCancelWaypoint", isLandscape, emptyList())
+            }
+        }
+
         // v3.3: 이 HudScale.install()이 llLeftHudPanel(이제 상단 가로바)을 예전
         // "좌측 세로 패널" 기준 폭으로 강제 리사이즈하고 있었음 - MapActivity에서는
         // v2.6에서 이미 비활성화했는데 KakaoNaviActivity에서는 빼먹어서, 카카오 길안내
