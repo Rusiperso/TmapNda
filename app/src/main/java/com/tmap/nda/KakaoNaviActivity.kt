@@ -1235,7 +1235,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 binding.btnAddWaypoint?.visibility = if (showWaypointButton) View.VISIBLE else View.GONE
                 binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
                 binding.btnCancelWaypoint?.visibility = if (showCancelWaypointButton && activeWaypoint != null) View.VISIBLE else View.GONE
-                NavLogger.d(this, "[버튼표시설정] 적용 후 실제 visibility: 경유지=${binding.btnAddWaypoint?.visibility} 카테고리=${binding.btnNearbyCategory?.visibility}")
+                // v: 재억 제보(2026-08-26) - 경유지취소 버튼이 저장한 위치에 안 있고 계속
+                // 움직이던 문제 - 처음엔 GONE 상태라 크기가 0이라 위치복원이 제대로 안 됐고,
+                // 그 뒤 VISIBLE로 바뀔 때마다 저장된 위치를 다시 안 불러서 기본위치로 돌아갔음.
+                // VISIBLE 되는 시점마다 위치를 다시 복원. #문제시 원복
+                if (showCancelWaypointButton && activeWaypoint != null) {
+                    binding.btnCancelWaypoint?.post {
+                        PanelDragHelper.restorePosition(this, binding.btnCancelWaypoint!!, "btnCancelWaypoint", resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE, emptyList())
+                    }
+                }
             }
         }
 
@@ -2025,6 +2033,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     val showCancelBtn = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                         .getBoolean("show_cancel_waypoint_button", true)
                     binding.btnCancelWaypoint?.visibility = if (showCancelBtn) View.VISIBLE else View.GONE
+                    if (showCancelBtn) {
+                        binding.btnCancelWaypoint?.post {
+                            PanelDragHelper.restorePosition(this, binding.btnCancelWaypoint!!, "btnCancelWaypoint", resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE, emptyList())
+                        }
+                    }
                 } catch (e: Exception) {
                     NavLogger.e(this, "[경유지추가] guideNewDestinations 예외: ${e.message}")
                     Toast.makeText(this, "경유지 추가 실패(화면 반영 오류)", Toast.LENGTH_SHORT).show()
@@ -2728,6 +2741,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             binding.btnAddWaypoint?.visibility = if (showWaypointButton) View.VISIBLE else View.GONE
             binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
             binding.btnCancelWaypoint?.visibility = if (showCancelWaypointButton && activeWaypoint != null) View.VISIBLE else View.GONE
+            if (showCancelWaypointButton && activeWaypoint != null) {
+                binding.btnCancelWaypoint?.post {
+                    PanelDragHelper.restorePosition(this, binding.btnCancelWaypoint!!, "btnCancelWaypoint", resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE, emptyList())
+                }
+            }
         }
         // v: 재억 요청(2026-08-22) - MapActivity와 동일한 패턴. 카카오 화면이 앞으로
         // 오는 순간 최신 차선정보를 바로 그려주고, 이후 새 데이터가 들어올 때마다
@@ -2859,7 +2877,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             val speedKph = (location.speed * 3.6).toInt()
             binding.tvCurrentSpeed?.text = speedKph.toString()
             checkOverSpeedWarning(speedKph)
-            if (location.hasBearing() && location.speed > 1.0f) {
+            if (location.hasBearing() && location.speed > 0.5f) { // v: 화면이 자주 재시작돼서 bearing이 쌓일 시간이 부족했음 - 조건 완화(1.0->0.5) #문제시 원복
                 lastKnownBearing = location.bearing
             }
             binding.btnGpsStatus?.text = "GOOD (정확도 ${location.accuracy.toInt()}m)"
