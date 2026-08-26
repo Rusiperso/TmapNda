@@ -1207,9 +1207,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     .getBoolean("show_category_button", true)
                 val showCancelWaypointButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                     .getBoolean("show_cancel_waypoint_button", true)
+                // v: 재억 제보(2026-08-26) - 최신버전에서도 여전히 안 사라진다는 지적 -
+                // 콜백이 실제로 실행되는지, 읽은 값이 뭔지 확실히 확인하기 위한 로그. #문제시 원복
+                NavLogger.d(this, "[버튼표시설정] 저장직후 적용: 경유지=$showWaypointButton 카테고리=$showCategoryButton 경유지취소=$showCancelWaypointButton")
                 binding.btnAddWaypoint?.visibility = if (showWaypointButton) View.VISIBLE else View.GONE
                 binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
                 binding.btnCancelWaypoint?.visibility = if (showCancelWaypointButton && activeWaypoint != null) View.VISIBLE else View.GONE
+                NavLogger.d(this, "[버튼표시설정] 적용 후 실제 visibility: 경유지=${binding.btnAddWaypoint?.visibility} 카테고리=${binding.btnNearbyCategory?.visibility}")
             }
         }
 
@@ -1846,6 +1850,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 Toast.makeText(this, "현재 위치를 확인할 수 없습니다", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            // v: 재억 제보(2026-08-26) - 안내 중일 때 진행/역방향 표시가 안 뜬다는 지적 -
+            // lastKnownBearing이 실제로 채워지는지 확인용 로그. #문제시 원복
+            NavLogger.d(this, "[주변카테고리검색] 카카오화면 열림 - lastKnownBearing=$lastKnownBearing")
             NearbyCategoryPopup.show(this, searchHttpClient, restKey, curLat, curLon, lastKnownBearing) { picked ->
                 if (currentDestName.isNotBlank()) {
                     android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
