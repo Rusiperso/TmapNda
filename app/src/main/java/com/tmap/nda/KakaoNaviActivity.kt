@@ -1197,7 +1197,20 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
         binding.btnEditKey?.setOnClickListener {
             binding.svSecondaryPanel?.visibility = View.GONE
-            PanelDragHelper.showAppSettingsDialog(this, null)
+            // v: 재억 제보(2026-08-26) - 경유지/카테고리 버튼 표시를 꺼도 화면에서 바로
+            // 안 사라지던 문제. onSaved 콜백을 안 넘겨줘서 저장 즉시 반영이 안 되고
+            // 다음 onResume(다른 화면 갔다 오기)에야 적용됐음. 저장 직후 바로 반영. #문제시 원복
+            PanelDragHelper.showAppSettingsDialog(this, null) {
+                val showWaypointButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                    .getBoolean("show_waypoint_button", true)
+                val showCategoryButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                    .getBoolean("show_category_button", true)
+                val showCancelWaypointButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                    .getBoolean("show_cancel_waypoint_button", true)
+                binding.btnAddWaypoint?.visibility = if (showWaypointButton) View.VISIBLE else View.GONE
+                binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
+                binding.btnCancelWaypoint?.visibility = if (showCancelWaypointButton && activeWaypoint != null) View.VISIBLE else View.GONE
+            }
         }
 
         binding.btnKakaoMuteToggle?.setOnClickListener {

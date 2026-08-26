@@ -1486,6 +1486,11 @@ class MapActivity : AppCompatActivity() {
         PanelDragHelper.showAppSettingsDialog(this, binding.vTouchLockOverlay) {
             applyTmapSatelliteViewSetting()
             applyTmapTrafficInfoSetting()
+            // v: 재억 제보(2026-08-26) - 카테고리 버튼 표시를 꺼도 화면에서 바로 안 사라지던
+            // 문제. 다른 설정들처럼 저장 즉시 반영. #문제시 원복
+            val showCategoryButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .getBoolean("show_category_button", true)
+            binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
         }
     }
 
