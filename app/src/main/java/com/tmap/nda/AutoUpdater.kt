@@ -79,7 +79,9 @@ object AutoUpdater {
     private var currentUpdateDialog: AlertDialog? = null
 
     fun checkForUpdates(context: Context, isManual: Boolean = false) {
+        NavLogger.d(context, "[업데이트확인] checkForUpdates() 진입 isManual=$isManual")
         CoroutineScope(Dispatchers.IO).launch {
+            NavLogger.d(context, "[업데이트확인] 코루틴 시작됨")
             try {
                 val url = URL(GITHUB_LATEST_RELEASE_URL)
                 val connection = url.openConnection() as HttpURLConnection
@@ -87,14 +89,21 @@ object AutoUpdater {
                 connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
                 connection.applyGithubAuth()
 
+                // v: 재억 제보(2026-08-26) - "업데이트 확인해도 반응이 없다"는데 클릭 로그만
+                // 있고 그 뒤로 아무 결과 로그가 없어 원인 파악이 안 됐음. HTTP 실패/이미최신/
+                // 다이얼로그 표시 성공 등 모든 분기에 로그를 남기도록 강화. #문제시 원복
+                NavLogger.d(context, "[업데이트확인] 응답 code=${connection.responseCode}")
+
                 if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                     val response = connection.inputStream.bufferedReader().use { it.readText() }
                     val json = JSONObject(response)
                     val tagName = json.getString("tag_name").replace("v", "") // e.g. "1.0.1"
                     
                     val currentVersion = BuildConfig.VERSION_NAME
+                    val newer = isNewerVersion(currentVersion, tagName)
+                    NavLogger.d(context, "[업데이트확인] current=$currentVersion remote=$tagName newer=$newer")
 
-                    if (isNewerVersion(currentVersion, tagName)) {
+                    if (newer) {
                         val assets = json.getJSONArray("assets")
                         if (assets.length() > 0) {
                             var downloadUrl = ""
@@ -107,23 +116,32 @@ object AutoUpdater {
                             }
                             
                             if (downloadUrl.isNotEmpty()) {
+                                NavLogger.d(context, "[업데이트확인] 다이얼로그 표시 시도: $downloadUrl")
                                 withContext(Dispatchers.Main) {
                                     showUpdateDialog(context, tagName, downloadUrl)
                                 }
+                            } else {
+                                NavLogger.e(context, "[업데이트확인] apk 에셋을 찾지 못함(assets=${assets.length()}개)")
                             }
+                        } else {
+                            NavLogger.e(context, "[업데이트확인] 릴리즈에 에셋이 0개")
                         }
                     } else if (isManual) {
                         // v8.8: "업데이트 확인" 눌러도 최신버전이면 지금까지 아무 반응이 없어서
                         // "버튼이 비어있나?" 오해할 수 있었음(재억 지적) - 수동으로 눌렀을 때만
                         // 최신버전 안내 토스트를 추가. 자동/백그라운드 체크(isManual=false)는
                         // 기존처럼 조용히 넘어감. #문제시 원복
+                        NavLogger.d(context, "[업데이트확인] 이미 최신 버전 토스트 표시")
                         withContext(Dispatchers.Main) {
                             Toast.makeText(context, "이미 최신 버전입니다 (v$currentVersion)", Toast.LENGTH_SHORT).show()
                         }
                     }
-                } else if (isManual) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "업데이트 확인 실패 (HTTP ${connection.responseCode})", Toast.LENGTH_SHORT).show()
+                } else {
+                    NavLogger.e(context, "[업데이트확인] HTTP 실패 code=${connection.responseCode}")
+                    if (isManual) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "업데이트 확인 실패 (HTTP ${connection.responseCode})", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -180,6 +198,7 @@ object AutoUpdater {
             .create()
         currentUpdateDialog = dialog
         dialog.show()
+        NavLogger.d(context, "[업데이트확인] 다이얼로그 표시 완료")
     }
 
     private fun downloadAndInstall(context: Context, downloadUrl: String, version: String) {
