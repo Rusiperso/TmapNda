@@ -435,6 +435,9 @@ object PanelDragHelper {
             val itemsContainer = android.widget.LinearLayout(context).apply {
                 orientation = android.widget.LinearLayout.VERTICAL
                 visibility = View.GONE
+                // v: 재억 지적(2026-08-26) - 그룹 펼쳤을 때 첫 항목이 헤더 바로 아래 딱 붙어서
+                // 잘려 보이는 것처럼 답답해 보였음. 위쪽 여백 추가. #문제시 원복
+                setPadding(0, 16, 0, 0)
                 items.forEach { addView(it) }
             }
             headerRow.setOnClickListener {
