@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import com.tmap.nda.databinding.ActivityMainBinding
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.tmap.nda.navdy.NavdyAutoConnect
 
 class MainActivity : AppCompatActivity() {
 
@@ -68,6 +69,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         dumpTmapAudioSettings()
+
+        // [신규] Navdy 애프터마켓 HUD/클러스터 자동 연결 시도.
+        // 안드로이드 블루투스 설정에서 이미 페어링되어 있는 기기 목록에서 이름에
+        // "Navdy"가 들어간 기기를 찾아 자동 연결한다. 페어링 자체(최초 1회)는
+        // 표준 안드로이드 블루투스 설정 화면에서 사용자가 직접 해야 함. 기기가
+        // 없거나 블루투스가 꺼져있으면 조용히 무시됨. #문제시 원복
+        NavdyAutoConnect.tryConnect(this)
+
         observeCarConnectionType()
         
         binding = ActivityMainBinding.inflate(layoutInflater)
