@@ -42,18 +42,17 @@ object NavLogger {
     // 적혔는데, 그 본문 텍스트를 안 보고 로그 txt 파일만 따로 보면 버전을 알 수 없음).
     // 사용자 요청으로 매 로그 줄마다 버전을 찍도록 변경 - PackageManager 호출은 비용이
     // 있으니 최초 1회만 조회해서 캐싱. #문제시 원복
-    @Volatile
-    private var cachedVersionName: String? = null
-
+    // v: 재억 제보(2026-08-26) - 앱이 자동업데이트로 새 버전을 받아 실제로는 최신 코드가
+    // 돌고 있는데도, 로그엔 그 프로세스가 맨 처음 시작됐을 때의 옛날 버전이 계속 찍혔음
+    // (한 번 캐싱하면 그 프로세스 생명주기 내내 다신 안 바뀌는 구조라서). PackageManager
+    // 조회 비용이 크지 않으니 캐싱 자체를 없애고 매번 조회해서 항상 실제 버전을 정확히
+    // 반영하도록 함. #문제시 원복
     private fun versionTag(context: Context): String {
-        cachedVersionName?.let { return it }
-        val v = try {
+        return try {
             "v" + (context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?")
         } catch (e: Exception) {
             "v?"
         }
-        cachedVersionName = v
-        return v
     }
 
     private fun appendToFile(context: Context, level: String, message: String) {
