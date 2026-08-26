@@ -1,5 +1,5 @@
 package com.tmap.nda
-
+ 
 import android.app.AlertDialog
 import android.app.DownloadManager
 import android.content.BroadcastReceiver
@@ -21,11 +21,11 @@ import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
-
+ 
 object AutoUpdater {
     private const val TAG = "AutoUpdater"
     private const val GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/Rusiperso/TmapNda/releases/latest"
-
+ 
     // v17.3: 재억 제보(2026-08-23) - "업데이트 확인해도 안 뜬다"는 문제 원인 발견 -
     // GitHub API를 무인증으로 호출하고 있었는데, 이 방식은 같은 공인 IP당 시간당 60번
     // 제한이 걸려있음. 통신사 IP는 여러 사용자가 같이 쓰는 공유 IP(CGNAT)라, 우리 앱
@@ -43,18 +43,18 @@ object AutoUpdater {
         val decoded = android.util.Base64.decode(GITHUB_TOKEN_OBFUSCATED, android.util.Base64.DEFAULT)
         String(decoded.map { (it.toInt() xor 0x5A).toByte() }.toByteArray())
     }
-
+ 
     private fun HttpURLConnection.applyGithubAuth() {
         setRequestProperty("Authorization", "Bearer $GITHUB_READONLY_TOKEN")
     }
-
+ 
     // v8.8: 사용자 요청(재억) - 실행 중에도 새 업데이트가 뜨면 바로 반응하게. GitHub이
     // 우리한테 먼저 알려주는 방법(푸시)은 없어서, 5분 간격으로 조용히 폴링. 시간당
     // 12번이라 GitHub API 무인증 제한(시간당 60번)에도 여유 있음. #문제시 원복
     private const val POLL_INTERVAL_MS = 5 * 60 * 1000L
     private val pollHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var pollRunnable: Runnable? = null
-
+ 
     fun startPeriodicCheck(context: Context) {
         if (pollRunnable != null) return // 이미 돌고 있으면 중복 등록 방지
         val runnable = object : Runnable {
@@ -66,18 +66,18 @@ object AutoUpdater {
         pollRunnable = runnable
         pollHandler.postDelayed(runnable, POLL_INTERVAL_MS)
     }
-
+ 
     fun stopPeriodicCheck() {
         pollRunnable?.let { pollHandler.removeCallbacks(it) }
         pollRunnable = null
     }
-
+ 
     // v14.6: 재억 지적 - 5분마다 확인할 때마다 이전 창을 안 닫고 새 창을 계속 쌓아서
     // 띄우고 있었음. 지금 창이 떠 있으면 새로 안 띄우게 참조를 들고 있음. "나중에"를
     // 누르면 참조를 비워서 다음 5분 뒤엔 다시 정상적으로 알려줌(재억 확인 - 나중에
     // 누르면 5분 뒤 다시 알림 오는 방식 유지). #문제시 원복
     private var currentUpdateDialog: AlertDialog? = null
-
+ 
     fun checkForUpdates(context: Context, isManual: Boolean = false) {
         NavLogger.d(context, "[업데이트확인] checkForUpdates() 진입 isManual=$isManual")
         CoroutineScope(Dispatchers.IO).launch {
@@ -88,12 +88,12 @@ object AutoUpdater {
                 connection.requestMethod = "GET"
                 connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
                 connection.applyGithubAuth()
-
+ 
                 // v: 재억 제보(2026-08-26) - "업데이트 확인해도 반응이 없다"는데 클릭 로그만
                 // 있고 그 뒤로 아무 결과 로그가 없어 원인 파악이 안 됐음. HTTP 실패/이미최신/
                 // 다이얼로그 표시 성공 등 모든 분기에 로그를 남기도록 강화. #문제시 원복
                 NavLogger.d(context, "[업데이트확인] 응답 code=${connection.responseCode}")
-
+ 
                 if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                     val response = connection.inputStream.bufferedReader().use { it.readText() }
                     val json = JSONObject(response)
@@ -102,7 +102,7 @@ object AutoUpdater {
                     val currentVersion = BuildConfig.VERSION_NAME
                     val newer = isNewerVersion(currentVersion, tagName)
                     NavLogger.d(context, "[업데이트확인] current=$currentVersion remote=$tagName newer=$newer")
-
+ 
                     if (newer) {
                         val assets = json.getJSONArray("assets")
                         if (assets.length() > 0) {
@@ -155,7 +155,7 @@ object AutoUpdater {
             }
         }
     }
-
+ 
     private fun isNewerVersion(current: String, remote: String): Boolean {
         val currentParts = current.split(".").map { it.toIntOrNull() ?: 0 }
         val remoteParts = remote.split(".").map { it.toIntOrNull() ?: 0 }
@@ -168,7 +168,7 @@ object AutoUpdater {
         }
         return false
     }
-
+ 
     private fun showUpdateDialog(context: Context, newVersion: String, downloadUrl: String) {
         // v8.8: 주기적 백그라운드 체크 결과가 늦게 돌아왔을 때 Activity가 이미 종료된
         // 상태면 다이얼로그를 못 띄우게(WindowLeaked 크래시 방지). #문제시 원복
@@ -176,8 +176,12 @@ object AutoUpdater {
             NavLogger.d(context, "showUpdateDialog: Activity 이미 종료됨 - 스킵")
             return
         }
-        // v14.6: 이미 업데이트 창이 떠 있으면 또 띄우지 않고 넘어감(중복 방지). #문제시 원복
+        // v15.9: 이미 업데이트 창이 떠 있으면 새로 띄우지 않되, 조용히 무시하지 않고
+        // 기존 창을 다시 앞으로 보여주고 안내 토스트를 띄움(중복 방지 + 무반응 방지). #문제시 원복
         if (currentUpdateDialog?.isShowing == true) {
+            currentUpdateDialog?.show()
+            Toast.makeText(context, "이미 업데이트 안내창이 떠 있어요", Toast.LENGTH_SHORT).show()
+            NavLogger.d(context, "[업데이트확인] 이미 다이얼로그 표시 중 - 기존 창 다시 표시")
             return
         }
         val dialog = AlertDialog.Builder(context)
@@ -200,27 +204,27 @@ object AutoUpdater {
         dialog.show()
         NavLogger.d(context, "[업데이트확인] 다이얼로그 표시 완료")
     }
-
+ 
     private fun downloadAndInstall(context: Context, downloadUrl: String, version: String) {
         Toast.makeText(context, "업데이트 다운로드를 시작합니다...", Toast.LENGTH_SHORT).show()
-
+ 
         val fileName = "TmapNda_$version.apk"
         val destinationDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
         val destinationFile = File(destinationDir, fileName)
-
+ 
         if (destinationFile.exists()) {
             destinationFile.delete()
         }
-
+ 
         val request = DownloadManager.Request(Uri.parse(downloadUrl))
             .setTitle("TmapNda 업데이트 다운로드 중")
             .setDescription("버전 $version 다운로드 중입니다.")
             .setDestinationUri(Uri.fromFile(destinationFile))
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-
+ 
         val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         val downloadId = downloadManager.enqueue(request)
-
+ 
         val onComplete = object : BroadcastReceiver() {
             override fun onReceive(ctxt: Context, intent: Intent) {
                 val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
@@ -234,17 +238,17 @@ object AutoUpdater {
                 }
             }
         }
-
+ 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.registerReceiver(onComplete, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_EXPORTED)
         } else {
             context.registerReceiver(onComplete, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
         }
     }
-
+ 
     private fun installApk(context: Context, apkFile: File) {
         if (!apkFile.exists()) return
-
+ 
         // Android 8(API 26) 이상은 "출처를 알 수 없는 앱" 설치 허용이 이 앱에 대해
         // 켜져 있어야 함. 꺼져 있으면 시스템이 차단 화면을 띄우는데, 그 전에
         // 미리 확인해서 우리가 직접 안내 + 설정 화면 바로가기를 제공함.
@@ -270,7 +274,7 @@ object AutoUpdater {
                 .show()
             return
         }
-
+ 
         try {
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(
@@ -287,7 +291,7 @@ object AutoUpdater {
             NavLogger.e(context, "Install Failed: ${e.message}")
         }
     }
-
+ 
     // v3.10: "업데이트 내역"을 브라우저로 여는 대신 앱 안에서 간단한 팝업으로 바로
     // 보여줌 (사용자 지적: "인터넷 페이지로 보내지 말고 팝업창으로 간단하게"). GitHub
     // 릴리즈 body를 그대로 가져와서 스크롤 가능한 다이얼로그에 표시. #문제시 원복
@@ -333,3 +337,4 @@ object AutoUpdater {
         }
     }
 }
+ 
