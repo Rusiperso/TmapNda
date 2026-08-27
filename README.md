@@ -9,6 +9,7 @@
 [![Latest Release](https://img.shields.io/github/v/release/Rusiperso/TmapNda?label=%EC%B5%9C%EC%8B%A0%20%EB%B2%84%EC%A0%84&color=3A6EF6)](https://github.com/Rusiperso/TmapNda/releases)
 [![Platform](https://img.shields.io/badge/Platform-Android-3DDC84)](https://github.com/Rusiperso/TmapNda/releases)
 [![Community](https://img.shields.io/badge/카카오톡-오픈채팅-FFCD00)](https://open.kakao.com/o/gORB6tFi)
+[![Discord](https://img.shields.io/badge/Discord-참여하기-5865F2)](https://discord.gg/cfuMCCxEE)
 
 </div>
 
@@ -374,3 +375,4 @@ A. 이동 방식이 아직 저장되지 않은 상태입니다. 즐겨찾기를 
 
 - 오픈채팅: https://open.kakao.com/o/gORB6tFi
 - 입장 비밀번호: `134679`
+- 디스코드: https://discord.gg/cfuMCCxEE
