@@ -3861,11 +3861,13 @@ class MapActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         NavLogger.d(this, "[MapActivity lifecycle] onStart")
+        NavOverlayManager.activityStarted()
     }
 
     override fun onStop() {
         super.onStop()
         NavLogger.d(this, "[MapActivity lifecycle] onStop (KakaoNaviActivity가 위에 떴을 가능성)")
+        NavOverlayManager.activityStopped(this)
     }
 
     override fun onPause() {

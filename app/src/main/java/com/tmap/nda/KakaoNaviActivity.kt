@@ -2657,6 +2657,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     override fun onStart() {
         super.onStart()
         NavLogger.d(this, "[lifecycle] onStart")
+        NavOverlayManager.activityStarted()
     }
 
     // v2.4: MapActivity와 동일한 이유 - mute 순간에만 볼륨을 캡처하던 구조라 사용자가
@@ -2778,6 +2779,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     override fun onStop() {
         super.onStop()
         NavLogger.d(this, "[lifecycle] onStop")
+        NavOverlayManager.activityStopped(this)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

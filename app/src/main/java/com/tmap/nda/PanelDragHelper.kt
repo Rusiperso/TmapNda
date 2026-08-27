@@ -321,6 +321,34 @@ object PanelDragHelper {
             setPadding(40, 0, 40, 30)
         }
 
+        // v: 신규기능(재억 요청, 2026-08-27) - 순정 Tmap의 "다른 앱 위에 표시"와 같은 개념.
+        // 안내 화면을 백그라운드로 내려도 다음 방향/거리를 작은 오버레이로 계속 보여줌
+        // (NavOverlayManager). 이 권한은 일반 requestPermissions로 못 받고 시스템 설정
+        // 화면에서 직접 허용해야 하므로, 스위치를 켜는 순간 권한이 없으면 바로 그 설정
+        // 화면으로 안내함. #문제시 원복
+        val backgroundOverlayCheckBox = android.widget.Switch(context).apply {
+            text = "다른 앱 위에 표시 (백그라운드 방향 안내)"
+            isChecked = NavOverlayManager.isEnabled(context)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+            setOnCheckedChangeListener { _, isCheckedNow ->
+                if (isCheckedNow && !NavOverlayManager.hasPermission(context)) {
+                    android.widget.Toast.makeText(
+                        context,
+                        "다음 화면에서 TmapNda 항목을 켜주세요",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                    NavOverlayManager.requestPermission(context)
+                }
+            }
+        }
+        val backgroundOverlayHintText = android.widget.TextView(context).apply {
+            text = "허용 안 하면 켜도 창이 뜨지 않습니다"
+            setTextColor(android.graphics.Color.parseColor("#999999"))
+            textSize = 12f
+            setPadding(40, 0, 40, 20)
+        }
+
         // v13.0-4: 재억 요청 - 즐겨찾기 5칸이 다 필요없는 사람도 있어서, 표시 개수를
         // -/+ 버튼으로 0~5까지 조절 가능하게 함. 집/회사는 상단바 고정이라 이 설정과
         // 무관하게 항상 보임. #문제시 원복
@@ -461,7 +489,9 @@ object PanelDragHelper {
             trafficInfoCheckBox,            // 티맵 교통 정보 (도로 정체 색깔 표시)
             distanceFormatKmCheckBox,       // 1000m 이상일 때 km 단위로 거리 표시
             unlockMapTouchCheckBox,         // 티맵 터치 잠금 해제 (핀치줌/드래그 허용) - 화면표시로 이동
-            showLaneOverlayTmapCheckBox     // 차선 안내 오버레이 표시 (Tmap 화면 한정)
+            showLaneOverlayTmapCheckBox,    // 차선 안내 오버레이 표시 (Tmap 화면 한정)
+            backgroundOverlayCheckBox,      // 다른 앱 위에 표시 (백그라운드 방향 안내)
+            backgroundOverlayHintText
         ))
         addAccordionGroup("버튼 표시", listOf(
             showWaypointButtonCheckBox,      // 경유지 버튼 표시
@@ -507,6 +537,7 @@ object PanelDragHelper {
                     .putBoolean("tmap_satellite_view_enabled", satelliteViewCheckBox.isChecked)
                     .putBoolean("tmap_traffic_info_enabled", trafficInfoCheckBox.isChecked)
                     .putBoolean("route_line_display_enabled", routeLineDisplayCheckBox.isChecked)
+                    .putBoolean("background_overlay_enabled", backgroundOverlayCheckBox.isChecked)
                     .putInt("quickslot_favorite_count", favoriteCount)
                     .apply {
                         if (unlockMapTouchCheckBox != null) {
