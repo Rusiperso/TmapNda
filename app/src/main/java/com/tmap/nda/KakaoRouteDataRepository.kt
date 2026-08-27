@@ -19,7 +19,8 @@ data class KakaoRouteSnapshot(
     val hasNextDirection: Boolean,
     val nextTbtDist: Int,
     val nextRgCodeName: String,
-    val nextDirectionAngle: Int
+    val nextDirectionAngle: Int,
+    val nextTbtMainText: String
 )
 
 /**
@@ -59,6 +60,7 @@ object KakaoRouteDataRepository {
     @Volatile var nextTbtDist: Int = 0
     @Volatile var nextRgCodeName: String = ""
     @Volatile var nextDirectionAngle: Int = 0
+    @Volatile var nextTbtMainText: String = ""
 
     // 안전정보(스쿨존/구간단속 등) - v4.21: KNSafetyCode를 Tmap/openpilot nSdiType 스킴으로
     // 정확히 번역해서 채움(KakaoGuidanceDelegate.mapKakaoSafetyCodeToSdiType 참고).
@@ -117,6 +119,7 @@ object KakaoRouteDataRepository {
         nextTbtDist = 0
         nextRgCodeName = ""
         nextDirectionAngle = 0
+        nextTbtMainText = ""
         notifyListeners(snapshot())
     }
 
@@ -140,7 +143,8 @@ object KakaoRouteDataRepository {
         hasNextDirection = hasNextDirection,
         nextTbtDist = nextTbtDist,
         nextRgCodeName = nextRgCodeName,
-        nextDirectionAngle = nextDirectionAngle
+        nextDirectionAngle = nextDirectionAngle,
+        nextTbtMainText = nextTbtMainText
     )
 
     /** v2.2: KakaoHudBridge(공식 KNSDK API 기반)가 값을 한 번에 반영하고 구독자에게 알림.
@@ -157,7 +161,8 @@ object KakaoRouteDataRepository {
         hasNextDirection: Boolean = false,
         nextTbtDist: Int = 0,
         nextRgCodeName: String = "",
-        nextDirectionAngle: Int = 0
+        nextDirectionAngle: Int = 0,
+        nextTbtMainText: String = ""
     ) {
         isActive = true
         lastUpdateTime = System.currentTimeMillis()
@@ -173,6 +178,7 @@ object KakaoRouteDataRepository {
         this.nextTbtDist = nextTbtDist.coerceAtLeast(0)
         this.nextRgCodeName = nextRgCodeName
         this.nextDirectionAngle = nextDirectionAngle
+        this.nextTbtMainText = nextTbtMainText
         // v: 재억 요청(2026-08-22) - 안내 시작 직후 trip/goal이 아직 안 채워진 찰나에
         // destinationName이 "목적지"(기본값)로 초기화되면서, 그 사이 잠깐 도로명으로
         // 화면이 넘어가버리는 문제가 있었음. 새로 들어온 이름이 진짜 값(비어있지 않음)일

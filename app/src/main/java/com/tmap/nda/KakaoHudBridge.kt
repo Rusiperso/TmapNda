@@ -81,6 +81,11 @@ object KakaoHudBridge {
         } else {
             0
         }
+        // v: 오버레이(재억 요청, 2026-08-27) "OOO 방면" 둘째 줄용 - curDirection의
+        // instruction과 완전히 동일한 방식으로 nextDirection에서도 도로/지점명 추출. #문제시 원복
+        val nextInstruction =
+            nextDirection?.directionNames?.firstOrNull().orEmpty()
+                .ifBlank { nextDirection?.nodeName.orEmpty() }
 
         KakaoRouteDataRepository.publishGuidance(
             tbtDist = turnDistance,
@@ -94,7 +99,8 @@ object KakaoHudBridge {
             hasNextDirection = nextDirection != null,
             nextTbtDist = nextTurnDistance,
             nextRgCodeName = nextDirection?.rgCode?.name.orEmpty(),
-            nextDirectionAngle = nextDirection?.directionAng ?: 0
+            nextDirectionAngle = nextDirection?.directionAng ?: 0,
+            nextTbtMainText = nextInstruction
         )
 
         // [신규] Navdy 애프터마켓 HUD/클러스터로 전송.

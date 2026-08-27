@@ -48,9 +48,11 @@ object NavOverlayManager {
     private var overlayView: LinearLayout? = null
     private var primaryIcon: TurnHookIconView? = null
     private var primaryDistText: TextView? = null
+    private var primaryRoadText: TextView? = null
     private var secondaryRow: View? = null
     private var secondaryIcon: TurnHookIconView? = null
     private var secondaryDistText: TextView? = null
+    private var secondaryRoadText: TextView? = null
     private var guidanceListener: ((KakaoRouteSnapshot) -> Unit)? = null
 
     fun isEnabled(context: Context): Boolean =
@@ -177,17 +179,35 @@ object NavOverlayManager {
                     try { wm.updateViewLayout(view, params) } catch (_: Exception) {}
                     true
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                MotionEvent.ACTION_UP -> {
                     if (moved) {
                         context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).edit()
                             .putInt(PREF_KEY_POS_X, params.x)
                             .putInt(PREF_KEY_POS_Y, params.y)
                             .apply()
+                    } else {
+                        // v: 재억 제보(2026-08-27) - "오버레이 눌러도 반응이 없다" - 끌지 않고
+                        // 그냥 터치만 뗀 경우(=탭)는 앱을 다시 앞으로 가져옴. #문제시 원복
+                        reopenApp(context)
                     }
                     true
                 }
+                MotionEvent.ACTION_CANCEL -> true
                 else -> false
             }
+        }
+    }
+
+    /** 오버레이를 그냥 탭(드래그 없이)했을 때 앱을 다시 앞으로 가져옴 */
+    private fun reopenApp(context: Context) {
+        try {
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            if (launchIntent != null) {
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                context.startActivity(launchIntent)
+            }
+        } catch (e: Exception) {
+            NavLogger.e(context, "[오버레이] 탭으로 앱 재실행 실패: ${e.message}")
         }
     }
 
@@ -211,12 +231,28 @@ object NavOverlayManager {
         primaryIcon?.kind = kindFor(snapshot.rgCodeName, snapshot.directionAngle)
         primaryIcon?.invalidate()
         primaryDistText?.text = "${snapshot.tbtDist}m"
+        primaryRoadText?.apply {
+            if (snapshot.tbtMainText.isNotBlank()) {
+                text = "${snapshot.tbtMainText} 방면"
+                visibility = View.VISIBLE
+            } else {
+                visibility = View.GONE
+            }
+        }
 
         if (snapshot.hasNextDirection) {
             secondaryRow?.visibility = View.VISIBLE
             secondaryIcon?.kind = kindFor(snapshot.nextRgCodeName, snapshot.nextDirectionAngle)
             secondaryIcon?.invalidate()
             secondaryDistText?.text = "${snapshot.nextTbtDist}m"
+            secondaryRoadText?.apply {
+                if (snapshot.nextTbtMainText.isNotBlank()) {
+                    text = "${snapshot.nextTbtMainText} 방면"
+                    visibility = View.VISIBLE
+                } else {
+                    visibility = View.GONE
+                }
+            }
         } else {
             secondaryRow?.visibility = View.GONE
         }
@@ -234,63 +270,102 @@ object NavOverlayManager {
         }
     }
 
+    private class TurnBlockViews(
+        val block: LinearLayout,
+        val icon: TurnHookIconView,
+        val dist: TextView,
+        val road: TextView
+    )
+
+    // v3(재억 요청, 2026-08-27) - "좌회전/우회전" 글자는 빼고 아이콘+거리만 한 줄로, 그
+    // 아래 작은 글씨로 "OOO 방면"(도로명)을 붙이는 구조로 다시 그림. 미리보기(Artifact)로
+    // 확인 후 확정. #문제시 원복
+    private fun buildBlock(context: Context, iconSizeDp: Int, distSp: Float, roadSp: Float, dimmed: Boolean): TurnBlockViews {
+        val density = context.resources.displayMetrics.density
+        fun dp(v: Int) = (v * density).toInt()
+        fun wrapParams() = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+
+        val distColor = if (dimmed) Color.parseColor("#999999") else Color.WHITE
+        val roadColor = if (dimmed) Color.parseColor("#888888") else Color.parseColor("#B8C4E0")
+
+        val icon = TurnHookIconView(context).apply { tint = distColor }
+        val dist = TextView(context).apply {
+            textSize = distSp
+            setTextColor(distColor)
+            setTypeface(typeface, if (dimmed) android.graphics.Typeface.NORMAL else android.graphics.Typeface.BOLD)
+        }
+        val topRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(icon, LinearLayout.LayoutParams(dp(iconSizeDp), dp(iconSizeDp)))
+            addView(dist, wrapParams().apply { marginStart = dp(6) })
+        }
+        val road = TextView(context).apply {
+            textSize = roadSp
+            setTextColor(roadColor)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            maxWidth = dp(180)
+        }
+        val block = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(topRow, wrapParams())
+            addView(road, wrapParams())
+        }
+        return TurnBlockViews(block, icon, dist, road)
+    }
+
     private fun buildView(context: Context): LinearLayout {
         val density = context.resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
+        fun wrapParams() = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        )
 
-        fun buildRow(iconSizeDp: Int, distTextSizeSp: Float, dimmed: Boolean): Triple<LinearLayout, TurnHookIconView, TextView> {
-            val color = if (dimmed) Color.parseColor("#999999") else Color.WHITE
-            val icon = TurnHookIconView(context).apply { tint = color }
-            val dist = TextView(context).apply {
-                textSize = distTextSizeSp
-                setTextColor(color)
-                setTypeface(typeface, if (dimmed) android.graphics.Typeface.NORMAL else android.graphics.Typeface.BOLD)
-            }
-            val row = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                addView(icon, LinearLayout.LayoutParams(dp(iconSizeDp), dp(iconSizeDp)))
-                addView(dist, LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { marginStart = dp(10) })
-            }
-            return Triple(row, icon, dist)
-        }
-
-        val (primaryRow, pIcon, pDist) = buildRow(iconSizeDp = 30, distTextSizeSp = 24f, dimmed = false)
-        val (secondRow, sIcon, sDist) = buildRow(iconSizeDp = 20, distTextSizeSp = 15f, dimmed = true)
+        val primary = buildBlock(context, iconSizeDp = 20, distSp = 20f, roadSp = 12f, dimmed = false)
+        val secondary = buildBlock(context, iconSizeDp = 14, distSp = 14f, roadSp = 11f, dimmed = true)
+        secondary.block.visibility = View.GONE
 
         val divider = View(context).apply {
             setBackgroundColor(Color.parseColor("#3DFFFFFF"))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(1)
-            ).apply { topMargin = dp(6); bottomMargin = dp(6) }
+            ).apply { topMargin = dp(8); bottomMargin = dp(8) }
         }
-        secondRow.visibility = View.GONE
 
-        primaryIcon = pIcon
-        primaryDistText = pDist
-        secondaryRow = secondRow
-        secondaryIcon = sIcon
-        secondaryDistText = sDist
+        primaryIcon = primary.icon
+        primaryDistText = primary.dist
+        primaryRoadText = primary.road
+        secondaryRow = secondary.block
+        secondaryIcon = secondary.icon
+        secondaryDistText = secondary.dist
+        secondaryRoadText = secondary.road
 
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            val pad = dp(14)
+            val pad = dp(12)
             setPadding(pad, pad, pad, pad)
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(16).toFloat()
+                cornerRadius = dp(14).toFloat()
                 setColor(Color.parseColor("#E613264A"))
             }
-            addView(primaryRow)
+            // v: 재억 제보(2026-08-27, 실기기 캡처로 확인) - LinearLayout.addView(view)를
+            // LayoutParams 없이 부르면, VERTICAL 부모에서는 기본값이 WRAP_CONTENT가 아니라
+            // MATCH_PARENT라서(LinearLayout.generateDefaultLayoutParams 참고) 이 줄들이
+            // 화면 가로 전체로 늘어나 있었음(카드가 화면을 가로지르는 긴 막대로 보인 원인).
+            // HTML 미리보기는 이 규칙이 안드로이드와 달라서 문제가 안 보였음. 명시적으로
+            // WRAP_CONTENT로 지정. #문제시 원복
+            addView(primary.block, wrapParams())
             addView(divider)
-            addView(secondRow)
+            addView(secondary.block, wrapParams())
         }
 
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            addView(card)
+            addView(card, wrapParams())
         }
     }
 }
