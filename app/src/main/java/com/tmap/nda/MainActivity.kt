@@ -58,6 +58,11 @@ class MainActivity : AppCompatActivity() {
     ) { isGranted ->
         if (isGranted) {
             NavdyAutoConnect.tryConnect(this)
+        } else {
+            // v: 재억 요청(2026-08-27) - 체크박스를 켜면 팝업으로 물어보고, 거부하면
+            // 체크가 다시 풀려야 함(허용해야만 켜진 상태가 유지되는 게 정상 흐름). #문제시 원복
+            binding.cbNavdyConnect.isChecked = false
+            Toast.makeText(this, "블루투스 권한을 허용해야 Navdy 연결을 켤 수 있습니다.", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -134,6 +139,18 @@ class MainActivity : AppCompatActivity() {
         binding.cbNavdyConnect.isChecked = savedReqNavdy
         if (savedReqNavdy) {
             tryConnectNavdyWithPermission()
+        }
+
+        // v: 재억 요청(2026-08-27) - "체크하면 바로 권한 팝업이 떠야 정상 아니냐"는 지적.
+        // 기존엔 체크만 해두고 "길안내 시작"을 눌러야(또는 앱을 재시작해야) 팝업이 떴는데,
+        // 그건 순서가 이상하다고 판단해 체크박스 자체에 리스너를 달아서 체크하는 즉시
+        // 팝업이 뜨게 함. 초기값 세팅(바로 위 줄)은 리스너를 달기 전에 끝나므로
+        // 앱 켤 때 저장된 값을 되살리는 것만으로는 팝업이 뜨지 않음. #문제시 원복
+        binding.cbNavdyConnect.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                tryConnectNavdyWithPermission()
+            }
+            sharedPref.edit().putBoolean("REQ_NAVDY", isChecked).apply()
         }
 
         try {
