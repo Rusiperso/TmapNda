@@ -226,6 +226,54 @@ class UdpSenderService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: android.net.wifi.WifiManager.WifiLock? = null
 
+    // v: 재억 요청(2026-08-27) - "핫스팟 끊었다 다시 켰는데 콤마랑 재연결이 안 된다"는
+    // 제보를 로그로 확인하려 했으나, 기존 로그엔 "Wi-Fi가 실제로 언제 끊기고 언제 다시
+    // 잡혔는지"를 직접 보여주는 줄이 하나도 없어서, 재연결 실패가 폰 쪽(끊긴 뒤 새
+    // 네트워크로 안 갈아탐) 문제인지 콤마 쪽(재연결 후 상태 전송 프로세스가 안 살아남)
+    // 문제인지 추론만 가능하고 확정을 못 했음. Wi-Fi 네트워크 자체의 생성/소실 시점을
+    // ConnectivityManager.NetworkCallback으로 직접 감시해서 그 순간을 로그에 명시적으로
+    // 남김 - 다음 재현 로그에서 이 줄과 "openpilot 연결 상태 변경"/"5초간 UDP 수신 없음"
+    // 줄의 시간차만 비교하면 바로 원인이 갈림. 이 콜백은 로그만 남기고 기존 동작(소켓
+    // 재바인딩 등)은 전혀 건드리지 않음. #문제시 원복
+    private var wifiNetworkCallback: ConnectivityManager.NetworkCallback? = null
+
+    private fun describeWifiNetwork(cm: ConnectivityManager, network: Network): String {
+        val linkProps = cm.getLinkProperties(network)
+        val ifaceName = linkProps?.interfaceName ?: "알수없음"
+        val addrs = linkProps?.linkAddresses?.joinToString(", ") { it.address.hostAddress ?: "?" } ?: "없음"
+        val netId = try {
+            val f = network.javaClass.getDeclaredField("netId")
+            f.isAccessible = true
+            f.getInt(network)
+        } catch (e: Exception) { -1 }
+        return "netId=$netId, iface=$ifaceName, 주소=$addrs"
+    }
+
+    private fun registerWifiNetworkWatcher() {
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+            val request = NetworkRequest.Builder()
+                .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                .build()
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    NavLogger.d(this@UdpSenderService, "[네트워크 감지] Wi-Fi 네트워크 새로 잡힘 (${describeWifiNetwork(cm, network)})")
+                }
+                override fun onLost(network: Network) {
+                    NavLogger.d(this@UdpSenderService, "[네트워크 감지] Wi-Fi 네트워크 끊김 (${describeWifiNetwork(cm, network)})")
+                }
+                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                    NavLogger.d(this@UdpSenderService, "[네트워크 감지] Wi-Fi 네트워크 상태 변경 (${describeWifiNetwork(cm, network)})")
+                }
+            }
+            cm.registerNetworkCallback(request, callback)
+            wifiNetworkCallback = callback
+            NavLogger.d(this, "[네트워크 감지] Wi-Fi 변경 감시 등록 완료")
+        } catch (e: Exception) {
+            NavLogger.e(this, "[네트워크 감지] Wi-Fi 변경 감시 등록 실패: ${e.message}")
+        }
+    }
+
     // NDA 브릿지 상태
     private var ndaListenSocket: DatagramSocket? = null
     private var ndaSendSocket: DatagramSocket? = null
@@ -317,6 +365,7 @@ class UdpSenderService : Service() {
         }
 
         createUdpSendSocket()
+        registerWifiNetworkWatcher()
 
         try {
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -1588,6 +1637,14 @@ class UdpSenderService : Service() {
         // (신호 → 소켓 close 순서를 지키지 않으면, 루프가 아직 receive() 중인 소켓을
         //  다른 스레드가 close()해서 EBADF가 발생할 수 있다.)
         isRunning.set(false)
+
+        try {
+            wifiNetworkCallback?.let {
+                (getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)?.unregisterNetworkCallback(it)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
 
         CoroutineScope(Dispatchers.Main).launch {
             TmapUISDK.observableEDCData.removeObserver(edcObserver)
