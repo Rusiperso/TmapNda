@@ -176,13 +176,19 @@ object AutoUpdater {
             NavLogger.d(context, "showUpdateDialog: Activity 이미 종료됨 - 스킵")
             return
         }
-        // v15.9: 이미 업데이트 창이 떠 있으면 새로 띄우지 않되, 조용히 무시하지 않고
-        // 기존 창을 다시 앞으로 보여주고 안내 토스트를 띄움(중복 방지 + 무반응 방지). #문제시 원복
+        // v15.9에서 "이미 떠 있으면 기존 창을 다시 보여주기"로 고쳤었는데, 재억 제보(2026-08-27)
+        // - 카카오 내비 화면이 티맵 화면 위에 겹쳐 뜨는 이 앱 구조상 그 "기존 창"이 다른 화면에
+        // 가려져 실제로는 안 보이는 경우가 있었음. 그러면 "업데이트 확인"을 눌러도 매번
+        // "이미 떠 있어요" 토스트만 반복되고 정작 업데이트 버튼을 누를 방법이 없이 갇혀버림.
+        // 기존 창을 재사용하는 대신 안전하게 닫고, 지금 호출한 화면(context) 기준으로 새
+        // 창을 다시 맨 앞에 띄우도록 변경 - 어디 가려져 있었든 확실히 다시 보이게 함. #문제시 원복
         if (currentUpdateDialog?.isShowing == true) {
-            currentUpdateDialog?.show()
-            Toast.makeText(context, "이미 업데이트 안내창이 떠 있어요", Toast.LENGTH_SHORT).show()
-            NavLogger.d(context, "[업데이트확인] 이미 다이얼로그 표시 중 - 기존 창 다시 표시")
-            return
+            try {
+                currentUpdateDialog?.dismiss()
+            } catch (e: Exception) {
+                NavLogger.e(context, "[업데이트확인] 기존 다이얼로그 dismiss 실패(무시하고 새로 띄움): ${e.message}")
+            }
+            currentUpdateDialog = null
         }
         val dialog = AlertDialog.Builder(context)
             .setTitle("새로운 업데이트 발견")

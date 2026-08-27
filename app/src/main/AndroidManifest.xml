@@ -28,6 +28,10 @@
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES" />
+    <!-- v: 재억 요청(2026-08-27) - Navdy(애프터마켓 HUD) 자동연결에 필요한 런타임 권한.
+         선언만 해두고 실제 요청 로직이 없어서 안드로이드 12+에서는 항상 거부 상태로 남아
+         자동연결이 매번 조용히 건너뛰어지고 있었음 - MainActivity의 요청 흐름과 함께 추가. #문제시 원복 -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="androidx.car.app.MAP_TEMPLATES" />
     <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
 

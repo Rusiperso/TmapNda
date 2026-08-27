@@ -48,6 +48,29 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // v: 재억 요청(2026-08-27) - Navdy 자동연결이 항상 "BLUETOOTH_CONNECT 권한 없음"으로
+    // 건너뛰기만 했던 원인 확인됨: 이 권한을 사용자에게 물어보는 코드 자체가 없어서
+    // 안드로이드 12+에서는 영원히 거부 상태로 남아있었음. 길안내 시작을 막는 필수 권한(위치 등)과
+    // 묶으면 사용자가 블루투스만 거부해도 앱을 아예 못 켜게 되므로, Navdy 연결은 그것과 무관하게
+    // 별도로 물어보고 거부돼도 조용히 넘어가게(=기존 "페어링 안 됐으면 무시" 동작과 동일하게) 함. #문제시 원복
+    private val navdyBluetoothPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            NavdyAutoConnect.tryConnect(this)
+        }
+    }
+
+    private fun tryConnectNavdyWithPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+        ) {
+            navdyBluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            NavdyAutoConnect.tryConnect(this)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         NavLogger.appContext = applicationContext
@@ -75,7 +98,7 @@ class MainActivity : AppCompatActivity() {
         // "Navdy"가 들어간 기기를 찾아 자동 연결한다. 페어링 자체(최초 1회)는
         // 표준 안드로이드 블루투스 설정 화면에서 사용자가 직접 해야 함. 기기가
         // 없거나 블루투스가 꺼져있으면 조용히 무시됨. #문제시 원복
-        NavdyAutoConnect.tryConnect(this)
+        tryConnectNavdyWithPermission()
 
         observeCarConnectionType()
         
