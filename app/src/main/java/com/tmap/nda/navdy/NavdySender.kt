@@ -3,7 +3,7 @@ package com.tmap.nda.navdy
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
-import android.util.Log
+import com.tmap.nda.NavLogger
 import java.io.ByteArrayOutputStream
 import java.io.OutputStream
 import java.util.UUID
@@ -20,8 +20,6 @@ import java.util.concurrent.Executors
  * NavdyEvent { tag2=type(enum), tag108(extension)=NavigationManeuverEvent }
  */
 object NavdySender {
-
-    private const val TAG = "NavdySender"
 
     // Navdy 서비스 UUID (Navdy 공식 규격)
     private val NAVDY_SERVICE_UUID: UUID =
@@ -66,9 +64,12 @@ object NavdySender {
                 sock.connect()
                 socket = sock
                 outputStream = sock.outputStream
-                Log.i(TAG, "Navdy 기기 연결 성공: ${device.name}")
+                NavLogger.d("[Navdy] 연결 성공: ${device.name}")
             } catch (e: Exception) {
-                Log.e(TAG, "Navdy 연결 실패", e)
+                // v: 재억 제보(2026-08-27) - 로그 파일에는 "연결 시도"만 계속 남고 성공/실패 여부가
+                // 안 남아서 원인 파악이 안 됐음. 기존엔 android.util.Log만 써서 logcat에만 남고
+                // 앱이 공유하는 로그 파일(NavLogger)에는 기록이 안 됐던 게 원인. #문제시 원복
+                NavLogger.e("[Navdy] 연결 실패: ${e.javaClass.simpleName} ${e.message}")
                 closeQuietly()
             } finally {
                 connecting = false
@@ -116,7 +117,7 @@ object NavdySender {
                 val eventBytes = buildNavdyEvent(maneuverBytes)
                 writeFramed(stream, eventBytes)
             } catch (e: Exception) {
-                Log.e(TAG, "전송 실패", e)
+                NavLogger.e("[Navdy] 전송 실패: ${e.javaClass.simpleName} ${e.message}")
             }
         }
     }
