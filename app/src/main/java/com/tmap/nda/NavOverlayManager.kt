@@ -198,13 +198,29 @@ object NavOverlayManager {
         }
     }
 
-    /** 오버레이를 그냥 탭(드래그 없이)했을 때 앱을 다시 앞으로 가져옴 */
+    /**
+     * 오버레이를 그냥 탭(드래그 없이)했을 때 앱을 다시 앞으로 가져옴.
+     *
+     * v: 재억 제보(2026-08-27, 실기기로 확인) - 처음엔 launcher intent(MainActivity)를
+     * 다시 띄우는 방식으로 만들었는데, 카카오 안내 화면(KakaoNaviActivity)을 보던 중
+     * 탭해도 MainActivity가 새로 시작되면서 자동 실행 로직 때문에 티맵 기본 화면(MapActivity)
+     * 으로 넘어가버렸음 - 안내 중이던 카카오 화면이 무시됨. ActivityManager.appTasks로
+     * "지금 이 앱의 태스크"를 그대로 앞으로 가져오면, 그 안에 실제로 떠 있던 화면(Tmap이든
+     * 카카오든)이 재생성 없이 그대로 복원됨. #문제시 원복
+     */
     private fun reopenApp(context: Context) {
         try {
-            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-            if (launchIntent != null) {
-                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                context.startActivity(launchIntent)
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+            val tasks = am?.appTasks
+            if (!tasks.isNullOrEmpty()) {
+                tasks[0].moveToFront()
+            } else {
+                // 앱 태스크가 아예 없으면(완전히 종료된 상태) 새로 시작할 수밖에 없음
+                val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(launchIntent)
+                }
             }
         } catch (e: Exception) {
             NavLogger.e(context, "[오버레이] 탭으로 앱 재실행 실패: ${e.message}")
@@ -300,14 +316,14 @@ object NavOverlayManager {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             addView(icon, LinearLayout.LayoutParams(dp(iconSizeDp), dp(iconSizeDp)))
-            addView(dist, wrapParams().apply { marginStart = dp(6) })
+            addView(dist, wrapParams().apply { marginStart = dp(9) })
         }
         val road = TextView(context).apply {
             textSize = roadSp
             setTextColor(roadColor)
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            maxWidth = dp(180)
+            maxWidth = dp(270)
         }
         val block = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -324,15 +340,17 @@ object NavOverlayManager {
             LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
         )
 
-        val primary = buildBlock(context, iconSizeDp = 20, distSp = 20f, roadSp = 12f, dimmed = false)
-        val secondary = buildBlock(context, iconSizeDp = 14, distSp = 14f, roadSp = 11f, dimmed = true)
+        // v: 재억 제보(2026-08-27, 실기기로 확인) - 화면에 뜬 걸 보니 너무 작아서 안 보임.
+        // 처음엔 2배로 키웠다가, 미리보기(1x/1.5x/2x 비교)로 확인한 뒤 1.5배로 최종 조정. #문제시 원복
+        val primary = buildBlock(context, iconSizeDp = 30, distSp = 30f, roadSp = 18f, dimmed = false)
+        val secondary = buildBlock(context, iconSizeDp = 21, distSp = 21f, roadSp = 16.5f, dimmed = true)
         secondary.block.visibility = View.GONE
 
         val divider = View(context).apply {
             setBackgroundColor(Color.parseColor("#3DFFFFFF"))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(1)
-            ).apply { topMargin = dp(8); bottomMargin = dp(8) }
+            ).apply { topMargin = dp(12); bottomMargin = dp(12) }
         }
 
         primaryIcon = primary.icon
@@ -345,11 +363,11 @@ object NavOverlayManager {
 
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            val pad = dp(12)
+            val pad = dp(18)
             setPadding(pad, pad, pad, pad)
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(14).toFloat()
+                cornerRadius = dp(21).toFloat()
                 setColor(Color.parseColor("#E613264A"))
             }
             // v: 재억 제보(2026-08-27, 실기기 캡처로 확인) - LinearLayout.addView(view)를
