@@ -42,8 +42,10 @@ object NavdySender {
     private const val FIELD_NAVIGATION_STATE = 7
     private const val FIELD_ETA_UTC_TIME = 8
 
-    // NavigationSessionState (일부만 사용 — 안내 중 상태)
-    private const val NAV_SESSION_ROUTE_ACTIVE = 6 // 원본 enum 값은 재확인 필요, 아래 참고
+    // NavigationSessionState - Navdy 실제 안드로이드 앱을 디컴파일한 오픈소스(gitlab.com/alelec/navdy/
+    // alelec_navdy_client, NavigationSessionState.java)로 원본 enum 값을 직접 확인함. 안내 중에는
+    // 항상 NAV_SESSION_STARTED(4)를 보내면 됨. #문제시 원복
+    private const val NAV_SESSION_STARTED = 4
 
     private val executor = Executors.newSingleThreadExecutor()
     @Volatile private var socket: BluetoothSocket? = null
@@ -152,6 +154,12 @@ object NavdySender {
         writeString(out, FIELD_PENDING_STREET, pendingStreet)
         writeString(out, FIELD_ETA, eta)
         writeString(out, FIELD_SPEED, speed)
+        // v: 재억 제보(2026-08-27) - 여태 이 필드를 아예 안 보내고 있었음. 안 보내면 받는 쪽
+        // (Navdy 기기)이 기본값 NAV_SESSION_ENGINE_NOT_READY(=1, "내비 엔진이 아직 준비 안 됨")로
+        // 해석해서, 블루투스 연결과 데이터 전송 자체는 멀쩡히 성공해도 기기 화면에는 아무것도
+        // 안 그려주고 있었을 가능성이 매우 높음(디컴파일한 실제 안드로이드 앱 코드로 default
+        // 값 확인함). "안내 중"임을 명시적으로 알려줌. #문제시 원복
+        writeVarintField(out, FIELD_NAVIGATION_STATE, NAV_SESSION_STARTED.toLong())
         return out.toByteArray()
     }
 
