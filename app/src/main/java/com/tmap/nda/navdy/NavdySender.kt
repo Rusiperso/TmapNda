@@ -76,6 +76,8 @@ object NavdySender {
         }
     }
 
+    fun isConnected(): Boolean = socket?.isConnected == true
+
     fun disconnect() {
         executor.execute { closeQuietly() }
     }

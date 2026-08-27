@@ -111,8 +111,8 @@
         android:text="항상 허용 (백그라운드 동작 허용)"
         android:layout_marginBottom="16dp"/>
 
-    <Button
-        android:id="@+id/btnNavdyConnect"
+    <CheckBox
+        android:id="@+id/cbNavdyConnect"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Navdy 연결 (블루투스 권한 허용)"

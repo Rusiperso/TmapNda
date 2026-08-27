@@ -1,8 +1,8 @@
 package com.tmap.nda.navdy
 
 import android.Manifest
-import android.app.Activity
 import android.bluetooth.BluetoothAdapter
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
@@ -18,20 +18,25 @@ import com.tmap.nda.NavLogger
  */
 object NavdyAutoConnect {
 
-    fun tryConnect(activity: Activity) {
+    // v: 재억 요청(2026-08-27) - 원래 Activity에서 1회만 호출되던 걸, UdpSenderService의
+    // 백그라운드 재연결 루프에서도 주기적으로 호출할 수 있도록 Context로 일반화. #문제시 원복
+    fun tryConnect(context: Context) {
         try {
+            // 이미 연결돼있으면 조용히 넘어감 - 백그라운드 재연결 루프가 몇 초마다 계속
+            // 부르는 정상 상태라 매번 로그를 남기면 스팸이 됨.
+            if (NavdySender.isConnected()) return
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val granted = ContextCompat.checkSelfPermission(
-                    activity, Manifest.permission.BLUETOOTH_CONNECT
+                    context, Manifest.permission.BLUETOOTH_CONNECT
                 ) == PackageManager.PERMISSION_GRANTED
                 if (!granted) {
-                    NavLogger.d(activity, "[Navdy] BLUETOOTH_CONNECT 권한 없음 - 자동연결 건너뜀")
+                    NavLogger.d(context, "[Navdy] BLUETOOTH_CONNECT 권한 없음 - 자동연결 건너뜀")
                     return
                 }
             }
             val adapter = BluetoothAdapter.getDefaultAdapter()
             if (adapter == null || !adapter.isEnabled) {
-                NavLogger.d(activity, "[Navdy] 블루투스 꺼져있음 - 자동연결 건너뜀")
+                NavLogger.d(context, "[Navdy] 블루투스 꺼져있음 - 자동연결 건너뜀")
                 return
             }
             val bonded = adapter.bondedDevices
@@ -40,13 +45,13 @@ object NavdyAutoConnect {
                 name.contains("Navdy", ignoreCase = true)
             }
             if (navdyDevice != null) {
-                NavLogger.d(activity, "[Navdy] 페어링된 기기 발견: ${navdyDevice.name} - 연결 시도")
+                NavLogger.d(context, "[Navdy] 페어링된 기기 발견: ${navdyDevice.name} - 연결 시도")
                 NavdySender.connect(navdyDevice)
             } else {
-                NavLogger.d(activity, "[Navdy] 페어링된 Navdy 기기 없음 (블루투스 설정에서 먼저 페어링 필요)")
+                NavLogger.d(context, "[Navdy] 페어링된 Navdy 기기 없음 (블루투스 설정에서 먼저 페어링 필요)")
             }
         } catch (e: Exception) {
-            NavLogger.e(activity, "[Navdy] 자동연결 시도 실패: ${e.message}")
+            NavLogger.e(context, "[Navdy] 자동연결 시도 실패: ${e.message}")
         }
     }
 }

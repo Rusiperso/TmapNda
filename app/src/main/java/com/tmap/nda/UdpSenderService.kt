@@ -18,6 +18,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Observer
 import com.google.gson.Gson
+import com.tmap.nda.navdy.NavdyAutoConnect
 import com.tmapmobility.tmap.tmapsdk.ui.util.TmapUISDK
 import kotlinx.coroutines.*
 import org.json.JSONObject
@@ -366,6 +367,7 @@ class UdpSenderService : Service() {
 
         createUdpSendSocket()
         registerWifiNetworkWatcher()
+        startNavdyReconnectLoop()
 
         try {
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -1463,6 +1465,25 @@ class UdpSenderService : Service() {
         } catch (e: Exception) {
             NavLogger.e(this, "[NDA] 송신 소켓 생성 실패: ${e.message}")
             false
+        }
+    }
+
+    // v: 재억 요청(2026-08-27) - "권한만 주면 그 뒤로는 알아서 계속 연결 시도해야 편하지"
+    // 라는 지적. 지금까지는 MainActivity가 뜰 때(또는 설정화면 버튼을 눌렀을 때) 딱
+    // 한 번만 NavdyAutoConnect.tryConnect()가 불려서, 그 순간 Navdy가 꺼져있거나 범위
+    // 밖이면 다시는 재시도가 없었음. 백그라운드 서비스에서 주기적으로 계속 시도하게 해서,
+    // 권한만 한 번 주면 그 뒤로는 Navdy가 켜지고 범위 안에 들어오는 대로 자동으로 붙게 함.
+    // 이미 연결돼있으면 NavdyAutoConnect.tryConnect()가 바로 조용히 리턴하므로 계속 불러도 부담 없음. #문제시 원복
+    private fun startNavdyReconnectLoop() {
+        serviceScope.launch(Dispatchers.IO) {
+            while (isActive && isRunning.get()) {
+                try {
+                    NavdyAutoConnect.tryConnect(this@UdpSenderService)
+                } catch (e: Exception) {
+                    NavLogger.e(this@UdpSenderService, "[Navdy] 백그라운드 재연결 루프 예외: ${e.message}")
+                }
+                delay(15000)
+            }
         }
     }
 

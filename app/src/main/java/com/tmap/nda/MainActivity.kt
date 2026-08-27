@@ -93,13 +93,6 @@ class MainActivity : AppCompatActivity() {
 
         dumpTmapAudioSettings()
 
-        // [신규] Navdy 애프터마켓 HUD/클러스터 자동 연결 시도.
-        // 안드로이드 블루투스 설정에서 이미 페어링되어 있는 기기 목록에서 이름에
-        // "Navdy"가 들어간 기기를 찾아 자동 연결한다. 페어링 자체(최초 1회)는
-        // 표준 안드로이드 블루투스 설정 화면에서 사용자가 직접 해야 함. 기기가
-        // 없거나 블루투스가 꺼져있으면 조용히 무시됨. #문제시 원복
-        tryConnectNavdyWithPermission()
-
         observeCarConnectionType()
         
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -124,6 +117,7 @@ class MainActivity : AppCompatActivity() {
         val savedEvChargerKey = sharedPref.getString("ev_charger_api_key", "")
         val savedTargetIp = sharedPref.getString("TARGET_IP", "255.255.255.255")
         val savedReqBackground = sharedPref.getBoolean("REQ_BACKGROUND", false)
+        val savedReqNavdy = sharedPref.getBoolean("REQ_NAVDY", false)
 
         binding.etAppKey.setText(savedAppKey)
         binding.etKakaoAppKey.setText(savedKakaoKey)
@@ -133,11 +127,12 @@ class MainActivity : AppCompatActivity() {
         binding.etTargetIp.setText(savedTargetIp)
         binding.cbBackgroundLocation.isChecked = savedReqBackground
 
-        // v: 재억 요청(2026-08-27) - 앱 켜질 때 딱 한 번만 Navdy 블루투스 권한 팝업을
-        // 띄우던 걸, 그 순간 놓치거나(다른 데 정신 팔림) 실수로 거부하면 다시 부를 방법이
-        // 전혀 없었음. 초기 설정 화면에 버튼을 둬서 언제든 다시 시도할 수 있게 함. #문제시 원복
-        binding.btnNavdyConnect.setOnClickListener {
-            Toast.makeText(this, "Navdy 연결 시도 중... (미리 블루투스 설정에서 페어링 필요)", Toast.LENGTH_SHORT).show()
+        // v: 재억 요청(2026-08-27) - 버튼을 눌러야만 시도되던 걸, "항상 허용(백그라운드
+        // 동작 허용)"과 똑같이 체크박스 설정으로 바꿈. 체크돼있으면 앱 켜질 때 자동으로
+        // 권한을 요청하고 연결을 시도함(이후 실제 재시도는 UdpSenderService의 백그라운드
+        // 루프가 계속 이어감). #문제시 원복
+        binding.cbNavdyConnect.isChecked = savedReqNavdy
+        if (savedReqNavdy) {
             tryConnectNavdyWithPermission()
         }
 
@@ -162,6 +157,7 @@ class MainActivity : AppCompatActivity() {
             val evChargerKey = binding.etEvChargerApiKey.text.toString().trim()
             val targetIp = binding.etTargetIp.text.toString().trim()
             val reqBackground = binding.cbBackgroundLocation.isChecked
+            val reqNavdy = binding.cbNavdyConnect.isChecked
 
             if (appKey.isEmpty()) {
                 Toast.makeText(this, "App Key를 입력하세요.", Toast.LENGTH_SHORT).show()
@@ -177,7 +173,12 @@ class MainActivity : AppCompatActivity() {
                 putString("ev_charger_api_key", evChargerKey)
                 putString("TARGET_IP", targetIp)
                 putBoolean("REQ_BACKGROUND", reqBackground)
+                putBoolean("REQ_NAVDY", reqNavdy)
                 apply()
+            }
+
+            if (reqNavdy) {
+                tryConnectNavdyWithPermission()
             }
 
             checkPermissionsAndStart()
