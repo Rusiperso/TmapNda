@@ -59,7 +59,19 @@ object NavdySender {
         connecting = true
         executor.execute {
             try {
-                BluetoothAdapter.getDefaultAdapter()?.cancelDiscovery()
+                // v: 재억 제보(2026-08-27, 실기기 로그로 확인) - 안드로이드 12+에서
+                // cancelDiscovery()는 BLUETOOTH_SCAN 권한이 없으면 SecurityException을 던짐
+                // ("Need android.permission.BLUETOOTH_SCAN ... AdapterService cancelDiscovery").
+                // 이 예외가 바깥 catch까지 튀면서 매번 연결 자체가 조용히 실패하고 있었음 -
+                // 지금까지 "연결 시도" 로그만 반복되던 진짜 원인. BLUETOOTH_SCAN 권한을
+                // 요청하도록 고쳤지만(MainActivity), 혹시 거부된 기기에서도 최소한 연결
+                // 시도 자체는 막히지 않게 여기서 따로 막아줌(discovery 취소는 없어도 대부분
+                // 연결에 지장 없음). #문제시 원복
+                try {
+                    BluetoothAdapter.getDefaultAdapter()?.cancelDiscovery()
+                } catch (e: SecurityException) {
+                    NavLogger.d("[Navdy] cancelDiscovery 권한 없음 - 건너뛰고 연결 계속 시도")
+                }
                 val sock = device.createRfcommSocketToServiceRecord(NAVDY_SERVICE_UUID)
                 sock.connect()
                 socket = sock

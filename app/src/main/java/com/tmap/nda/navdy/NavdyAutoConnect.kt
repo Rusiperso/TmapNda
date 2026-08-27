@@ -25,12 +25,14 @@ object NavdyAutoConnect {
             // 이미 연결돼있으면 조용히 넘어감 - 백그라운드 재연결 루프가 몇 초마다 계속
             // 부르는 정상 상태라 매번 로그를 남기면 스팸이 됨.
             if (NavdySender.isConnected()) return
+            // v: 재억 제보(2026-08-27, 실기기 로그로 확인) - BLUETOOTH_CONNECT만 확인했었는데,
+            // 연결 전 cancelDiscovery() 호출에 BLUETOOTH_SCAN도 별도로 필요함(SecurityException으로
+            // 확인됨: "Need android.permission.BLUETOOTH_SCAN ... cancelDiscovery"). 둘 다 확인. #문제시 원복
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val granted = ContextCompat.checkSelfPermission(
-                    context, Manifest.permission.BLUETOOTH_CONNECT
-                ) == PackageManager.PERMISSION_GRANTED
-                if (!granted) {
-                    NavLogger.d(context, "[Navdy] BLUETOOTH_CONNECT 권한 없음 - 자동연결 건너뜀")
+                val missing = listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
+                    .filter { ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED }
+                if (missing.isNotEmpty()) {
+                    NavLogger.d(context, "[Navdy] 권한 없음(${missing.joinToString()}) - 자동연결 건너뜀")
                     return
                 }
             }

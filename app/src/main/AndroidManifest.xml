@@ -32,6 +32,13 @@
          선언만 해두고 실제 요청 로직이 없어서 안드로이드 12+에서는 항상 거부 상태로 남아
          자동연결이 매번 조용히 건너뛰어지고 있었음 - MainActivity의 요청 흐름과 함께 추가. #문제시 원복 -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- v: 재억 제보(2026-08-27, 실기기 로그로 확인) - Navdy 연결이 매번 실패하던 진짜 원인.
+         BLUETOOTH_CONNECT만 있으면 되는 줄 알았는데, 연결 전 cancelDiscovery() 호출에는
+         안드로이드 12+에서 BLUETOOTH_SCAN 권한이 별도로 필요함(SecurityException으로 확인).
+         스캔 결과로 위치를 추정하는 기능이 없어서 neverForLocation으로 선언 - 이러면 위치
+         권한 없이도 이 권한만 허용받으면 됨. #문제시 원복 -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
     <!-- v: 재억 요청(2026-08-27) - 앱이 백그라운드로 내려가도 다음 방향 안내를 계속 볼 수 있게
          화면 위에 작은 오버레이를 띄우는 기능(NavOverlayManager)에 필요한 권한. 런타임에
          일반 requestPermissions로는 못 받고, 시스템 설정 화면(ACTION_MANAGE_OVERLAY_PERMISSION)에서

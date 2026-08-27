@@ -53,9 +53,14 @@ class MainActivity : AppCompatActivity() {
     // 안드로이드 12+에서는 영원히 거부 상태로 남아있었음. 길안내 시작을 막는 필수 권한(위치 등)과
     // 묶으면 사용자가 블루투스만 거부해도 앱을 아예 못 켜게 되므로, Navdy 연결은 그것과 무관하게
     // 별도로 물어보고 거부돼도 조용히 넘어가게(=기존 "페어링 안 됐으면 무시" 동작과 동일하게) 함. #문제시 원복
+    // v: 재억 제보(2026-08-27, 실기기 로그로 확인) - BLUETOOTH_CONNECT만 허용받아도 매번
+    // "SecurityException: Need android.permission.BLUETOOTH_SCAN ... cancelDiscovery"로
+    // 연결이 조용히 실패하고 있었음. 연결 전 cancelDiscovery() 호출에 안드로이드 12+에서
+    // BLUETOOTH_SCAN이 별도로 필요해서, 두 권한을 한 번에 같이 요청하도록 변경. #문제시 원복
     private val navdyBluetoothPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        val isGranted = results.values.all { it }
         if (isGranted) {
             NavdyAutoConnect.tryConnect(this)
         } else {
@@ -73,9 +78,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun tryConnectNavdyWithPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
-        ) {
+        val missingBluetoothPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
+                .filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+        } else {
+            emptyList()
+        }
+        if (missingBluetoothPermissions.isNotEmpty()) {
             val deniedBefore = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 .getBoolean("navdy_permission_denied_once", false)
             if (deniedBefore) {
@@ -89,7 +98,7 @@ class MainActivity : AppCompatActivity() {
                     NavLogger.e(this, "설정 화면 이동 실패: ${e.message}")
                 }
             } else {
-                navdyBluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                navdyBluetoothPermissionLauncher.launch(missingBluetoothPermissions.toTypedArray())
             }
         } else {
             NavdyAutoConnect.tryConnect(this)
