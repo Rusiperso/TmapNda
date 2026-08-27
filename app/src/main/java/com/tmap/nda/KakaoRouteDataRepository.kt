@@ -13,7 +13,13 @@ data class KakaoRouteSnapshot(
     val roadName: String,
     val rgCodeName: String,
     val directionAngle: Int,
-    val destinationName: String
+    val destinationName: String,
+    // v: 신규기능(오버레이 2번째 줄용, 2026-08-27) - 다음 안내지점 "그 다음" 회전 정보.
+    // hasNextDirection=false면 그 다음 회전이 아직 없거나(목적지 근처 등) 못 가져온 것.
+    val hasNextDirection: Boolean,
+    val nextTbtDist: Int,
+    val nextRgCodeName: String,
+    val nextDirectionAngle: Int
 )
 
 /**
@@ -46,6 +52,13 @@ object KakaoRouteDataRepository {
     @Volatile var rgCodeName: String = ""
     @Volatile var directionAngle: Int = 0
     @Volatile var destinationName: String = "목적지"
+
+    // v: 신규기능(오버레이 2번째 줄용, 2026-08-27) - KNGuide_Route.nextDirection을
+    // KakaoHudBridge가 채워줌(NavOverlayManager가 구독). #문제시 원복
+    @Volatile var hasNextDirection: Boolean = false
+    @Volatile var nextTbtDist: Int = 0
+    @Volatile var nextRgCodeName: String = ""
+    @Volatile var nextDirectionAngle: Int = 0
 
     // 안전정보(스쿨존/구간단속 등) - v4.21: KNSafetyCode를 Tmap/openpilot nSdiType 스킴으로
     // 정확히 번역해서 채움(KakaoGuidanceDelegate.mapKakaoSafetyCodeToSdiType 참고).
@@ -100,6 +113,10 @@ object KakaoRouteDataRepository {
         safetyDist = 0
         safetyDistTrusted = false
         safetyEventDistFromS = -1
+        hasNextDirection = false
+        nextTbtDist = 0
+        nextRgCodeName = ""
+        nextDirectionAngle = 0
         notifyListeners(snapshot())
     }
 
@@ -119,7 +136,11 @@ object KakaoRouteDataRepository {
         roadName = roadName,
         rgCodeName = rgCodeName,
         directionAngle = directionAngle,
-        destinationName = destinationName
+        destinationName = destinationName,
+        hasNextDirection = hasNextDirection,
+        nextTbtDist = nextTbtDist,
+        nextRgCodeName = nextRgCodeName,
+        nextDirectionAngle = nextDirectionAngle
     )
 
     /** v2.2: KakaoHudBridge(공식 KNSDK API 기반)가 값을 한 번에 반영하고 구독자에게 알림.
@@ -132,7 +153,11 @@ object KakaoRouteDataRepository {
         roadName: String,
         rgCodeName: String,
         directionAngle: Int,
-        destinationName: String
+        destinationName: String,
+        hasNextDirection: Boolean = false,
+        nextTbtDist: Int = 0,
+        nextRgCodeName: String = "",
+        nextDirectionAngle: Int = 0
     ) {
         isActive = true
         lastUpdateTime = System.currentTimeMillis()
@@ -144,6 +169,10 @@ object KakaoRouteDataRepository {
         this.roadName = roadName
         this.rgCodeName = rgCodeName
         this.directionAngle = directionAngle
+        this.hasNextDirection = hasNextDirection
+        this.nextTbtDist = nextTbtDist.coerceAtLeast(0)
+        this.nextRgCodeName = nextRgCodeName
+        this.nextDirectionAngle = nextDirectionAngle
         // v: 재억 요청(2026-08-22) - 안내 시작 직후 trip/goal이 아직 안 채워진 찰나에
         // destinationName이 "목적지"(기본값)로 초기화되면서, 그 사이 잠깐 도로명으로
         // 화면이 넘어가버리는 문제가 있었음. 새로 들어온 이름이 진짜 값(비어있지 않음)일

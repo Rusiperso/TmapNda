@@ -70,6 +70,18 @@ object KakaoHudBridge {
         val remainDist = trip?.remainDist() ?: KakaoRouteDataRepository.remainDist
         val remainTime = trip?.remainTime() ?: KakaoRouteDataRepository.remainTime
 
+        // [신규] 오버레이 2번째 줄(재억 요청, 2026-08-27) - "그 다음" 회전 미리보기.
+        // KNGuide_Route가 curDirection과 같은 타입(KNDirection)의 nextDirection을
+        // 공식으로 제공함(실제 SDK 클래스 시그니처로 확인함, KNSDK 1.12.8-hotfix02). #문제시 원복
+        val nextDirection = routeGuide?.nextDirection
+        val nextTurnDistance = if (currentLocation != null && nextDirection != null) {
+            runCatching {
+                currentLocation.distToLocation(nextDirection.location).coerceAtLeast(0)
+            }.getOrDefault(0)
+        } else {
+            0
+        }
+
         KakaoRouteDataRepository.publishGuidance(
             tbtDist = turnDistance,
             tbtMainText = instruction,
@@ -78,7 +90,11 @@ object KakaoHudBridge {
             roadName = currentRoad,
             rgCodeName = direction?.rgCode?.name.orEmpty(),
             directionAngle = direction?.directionAng ?: 0,
-            destinationName = trip?.goal?.name.orEmpty()
+            destinationName = trip?.goal?.name.orEmpty(),
+            hasNextDirection = nextDirection != null,
+            nextTbtDist = nextTurnDistance,
+            nextRgCodeName = nextDirection?.rgCode?.name.orEmpty(),
+            nextDirectionAngle = nextDirection?.directionAng ?: 0
         )
 
         // [신규] Navdy 애프터마켓 HUD/클러스터로 전송.
