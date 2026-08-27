@@ -133,6 +133,14 @@ class MainActivity : AppCompatActivity() {
         binding.etTargetIp.setText(savedTargetIp)
         binding.cbBackgroundLocation.isChecked = savedReqBackground
 
+        // v: 재억 요청(2026-08-27) - 앱 켜질 때 딱 한 번만 Navdy 블루투스 권한 팝업을
+        // 띄우던 걸, 그 순간 놓치거나(다른 데 정신 팔림) 실수로 거부하면 다시 부를 방법이
+        // 전혀 없었음. 초기 설정 화면에 버튼을 둬서 언제든 다시 시도할 수 있게 함. #문제시 원복
+        binding.btnNavdyConnect.setOnClickListener {
+            Toast.makeText(this, "Navdy 연결 시도 중... (미리 블루투스 설정에서 페어링 필요)", Toast.LENGTH_SHORT).show()
+            tryConnectNavdyWithPermission()
+        }
+
         try {
             val pInfo = packageManager.getPackageInfo(packageName, 0)
             binding.tvAppVersion.text = "버전: ${pInfo.versionName}"
