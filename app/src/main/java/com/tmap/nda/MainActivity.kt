@@ -63,6 +63,12 @@ class MainActivity : AppCompatActivity() {
             // 체크가 다시 풀려야 함(허용해야만 켜진 상태가 유지되는 게 정상 흐름). #문제시 원복
             binding.cbNavdyConnect.isChecked = false
             Toast.makeText(this, "블루투스 권한을 허용해야 Navdy 연결을 켤 수 있습니다.", Toast.LENGTH_SHORT).show()
+            // v: 재억 요청(2026-08-27) - 실제 기기에서 확인됨: 이 권한을 이전에 한 번이라도
+            // 거부한 적이 있으면, 안드로이드가 그 다음부터는 팝업 자체를 안 띄우고 조용히
+            // 거부만 반복함(ACCESS_BACKGROUND_LOCATION에서 이미 겪은 것과 동일한 동작).
+            // 다음번엔 아예 팝업을 시도하지 않고 바로 설정 화면으로 안내하도록 표시만 해둠. #문제시 원복
+            getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).edit()
+                .putBoolean("navdy_permission_denied_once", true).apply()
         }
     }
 
@@ -70,7 +76,21 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
         ) {
-            navdyBluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+            val deniedBefore = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .getBoolean("navdy_permission_denied_once", false)
+            if (deniedBefore) {
+                binding.cbNavdyConnect.isChecked = false
+                Toast.makeText(this, "설정 > 앱 > TmapNda > 권한 > 주변 기기(블루투스)에서 직접 허용해 주세요.", Toast.LENGTH_LONG).show()
+                try {
+                    val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    intent.data = android.net.Uri.fromParts("package", packageName, null)
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    NavLogger.e(this, "설정 화면 이동 실패: ${e.message}")
+                }
+            } else {
+                navdyBluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+            }
         } else {
             NavdyAutoConnect.tryConnect(this)
         }
