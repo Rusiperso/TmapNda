@@ -143,6 +143,7 @@ class MainActivity : AppCompatActivity() {
         val savedTargetIp = sharedPref.getString("TARGET_IP", "255.255.255.255")
         val savedReqBackground = sharedPref.getBoolean("REQ_BACKGROUND", false)
         val savedReqNavdy = sharedPref.getBoolean("REQ_NAVDY", false)
+        val savedReqOverlay = sharedPref.getBoolean("background_overlay_enabled", false)
 
         binding.etAppKey.setText(savedAppKey)
         binding.etKakaoAppKey.setText(savedKakaoKey)
@@ -173,6 +174,20 @@ class MainActivity : AppCompatActivity() {
             sharedPref.edit().putBoolean("REQ_NAVDY", isChecked).apply()
         }
 
+        // v: 재억 요청(2026-08-27) - "다른 앱 위에 표시"는 Navdy 블루투스 권한과 마찬가지로
+        // 앱 실행 중에 껐다 켰다 하는 설정이 아니라 최초에 한 번 권한을 허용받아야 하는
+        // 항목이라, 메뉴 > 설정(PanelDragHelper) 대신 이 초기 화면으로 옮김. 이 권한은
+        // requestPermissions로 못 받고 시스템 설정 화면에서 직접 허용해야 하므로,
+        // 체크하는 순간 권한이 없으면 바로 그 설정 화면으로 안내함. #문제시 원복
+        binding.cbBackgroundOverlay.isChecked = savedReqOverlay
+        binding.cbBackgroundOverlay.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked && !NavOverlayManager.hasPermission(this)) {
+                Toast.makeText(this, "다음 화면에서 TmapNda 항목을 켜주세요", Toast.LENGTH_LONG).show()
+                NavOverlayManager.requestPermission(this)
+            }
+            sharedPref.edit().putBoolean("background_overlay_enabled", isChecked).apply()
+        }
+
         try {
             val pInfo = packageManager.getPackageInfo(packageName, 0)
             binding.tvAppVersion.text = "버전: ${pInfo.versionName}"
@@ -195,6 +210,7 @@ class MainActivity : AppCompatActivity() {
             val targetIp = binding.etTargetIp.text.toString().trim()
             val reqBackground = binding.cbBackgroundLocation.isChecked
             val reqNavdy = binding.cbNavdyConnect.isChecked
+            val reqOverlay = binding.cbBackgroundOverlay.isChecked
 
             if (appKey.isEmpty()) {
                 Toast.makeText(this, "App Key를 입력하세요.", Toast.LENGTH_SHORT).show()
@@ -211,6 +227,7 @@ class MainActivity : AppCompatActivity() {
                 putString("TARGET_IP", targetIp)
                 putBoolean("REQ_BACKGROUND", reqBackground)
                 putBoolean("REQ_NAVDY", reqNavdy)
+                putBoolean("background_overlay_enabled", reqOverlay)
                 apply()
             }
 
