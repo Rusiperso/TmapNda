@@ -367,7 +367,6 @@ class UdpSenderService : Service() {
 
         createUdpSendSocket()
         registerWifiNetworkWatcher()
-        startNavdyReconnectLoop()
 
         try {
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -494,6 +493,13 @@ class UdpSenderService : Service() {
             startNdaSendLoop()
             startCommaHttpNaviLoop()
             startMainConnectionWatchdog()
+            // v: 재억 제보(2026-08-28, 실기기 로그로 확인) - onCreate()에서 이 루프를 바로
+            // 띄웠더니, isRunning이 아직 true로 안 바뀐 시점에 while(isActive &&
+            // isRunning.get()) 첫 조건 검사가 걸려서 루프 자체가 시작하자마자 조용히
+            // 끝나버리는 경우가 있었음(에러 로그도 안 남음) - 그래서 앱 켤 때 1번 시도한
+            // 이후로 재시도가 영영 안 됐던 것. 다른 루프들과 같이 isRunning이 true로
+            // 확정된 이 블록 안에서 시작하도록 옮김. #문제시 원복
+            startNavdyReconnectLoop()
         }
 
         return START_STICKY
@@ -1476,6 +1482,14 @@ class UdpSenderService : Service() {
     // 이미 연결돼있으면 NavdyAutoConnect.tryConnect()가 바로 조용히 리턴하므로 계속 불러도 부담 없음. #문제시 원복
     private fun startNavdyReconnectLoop() {
         serviceScope.launch(Dispatchers.IO) {
+            // v: 재억 요청(2026-08-28) - "몇 초 늦추는 게 아니라, 앱이 완전히 구동되고
+            // 티맵 안전운전 화면이 뜰 때(또는 카카오 길안내 시작할 때) 붙게 해야 하지 않냐"는
+            // 지적. 정확히 그렇게 되어 있음: 이 서비스 자체가 MapActivity의
+            // startSafeDriveMode()와 나란히(startUdpSenderService()) 호출되므로, 이 루프가
+            // 시작되는 시점 자체가 이미 "티맵 안전운전 화면이 뜨는 시점"임. 그래서 임의의
+            // 고정 대기시간(5초) 없이 루프 시작과 동시에 바로 1차 시도. 추가로 "카카오
+            // 길안내 시작" 시점에도 별도로 즉시 1번 더 시도하도록
+            // KakaoGuidanceDelegate.guidanceGuideStarted()에도 연결해둠. #문제시 원복
             while (isActive && isRunning.get()) {
                 try {
                     NavdyAutoConnect.tryConnect(this@UdpSenderService)

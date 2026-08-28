@@ -22,8 +22,9 @@ object NavdyAutoConnect {
     // 백그라운드 재연결 루프에서도 주기적으로 호출할 수 있도록 Context로 일반화. #문제시 원복
     fun tryConnect(context: Context) {
         try {
-            // 이미 연결돼있으면 조용히 넘어감 - 백그라운드 재연결 루프가 몇 초마다 계속
-            // 부르는 정상 상태라 매번 로그를 남기면 스팸이 됨.
+            // v: 재억 요청(2026-08-28) - "성공했으면 그걸로 끝, 끊겼을 때 왜만 남기면 된다"는
+            // 지적. 연결 성공 로그는 NavdySender.connect()가 성공 시점에 이미 1번 남기므로,
+            // 여기선 계속 조용히 넘어가기만 하면 됨(연결 유지 중이라고 계속 남기지 않음). #문제시 원복
             if (NavdySender.isConnected()) return
             // v: 재억 제보(2026-08-27, 실기기 로그로 확인) - BLUETOOTH_CONNECT만 확인했었는데,
             // 연결 전 cancelDiscovery() 호출에 BLUETOOTH_SCAN도 별도로 필요함(SecurityException으로

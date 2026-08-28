@@ -53,6 +53,7 @@ object NavdySender {
     @Volatile private var outputStream: OutputStream? = null
     @Volatile private var connecting = false
 
+
     /**
      * 지정한 블루투스 기기(Navdy 또는 Navdy 프로토콜 호환 기기)로 연결 시도.
      * 이미 페어링되어 있는 BluetoothDevice를 넘겨줘야 함.
@@ -140,6 +141,9 @@ object NavdySender {
         eta: String,
         speed: String
     ) {
+        // v: 재억 요청(2026-08-28) - "연결 안 됨" 상태를 매번/주기적으로 로그 남기지 않음.
+        // 그 상태의 "왜"는 재연결 루프(NavdyAutoConnect)가 연결을 시도할 때마다 이미
+        // 성공/실패 이유를 로그로 남기고 있으므로 여기서 또 남기면 중복 스팸이 됨. #문제시 원복
         val stream = outputStream ?: return
         executor.execute {
             try {
@@ -149,7 +153,13 @@ object NavdySender {
                 val eventBytes = buildNavdyEvent(maneuverBytes)
                 writeFramed(stream, eventBytes)
             } catch (e: Exception) {
-                NavLogger.e("[Navdy] 전송 실패: ${e.javaClass.simpleName} ${e.message}")
+                NavLogger.e("[Navdy] 전송 실패로 연결 끊김 처리: ${e.javaClass.simpleName} ${e.message}")
+                // v: 재억 요청(2026-08-28) - 전송이 실패해도 socket/outputStream을 그대로 두면,
+                // 안드로이드 BluetoothSocket.isConnected()가 물리적 연결 끊김을 실시간으로
+                // 반영 안 해줘서(close() 호출 전까진 계속 true로 보고할 수 있음) 재연결 루프가
+                // "이미 연결됨"으로 착각하고 영영 재시도를 안 할 수 있음. 전송 실패 시점에
+                // 직접 정리해서 다음 재연결 루프 틱에 새로 붙게 함. #문제시 원복
+                closeQuietly()
             }
         }
     }

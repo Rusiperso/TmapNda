@@ -59,6 +59,11 @@ class KakaoGuidanceDelegate(
         NavLogger.d(context, "[카카오안내] 시작됨")
         naviView?.guidanceGuideStarted(guidance)
         onGuideStarted()
+        // v: 재억 요청(2026-08-28) - "임의로 몇 초 늦추지 말고, 카카오 길안내가 실제로
+        // 시작될 때 나브디 연결을 시도해야 하지 않냐"는 지적. 실제로 안내 데이터를 보낼
+        // 시점이 바로 이때이므로, 백그라운드 15초 루프를 기다리지 않고 이 순간 바로
+        // 1번 더 시도(이미 연결돼있으면 조용히 무시됨, 연결 안 돼있으면 여기서 바로 시도). #문제시 원복
+        com.tmap.nda.navdy.NavdyAutoConnect.tryConnect(context)
     }
 
     override fun guidanceGuideEnded(guidance: KNGuidance) {
