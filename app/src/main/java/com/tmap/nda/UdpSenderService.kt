@@ -397,7 +397,15 @@ class UdpSenderService : Service() {
         // WakeLock만 걸려있고 와이파이 절전모드 방지는 안 되어 있어서, 와이파이 라디오가
         // 주기적으로 저전력모드로 빠지며 짧은 UDP 비콘 패킷을 놓치는 게 원인일 가능성이
         // 높음. WifiLock(FULL_HIGH_PERF)을 추가로 걸어서 와이파이가 절전모드로 안 빠지게
-        // 막음 - 재연결 자체가 줄어들길 기대. #문제시 원복
+        // 막음 - 재연결 자체가 줄어들길 기대.
+        // v: 재억 제보(2026-08-28, 실기기 로그로 확인) - "순정 티맵 켜면 나브디가 안 끊기고
+        // 잘 붙는데, TmapNda 켜면 나브디가 안 됨"이라는 결정적 비교 관찰. 갤럭시 S23 계열은
+        // Wi-Fi/블루투스가 콤보 칩+안테나를 공유하는 게 보통이라, WIFI_MODE_FULL_HIGH_PERF로
+        // Wi-Fi 라디오를 절대 저전력으로 안 빠지게 강제로 잡아두면 블루투스 쪽(나브디 RFCOMM
+        // 연결)이 무선 자원을 제때 못 받아 계속 실패할 가능성이 높음 - 원인 진단을 위해
+        // 일단 완전히 꺼봄. 나브디가 이걸로 정상화되면 범인 확정, 대신 openpilot 비콘이
+        // 다시 끊기기 시작하면 절충안(나브디 연결 중에만 풀어주는 등) 필요. #문제시 원복
+        /*
         try {
             val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
             wifiLock = wifiManager.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "TmapNda::UdpSenderWifiLock")
@@ -406,6 +414,8 @@ class UdpSenderService : Service() {
         } catch (e: Exception) {
             NavLogger.e(this, "[전원관리] WifiLock 획득 실패: ${e.message}")
         }
+        */
+        NavLogger.d(this, "[전원관리] WifiLock 진단용 비활성화 상태 - 나브디 연결 원인 확인 중")
 
         // GPS 상태 모니터링 등록
         try {
