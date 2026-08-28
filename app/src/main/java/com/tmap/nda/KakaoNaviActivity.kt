@@ -2933,14 +2933,20 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         } catch (e: Exception) {
             NavLogger.e(this, "티맵 볼륨 복원 예외: ${e.message}")
         }
+        // v: 재억 제보(2026-08-28, 실기기 로그 분석) - 화면 크기 변화 등으로 이 액티비티가
+        // 짧은 시간에 여러 번 destroy/recreate되면, 예전 인스턴스의 onDestroy()가 뒤늦게
+        // 실행되면서 방금 새로 뜬 인스턴스가 막 등록한 델리게이트까지 같이 지워버릴 수
+        // 있었음(무조건 null 처리). 지금 SDK에 등록된 델리게이트가 진짜 "나 자신"일 때만
+        // 지우도록 바꿔서, 다른(더 최신) 인스턴스가 등록해놓은 델리게이트를 실수로
+        // 지우지 않게 함. #문제시 원복
         try {
             KNSDK.sharedGuidance()?.apply {
-                guideStateDelegate = null
-                routeGuideDelegate = null
-                safetyGuideDelegate = null
-                voiceGuideDelegate = null
-                citsGuideDelegate = null
-                locationGuideDelegate = null
+                if (guideStateDelegate === kakaoGuidanceDelegate) guideStateDelegate = null
+                if (routeGuideDelegate === kakaoGuidanceDelegate) routeGuideDelegate = null
+                if (safetyGuideDelegate === kakaoGuidanceDelegate) safetyGuideDelegate = null
+                if (voiceGuideDelegate === kakaoGuidanceDelegate) voiceGuideDelegate = null
+                if (citsGuideDelegate === kakaoGuidanceDelegate) citsGuideDelegate = null
+                if (locationGuideDelegate === kakaoGuidanceDelegate) locationGuideDelegate = null
             }
         } catch (e: Exception) {
             // KNSDK 상태에 따라 델리게이트 해제가 실패해도 앱 동작엔 영향 없음.

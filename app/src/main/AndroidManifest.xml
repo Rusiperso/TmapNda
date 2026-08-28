@@ -110,11 +110,14 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+        <!-- v: MapActivity와 동일한 이유(분할화면 등으로 화면 크기가 바뀔 때 액티비티가
+             통째로 재생성되면서 카카오 SDK 델리게이트가 유실돼 Navdy HUD 데이터가
+             끊기는 문제, 재억 제보 로그로 확인)로 여기도 동일하게 추가. #문제시 원복 -->
         <activity
             android:name=".KakaoNaviActivity"
             android:exported="false"
             android:screenOrientation="unspecified"
-            android:configChanges="orientation|screenSize|keyboardHidden" />
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|density" />
         
         <service
             android:name=".UdpSenderService"
