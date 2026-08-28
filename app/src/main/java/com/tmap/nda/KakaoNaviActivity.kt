@@ -311,6 +311,17 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
         }
 
+        // v: 신규기능(미니 플레이어) - 재억 요청(2026-08-28). 다른 버튼들과 동일하게
+        // UI 편집모드에서 드래그로 옮길 수 있음. #문제시 원복
+        binding.llMiniPlayer?.let { player ->
+            com.tmap.nda.miniplayer.MiniPlayerManager.attach(
+                this, player,
+                binding.ivMiniPlayerArt, binding.tvMiniPlayerTitle, binding.tvMiniPlayerArtist,
+                binding.btnMiniPlayerPlayPause, binding.btnMiniPlayerPrev, binding.btnMiniPlayerNext,
+                "llMiniPlayer", isLandscape
+            )
+        }
+
         // v3.3: 이 HudScale.install()이 llLeftHudPanel(이제 상단 가로바)을 예전
         // "좌측 세로 패널" 기준 폭으로 강제 리사이즈하고 있었음 - MapActivity에서는
         // v2.6에서 이미 비활성화했는데 KakaoNaviActivity에서는 빼먹어서, 카카오 길안내
@@ -1235,6 +1246,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 binding.btnAddWaypoint?.visibility = if (showWaypointButton) View.VISIBLE else View.GONE
                 binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
                 binding.btnCancelWaypoint?.visibility = if (showCancelWaypointButton && activeWaypoint != null) View.VISIBLE else View.GONE
+                binding.llMiniPlayer?.let { player ->
+                    com.tmap.nda.miniplayer.MiniPlayerManager.refresh(
+                        this, player,
+                        binding.ivMiniPlayerArt, binding.tvMiniPlayerTitle, binding.tvMiniPlayerArtist,
+                        binding.btnMiniPlayerPlayPause
+                    )
+                }
                 // v: 재억 제보(2026-08-26) - 경유지취소 버튼이 저장한 위치에 안 있고 계속
                 // 움직이던 문제 - 처음엔 GONE 상태라 크기가 0이라 위치복원이 제대로 안 됐고,
                 // 그 뒤 VISIBLE로 바뀔 때마다 저장된 위치를 다시 안 불러서 기본위치로 돌아갔음.
@@ -2918,6 +2936,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         NavLogger.d(this, "[KakaoNaviActivity lifecycle] onDestroy (isFinishing=$isFinishing, isChangingConfigurations=$isChangingConfigurations)")
         cancelNavNotification()
         hudPollHandler.removeCallbacksAndMessages(null)
+        com.tmap.nda.miniplayer.MiniPlayerManager.detach()
         try {
             locationManager?.removeUpdates(this)
         } catch (e: Exception) {

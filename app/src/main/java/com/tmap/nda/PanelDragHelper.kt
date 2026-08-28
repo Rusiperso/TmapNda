@@ -250,6 +250,13 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
+        // v: 신규기능(미니 플레이어) - 재억 요청(2026-08-28). 기본값 켜짐(true). #문제시 원복
+        val showMiniPlayerCheckBox = android.widget.Switch(context).apply {
+            text = "미니 플레이어 표시 (지금 재생 중인 음악)"
+            isChecked = pref.getBoolean(com.tmap.nda.miniplayer.MiniPlayerManager.PREF_KEY_ENABLED, true)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
         val unlockMapTouchCheckBox = if (touchLockOverlay != null) {
             android.widget.Switch(context).apply {
                 text = "티맵 터치 잠금 해제 (핀치줌/드래그 허용)"
@@ -461,7 +468,8 @@ object PanelDragHelper {
             trafficInfoCheckBox,            // 티맵 교통 정보 (도로 정체 색깔 표시)
             distanceFormatKmCheckBox,       // 1000m 이상일 때 km 단위로 거리 표시
             unlockMapTouchCheckBox,         // 티맵 터치 잠금 해제 (핀치줌/드래그 허용) - 화면표시로 이동
-            showLaneOverlayTmapCheckBox     // 차선 안내 오버레이 표시 (Tmap 화면 한정)
+            showLaneOverlayTmapCheckBox,    // 차선 안내 오버레이 표시 (Tmap 화면 한정)
+            showMiniPlayerCheckBox          // 미니 플레이어 표시
         ))
         addAccordionGroup("버튼 표시", listOf(
             showWaypointButtonCheckBox,      // 경유지 버튼 표시
@@ -507,6 +515,7 @@ object PanelDragHelper {
                     .putBoolean("tmap_satellite_view_enabled", satelliteViewCheckBox.isChecked)
                     .putBoolean("tmap_traffic_info_enabled", trafficInfoCheckBox.isChecked)
                     .putBoolean("route_line_display_enabled", routeLineDisplayCheckBox.isChecked)
+                    .putBoolean(com.tmap.nda.miniplayer.MiniPlayerManager.PREF_KEY_ENABLED, showMiniPlayerCheckBox.isChecked)
                     .putInt("quickslot_favorite_count", favoriteCount)
                     .apply {
                         if (unlockMapTouchCheckBox != null) {
@@ -520,6 +529,19 @@ object PanelDragHelper {
                     } else {
                         touchLockOverlay.setOnTouchListener { _, _ -> true }
                     }
+                }
+                // v: 신규기능(미니 플레이어) - 켰는데 "알림 접근" 권한이 아직 없으면, 어디로 가서
+                // 허용해야 하는지 바로 안내. 권한 자체는 런타임 요청이 안 되는 특수권한이라 시스템
+                // 설정 화면으로 직접 보내야 함. #문제시 원복
+                if (showMiniPlayerCheckBox.isChecked && !com.tmap.nda.miniplayer.MiniPlayerManager.hasNotificationAccess(context)) {
+                    android.app.AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+                        .setTitle("알림 접근 권한 필요")
+                        .setMessage("미니 플레이어가 지금 재생 중인 음악 정보를 읽으려면 '알림 접근' 권한이 필요합니다. 설정 화면에서 TmapNda를 찾아 허용해 주세요.")
+                        .setPositiveButton("설정으로 이동") { _, _ ->
+                            com.tmap.nda.miniplayer.MiniPlayerManager.openNotificationAccessSettings(context)
+                        }
+                        .setNegativeButton("나중에", null)
+                        .show()
                 }
                 android.widget.Toast.makeText(context, "저장됨", android.widget.Toast.LENGTH_SHORT).show()
                 onSaved?.invoke()

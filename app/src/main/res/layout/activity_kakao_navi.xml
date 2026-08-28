@@ -611,4 +611,86 @@
         android:visibility="gone"
         android:elevation="20dp"/>
 
+    <!-- v: 신규기능(미니 플레이어) - 재억 요청. 현재 재생 중인 음악 앱(유튜브뮤직 등)의
+         정보(MediaSession)만 읽어와 자체 UI로 그림 - 다른 앱 화면을 가져오는 게 아니라
+         "지금 재생 중" 데이터만 구독하는 방식. UI 편집모드에서 위치를 옮길 수 있고,
+         재생 중인 미디어가 없으면 자동으로 숨김. #문제시 원복 -->
+    <LinearLayout
+        android:id="@+id/llMiniPlayer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="10dp"
+        android:layout_marginBottom="10dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/bg_miniplayer"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="8dp"
+        android:elevation="24dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/ivMiniPlayerArt"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:background="@drawable/shape_circle_gray"
+            android:scaleType="centerCrop"/>
+
+        <LinearLayout
+            android:layout_width="140dp"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="4dp">
+
+            <TextView
+                android:id="@+id/tvMiniPlayerTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="재생 중인 음악 없음"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:singleLine="true"
+                android:ellipsize="end"/>
+
+            <TextView
+                android:id="@+id/tvMiniPlayerArtist"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="#9AA1AC"
+                android:textSize="10sp"
+                android:singleLine="true"
+                android:ellipsize="end"/>
+        </LinearLayout>
+
+        <ImageButton
+            android:id="@+id/btnMiniPlayerPrev"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@android:drawable/ic_media_previous"
+            android:background="@android:color/transparent"
+            android:scaleType="center"/>
+
+        <ImageButton
+            android:id="@+id/btnMiniPlayerPlayPause"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:layout_marginHorizontal="2dp"
+            android:src="@android:drawable/ic_media_pause"
+            android:background="@drawable/shape_circle_blue"
+            android:scaleType="center"/>
+
+        <ImageButton
+            android:id="@+id/btnMiniPlayerNext"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@android:drawable/ic_media_next"
+            android:background="@android:color/transparent"
+            android:scaleType="center"/>
+
+    </LinearLayout>
+
 </FrameLayout>

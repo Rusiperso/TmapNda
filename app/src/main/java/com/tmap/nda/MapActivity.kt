@@ -407,6 +407,15 @@ class MapActivity : AppCompatActivity() {
                 PanelDragHelper.restorePosition(this, btn, "btnNearbyCategory", isLandscape, emptyList())
             }
         }
+        // v: 신규기능(미니 플레이어) - 재억 요청(2026-08-28). 카카오 화면과 동일. #문제시 원복
+        binding.llMiniPlayer?.let { player ->
+            com.tmap.nda.miniplayer.MiniPlayerManager.attach(
+                this, player,
+                binding.ivMiniPlayerArt, binding.tvMiniPlayerTitle, binding.tvMiniPlayerArtist,
+                binding.btnMiniPlayerPlayPause, binding.btnMiniPlayerPrev, binding.btnMiniPlayerNext,
+                "llMiniPlayer", isLandscape
+            )
+        }
         // v3.9: Tmap/카카오 화면 동일 동작을 위해 공용 함수로 교체 (사용자: "기본 UI는 차등 두지 말 것")
         binding.btnEditPanelPosition?.let {
             PanelDragHelper.wireEditToggleButton(this, it, binding.svSecondaryPanel, binding.btnMoreMenu, binding.btnConfirmEditPosition, binding.llLeftHudPanel)
@@ -1501,6 +1510,13 @@ class MapActivity : AppCompatActivity() {
             val showCategoryButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 .getBoolean("show_category_button", true)
             binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
+            binding.llMiniPlayer?.let { player ->
+                com.tmap.nda.miniplayer.MiniPlayerManager.refresh(
+                    this, player,
+                    binding.ivMiniPlayerArt, binding.tvMiniPlayerTitle, binding.tvMiniPlayerArtist,
+                    binding.btnMiniPlayerPlayPause
+                )
+            }
         }
     }
 
@@ -3902,6 +3918,7 @@ class MapActivity : AppCompatActivity() {
         // 강제 종료됐는지"를 로그로 직접 확인할 방법이 없었음(사용자: 카카오 화면 중
         // 카메라 감속 안 되던 문제 조사 때 아쉬웠던 부분) - 추가함. #문제시 원복
         NavLogger.d(this, "[MapActivity lifecycle] onDestroy (isFinishing=$isFinishing, isChangingConfigurations=$isChangingConfigurations)")
+        com.tmap.nda.miniplayer.MiniPlayerManager.detach()
         // v8.8: MapActivity가 완전히 종료될 때(=앱 자체가 꺼질 때)만 폴링도 같이 정지.
         // 카카오 화면으로 넘어가는 것만으로는 MapActivity가 destroy 안 되니 계속 돌아감. #문제시 원복
         AutoUpdater.stopPeriodicCheck()
