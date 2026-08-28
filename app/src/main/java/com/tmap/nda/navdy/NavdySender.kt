@@ -98,19 +98,34 @@ object NavdySender {
                     s
                 } catch (e: IOException) {
                     try { s?.close() } catch (_: Exception) {}
-                    NavLogger.d("[Navdy] 표준 연결 실패(${e.message}), 채널1 우회 연결 시도")
+                    NavLogger.d("[Navdy] 표준 연결 실패(${e.message}), 채널 우회 연결 시도")
+                    // v: 재억 재제보(2026-08-28) - "나브디 쓰는 다른 사람도 안 된다"는 제보로
+                    // 다시 파봄. 표준 방식이 98% 이상 실패하는 건 확인했었지만, 그동안 우회
+                    // 방식도 "무조건 1번 채널"만 시도하고 있었음 - 근데 SPP 채널 번호는
+                    // 기기/펌웨어마다 다를 수 있어서, 1번이 애초에 이 나브디 기기의 실제
+                    // 채널이 아닐 가능성이 있음. 흔히 쓰이는 범위(1~5번)를 순서대로 시도해서
+                    // 맞는 채널을 찾도록 확장. #문제시 원복
                     var fallback: BluetoothSocket? = null
-                    try {
-                        fallback = device.javaClass
-                            .getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
-                            .invoke(device, 1) as BluetoothSocket
-                        fallback.connect()
-                        fallback
-                    } catch (e2: Exception) {
-                        try { fallback?.close() } catch (_: Exception) {}
-                        throw e2
+                    var lastFallbackError: Exception? = null
+                    for (channel in 1..5) {
+                        try {
+                            fallback = device.javaClass
+                                .getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
+                                .invoke(device, channel) as BluetoothSocket
+                            fallback.connect()
+                            NavLogger.d("[Navdy] 채널 $channel 로 연결 성공")
+                            lastFallbackError = null
+                            break
+                        } catch (e2: Exception) {
+                            try { fallback?.close() } catch (_: Exception) {}
+                            fallback = null
+                            lastFallbackError = e2
+                        }
                     }
-                }
+                    if (fallback == null) {
+                        throw lastFallbackError ?: e
+                    }
+                    fallback
                 socket = sock
                 outputStream = sock.outputStream
                 NavLogger.d("[Navdy] 연결 성공: ${device.name}")

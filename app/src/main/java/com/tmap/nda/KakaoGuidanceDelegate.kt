@@ -548,6 +548,21 @@ class KakaoGuidanceDelegate(
                             v?.toString() ?: "null"
                         } catch (e: Exception) { "실패" }
                     }
+                    // v: 재억 요청(2026-08-28, 실기기 로그로 확인) - getSuggest가 이번 세션
+                    // 80번 갱신 중 8번(10%)만 true를 줬고, 특히 "좌회전해야 하는 차로" 같은
+                    // 상황(74초 정지 구간)에서는 계속 전부 false였음 - getSuggest는 일반적인
+                    // "이 차로가 낫다" 추천용일 뿐, "이 차로에서 좌/우회전 가능한지"는 다른
+                    // 필드(getTurnType, 예전 API스캔에서 이미 존재 확인됨)일 가능성이 높아서
+                    // 비교용으로 같이 로그에 남김. #문제시 원복
+                    val turnTypeValues = laneInfoList.map { info ->
+                        if (info == null) return@map "null"
+                        try {
+                            val v = info.javaClass.methods
+                                .firstOrNull { it.name == "getTurnType" && it.parameterTypes.isEmpty() }
+                                ?.invoke(info)
+                            v?.toString() ?: "null"
+                        } catch (e: Exception) { "실패" }
+                    }
                     val recommendedFlags = laneInfoList.mapNotNull { info ->
                         if (info == null) return@mapNotNull null
                         try {
@@ -575,6 +590,7 @@ class KakaoGuidanceDelegate(
                     // 차선별 recommended 값을 그대로 남김(전부 false면 SDK가 이 구간에서
                     // 추천 차선 자체를 안 준 것 - 배지가 안 뜨는 게 정상 동작). #문제시 원복
                     NavLogger.d(context, "[차선진단][추천여부] ${recommendedFlags.mapIndexed { i, f -> "${i + 1}번=${f.recommended}" }}")
+                    NavLogger.d(context, "[차선진단][getTurnType] ${turnTypeValues.mapIndexed { i, v -> "${i + 1}번=$v" }}")
                     NavLogger.d(context, "[차선진단][getColorType] ${colorTypeValues.mapIndexed { i, v -> "${i + 1}번=$v" }}")
                     // v13.6: 재억 지적 - "평소엔 안뜨고 카카오 안내 끝내야 뜬다" 원인을
                     // 다음 재현 때 정확히 잡기 위한 진단 로그. 카카오가 실제로 차선을
@@ -596,14 +612,22 @@ class KakaoGuidanceDelegate(
                 LaneSignalRepository.notifyChanged()
             } else if (lane == null) {
                 LaneSignalRepository.kakaoLane = null
-                // v: 재억 요청(2026-08-28) - "배지가 뜨고 사라지는 게 너무 짧다/타이밍이
-                // 카카오 화면이랑 안 맞는다" - 원인은 15초짜리 고정 타임아웃으로 지워왔던
-                // 것. 카카오가 "지금 이 구간엔 차선 안내가 없다"고 명시적으로 알려주는
-                // 바로 이 콜백에서 lanes도 같이 비워서, 카카오 화면의 노란색 강조가
-                // 꺼지는 타이밍과 배지가 사라지는 타이밍을 정확히 맞춤. #문제시 원복
-                LaneSignalRepository.lanes = emptyList()
-                LaneSignalRepository.source = ""
-                NavLogger.d(context, "[차선정보] lane=null (이 구간엔 차선 안내 데이터 없음)")
+                // v: 재억 재요청(2026-08-28) - "나오다 말다 한다, 안 나오는 경우가 더 많다"는
+                // 제보로 다시 확인. 지난 수정(v19.2.31)은 카카오가 lane=null을 보낼 때마다
+                // 즉시 lanes를 비웠는데, 카카오 SDK 자체가 안내 도중에도 이 콜백을 간헐적으로
+                // null로 보내는 걸로 보임(추측이 아니라 "나오다 말다"라는 실사용 증상과
+                // 맞음) - 그때마다 지워버리면 깜빡거리게 됨. 올바른 기준은 "카카오가 이번엔
+                // null을 줬는지"가 아니라 "실제로 그 회전 지점을 지났는지(tbtDist가 0에
+                // 가까워졌는지)"여야 함. 그래서 lane=null이어도 곧바로 지우지 않고, 회전
+                // 지점에 다 왔을 때(또는 완전히 오래돼서 안내 자체가 끝난 걸로 보일 때)만
+                // 지우도록 바꿈. #문제시 원복
+                val nearOrPastManeuver = KakaoRouteDataRepository.tbtDist in 0..15
+                val guidanceLikelyEnded = System.currentTimeMillis() - LaneSignalRepository.lastUpdateTime > 30000L
+                if (nearOrPastManeuver || guidanceLikelyEnded) {
+                    LaneSignalRepository.lanes = emptyList()
+                    LaneSignalRepository.source = ""
+                }
+                NavLogger.d(context, "[차선정보] lane=null (이 구간엔 차선 안내 데이터 없음, tbtDist=${KakaoRouteDataRepository.tbtDist}, 지워짐=${nearOrPastManeuver || guidanceLikelyEnded})")
                 LaneSignalRepository.notifyChanged()
             }
         } catch (e: Exception) {

@@ -589,11 +589,38 @@ class UdpSenderService : Service() {
                             (peekType > 0 && peekDist in 1..500)
                     } catch (e: Exception) { false }
                     if (currentLimitSpeed >= 30) {
-                        roadLimitSpeed = currentLimitSpeed
                         lastRoadLimitUpdateTime = System.currentTimeMillis()
-                        if (!cameraLimitPeekThisFrame) {
-                            generalRoadLimitSpeed = currentLimitSpeed
-                            lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
+                        // v: 재억 재제보(2026-08-28, 실기기 로그로 확인) - realRoadLimit(엔진
+                        // 리플렉션) 경로와 완전히 똑같은 구멍이 이 번들 값(limitSpeed) 경로에도
+                        // 있었음: roadLimitSpeed를 무조건 즉시 반영하고 있었음. 같은 히스테리시스를
+                        // 여기도 동일하게 적용. pending 상태는 realRoadLimit 경로와 공유해도
+                        // 안전함(둘 다 "지금 도로의 기본 제한속도"라는 같은 개념을 다른 소스에서
+                        // 가져오는 것뿐이라, 어느 쪽에서 오든 똑같이 연속 확인이 필요함). #문제시 원복
+                        val nearManeuverPointForLimitSpeed = KakaoRouteDataRepository.tbtDist in 0..GENERAL_ROAD_LIMIT_TBT_NEAR_THRESHOLD_M
+                        val vettedCurrentLimitSpeed: Int? = if (currentLimitSpeed < generalRoadLimitSpeed && !nearManeuverPointForLimitSpeed) {
+                            if (currentLimitSpeed == pendingGeneralRoadLimit) {
+                                pendingGeneralRoadLimitCount++
+                            } else {
+                                pendingGeneralRoadLimit = currentLimitSpeed
+                                pendingGeneralRoadLimitCount = 1
+                            }
+                            if (pendingGeneralRoadLimitCount >= GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE) {
+                                pendingGeneralRoadLimitCount = 0
+                                currentLimitSpeed
+                            } else {
+                                NavLogger.d(this@UdpSenderService, "[도로제한][분기오매칭방지][limitSpeed] currentLimitSpeed=$currentLimitSpeed < 기존=$generalRoadLimitSpeed, 분기점근처=false, 확인횟수=$pendingGeneralRoadLimitCount/$GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE - 보류")
+                                null
+                            }
+                        } else {
+                            pendingGeneralRoadLimitCount = 0
+                            currentLimitSpeed
+                        }
+                        if (vettedCurrentLimitSpeed != null) {
+                            roadLimitSpeed = vettedCurrentLimitSpeed
+                            if (!cameraLimitPeekThisFrame) {
+                                generalRoadLimitSpeed = vettedCurrentLimitSpeed
+                                lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
+                            }
                         }
                     }
 
