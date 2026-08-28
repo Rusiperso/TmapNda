@@ -62,6 +62,16 @@ object MiniPlayerManager {
     private enum class EditMode { NONE, MOVE, RESIZE }
     private var editMode = EditMode.NONE
 
+    // v: 재억 제보(2026-08-29, 2차) - 확정 버튼/크기조절 핸들이 카드 밖으로(위/왼쪽,
+    // 아래/왼쪽) 튀어나오도록 XML에서 마진을 잡아뒀는데, 카드를 화면 끝까지 옮기거나
+    // 키우면 그 튀어나온 부분이 화면 밖으로 밀려서 다시 안 보이거나 안 눌릴 수 있음.
+    // 이동/크기조절 시 카드 위치를 화면 가장자리로 딱 붙이지 않고 이 버튼들이 튀어나올
+    // 공간만큼 미리 여유를 남겨서 항상 화면 안에 보이게 함. #문제시 원복
+    private const val CONFIRM_OVERHANG_DP = 36f
+    private const val RESIZE_HANDLE_OVERHANG_DP = 32f
+
+    private fun dpToPx(activity: Activity, dp: Float): Float = dp * activity.resources.displayMetrics.density
+
     private data class BaseSizes(
         val artPx: Int,
         val titlePx: Float,
@@ -220,10 +230,15 @@ object MiniPlayerManager {
                     var newX = event.rawX + dX
                     var newY = event.rawY + dY
                     if (parent != null) {
-                        val maxX = (parent.width - outerContainer.width).toFloat().coerceAtLeast(0f)
-                        val maxY = (parent.height - outerContainer.height).toFloat().coerceAtLeast(0f)
-                        newX = newX.coerceIn(0f, maxX)
-                        newY = newY.coerceIn(0f, maxY)
+                        // 이동 중엔 확정(✓) 버튼이 카드 왼쪽 위로 튀어나와 있으니, 그만큼은
+                        // 화면 가장자리에 남겨둬서 버튼이 화면 밖으로 밀려나지 않게 함.
+                        val overhangPx = dpToPx(activity, CONFIRM_OVERHANG_DP)
+                        val minX = overhangPx
+                        val minY = overhangPx
+                        val maxX = (parent.width - outerContainer.width).toFloat().coerceAtLeast(minX)
+                        val maxY = (parent.height - outerContainer.height).toFloat().coerceAtLeast(minY)
+                        newX = newX.coerceIn(minX, maxX)
+                        newY = newY.coerceIn(minY, maxY)
                     }
                     outerContainer.x = newX
                     outerContainer.y = newY
@@ -279,12 +294,19 @@ object MiniPlayerManager {
                         // 오른쪽 위 모서리(anchor)를 기준으로 왼쪽/아래로 키우되, 화면
                         // 밖으로 나가려 하면 그 이상은 화면 가장자리에 걸리게 함(임의의
                         // 숫자가 아니라 실제 화면 크기가 진짜 한계가 되도록). #문제시 원복
+                        // 크기 조절 중엔 확정 버튼(카드 왼쪽 위)과 크기조절 핸들(카드 왼쪽
+                        // 아래)이 둘 다 튀어나와 있으니, 왼쪽은 두 버튼 중 더 많이 튀어나온
+                        // 쪽 기준, 위/아래는 각 버튼 기준으로 여유를 남겨둠.
                         val parent = outerContainer.parent as? View
+                        val leftOverhangPx = dpToPx(activity, maxOf(CONFIRM_OVERHANG_DP, RESIZE_HANDLE_OVERHANG_DP))
+                        val topOverhangPx = dpToPx(activity, CONFIRM_OVERHANG_DP)
+                        val bottomOverhangPx = dpToPx(activity, RESIZE_HANDLE_OVERHANG_DP)
                         var newX = anchorRight - outerContainer.width
                         var newY = anchorTop
                         if (parent != null) {
-                            newX = newX.coerceAtLeast(0f)
-                            newY = newY.coerceIn(0f, (parent.height - outerContainer.height).toFloat().coerceAtLeast(0f))
+                            newX = newX.coerceAtLeast(leftOverhangPx)
+                            val maxY = (parent.height - outerContainer.height - bottomOverhangPx).coerceAtLeast(topOverhangPx)
+                            newY = newY.coerceIn(topOverhangPx, maxY)
                         }
                         outerContainer.x = newX
                         outerContainer.y = newY
