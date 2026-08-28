@@ -646,16 +646,21 @@
             android:scaleType="centerCrop"/>
 
         <LinearLayout
-            android:layout_width="140dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:layout_marginStart="8dp"
             android:layout_marginEnd="4dp">
 
+            <!-- v: 재억 제보(2026-08-28, 4차, 실기기 영상으로 확인) - 이 폭이 140dp로
+                 고정돼 있어서, 크기 조절로 글자가 커지면 좁은 칸 안에 눌려 카드가
+                 뒤죽박죽으로 보였음. maxWidth만 안전장치로 두고 폭 자체는 내용에 맞게
+                 늘어나도록(wrap_content) 바꿈. #문제시 원복 -->
             <TextView
                 android:id="@+id/tvMiniPlayerTitle"
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:maxWidth="220dp"
                 android:text="재생 중인 음악 없음"
                 android:textColor="#FFFFFF"
                 android:textSize="12sp"
@@ -665,8 +670,9 @@
 
             <TextView
                 android:id="@+id/tvMiniPlayerArtist"
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:maxWidth="220dp"
                 android:text=""
                 android:textColor="#9AA1AC"
                 android:textSize="10sp"

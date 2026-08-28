@@ -611,9 +611,14 @@
          기본 위치를 우측 위 세로 카드로 다르게 둠(세로형 배치는 아이콘 순서만 다름).
          카드를 길게 누르면 "위치 이동"/"크기 조절" 메뉴가 뜨고, 확정(체크) 버튼/크기조절
          핸들은 카드 왼쪽 모서리에 겹쳐서 배치함. #문제시 원복 -->
+    <!-- v: 재억 제보(2026-08-28, 4차, 실기기 영상으로 확인) - flMiniPlayerContainer의
+         고정폭(180dp)이 크기 조절과 충돌해서, 앨범아트/버튼은 커지려는데 담을 공간이
+         못박혀 있어 서로 겹치고 뒤죽박죽으로 보였음. 컨테이너부터 카드, 안쪽 요소까지
+         전부 wrap_content로 바꿔서 실제 내용 크기에 맞춰 카드 폭 자체가 늘어나게 함.
+         #문제시 원복 -->
     <FrameLayout
         android:id="@+id/flMiniPlayerContainer"
-        android:layout_width="180dp"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|end"
         android:layout_marginTop="10dp"
@@ -624,14 +629,14 @@
 
     <LinearLayout
         android:id="@+id/llMiniPlayer"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:background="@drawable/bg_miniplayer"
         android:padding="10dp">
 
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical">
@@ -644,16 +649,16 @@
                 android:scaleType="centerCrop"/>
 
             <LinearLayout
-                android:layout_width="0dp"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
                 android:orientation="vertical"
                 android:layout_marginStart="8dp">
 
                 <TextView
                     android:id="@+id/tvMiniPlayerTitle"
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:maxWidth="220dp"
                     android:text="재생 중인 음악 없음"
                     android:textColor="#FFFFFF"
                     android:textSize="12sp"
@@ -663,8 +668,9 @@
 
                 <TextView
                     android:id="@+id/tvMiniPlayerArtist"
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:maxWidth="220dp"
                     android:text=""
                     android:textColor="#9AA1AC"
                     android:textSize="10sp"
