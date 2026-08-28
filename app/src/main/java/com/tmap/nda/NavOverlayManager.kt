@@ -49,6 +49,7 @@ object NavOverlayManager {
     private var primaryIcon: TurnHookIconView? = null
     private var primaryDistText: TextView? = null
     private var primaryRoadText: TextView? = null
+    private var primaryLaneText: TextView? = null
     private var secondaryRow: View? = null
     private var secondaryIcon: TurnHookIconView? = null
     private var secondaryDistText: TextView? = null
@@ -266,6 +267,16 @@ object NavOverlayManager {
                 visibility = View.GONE
             }
         }
+        // v: 신규기능(재억 요청, 2026-08-28) - 지금 회전 기준 추천 차선 번호를 배지로 표시.
+        // 데이터가 15초 넘게 안 갱신됐으면(자리 지남/구간 벗어남) 안 보여줌. #문제시 원복
+        val recommendedLaneNums = LaneSignalRepository.lanes
+            .mapIndexedNotNull { idx, info -> if (info.recommended) (idx + 1).toString() else null }
+        if (LaneSignalRepository.isFresh() && recommendedLaneNums.isNotEmpty()) {
+            primaryLaneText?.text = "${recommendedLaneNums.joinToString(", ")}차로"
+            primaryLaneText?.visibility = View.VISIBLE
+        } else {
+            primaryLaneText?.visibility = View.GONE
+        }
 
         if (snapshot.hasNextDirection) {
             secondaryRow?.visibility = View.VISIBLE
@@ -301,7 +312,8 @@ object NavOverlayManager {
         val block: LinearLayout,
         val icon: TurnHookIconView,
         val dist: TextView,
-        val road: TextView
+        val road: TextView,
+        val lane: TextView
     )
 
     // v3(재억 요청, 2026-08-27) - "좌회전/우회전" 글자는 빼고 아이콘+거리만 한 줄로, 그
@@ -336,12 +348,24 @@ object NavOverlayManager {
             ellipsize = android.text.TextUtils.TruncateAt.END
             maxWidth = dp(270)
         }
+        // v: 신규기능(재억 요청, 2026-08-28) - "방면" 텍스트 아래에 추천 차선 번호를
+        // 작은 배지로 표시. 왼쪽부터 1,2,3...으로 세어 추천 차선(이 경로대로 가려면
+        // 타야 하는 차선)에 해당하는 번호만 골라 "1, 2차로"처럼 보여줌. 회전 방향(좌/우/직진)과
+        // 무관하게 동작 - 그 시점의 추천 차선 목록만 보고 그대로 표시. #문제시 원복
+        val lane = TextView(context).apply {
+            textSize = roadSp - 1.5f
+            setTextColor(Color.parseColor("#8FE0A8"))
+            setBackgroundColor(Color.parseColor("#1B4D2C"))
+            setPadding(dp(7), dp(2), dp(7), dp(2))
+            visibility = View.GONE
+        }
         val block = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             addView(topRow, wrapParams())
             addView(road, wrapParams())
+            addView(lane, wrapParams().apply { topMargin = dp(5) })
         }
-        return TurnBlockViews(block, icon, dist, road)
+        return TurnBlockViews(block, icon, dist, road, lane)
     }
 
     private fun buildView(context: Context): LinearLayout {
@@ -367,6 +391,7 @@ object NavOverlayManager {
         primaryIcon = primary.icon
         primaryDistText = primary.dist
         primaryRoadText = primary.road
+        primaryLaneText = primary.lane
         secondaryRow = secondary.block
         secondaryIcon = secondary.icon
         secondaryDistText = secondary.dist
