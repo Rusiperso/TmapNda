@@ -83,17 +83,33 @@ object NavdySender {
                 // 단계가 자주 실패하는 걸로 알려짐. 표준 방식이 실패하면 SDP 조회를 건너뛰고
                 // 고정 채널(1번)로 바로 붙는 우회 방식(리플렉션, 다른 블루투스 시리얼 기기
                 // 연동에서 흔히 쓰는 방법)으로 한 번 더 시도. #문제시 원복
+                // v: 재억 제보(2026-08-28, 실기기 로그 분석) - 25분 넘게 계속 반복되는
+                // "read failed, socket might closed or timeout" 실패 패턴을 확인함. 원인은
+                // 표준 방식(s)이나 우회 방식(fallback)의 connect()가 실패해도 그 소켓 객체를
+                // 닫지 않고 그냥 버리고 있었던 것 - closeQuietly()는 아직 socket/outputStream
+                // 클래스 변수에 할당되기 전이라 이 실패한 로컬 소켓들은 정리 대상이 아니었음.
+                // 15초 재연결 루프가 실패를 반복할 때마다 안 닫힌 소켓이 계속 쌓여서, 결국
+                // 폰의 블루투스 RFCOMM 자원이 고갈돼 계속 실패하는 상태로 악화됐을 가능성이
+                // 높음. 실패한 소켓은 그 즉시 닫아서 누적되지 않게 함. #문제시 원복
                 val sock = try {
                     val s = device.createRfcommSocketToServiceRecord(NAVDY_SERVICE_UUID)
-                    s.connect()
-                    s
-                } catch (e: IOException) {
-                    NavLogger.d("[Navdy] 표준 연결 실패(${e.message}), 채널1 우회 연결 시도")
-                    val fallback = device.javaClass
-                        .getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
-                        .invoke(device, 1) as BluetoothSocket
-                    fallback.connect()
-                    fallback
+                    try {
+                        s.connect()
+                        s
+                    } catch (e: IOException) {
+                        try { s.close() } catch (_: Exception) {}
+                        NavLogger.d("[Navdy] 표준 연결 실패(${e.message}), 채널1 우회 연결 시도")
+                        val fallback = device.javaClass
+                            .getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
+                            .invoke(device, 1) as BluetoothSocket
+                        try {
+                            fallback.connect()
+                            fallback
+                        } catch (e2: Exception) {
+                            try { fallback.close() } catch (_: Exception) {}
+                            throw e2
+                        }
+                    }
                 }
                 socket = sock
                 outputStream = sock.outputStream
