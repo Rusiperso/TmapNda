@@ -649,7 +649,7 @@
         android:layout_gravity="top|end"
         android:layout_margin="12dp"
         android:src="@drawable/ic_check"
-        android:background="@drawable/shape_circle_green"
+        android:background="@drawable/bg_miniplayer_confirm"
         android:scaleType="center"
         android:elevation="30dp"
         android:visibility="gone"/>
@@ -774,17 +774,20 @@
         android:layout_width="36dp"
         android:layout_height="36dp"
         android:src="@drawable/ic_check"
-        android:background="@drawable/shape_circle_green"
+        android:background="@drawable/bg_miniplayer_confirm"
         android:scaleType="center"
         android:contentDescription="확정"
         android:elevation="26dp"
         android:visibility="gone"/>
 
-    <View
+    <ImageButton
         android:id="@+id/vMiniPlayerResizeHandle"
         android:layout_width="32dp"
         android:layout_height="32dp"
-        android:background="@drawable/shape_circle_blue"
+        android:src="@drawable/ic_resize"
+        android:background="@drawable/bg_miniplayer_resize"
+        android:scaleType="center"
+        android:contentDescription="크기 조절"
         android:elevation="26dp"
         android:visibility="gone"/>
 

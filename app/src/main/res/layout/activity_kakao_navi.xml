@@ -222,7 +222,7 @@
                 android:layout_height="34dp"
                 android:layout_marginEnd="8dp"
                 android:src="@android:drawable/ic_lock_silent_mode_off"
-                android:background="@drawable/shape_circle_green"
+                android:background="@drawable/bg_miniplayer_confirm"
                 android:scaleType="center"/>
 
             <!-- v3.1: 예전엔 이 버튼도 음성검색, 필드 안 마이크도 음성검색이라 완전히
@@ -564,7 +564,7 @@
         android:layout_gravity="top|end"
         android:layout_margin="12dp"
         android:src="@drawable/ic_check"
-        android:background="@drawable/shape_circle_green"
+        android:background="@drawable/bg_miniplayer_confirm"
         android:scaleType="center"
         android:elevation="30dp"
         android:visibility="gone"/>
@@ -722,17 +722,20 @@
         android:layout_width="36dp"
         android:layout_height="36dp"
         android:src="@drawable/ic_check"
-        android:background="@drawable/shape_circle_green"
+        android:background="@drawable/bg_miniplayer_confirm"
         android:scaleType="center"
         android:contentDescription="확정"
         android:elevation="26dp"
         android:visibility="gone"/>
 
-    <View
+    <ImageButton
         android:id="@+id/vMiniPlayerResizeHandle"
         android:layout_width="32dp"
         android:layout_height="32dp"
-        android:background="@drawable/shape_circle_blue"
+        android:src="@drawable/ic_resize"
+        android:background="@drawable/bg_miniplayer_resize"
+        android:scaleType="center"
+        android:contentDescription="크기 조절"
         android:elevation="26dp"
         android:visibility="gone"/>
 
