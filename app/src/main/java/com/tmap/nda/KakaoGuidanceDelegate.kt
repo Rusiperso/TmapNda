@@ -583,6 +583,13 @@ class KakaoGuidanceDelegate(
                 LaneSignalRepository.notifyChanged()
             } else if (lane == null) {
                 LaneSignalRepository.kakaoLane = null
+                // v: 재억 요청(2026-08-28) - "배지가 뜨고 사라지는 게 너무 짧다/타이밍이
+                // 카카오 화면이랑 안 맞는다" - 원인은 15초짜리 고정 타임아웃으로 지워왔던
+                // 것. 카카오가 "지금 이 구간엔 차선 안내가 없다"고 명시적으로 알려주는
+                // 바로 이 콜백에서 lanes도 같이 비워서, 카카오 화면의 노란색 강조가
+                // 꺼지는 타이밍과 배지가 사라지는 타이밍을 정확히 맞춤. #문제시 원복
+                LaneSignalRepository.lanes = emptyList()
+                LaneSignalRepository.source = ""
                 NavLogger.d(context, "[차선정보] lane=null (이 구간엔 차선 안내 데이터 없음)")
                 LaneSignalRepository.notifyChanged()
             }
