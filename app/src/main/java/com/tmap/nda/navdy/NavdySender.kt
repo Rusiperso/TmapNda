@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import com.tmap.nda.NavLogger
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.io.OutputStream
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -74,8 +75,25 @@ object NavdySender {
                 } catch (e: SecurityException) {
                     NavLogger.d("[Navdy] cancelDiscovery 권한 없음 - 건너뛰고 연결 계속 시도")
                 }
-                val sock = device.createRfcommSocketToServiceRecord(NAVDY_SERVICE_UUID)
-                sock.connect()
+                // v: 재억 제보(2026-08-28, 실기기 로그로 확인) - "IOException read failed, socket
+                // might closed or timeout, read ret: -1" 실패가 계속 남음. 표준 방식
+                // (createRfcommSocketToServiceRecord)은 연결 전에 SDP로 UUID 서비스 조회를
+                // 하는데, 나브디처럼 흔치 않은 블루투스 기기 + 일부 삼성폰 조합에서 이 조회
+                // 단계가 자주 실패하는 걸로 알려짐. 표준 방식이 실패하면 SDP 조회를 건너뛰고
+                // 고정 채널(1번)로 바로 붙는 우회 방식(리플렉션, 다른 블루투스 시리얼 기기
+                // 연동에서 흔히 쓰는 방법)으로 한 번 더 시도. #문제시 원복
+                val sock = try {
+                    val s = device.createRfcommSocketToServiceRecord(NAVDY_SERVICE_UUID)
+                    s.connect()
+                    s
+                } catch (e: IOException) {
+                    NavLogger.d("[Navdy] 표준 연결 실패(${e.message}), 채널1 우회 연결 시도")
+                    val fallback = device.javaClass
+                        .getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
+                        .invoke(device, 1) as BluetoothSocket
+                    fallback.connect()
+                    fallback
+                }
                 socket = sock
                 outputStream = sock.outputStream
                 NavLogger.d("[Navdy] 연결 성공: ${device.name}")
