@@ -500,6 +500,27 @@ class KakaoGuidanceDelegate(
                     .firstOrNull { it.name == "getLaneInfos" && it.parameterTypes.isEmpty() }
                     ?.invoke(lane) as? List<*>
                 if (laneInfoList != null) {
+                    // v: 재억 요청(2026-08-28) - "색깔 유도선" 조사용, 앱 켜있는 동안 1번만
+                    // 차선 정보 객체가 실제로 어떤 getter들을 가지고 있는지 전부 남김.
+                    // color/유도선 관련 이름이 있는지 확인용. #문제시 원복
+                    if (!laneInfoApiScanDone && laneInfoList.isNotEmpty()) {
+                        laneInfoApiScanDone = true
+                        try {
+                            val first = laneInfoList.firstOrNull { it != null }
+                            if (first != null) {
+                                NavLogger.e(context, "===== [차선API스캔] ${first.javaClass.name} 메서드 목록 =====")
+                                for (m in first.javaClass.methods) {
+                                    if (m.parameterTypes.isEmpty() && (m.name.startsWith("get") || m.name.startsWith("is"))) {
+                                        val value = try { m.invoke(first) } catch (e: Exception) { "호출실패: ${e.message}" }
+                                        NavLogger.e(context, "[차선API스캔] ${m.name}() = $value")
+                                    }
+                                }
+                                NavLogger.e(context, "===== [차선API스캔] 끝 =====")
+                            }
+                        } catch (e: Exception) {
+                            NavLogger.e(context, "[차선API스캔] 실패: ${e.message}")
+                        }
+                    }
                     // v4.11: getHighlightType으로 추천 차선 여부를 실제로 판단해서 표시.
                     // internal 접근 제한 때문에 타입 API가 아니라 리플렉션으로 메서드를
                     // 직접 호출함(컴파일 에러로 linkIdx가 internal인 걸 확인했음 - 같은
@@ -526,6 +547,11 @@ class KakaoGuidanceDelegate(
                     LaneSignalRepository.lanes = recommendedFlags
                     LaneSignalRepository.source = "kakao"
                     LaneSignalRepository.lastUpdateTime = System.currentTimeMillis()
+                    // v: 재억 제보(2026-08-28) - "오버레이에 추천 차선 배지가 안 뜬다" 원인
+                    // 조사용. lanes 개수만으론 "추천 차선이 실제로 있었는지"를 알 수 없어서,
+                    // 차선별 recommended 값을 그대로 남김(전부 false면 SDK가 이 구간에서
+                    // 추천 차선 자체를 안 준 것 - 배지가 안 뜨는 게 정상 동작). #문제시 원복
+                    NavLogger.d(context, "[차선진단][추천여부] ${recommendedFlags.mapIndexed { i, f -> "${i + 1}번=${f.recommended}" }}")
                     // v13.6: 재억 지적 - "평소엔 안뜨고 카카오 안내 끝내야 뜬다" 원인을
                     // 다음 재현 때 정확히 잡기 위한 진단 로그. 카카오가 실제로 차선을
                     // 갱신하는 매 순간을 15초 간격으로 남김. #문제시 원복
@@ -937,6 +963,10 @@ class KakaoGuidanceDelegate(
     // 있는 동안(companion object) 딱 1번만 찍히게 함. #문제시 원복
     companion object {
         @Volatile private var audioApiScanDone = false
+        // v: 재억 요청(2026-08-28) - "색깔 유도선"(나들목/분기점 도로에 실제로 칠해진
+        // 녹색/분홍색과 매칭되는 안내) 기능 조사용. KNLane_LaneInfo에 색상 관련 getter가
+        // 있는지 앱 켜있는 동안 1번만 전체 메서드 목록을 스캔해서 남김. #문제시 원복
+        @Volatile private var laneInfoApiScanDone = false
     }
     private var lastEtaLogTime = 0L
     private fun scanForVolumeApiOnce(guidance: KNGuidance) {
