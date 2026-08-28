@@ -3,9 +3,20 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="24dp"
-    android:gravity="center_vertical">
+    android:orientation="vertical">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp"
+        android:gravity="center_vertical">
 
     <TextView
         android:layout_width="wrap_content"
@@ -125,13 +136,6 @@
         android:text="다른 앱 위에 표시 (백그라운드 방향 안내, 실험적 기능)"
         android:layout_marginBottom="16dp"/>
 
-    <Button
-        android:id="@+id/btnStartNavi"
-        android:layout_width="match_parent"
-        android:layout_height="60dp"
-        android:text="안전운행 시작하기"
-        android:textSize="18sp"/>
-
     <TextView
         android:id="@+id/tvAppVersion"
         android:layout_width="wrap_content"
@@ -141,5 +145,18 @@
         android:textSize="12sp"
         android:layout_gravity="center_horizontal"
         android:layout_marginTop="24dp"/>
+
+    </LinearLayout>
+
+    </ScrollView>
+
+    <Button
+        android:id="@+id/btnStartNavi"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_margin="24dp"
+        android:layout_marginTop="8dp"
+        android:text="안전운행 시작하기"
+        android:textSize="18sp"/>
 
 </LinearLayout>
