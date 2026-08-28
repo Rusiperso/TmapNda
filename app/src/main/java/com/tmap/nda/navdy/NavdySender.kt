@@ -149,6 +149,16 @@ object NavdySender {
      * @param eta 도착 예상 시간 텍스트 (예: "14:32")
      * @param speed 현재 속도 텍스트 (예: "62km/h")
      */
+    // v: 재억 제보(2026-08-28, 실기기 로그로 확인) - 길안내 시작 자체는 몇 분씩 안정적으로
+    // 유지되는데, 주행 중 목적지를 변경하는 순간(경로 재계산되면서 위치/경로 갱신 콜백이
+    // 짧은 시간에 몰려 들어옴)에만 Broken pipe로 끊기는 패턴을 확인함. KakaoHudBridge의
+    // 500ms 스로틀은 "새 데이터 계산" 빈도만 제한하고, 실제 블루투스 전송 자체의 최소
+    // 간격은 보장 안 하고 있었음(서로 다른 콜백 두 개가 거의 동시에 통과하면 둘 다
+    // 큐에 쌓여 짧은 간격으로 연달아 전송됨). 여기 전송 직전에 한 번 더 최소 간격을
+    // 강제해서, 목적지 변경 같은 순간에 블루투스로 데이터가 몰아쳐 나가지 않게 함. #문제시 원복
+    @Volatile private var lastWriteTime = 0L
+    private const val MIN_WRITE_INTERVAL_MS = 300L
+
     fun sendManeuver(
         currentRoad: String,
         turn: NavdyTurn,
@@ -163,6 +173,13 @@ object NavdySender {
         val stream = outputStream ?: return
         executor.execute {
             try {
+                // v: 재억 제보(2026-08-28) - 짧은 간격으로 연달아 전송 요청이 몰릴 때(목적지
+                // 변경 등) 마지막 전송 이후 최소 시간이 안 지났으면 이번 건은 건너뜀 -
+                // 어차피 곧 다음 갱신이 또 오므로 하나쯤 건너뛰어도 정보 손실 체감은 없고,
+                // 블루투스로 데이터가 몰아쳐 나가는 것만 막으면 됨. #문제시 원복
+                val now = System.currentTimeMillis()
+                if (now - lastWriteTime < MIN_WRITE_INTERVAL_MS) return@execute
+                lastWriteTime = now
                 val maneuverBytes = buildNavigationManeuverEvent(
                     currentRoad, turn.protoValue, distanceToTurn, pendingStreet, eta, speed
                 )
