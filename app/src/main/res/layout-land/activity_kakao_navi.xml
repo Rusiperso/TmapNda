@@ -715,29 +715,32 @@
 
     </LinearLayout>
 
+    </FrameLayout>
+
+    <!-- v: 재억 제보(2026-08-29, 4차) - 이 두 버튼을 flMiniPlayerContainer 안에 두고
+         음수 여백으로 틀 밖으로 밀어냈더니, 그려지기는 해도 "터치가 전달되는 범위"는
+         여전히 원래 틀 크기(카드 크기) 그대로라 눌리지 않았음(clipChildren=false는 그림에만
+         적용되고 터치 판정 범위는 안 넓혀줌). 그래서 화면 전체(루트)의 직속 자식으로
+         옮기고, 위치는 카드 좌표를 기준으로 코드(MiniPlayerManager.repositionOverlayButtons)
+         에서 직접 계산해서 잡아줌 - 화면 전체는 항상 터치를 받을 수 있어서 이 문제가
+         생길 수 없음. #문제시 원복 -->
     <ImageButton
         android:id="@+id/btnMiniPlayerConfirm"
         android:layout_width="36dp"
         android:layout_height="36dp"
-        android:layout_gravity="top|start"
-        android:layout_marginStart="-36dp"
-        android:layout_marginTop="-36dp"
         android:src="@drawable/ic_check"
         android:background="@drawable/shape_circle_green"
         android:scaleType="center"
         android:contentDescription="확정"
+        android:elevation="26dp"
         android:visibility="gone"/>
 
     <View
         android:id="@+id/vMiniPlayerResizeHandle"
         android:layout_width="32dp"
         android:layout_height="32dp"
-        android:layout_gravity="bottom|start"
-        android:layout_marginStart="-32dp"
-        android:layout_marginBottom="-32dp"
         android:background="@drawable/shape_circle_blue"
+        android:elevation="26dp"
         android:visibility="gone"/>
-
-    </FrameLayout>
 
 </FrameLayout>

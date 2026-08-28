@@ -62,15 +62,28 @@ object MiniPlayerManager {
     private enum class EditMode { NONE, MOVE, RESIZE }
     private var editMode = EditMode.NONE
 
-    // v: 재억 제보(2026-08-29, 2차) - 확정 버튼/크기조절 핸들이 카드 밖으로(위/왼쪽,
-    // 아래/왼쪽) 튀어나오도록 XML에서 마진을 잡아뒀는데, 카드를 화면 끝까지 옮기거나
-    // 키우면 그 튀어나온 부분이 화면 밖으로 밀려서 다시 안 보이거나 안 눌릴 수 있음.
-    // 이동/크기조절 시 카드 위치를 화면 가장자리로 딱 붙이지 않고 이 버튼들이 튀어나올
-    // 공간만큼 미리 여유를 남겨서 항상 화면 안에 보이게 함. #문제시 원복
+    // v: 재억 제보(2026-08-29, 4차) - 확정 버튼/크기조절 핸들을 카드 밖으로 튀어나오게
+    // 하려고 flMiniPlayerContainer "안에" 두고 음수 여백을 줬더니, 그려지기는 해도 눌리지
+    // 않았음: clipChildren=false는 "그림이 밖으로 나가는 것"만 허용할 뿐, 안드로이드가
+    // "이 터치를 어느 자식에게 넘길지" 판단하는 기준은 여전히 컨테이너의 원래(카드) 크기라서
+    // 밖으로 나간 부분은 애초에 터치가 전달조차 안 됐음. 그래서 이 두 버튼을 컨테이너 밖,
+    // 화면 전체(루트)의 직속 자식으로 옮기고, 위치는 카드(outerContainer)의 현재 좌표를
+    // 기준으로 이 값(카드 밖으로 튀어나올 거리)만큼 코드에서 직접 계산해서 잡아줌 -
+    // 화면 전체는 항상 터치를 받을 수 있는 크기라 이 문제 자체가 생길 수 없음. #문제시 원복
     private const val CONFIRM_OVERHANG_DP = 36f
     private const val RESIZE_HANDLE_OVERHANG_DP = 32f
 
     private fun dpToPx(activity: Activity, dp: Float): Float = dp * activity.resources.displayMetrics.density
+
+    /** 확정 버튼/크기조절 핸들을 카드(outerContainer)의 현재 좌표 기준으로 재배치. */
+    private fun repositionOverlayButtons(activity: Activity, outerContainer: ViewGroup, confirmBtn: View, resizeHandle: View) {
+        val confirmOverhangPx = dpToPx(activity, CONFIRM_OVERHANG_DP)
+        val handleOverhangPx = dpToPx(activity, RESIZE_HANDLE_OVERHANG_DP)
+        confirmBtn.x = (outerContainer.x - confirmOverhangPx).coerceAtLeast(0f)
+        confirmBtn.y = (outerContainer.y - confirmOverhangPx).coerceAtLeast(0f)
+        resizeHandle.x = (outerContainer.x - handleOverhangPx).coerceAtLeast(0f)
+        resizeHandle.y = outerContainer.y + outerContainer.height
+    }
 
     private data class BaseSizes(
         val artPx: Int,
@@ -147,14 +160,16 @@ object MiniPlayerManager {
                     outerContainer.y = y.coerceIn(0f, maxY)
                 }
             }
+            repositionOverlayButtons(activity, outerContainer, confirmBtn, resizeHandle)
         }
 
         card.setOnLongClickListener {
+            repositionOverlayButtons(activity, outerContainer, confirmBtn, resizeHandle)
             showEditMenu(activity, it, confirmBtn, resizeHandle, prev, playPause, next)
             true
         }
-        setupMoveTouch(activity, card, outerContainer, keyPrefix, suffix)
-        setupResizeTouch(activity, outerContainer, resizeHandle, base, art, title, artist, playPause, prev, next, keyPrefix, suffix)
+        setupMoveTouch(activity, card, outerContainer, confirmBtn, resizeHandle, keyPrefix, suffix)
+        setupResizeTouch(activity, outerContainer, confirmBtn, resizeHandle, base, art, title, artist, playPause, prev, next, keyPrefix, suffix)
         confirmBtn.setOnClickListener {
             editMode = EditMode.NONE
             confirmBtn.visibility = View.GONE
@@ -214,7 +229,10 @@ object MiniPlayerManager {
      * v: 재억 제보(2026-08-28, 3차) - 터치리스너를 outerContainer가 아니라 card 자신에
      * 걸어야 함(위 클래스 주석 2번 참고). 실제로 옮기는 대상은 outerContainer. #문제시 원복
      */
-    private fun setupMoveTouch(activity: Activity, card: View, outerContainer: ViewGroup, keyPrefix: String, suffix: String) {
+    private fun setupMoveTouch(
+        activity: Activity, card: View, outerContainer: ViewGroup,
+        confirmBtn: View, resizeHandle: View, keyPrefix: String, suffix: String
+    ) {
         var dX = 0f
         var dY = 0f
         card.setOnTouchListener { _, event ->
@@ -242,6 +260,7 @@ object MiniPlayerManager {
                     }
                     outerContainer.x = newX
                     outerContainer.y = newY
+                    repositionOverlayButtons(activity, outerContainer, confirmBtn, resizeHandle)
                     true
                 }
                 MotionEvent.ACTION_UP -> {
@@ -266,7 +285,7 @@ object MiniPlayerManager {
      * 왼쪽/아래로만 자라도록 함 - 목업(HTML/CSS)의 "앵커 고정 리사이즈"와 동일한 방식. #문제시 원복
      */
     private fun setupResizeTouch(
-        activity: Activity, outerContainer: ViewGroup, resizeHandle: View, base: BaseSizes,
+        activity: Activity, outerContainer: ViewGroup, confirmBtn: View, resizeHandle: View, base: BaseSizes,
         art: ImageView, title: TextView, artist: TextView, playPause: ImageButton, prev: ImageButton, next: ImageButton,
         keyPrefix: String, suffix: String
     ) {
@@ -310,6 +329,7 @@ object MiniPlayerManager {
                         }
                         outerContainer.x = newX
                         outerContainer.y = newY
+                        repositionOverlayButtons(activity, outerContainer, confirmBtn, resizeHandle)
                     }
                     true
                 }
