@@ -613,22 +613,30 @@
 
     <!-- v: 신규기능(미니 플레이어) - 재억 요청. 현재 재생 중인 음악 앱(유튜브뮤직 등)의
          정보(MediaSession)만 읽어와 자체 UI로 그림 - 다른 앱 화면을 가져오는 게 아니라
-         "지금 재생 중" 데이터만 구독하는 방식. UI 편집모드에서 위치를 옮길 수 있고,
-         재생 중인 미디어가 없으면 자동으로 숨김. #문제시 원복 -->
-    <LinearLayout
-        android:id="@+id/llMiniPlayer"
+         "지금 재생 중" 데이터만 구독하는 방식. 카드를 길게 누르면 "위치 이동"/"크기 조절"
+         메뉴가 뜨고, 확정(체크) 버튼/크기조절 핸들은 카드 왼쪽 모서리에 겹쳐서 배치함
+         (clipChildren=false로 카드 밖으로 살짝 튀어나오게). 재생 중인 미디어가 없으면
+         자동으로 숨김. #문제시 원복 -->
+    <FrameLayout
+        android:id="@+id/flMiniPlayerContainer"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|start"
         android:layout_marginStart="10dp"
         android:layout_marginBottom="10dp"
+        android:clipChildren="false"
+        android:elevation="24dp"
+        android:visibility="gone">
+
+    <LinearLayout
+        android:id="@+id/llMiniPlayer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:background="@drawable/bg_miniplayer"
         android:paddingHorizontal="10dp"
-        android:paddingVertical="8dp"
-        android:elevation="24dp"
-        android:visibility="gone">
+        android:paddingVertical="8dp">
 
         <ImageView
             android:id="@+id/ivMiniPlayerArt"
@@ -692,5 +700,30 @@
             android:scaleType="center"/>
 
     </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/btnMiniPlayerConfirm"
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:layout_gravity="top|start"
+        android:layout_marginStart="-6dp"
+        android:layout_marginTop="-6dp"
+        android:src="@drawable/ic_check"
+        android:background="@drawable/shape_circle_green"
+        android:scaleType="center"
+        android:contentDescription="확정"
+        android:visibility="gone"/>
+
+    <View
+        android:id="@+id/vMiniPlayerResizeHandle"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="-4dp"
+        android:layout_marginBottom="-4dp"
+        android:background="@drawable/shape_circle_blue"
+        android:visibility="gone"/>
+
+    </FrameLayout>
 
 </FrameLayout>

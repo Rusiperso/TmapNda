@@ -670,20 +670,26 @@
 
     <!-- v: 신규기능(미니 플레이어) - 카카오 화면(activity_kakao_navi.xml)과 동일 구조/ID.
          #문제시 원복 -->
-    <LinearLayout
-        android:id="@+id/llMiniPlayer"
+    <FrameLayout
+        android:id="@+id/flMiniPlayerContainer"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|start"
         android:layout_marginStart="10dp"
         android:layout_marginBottom="10dp"
+        android:clipChildren="false"
+        android:elevation="24dp"
+        android:visibility="gone">
+
+    <LinearLayout
+        android:id="@+id/llMiniPlayer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:background="@drawable/bg_miniplayer"
         android:paddingHorizontal="10dp"
-        android:paddingVertical="8dp"
-        android:elevation="24dp"
-        android:visibility="gone">
+        android:paddingVertical="8dp">
 
         <ImageView
             android:id="@+id/ivMiniPlayerArt"
@@ -747,5 +753,30 @@
             android:scaleType="center"/>
 
     </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/btnMiniPlayerConfirm"
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:layout_gravity="top|start"
+        android:layout_marginStart="-6dp"
+        android:layout_marginTop="-6dp"
+        android:src="@drawable/ic_check"
+        android:background="@drawable/shape_circle_green"
+        android:scaleType="center"
+        android:contentDescription="확정"
+        android:visibility="gone"/>
+
+    <View
+        android:id="@+id/vMiniPlayerResizeHandle"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="-4dp"
+        android:layout_marginBottom="-4dp"
+        android:background="@drawable/shape_circle_blue"
+        android:visibility="gone"/>
+
+    </FrameLayout>
 
 </FrameLayout>

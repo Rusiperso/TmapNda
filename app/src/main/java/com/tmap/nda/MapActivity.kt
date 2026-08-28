@@ -408,11 +408,12 @@ class MapActivity : AppCompatActivity() {
             }
         }
         // v: 신규기능(미니 플레이어) - 재억 요청(2026-08-28). 카카오 화면과 동일. #문제시 원복
-        binding.llMiniPlayer?.let { player ->
+        binding.flMiniPlayerContainer?.let { outer ->
             com.tmap.nda.miniplayer.MiniPlayerManager.attach(
-                this, player,
+                this, outer, binding.llMiniPlayer!!,
                 binding.ivMiniPlayerArt, binding.tvMiniPlayerTitle, binding.tvMiniPlayerArtist,
                 binding.btnMiniPlayerPlayPause, binding.btnMiniPlayerPrev, binding.btnMiniPlayerNext,
+                binding.btnMiniPlayerConfirm, binding.vMiniPlayerResizeHandle,
                 "llMiniPlayer", isLandscape
             )
         }
@@ -1510,9 +1511,9 @@ class MapActivity : AppCompatActivity() {
             val showCategoryButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 .getBoolean("show_category_button", true)
             binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
-            binding.llMiniPlayer?.let { player ->
+            binding.flMiniPlayerContainer?.let { outer ->
                 com.tmap.nda.miniplayer.MiniPlayerManager.refresh(
-                    this, player,
+                    this, outer,
                     binding.ivMiniPlayerArt, binding.tvMiniPlayerTitle, binding.tvMiniPlayerArtist,
                     binding.btnMiniPlayerPlayPause
                 )

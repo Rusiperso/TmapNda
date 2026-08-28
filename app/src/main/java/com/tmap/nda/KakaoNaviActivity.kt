@@ -311,13 +311,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
         }
 
-        // v: 신규기능(미니 플레이어) - 재억 요청(2026-08-28). 다른 버튼들과 동일하게
-        // UI 편집모드에서 드래그로 옮길 수 있음. #문제시 원복
-        binding.llMiniPlayer?.let { player ->
+        // v: 신규기능(미니 플레이어) - 재억 요청(2026-08-28). 카드를 길게 누르면 "위치
+        // 이동"/"크기 조절" 메뉴가 뜸. #문제시 원복
+        binding.flMiniPlayerContainer?.let { outer ->
             com.tmap.nda.miniplayer.MiniPlayerManager.attach(
-                this, player,
+                this, outer, binding.llMiniPlayer!!,
                 binding.ivMiniPlayerArt, binding.tvMiniPlayerTitle, binding.tvMiniPlayerArtist,
                 binding.btnMiniPlayerPlayPause, binding.btnMiniPlayerPrev, binding.btnMiniPlayerNext,
+                binding.btnMiniPlayerConfirm, binding.vMiniPlayerResizeHandle,
                 "llMiniPlayer", isLandscape
             )
         }
@@ -1246,9 +1247,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 binding.btnAddWaypoint?.visibility = if (showWaypointButton) View.VISIBLE else View.GONE
                 binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
                 binding.btnCancelWaypoint?.visibility = if (showCancelWaypointButton && activeWaypoint != null) View.VISIBLE else View.GONE
-                binding.llMiniPlayer?.let { player ->
+                binding.flMiniPlayerContainer?.let { outer ->
                     com.tmap.nda.miniplayer.MiniPlayerManager.refresh(
-                        this, player,
+                        this, outer,
                         binding.ivMiniPlayerArt, binding.tvMiniPlayerTitle, binding.tvMiniPlayerArtist,
                         binding.btnMiniPlayerPlayPause
                     )

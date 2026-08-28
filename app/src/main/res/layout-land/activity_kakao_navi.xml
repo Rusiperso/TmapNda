@@ -609,19 +609,26 @@
 
     <!-- v: 신규기능(미니 플레이어) - 재억 요청(2026-08-28). 가로에서는 폭 여유가 적어
          기본 위치를 우측 위 세로 카드로 다르게 둠(세로형 배치는 아이콘 순서만 다름).
-         #문제시 원복 -->
-    <LinearLayout
-        android:id="@+id/llMiniPlayer"
+         카드를 길게 누르면 "위치 이동"/"크기 조절" 메뉴가 뜨고, 확정(체크) 버튼/크기조절
+         핸들은 카드 왼쪽 모서리에 겹쳐서 배치함. #문제시 원복 -->
+    <FrameLayout
+        android:id="@+id/flMiniPlayerContainer"
         android:layout_width="180dp"
         android:layout_height="wrap_content"
         android:layout_gravity="top|end"
         android:layout_marginTop="10dp"
         android:layout_marginEnd="10dp"
-        android:orientation="vertical"
-        android:background="@drawable/bg_miniplayer"
-        android:padding="10dp"
+        android:clipChildren="false"
         android:elevation="24dp"
         android:visibility="gone">
+
+    <LinearLayout
+        android:id="@+id/llMiniPlayer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/bg_miniplayer"
+        android:padding="10dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -700,5 +707,30 @@
         </LinearLayout>
 
     </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/btnMiniPlayerConfirm"
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:layout_gravity="top|start"
+        android:layout_marginStart="-6dp"
+        android:layout_marginTop="-6dp"
+        android:src="@drawable/ic_check"
+        android:background="@drawable/shape_circle_green"
+        android:scaleType="center"
+        android:contentDescription="확정"
+        android:visibility="gone"/>
+
+    <View
+        android:id="@+id/vMiniPlayerResizeHandle"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="-4dp"
+        android:layout_marginBottom="-4dp"
+        android:background="@drawable/shape_circle_blue"
+        android:visibility="gone"/>
+
+    </FrameLayout>
 
 </FrameLayout>
