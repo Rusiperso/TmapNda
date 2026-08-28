@@ -9,7 +9,8 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#080808">
+    android:background="#080808"
+    android:clipChildren="false">
 
     <!-- ===== 지도 영역: 전체 화면 (SDK 내부 절대좌표 위젯과 좌표계를 맞추기 위함) ===== -->
     <FrameLayout
