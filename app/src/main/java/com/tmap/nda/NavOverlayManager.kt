@@ -268,44 +268,11 @@ object NavOverlayManager {
                 visibility = View.GONE
             }
         }
-        // v: 재억 요청(2026-08-28) - "추천 차선 번호" 대신 카카오가 그려주는 실제 차선별
-        // 방향(직진/좌/우/유턴) 화살표를 그대로 표시. LaneSignalRepository.renderLaneSignalBar와
-        // 동일한 방식(KNDriveLaneView에 원본 KNLane을 그대로 넘김) - 방향 코드를 직접 해석할
-        // 필요가 없어서 안전함. 일반 도로 우회전이든 고속도로 분기든, 카카오가 차선 데이터를
-        // 주는 상황이면 항상 정확하게 뜸. 이 컴포넌트를 못 쓰면(예외) 기존 텍스트 배지로 폴백. #문제시 원복
-        val kakaoLane = LaneSignalRepository.kakaoLane
-        val laneContainer = primaryLaneContainer
-        if (LaneSignalRepository.isFresh() && kakaoLane != null && laneContainer != null) {
-            try {
-                val existing = laneContainer.getChildAt(0)
-                val driveLaneView: View
-                if (existing != null && existing.javaClass.name == "com.kakaomobility.knsdk.ui.component.KNDriveLaneView") {
-                    driveLaneView = existing
-                } else {
-                    laneContainer.removeAllViews()
-                    val cls = Class.forName("com.kakaomobility.knsdk.ui.component.KNDriveLaneView")
-                    val ctor = cls.getConstructor(Context::class.java)
-                    driveLaneView = ctor.newInstance(laneContainer.context) as View
-                    laneContainer.addView(
-                        driveLaneView,
-                        LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                    )
-                }
-                val laneClass = Class.forName("com.kakaomobility.knsdk.guidance.knguidance.routeguide.objects.KNLane")
-                val setLaneMethod = driveLaneView.javaClass.methods
-                    .firstOrNull { it.name == "setLane" && it.parameterTypes.size == 1 && it.parameterTypes[0].isAssignableFrom(laneClass) }
-                setLaneMethod?.invoke(driveLaneView, kakaoLane)
-                laneContainer.visibility = View.VISIBLE
-                primaryLaneText?.visibility = View.GONE
-            } catch (e: Exception) {
-                NavLogger.e("[오버레이][차선] KNDriveLaneView 렌더링 예외: ${e.javaClass.simpleName}: ${e.message} - 텍스트 배지로 폴백")
-                laneContainer.visibility = View.GONE
-                applyRecommendedLaneTextFallback()
-            }
-        } else {
-            laneContainer?.visibility = View.GONE
-            applyRecommendedLaneTextFallback()
-        }
+        // v: 재억 요청(2026-08-28) - KNDriveLaneView(카카오 화살표 위젯)를 이 작은 카드
+        // 안에 넣어봤더니 너무 작고 화살표가 빽빽해서 안 예쁨(사진으로 확인) - "글자로
+        // 넣어달라"는 요청대로 텍스트 배지("3, 4차로")만 쓰도록 되돌림. #문제시 원복
+        primaryLaneContainer?.visibility = View.GONE
+        applyRecommendedLaneTextFallback()
 
         if (snapshot.hasNextDirection) {
             secondaryRow?.visibility = View.VISIBLE
