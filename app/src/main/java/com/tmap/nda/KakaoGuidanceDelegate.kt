@@ -528,24 +528,21 @@ class KakaoGuidanceDelegate(
                     // 유지). #문제시 원복
                     // v: 재억 요청(2026-08-28) - "카카오 화면엔 노란색으로 정확하게 추천 차선이
                     // 뜨는데, getHighlightType()은 항상 false"라는 제보 - highlightType이
-                    // 진짜 필드가 아닐 가능성이 높음. 지난 API 스캔에서 같이 나왔던 getSuggest()가
-                    // 진짜 후보 - 차선별로 highlightType과 함께 같이 남겨서 다음 실주행에서
-                    // 어느 쪽이 실제 노란색 강조와 일치하는지 확인. #문제시 원복
-                    val suggestValues = laneInfoList.map { info ->
-                        if (info == null) return@map "null"
-                        try {
-                            val v = info.javaClass.methods
-                                .firstOrNull { it.name == "getSuggest" && it.parameterTypes.isEmpty() }
-                                ?.invoke(info)
-                            v?.toString() ?: "null"
-                        } catch (e: Exception) { "실패" }
-                    }
+                    // 진짜 필드가 아니었음. 실기기 로그로 대조한 결과 getSuggest()가 노란색
+                    // 강조와 정확히 일치해서 이걸로 교체함. #문제시 원복
+                    // v: 재억 제보(2026-08-28, 실기기 로그로 확인) - getHighlightType()은 이번
+                    // 세션 내내 항상 0(false)만 찍혔는데, 그 순간마다 카카오 화면엔 실제로
+                    // 노란색 추천 차선이 정확히 표시되고 있었음. 반면 getSuggest()는 매번
+                    // 정확히 차선 한두 개만 1로 찍히고 나머지는 0 - 화면의 노란색 강조와
+                    // 패턴이 일치함. highlightType 대신 getSuggest를 진짜 "추천 차선" 필드로
+                    // 채택. #문제시 원복
                     val recommendedFlags = laneInfoList.mapNotNull { info ->
                         if (info == null) return@mapNotNull null
                         try {
-                            val highlightType = info.javaClass.methods
-                                .firstOrNull { it.name == "getHighlightType" && it.parameterTypes.isEmpty() }
-                                ?.invoke(info) as? Int
+                            val suggestRaw = info.javaClass.methods
+                                .firstOrNull { it.name == "getSuggest" && it.parameterTypes.isEmpty() }
+                                ?.invoke(info)
+                            val suggest = (suggestRaw as? Number)?.toInt() ?: 0
                             // v4.23: getBusType도 실제로 존재함(APK 바이트코드로 확인) - 버스전용차로
                             // 표시(사용자 10번)용으로 같이 읽음. Byte로 반환되니 Number로 넓게 받아서 처리. #문제시 원복
                             val busTypeRaw = info.javaClass.methods
@@ -555,7 +552,7 @@ class KakaoGuidanceDelegate(
                             if (busType != 0) {
                                 NavLogger.d(context, "[버스차로 수집] getBusType=$busType (0이 아닌 값 실제 관측)")
                             }
-                            LaneDisplayInfo(recommended = (highlightType ?: 0) != 0, busType = busType)
+                            LaneDisplayInfo(recommended = suggest != 0, busType = busType)
                         } catch (e: Exception) { LaneDisplayInfo(recommended = false) }
                     }
                     LaneSignalRepository.lanes = recommendedFlags
@@ -566,7 +563,6 @@ class KakaoGuidanceDelegate(
                     // 차선별 recommended 값을 그대로 남김(전부 false면 SDK가 이 구간에서
                     // 추천 차선 자체를 안 준 것 - 배지가 안 뜨는 게 정상 동작). #문제시 원복
                     NavLogger.d(context, "[차선진단][추천여부] ${recommendedFlags.mapIndexed { i, f -> "${i + 1}번=${f.recommended}" }}")
-                    NavLogger.d(context, "[차선진단][getSuggest] ${suggestValues.mapIndexed { i, v -> "${i + 1}번=$v" }}")
                     // v13.6: 재억 지적 - "평소엔 안뜨고 카카오 안내 끝내야 뜬다" 원인을
                     // 다음 재현 때 정확히 잡기 위한 진단 로그. 카카오가 실제로 차선을
                     // 갱신하는 매 순간을 15초 간격으로 남김. #문제시 원복
