@@ -253,7 +253,13 @@ object NavOverlayManager {
     }
 
     private fun applySnapshot(snapshot: KakaoRouteSnapshot) {
-        if (!snapshot.isActive) {
+        // v: 재억 제보(2026-08-28, 실기기 로그로 확인) - "길안내 안 하는데도 뜬다"는 제보.
+        // 원인은 KakaoRouteDataRepository.isActive를 다시 false로 되돌리는 "길안내 종료"
+        // 이벤트 자체가 없었던 것 - 한 번 안내가 시작되면 isActive가 true로 고정된 채
+        // 계속 남아서, 실제로 안내가 끝나거나 앱이 재시작돼도 마지막 값("0m" 등)이 계속
+        // 화면에 남음. isActive 플래그 자체를 못 믿으니, "최근에 실제로 갱신이 있었는지"
+        // (5초 이내)도 같이 확인해서 진짜 안내 중일 때만 뜨게 함. #문제시 원복
+        if (!snapshot.isActive || !KakaoRouteDataRepository.isFresh()) {
             hide()
             return
         }
