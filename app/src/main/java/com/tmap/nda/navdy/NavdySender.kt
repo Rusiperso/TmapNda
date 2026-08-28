@@ -126,6 +126,7 @@ object NavdySender {
                         throw lastFallbackError ?: e
                     }
                     fallback
+                }
                 socket = sock
                 outputStream = sock.outputStream
                 NavLogger.d("[Navdy] 연결 성공: ${device.name}")
