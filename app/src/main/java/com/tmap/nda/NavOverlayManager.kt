@@ -50,6 +50,7 @@ object NavOverlayManager {
     private var primaryDistText: TextView? = null
     private var primaryRoadText: TextView? = null
     private var primaryLaneText: TextView? = null
+    private var primaryLaneContainer: LinearLayout? = null
     private var secondaryRow: View? = null
     private var secondaryIcon: TurnHookIconView? = null
     private var secondaryDistText: TextView? = null
@@ -267,15 +268,43 @@ object NavOverlayManager {
                 visibility = View.GONE
             }
         }
-        // v: 신규기능(재억 요청, 2026-08-28) - 지금 회전 기준 추천 차선 번호를 배지로 표시.
-        // 데이터가 15초 넘게 안 갱신됐으면(자리 지남/구간 벗어남) 안 보여줌. #문제시 원복
-        val recommendedLaneNums = LaneSignalRepository.lanes
-            .mapIndexedNotNull { idx, info -> if (info.recommended) (idx + 1).toString() else null }
-        if (LaneSignalRepository.isFresh() && recommendedLaneNums.isNotEmpty()) {
-            primaryLaneText?.text = "${recommendedLaneNums.joinToString(", ")}차로"
-            primaryLaneText?.visibility = View.VISIBLE
+        // v: 재억 요청(2026-08-28) - "추천 차선 번호" 대신 카카오가 그려주는 실제 차선별
+        // 방향(직진/좌/우/유턴) 화살표를 그대로 표시. LaneSignalRepository.renderLaneSignalBar와
+        // 동일한 방식(KNDriveLaneView에 원본 KNLane을 그대로 넘김) - 방향 코드를 직접 해석할
+        // 필요가 없어서 안전함. 일반 도로 우회전이든 고속도로 분기든, 카카오가 차선 데이터를
+        // 주는 상황이면 항상 정확하게 뜸. 이 컴포넌트를 못 쓰면(예외) 기존 텍스트 배지로 폴백. #문제시 원복
+        val kakaoLane = LaneSignalRepository.kakaoLane
+        val laneContainer = primaryLaneContainer
+        if (LaneSignalRepository.isFresh() && kakaoLane != null && laneContainer != null) {
+            try {
+                val existing = laneContainer.getChildAt(0)
+                val driveLaneView: View
+                if (existing != null && existing.javaClass.name == "com.kakaomobility.knsdk.ui.component.KNDriveLaneView") {
+                    driveLaneView = existing
+                } else {
+                    laneContainer.removeAllViews()
+                    val cls = Class.forName("com.kakaomobility.knsdk.ui.component.KNDriveLaneView")
+                    val ctor = cls.getConstructor(Context::class.java)
+                    driveLaneView = ctor.newInstance(laneContainer.context) as View
+                    laneContainer.addView(
+                        driveLaneView,
+                        LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                    )
+                }
+                val laneClass = Class.forName("com.kakaomobility.knsdk.guidance.knguidance.routeguide.objects.KNLane")
+                val setLaneMethod = driveLaneView.javaClass.methods
+                    .firstOrNull { it.name == "setLane" && it.parameterTypes.size == 1 && it.parameterTypes[0].isAssignableFrom(laneClass) }
+                setLaneMethod?.invoke(driveLaneView, kakaoLane)
+                laneContainer.visibility = View.VISIBLE
+                primaryLaneText?.visibility = View.GONE
+            } catch (e: Exception) {
+                NavLogger.e("[오버레이][차선] KNDriveLaneView 렌더링 예외: ${e.javaClass.simpleName}: ${e.message} - 텍스트 배지로 폴백")
+                laneContainer.visibility = View.GONE
+                applyRecommendedLaneTextFallback()
+            }
         } else {
-            primaryLaneText?.visibility = View.GONE
+            laneContainer?.visibility = View.GONE
+            applyRecommendedLaneTextFallback()
         }
 
         if (snapshot.hasNextDirection) {
@@ -293,6 +322,17 @@ object NavOverlayManager {
             }
         } else {
             secondaryRow?.visibility = View.GONE
+        }
+    }
+
+    private fun applyRecommendedLaneTextFallback() {
+        val recommendedLaneNums = LaneSignalRepository.lanes
+            .mapIndexedNotNull { idx, info -> if (info.recommended) (idx + 1).toString() else null }
+        if (LaneSignalRepository.isFresh() && recommendedLaneNums.isNotEmpty()) {
+            primaryLaneText?.text = "${recommendedLaneNums.joinToString(", ")}차로"
+            primaryLaneText?.visibility = View.VISIBLE
+        } else {
+            primaryLaneText?.visibility = View.GONE
         }
     }
 
@@ -392,6 +432,19 @@ object NavOverlayManager {
         primaryDistText = primary.dist
         primaryRoadText = primary.road
         primaryLaneText = primary.lane
+        // v: 재억 요청(2026-08-28) - "추천 차선 번호"가 아니라 카카오가 실제 화면에 노랗게
+        // 그려주는 "차선별 방향(직진/좌/우/유턴)"을 그대로 가져다 쓰기로 함. 방향 코드를
+        // 우리가 추측해서 매핑하는 대신, LaneSignalRepository.renderLaneSignalBar와 동일하게
+        // 카카오 공식 렌더링 컴포넌트(KNDriveLaneView)에 원본 KNLane 객체를 그대로 넘겨서
+        // 카카오가 알아서 정확하게 그리게 함 - 일반 도로든 고속도로든 카카오가 차선 데이터를
+        // 주기만 하면 항상 정확하게 뜸. 이 컴포넌트를 못 쓰는 경우(구형 Tmap 엔진 데이터 등)엔
+        // 기존 "추천 차선 번호" 텍스트 배지로 폴백. #문제시 원복
+        val laneContainer = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            visibility = View.GONE
+        }
+        primary.block.addView(laneContainer, wrapParams().apply { topMargin = dp(5) })
+        primaryLaneContainer = laneContainer
         secondaryRow = secondary.block
         secondaryIcon = secondary.icon
         secondaryDistText = secondary.dist

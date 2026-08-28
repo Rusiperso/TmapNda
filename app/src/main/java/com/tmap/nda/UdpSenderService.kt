@@ -297,6 +297,20 @@ class UdpSenderService : Service() {
     // 마지막으로 유효한 값을 받은 시각. #문제시 원복
     private var lastRoadLimitUpdateTime = 0L
     private var lastGeneralRoadLimitUpdateTime = 0L
+
+    // v: 재억 제보(2026-08-28, 실기기 로그로 확인) - 분기점(예: IC/JC)을 지나칠 때
+    // Tmap 엔진 리플렉션(getRoadLimitSpeedFromEngine)이 순간적으로 진출로의 낮은
+    // 제한속도(예: 40)로 잘못 매칭됐다가 몇 초 뒤 본선 값(예: 80)으로 스스로 돌아오는
+    // 경우가 있음 - 그 순간 openpilot한테는 40이 그대로 나가서 실제로 감속했다가
+    // 다시 가속하는 일이 생김. 화면 표시용(MapActivity)에는 "분기 오매칭 방지"
+    // 히스테리시스(연속 2번 확인해야 반영, 단 실제 분기점 250m 이내면 즉시 반영)가
+    // 이미 있었는데, 정작 openpilot한테 나가는 이 값 계산 쪽(UdpSenderService)엔
+    // 안 붙어있었음 - 그래서 "예전에 고친 문제가 또 재발"한 것처럼 보였던 것.
+    // MapActivity와 동일한 로직을 여기에도 적용. #문제시 원복
+    private var pendingGeneralRoadLimit = 0
+    private var pendingGeneralRoadLimitCount = 0
+    private val GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE = 2
+    private val GENERAL_ROAD_LIMIT_TBT_NEAR_THRESHOLD_M = 250
     private var sdiType = 0
     private var sdiSpeedLimit = 0
     private var sdiDistance = 0
@@ -660,8 +674,31 @@ class UdpSenderService : Service() {
                             j.optInt("nSdiSpeedLimit", 0) >= 30 || (evType > 0 && evDist in 1..500)
                         }
                         if (!cameraEventThisFrame) {
-                            generalRoadLimitSpeed = realRoadLimit
-                            lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
+                            // v: 재억 제보(2026-08-28) - 분기 오매칭 방지 히스테리시스 적용.
+                            // 실제 분기점(nTBTDist) 250m 이내면 진짜 진출일 가능성이 높으니
+                            // 즉시 반영, 그 밖에서 갑자기 낮아지면 연속 2번 같은 값이 나올 때만
+                            // 반영(순간 오매칭으로 보이는 1회성 값은 무시됨). 값이 높아지는
+                            // 방향이면 항상 즉시 반영(안전 쪽으로 유리하니 지연시킬 이유 없음). #문제시 원복
+                            val nearManeuverPoint = KakaoRouteDataRepository.tbtDist in 0..GENERAL_ROAD_LIMIT_TBT_NEAR_THRESHOLD_M
+                            if (realRoadLimit < generalRoadLimitSpeed && !nearManeuverPoint) {
+                                if (realRoadLimit == pendingGeneralRoadLimit) {
+                                    pendingGeneralRoadLimitCount++
+                                } else {
+                                    pendingGeneralRoadLimit = realRoadLimit
+                                    pendingGeneralRoadLimitCount = 1
+                                }
+                                if (pendingGeneralRoadLimitCount >= GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE) {
+                                    generalRoadLimitSpeed = realRoadLimit
+                                    lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
+                                    pendingGeneralRoadLimitCount = 0
+                                } else {
+                                    NavLogger.d(this@UdpSenderService, "[도로제한][분기오매칭방지] realRoadLimit=$realRoadLimit < 기존=$generalRoadLimitSpeed, 분기점근처=false, 확인횟수=$pendingGeneralRoadLimitCount/$GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE - 보류")
+                                }
+                            } else {
+                                generalRoadLimitSpeed = realRoadLimit
+                                lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
+                                pendingGeneralRoadLimitCount = 0
+                            }
                         }
                     }
 
