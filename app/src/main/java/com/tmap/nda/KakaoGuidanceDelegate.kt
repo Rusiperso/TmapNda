@@ -536,6 +536,18 @@ class KakaoGuidanceDelegate(
                     // 정확히 차선 한두 개만 1로 찍히고 나머지는 0 - 화면의 노란색 강조와
                     // 패턴이 일치함. highlightType 대신 getSuggest를 진짜 "추천 차선" 필드로
                     // 채택. #문제시 원복
+                    // v: 재억 요청(2026-08-28) - "색깔 유도선" 값이 진짜 실주행에서 어떻게
+                    // 나오는지 확인하기 위해, getSuggest와 동일하게 매번(1회성 스캔이 아니라)
+                    // 로그로 남김. #문제시 원복
+                    val colorTypeValues = laneInfoList.map { info ->
+                        if (info == null) return@map "null"
+                        try {
+                            val v = info.javaClass.methods
+                                .firstOrNull { it.name == "getColorType" && it.parameterTypes.isEmpty() }
+                                ?.invoke(info)
+                            v?.toString() ?: "null"
+                        } catch (e: Exception) { "실패" }
+                    }
                     val recommendedFlags = laneInfoList.mapNotNull { info ->
                         if (info == null) return@mapNotNull null
                         try {
@@ -563,6 +575,7 @@ class KakaoGuidanceDelegate(
                     // 차선별 recommended 값을 그대로 남김(전부 false면 SDK가 이 구간에서
                     // 추천 차선 자체를 안 준 것 - 배지가 안 뜨는 게 정상 동작). #문제시 원복
                     NavLogger.d(context, "[차선진단][추천여부] ${recommendedFlags.mapIndexed { i, f -> "${i + 1}번=${f.recommended}" }}")
+                    NavLogger.d(context, "[차선진단][getColorType] ${colorTypeValues.mapIndexed { i, v -> "${i + 1}번=$v" }}")
                     // v13.6: 재억 지적 - "평소엔 안뜨고 카카오 안내 끝내야 뜬다" 원인을
                     // 다음 재현 때 정확히 잡기 위한 진단 로그. 카카오가 실제로 차선을
                     // 갱신하는 매 순간을 15초 간격으로 남김. #문제시 원복
