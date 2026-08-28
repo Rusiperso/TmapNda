@@ -709,11 +709,11 @@
 
     <ImageButton
         android:id="@+id/btnMiniPlayerConfirm"
-        android:layout_width="26dp"
-        android:layout_height="26dp"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
         android:layout_gravity="top|start"
-        android:layout_marginStart="-6dp"
-        android:layout_marginTop="-6dp"
+        android:layout_marginStart="-18dp"
+        android:layout_marginTop="-18dp"
         android:src="@drawable/ic_check"
         android:background="@drawable/shape_circle_green"
         android:scaleType="center"
@@ -722,11 +722,11 @@
 
     <View
         android:id="@+id/vMiniPlayerResizeHandle"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
         android:layout_gravity="bottom|start"
-        android:layout_marginStart="-4dp"
-        android:layout_marginBottom="-4dp"
+        android:layout_marginStart="-16dp"
+        android:layout_marginBottom="-16dp"
         android:background="@drawable/shape_circle_blue"
         android:visibility="gone"/>
 

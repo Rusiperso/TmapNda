@@ -47,7 +47,11 @@ object MiniPlayerManager {
     const val PREF_KEY_ENABLED = "miniplayer_enabled"
 
     private const val MIN_SCALE = 0.75f
-    private const val MAX_SCALE = 2.0f
+    // v: 재억 요청(2026-08-29) - "3배"처럼 임의로 정해둔 상한을 없애고, 화면에 실제로
+    // 들어가는 만큼까지는 마음대로 키울 수 있게 함. 숫자 자체의 상한은 극단적인 값(글자
+    // 깨짐 등)만 막는 안전장치일 뿐, 실사용에서 걸릴 일은 없음 - 진짜 한계는 아래
+    // setupResizeTouch에서 화면 크기를 넘지 않도록 위치를 잡아주는 로직임. #문제시 원복
+    private const val MAX_SCALE = 20.0f
     private const val PREFS = "TmapNdaPrefs"
 
     private var sessionManager: MediaSessionManager? = null
@@ -64,7 +68,9 @@ object MiniPlayerManager {
         val artistPx: Float,
         val prevPx: Int,
         val playPausePx: Int,
-        val nextPx: Int
+        val nextPx: Int,
+        val titleMaxWidthPx: Int,
+        val artistMaxWidthPx: Int
     )
 
     fun hasNotificationAccess(context: Context): Boolean =
@@ -112,7 +118,9 @@ object MiniPlayerManager {
             artistPx = artist.textSize,
             prevPx = prev.layoutParams.width,
             playPausePx = playPause.layoutParams.width,
-            nextPx = next.layoutParams.width
+            nextPx = next.layoutParams.width,
+            titleMaxWidthPx = title.maxWidth,
+            artistMaxWidthPx = artist.maxWidth
         )
         val savedScale = prefs.getFloat("${keyPrefix}_scale_$suffix", 1.0f)
         applyScale(savedScale, base, art, title, artist, playPause, prev, next)
@@ -136,7 +144,7 @@ object MiniPlayerManager {
             true
         }
         setupMoveTouch(activity, card, outerContainer, keyPrefix, suffix)
-        setupResizeTouch(activity, resizeHandle, base, art, title, artist, playPause, prev, next, keyPrefix, suffix)
+        setupResizeTouch(activity, outerContainer, resizeHandle, base, art, title, artist, playPause, prev, next, keyPrefix, suffix)
         confirmBtn.setOnClickListener {
             editMode = EditMode.NONE
             confirmBtn.visibility = View.GONE
@@ -233,19 +241,32 @@ object MiniPlayerManager {
         }
     }
 
+    /**
+     * v: 재억 제보(2026-08-29) - 카드 안쪽(앨범아트/글자/버튼)만 커지고 바깥 틀
+     * (outerContainer)은 신경쓰지 않았더니, outerContainer가 XML의 layout_gravity="top|end"
+     * 규칙 때문에 커질 때마다 "오른쪽 끝 고정, 왼쪽으로 넓히기"로 자동 재배치되면서 마치
+     * 카드가 "커지는" 게 아니라 "움직이는" 것처럼 보였음(스크린샷으로 확인).
+     * 이제 크기 조절을 시작하는 순간 카드의 오른쪽 위 모서리 좌표를 고정해두고, 커질
+     * 때마다 그 모서리 좌표를 그대로 유지한 채 outerContainer.x/y를 직접 계산해서
+     * 왼쪽/아래로만 자라도록 함 - 목업(HTML/CSS)의 "앵커 고정 리사이즈"와 동일한 방식. #문제시 원복
+     */
     private fun setupResizeTouch(
-        activity: Activity, resizeHandle: View, base: BaseSizes,
+        activity: Activity, outerContainer: ViewGroup, resizeHandle: View, base: BaseSizes,
         art: ImageView, title: TextView, artist: TextView, playPause: ImageButton, prev: ImageButton, next: ImageButton,
         keyPrefix: String, suffix: String
     ) {
         var startRawX = 0f
         var startScale = 1f
+        var anchorRight = 0f
+        var anchorTop = 0f
         resizeHandle.setOnTouchListener { _, event ->
             if (editMode != EditMode.RESIZE) return@setOnTouchListener false
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     startRawX = event.rawX
                     startScale = art.layoutParams.width.toFloat() / base.artPx.toFloat()
+                    anchorRight = outerContainer.x + outerContainer.width
+                    anchorTop = outerContainer.y
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -254,12 +275,28 @@ object MiniPlayerManager {
                     val dx = event.rawX - startRawX
                     val scale = (startScale - dx / 300f).coerceIn(MIN_SCALE, MAX_SCALE)
                     applyScale(scale, base, art, title, artist, playPause, prev, next)
+                    outerContainer.post {
+                        // 오른쪽 위 모서리(anchor)를 기준으로 왼쪽/아래로 키우되, 화면
+                        // 밖으로 나가려 하면 그 이상은 화면 가장자리에 걸리게 함(임의의
+                        // 숫자가 아니라 실제 화면 크기가 진짜 한계가 되도록). #문제시 원복
+                        val parent = outerContainer.parent as? View
+                        var newX = anchorRight - outerContainer.width
+                        var newY = anchorTop
+                        if (parent != null) {
+                            newX = newX.coerceAtLeast(0f)
+                            newY = newY.coerceIn(0f, (parent.height - outerContainer.height).toFloat().coerceAtLeast(0f))
+                        }
+                        outerContainer.x = newX
+                        outerContainer.y = newY
+                    }
                     true
                 }
                 MotionEvent.ACTION_UP -> {
                     val scale = art.layoutParams.width.toFloat() / base.artPx.toFloat()
                     activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                         .putFloat("${keyPrefix}_scale_$suffix", scale)
+                        .putFloat("${keyPrefix}_x_$suffix", outerContainer.x)
+                        .putFloat("${keyPrefix}_y_$suffix", outerContainer.y)
                         .apply()
                     true
                 }
@@ -278,7 +315,9 @@ object MiniPlayerManager {
             height = (base.artPx * scale).toInt()
         }
         title.setTextSize(TypedValue.COMPLEX_UNIT_PX, base.titlePx * scale)
+        title.maxWidth = (base.titleMaxWidthPx * scale).toInt()
         artist.setTextSize(TypedValue.COMPLEX_UNIT_PX, base.artistPx * scale)
+        artist.maxWidth = (base.artistMaxWidthPx * scale).toInt()
         prev.layoutParams = prev.layoutParams.apply {
             width = (base.prevPx * scale).toInt()
             height = (base.prevPx * scale).toInt()
