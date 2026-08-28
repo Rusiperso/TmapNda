@@ -239,6 +239,17 @@ object NavOverlayManager {
         overlayView = null
     }
 
+    // v: 재억 지적(2026-08-28, 사진 제보) - 1000m 넘는데도 "6105m"처럼 계속 m 단위로만
+    // 표시되고 있었음. 1km 이상이면 소수점 1자리 km로, 미만이면 그대로 m로 표시하도록
+    // 수정. 예: 6105 -> "6.1km", 850 -> "850m". #문제시 원복
+    private fun formatDist(meters: Int): String {
+        return if (meters >= 1000) {
+            String.format(java.util.Locale.KOREA, "%.1fkm", meters / 1000.0)
+        } else {
+            "${meters}m"
+        }
+    }
+
     private fun applySnapshot(snapshot: KakaoRouteSnapshot) {
         if (!snapshot.isActive) {
             hide()
@@ -246,7 +257,7 @@ object NavOverlayManager {
         }
         primaryIcon?.kind = kindFor(snapshot.rgCodeName, snapshot.directionAngle)
         primaryIcon?.invalidate()
-        primaryDistText?.text = "${snapshot.tbtDist}m"
+        primaryDistText?.text = formatDist(snapshot.tbtDist)
         primaryRoadText?.apply {
             if (snapshot.tbtMainText.isNotBlank()) {
                 text = "${snapshot.tbtMainText} 방면"
@@ -260,7 +271,7 @@ object NavOverlayManager {
             secondaryRow?.visibility = View.VISIBLE
             secondaryIcon?.kind = kindFor(snapshot.nextRgCodeName, snapshot.nextDirectionAngle)
             secondaryIcon?.invalidate()
-            secondaryDistText?.text = "${snapshot.nextTbtDist}m"
+            secondaryDistText?.text = formatDist(snapshot.nextTbtDist)
             secondaryRoadText?.apply {
                 if (snapshot.nextTbtMainText.isNotBlank()) {
                     text = "${snapshot.nextTbtMainText} 방면"

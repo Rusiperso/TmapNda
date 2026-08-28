@@ -128,7 +128,11 @@ object KakaoHudBridge {
                 NavdySender.sendManeuver(
                     currentRoad = currentRoad,
                     turn = turn,
-                    distanceToTurn = "${turnDistance}m",
+                    distanceToTurn = if (turnDistance >= 1000) {
+                        String.format(java.util.Locale.KOREA, "%.1fkm", turnDistance / 1000.0)
+                    } else {
+                        "${turnDistance}m"
+                    },
                     pendingStreet = instruction,
                     eta = etaText,
                     speed = speedText
