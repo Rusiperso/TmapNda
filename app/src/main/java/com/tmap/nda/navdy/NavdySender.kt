@@ -91,24 +91,24 @@ object NavdySender {
                 // 15초 재연결 루프가 실패를 반복할 때마다 안 닫힌 소켓이 계속 쌓여서, 결국
                 // 폰의 블루투스 RFCOMM 자원이 고갈돼 계속 실패하는 상태로 악화됐을 가능성이
                 // 높음. 실패한 소켓은 그 즉시 닫아서 누적되지 않게 함. #문제시 원복
+                var s: BluetoothSocket? = null
                 val sock = try {
-                    val s = device.createRfcommSocketToServiceRecord(NAVDY_SERVICE_UUID)
+                    s = device.createRfcommSocketToServiceRecord(NAVDY_SERVICE_UUID)
+                    s.connect()
+                    s
+                } catch (e: IOException) {
+                    try { s?.close() } catch (_: Exception) {}
+                    NavLogger.d("[Navdy] 표준 연결 실패(${e.message}), 채널1 우회 연결 시도")
+                    var fallback: BluetoothSocket? = null
                     try {
-                        s.connect()
-                        s
-                    } catch (e: IOException) {
-                        try { s.close() } catch (_: Exception) {}
-                        NavLogger.d("[Navdy] 표준 연결 실패(${e.message}), 채널1 우회 연결 시도")
-                        val fallback = device.javaClass
+                        fallback = device.javaClass
                             .getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
                             .invoke(device, 1) as BluetoothSocket
-                        try {
-                            fallback.connect()
-                            fallback
-                        } catch (e2: Exception) {
-                            try { fallback.close() } catch (_: Exception) {}
-                            throw e2
-                        }
+                        fallback.connect()
+                        fallback
+                    } catch (e2: Exception) {
+                        try { fallback?.close() } catch (_: Exception) {}
+                        throw e2
                     }
                 }
                 socket = sock
