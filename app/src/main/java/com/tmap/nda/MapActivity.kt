@@ -1458,32 +1458,23 @@ class MapActivity : AppCompatActivity() {
         var receivedCount = 0
         // v13.6: 재억 지적(계산 느림) - "출발-도착 연결"을 3번 따로 안 하고 한 번만 해서
         // 그 위에서 3개 우선순위만 각각 계산하도록 함(computeEtaForOptions). #문제시 원복
-        // v13.7: 재억 요청(안내 시작 딜레이 최소화) - 여기서 만든 trip을 PendingTripHolder에
-        // 담아뒀다가, 실제 안내 화면(KakaoNaviActivity)에서 재사용 시도함(실패하면 그
-        // 화면에서 알아서 처음부터 다시 계산하도록 안전하게 처리해둠). #문제시 원복
+        // v: 재억 재지적(2026-08-29) - v13.7의 PendingTripHolder 캐시 재사용(안내 시작
+        // 딜레이 최소화용)이 "고른 이동방식이 실제 경로에 반영 안 되는 것 같다"는 원인으로
+        // 의심돼 재사용 쪽(KakaoNaviActivity)을 제거함 - 여기서 저장만 하고 아무도 안
+        // 꺼내 쓰는 죽은 코드가 됐으니 같이 정리. #문제시 원복
         KakaoSdkState.computeEtaForOptions(
             this, curLat, curLon, picked.lat, picked.lon,
-            options = optionPriorities.zip(optionAvoidOptions),
-            onTripReady = { trip -> PendingTripHolder.set(trip, picked.lat, picked.lon) }
+            options = optionPriorities.zip(optionAvoidOptions)
         ) { index, minutes, distanceMeters ->
             runOnUiThread {
                 minutesArr[index] = minutes
                 distArr[index] = distanceMeters
                 receivedCount++
                 if (receivedCount == 3) {
-                    // v13.6: 재억 요청 - "무료도로 우선"(index 2) 거리가 "추천"(index 0)
-                    // 이랑 200m 이내로 거의 같으면 톨게이트/유료도로가 아예 없는 구간으로
-                    // 보고, 안 물어보고 바로 추천 경로로 감. #문제시 원복
-                    // v13.10: 재억 지적 - "이동방식 저장" 메뉴(saveToSlot != null)는 애초에
-                    // 사용자가 직접 골라서 저장하려는 목적이라, 자동으로 건너뛰면 안 됨.
-                    // 저장 전용 메뉴일 땐 이 자동 스킵을 하지 않고 항상 선택창을 보여줌. #문제시 원복
-                    val recDist = distArr[0]
-                    val freeDist = distArr[2]
-                    if (saveToSlot == null && recDist != null && freeDist != null && Math.abs(recDist - freeDist) < 200) {
-                        goDirectly(0)
-                    } else {
-                        showPickerWithResults(minutesArr, distArr)
-                    }
+                    // v: 재억 재지적(2026-08-29) - KakaoNaviActivity와 동일 - "왜 자꾸 팝업
+                    // 없이 바로 안내를 시작하냐"는 강한 제보로 이 자동 생략 로직을 완전히
+                    // 제거. #문제시 원복
+                    showPickerWithResults(minutesArr, distArr)
                 }
             }
         }

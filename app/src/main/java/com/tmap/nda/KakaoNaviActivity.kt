@@ -23,7 +23,6 @@ import com.kakaomobility.knsdk.KNRoutePriority
 import com.kakaomobility.knsdk.KNSDK
 import com.kakaomobility.knsdk.common.objects.KNPOI
 import com.kakaomobility.knsdk.common.objects.KNError
-import com.kakaomobility.knsdk.trip.kntrip.KNTrip
 import com.kakaomobility.knsdk.ui.view.KNNaviView
 import com.tmap.nda.databinding.ActivityKakaoNaviBinding
 import com.tmapmobility.tmap.tmapsdk.ui.util.TmapUISDK
@@ -530,30 +529,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
-    // requestKakaoRoute()에서 검증된 순서 그대로 재사용: lastKnown GPS 캐시 없이도
-    // KNSDK 자체 GPS/시스템 캐시 순으로 폴백하고, 그래도 없으면 1초 뒤 재시도. #문제시 원복
     private fun resolveCurrentPositionThenRequestRoute(destName: String, destLat: Double, destLon: Double, finishOnFailure: Boolean = true) {
-        // v13.7-2: 재억 지적 - 저장까지만 해두고 실제로 꺼내 쓰는 코드가 없어서 안내
-        // 시작 딜레이 최소화 기능이 사실상 아무 효과가 없었음. 여기서 캐시된 trip을
-        // 실제로 써서, "출발-도착 연결"부터 다시 하지 않고 바로 안내를 시작하도록 함.
-        // SDK가 재사용을 허용하는지 문서로 확인 안 돼서, 실패하면(예외 발생) 즉시
-        // 아래 원래 방식(처음부터 새로 계산)으로 안전하게 넘어감. #문제시 원복
-        val cachedTrip = PendingTripHolder.consumeIfMatches(destLat, destLon) as? KNTrip
-        if (cachedTrip != null) {
-            try {
-                NavLogger.d(this, "[안내시작최적화] 캐시된 경로 재사용 시도: $destName")
-                ResumeGuidanceStore.save(this, HistoryEntry(destName, "", destLat, destLon, routePriorityName = activeRoutePriority.name, routeAvoidOption = activeRouteAvoidOption))
-                naviView.guideNewDestinations(cachedTrip, activeRoutePriority, activeRouteAvoidOption)
-                naviView.requestLayout()
-                naviView.invalidate()
-                NavLogger.d(this, "[안내시작최적화] 캐시된 경로로 안내 시작 성공")
-                return
-            } catch (e: Exception) {
-                NavLogger.e(this, "[안내시작최적화] 캐시된 경로 재사용 실패, 처음부터 다시 계산: ${e.message}")
-                // 아래로 흘러가서 원래 방식대로 처음부터 다시 계산함
-            }
-        }
-
+        // v: 재억 재지적(2026-08-29, 실기기 로그로 확인) - "추천/무료도로 골라도 실제
+        // 경로가 안 바뀌는 것 같다"는 강한 제보로 아래 "캐시된 경로 재사용" 최적화(v13.7-2)를
+        // 제거함. 이 캐시는 3가지 방식(추천/고속도로/무료도로)을 미리 계산할 때 "출발-도착
+        // 연결"만 한 번 만들어둔 원본 객체를 재사용하는 거였는데, 그 객체에 카카오 SDK가
+        // 내부적으로 "마지막으로 계산한 방식"의 상태를 남겨뒀다가 재사용 시점에 그대로
+        // 나갈 위험이 있음(3개 중 마지막 계산이 항상 같은 순서라 매번 같은 방식으로
+        // 굳어있을 수 있음) - 정확한 원인을 SDK 문서 없이 확정할 순 없지만, 사용자가
+        // 고른 이동방식이 100% 정확히 반영되는 게 1초 미만의 시작 속도보다 훨씬 중요해서
+        // 안전하게 매번 새로 계산하도록 되돌림. #문제시 원복
         var startPoi: KNPOI? = null
         val currentGps = KNSDK.sharedGpsManager()?.recentGpsData
         if (currentGps != null && currentGps.pos.x > 0 && currentGps.pos.y > 0) {
@@ -2241,15 +2226,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 distArr[index] = distanceMeters
                 receivedCount++
                 if (receivedCount == 3) {
-                    // v13.10: MapActivity와 동일 - "이동방식 저장" 메뉴(saveToSlot != null)는
-                    // 사용자가 직접 골라서 저장하려는 목적이라 자동 스킵하면 안 됨. #문제시 원복
-                    val recDist = distArr[0]
-                    val freeDist = distArr[2]
-                    if (saveToSlot == null && recDist != null && freeDist != null && Math.abs(recDist - freeDist) < 200) {
-                        goDirectly(0)
-                    } else {
-                        showPickerWithResults(minutesArr)
-                    }
+                    // v: 재억 재지적(2026-08-29) - "왜 자꾸 팝업 없이 바로 안내를 시작하냐"는
+                    // 강한 제보로 확인. v13.6부터 있던 "무료도로 우선이 추천이랑 거리가
+                    // 거의 같으면(200m 이내, 톨게이트 없는 구간) 안 물어보고 바로 추천으로
+                    // 감" 자동 생략 로직이 원인이었음. 짧은 로컬 이동처럼 애초에 고속도로/
+                    // 톨게이트가 안 끼는 경로에서 계속 이 조건에 걸려 팝업이 생략됐음.
+                    // 예외 없이 항상 선택창을 보여달라는 요청이라 이 자동 생략을 완전히
+                    // 제거. #문제시 원복
+                    showPickerWithResults(minutesArr)
                 }
             }
         }
