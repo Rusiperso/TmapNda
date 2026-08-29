@@ -595,10 +595,25 @@ class KakaoGuidanceDelegate(
                     // 표본)로 추정한 것이라 확실하진 않음 - 다음 로그로 더 검증 예정. #문제시 원복
                     val curDirectionForLane = findGetter(routeGuide, "getCurDirection")
                     val turnCodeForLane = curDirectionForLane?.let { findGetter(it, "getRgCode") }?.toString()
-                    val requiredBit = when (turnCodeForLane) {
-                        "KNRGCode_LeftTurn", "KNRGCode_UnprotectedLeftTurn", "KNRGCode_LeftOutHighway" -> 2
-                        "KNRGCode_RightTurn", "KNRGCode_RightOutHighway", "KNRGCode_OutHighway" -> 32
-                        "KNRGCode_UTurn" -> 1
+                    // v: 재억 재지적(2026-08-29) - 로터리를 무조건 우회전(32)으로 고정하면
+                    // 안 되고, 진출 각도에 따라 좌/우/직진이 다 될 수 있음. 위 아이콘 매핑과
+                    // 동일한 각도 기반 판단(KakaoToNavdyTurn)을 재사용해서 일관되게 처리. #문제시 원복
+                    val directionAngleForLane = curDirectionForLane?.let { findGetterInt(it, "DirectionAng") } ?: 0
+                    val requiredBit = when {
+                        turnCodeForLane == "KNRGCode_LeftTurn" || turnCodeForLane == "KNRGCode_UnprotectedLeftTurn" || turnCodeForLane == "KNRGCode_LeftOutHighway" -> 2
+                        turnCodeForLane == "KNRGCode_RightTurn" || turnCodeForLane == "KNRGCode_RightOutHighway" || turnCodeForLane == "KNRGCode_OutHighway" -> 32
+                        turnCodeForLane == "KNRGCode_UTurn" -> 1
+                        turnCodeForLane == "KNRGCode_OverPath" || turnCodeForLane == "KNRGCode_UnderPath" -> 8
+                        // v: 재억 재지적(2026-08-29) - 대안경로 오감지 수정됐다고 해서
+                        // 좌/우측 분기도 같이 방향 매핑에 포함. #문제시 원복
+                        turnCodeForLane == "KNRGCode_LeftDirection" -> 2
+                        turnCodeForLane == "KNRGCode_RightDirection" -> 32
+                        turnCodeForLane != null && (turnCodeForLane.startsWith("KNRGCode_RoundaboutDirection") || turnCodeForLane.startsWith("KNRGCode_RotaryDirection")) ->
+                            when (com.tmap.nda.navdy.KakaoToNavdyTurn.from(turnCodeForLane, directionAngleForLane)) {
+                                com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_NE, com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_E, com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_SE -> 32
+                                com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_S, com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_SW, com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_W -> 2
+                                else -> 8
+                            }
                         else -> null
                     }
                     val recommendedFlags = laneInfoList.mapNotNull { info ->
@@ -702,6 +717,11 @@ class KakaoGuidanceDelegate(
             // 잘못 잡고 있었음(사용자 지적: "좌회전 우회전 갈 때 화살표 보여주고 싶다"). 정확히
             // getRgCode를 지정해서 가져오도록 수정. #문제시 원복
             val turnTypeRaw = curDirection?.let { findGetter(it, "getRgCode") }
+            // v: 재억 재지적(2026-08-29) - 로터리 등 각도 기반 판단에 필요한 실제 회전각도.
+            // KakaoHudBridge 쪽은 공식 API(direction.directionAng)로 이미 얻고 있지만, 그건
+            // 이 함수(mapKakaoTurnTypeToOpenpilot) 호출보다 뒤에 실행돼서 여기선 아직 최신값이
+            // 아님 - 실행 순서를 안 건드리고 여기서도 리플렉션으로 직접 얻음. #문제시 원복
+            val directionAngleNow = curDirection?.let { findGetterInt(it, "DirectionAng") } ?: 0
             val roadNameNow = curDirection?.let { findGetterString(it, "Name") }
                 ?: findGetterString(routeGuide, "Name")
 
@@ -727,7 +747,7 @@ class KakaoGuidanceDelegate(
             KakaoRouteDataRepository.isActive = true
             KakaoRouteDataRepository.lastUpdateTime = System.currentTimeMillis()
             KakaoRouteDataRepository.tbtDist = nextTbtDist
-            KakaoRouteDataRepository.tbtTurnType = mapKakaoTurnTypeToOpenpilot(turnTypeRaw)
+            KakaoRouteDataRepository.tbtTurnType = mapKakaoTurnTypeToOpenpilot(turnTypeRaw, directionAngleNow)
             KakaoRouteDataRepository.tbtMainText = roadNameNow ?: ""
             // 리플렉션으로 값을 찾지 못해 0이 나온 경우,
             // guidanceDidUpdateLocation()에서 계산한 정상값을 덮어쓰지 않음
@@ -782,7 +802,7 @@ class KakaoGuidanceDelegate(
     //   6/43/73/74/117/123/124=우측분기(fork right)  7/17/44/75/76/118=좌측분기(fork left)
     //   101/104/111/114=우측 완만한 램프(off-ramp 우) 102/105/112/115=좌측 완만한 램프
     //   153/154/249=톨게이트(TG)
-    private fun mapKakaoTurnTypeToOpenpilot(kakaoTurnType: Any?): Int {
+    private fun mapKakaoTurnTypeToOpenpilot(kakaoTurnType: Any?, directionAngleForMapping: Int = 0): Int {
         val name = kakaoTurnType?.toString() ?: return 51
         return when (name) {
             // 확실한 매핑 (좌/우회전, 유턴 - 기존에 이미 검증됨)
@@ -791,19 +811,31 @@ class KakaoGuidanceDelegate(
             "KNRGCode_UTurn" -> 14
             // 도착
             "KNRGCode_Goal" -> 201
-            // 분기(fork) - 로그로 실제 관측된 RightDirection 포함
-            // v13.6: 재억 지적 - 대안경로 합류 지점(진짜 회전이 아닌 분기점)에서
-            // 불필요한 감속이 들어감. 6(우측분기)이 openpilot 쪽에서 감속을 유발하는
-            // 코드라서, 진짜 갈림길이 아닌 곳까지 감속시켰을 가능성이 높음. 좌/우회전처럼
-            // 확실한 것만 매핑한다는 원래 방침대로, 애매한 분기 신호는 다시 51(무안내,
-            // 감속 안 함)로 되돌림. #문제시 원복
-            "KNRGCode_LeftDirection", "KNRGCode_RightDirection" -> 51
+            // v: 재억 재지적(2026-08-29) - "대안경로 오감지는 내가 수정했으니까 없애버려"
+            // - v13.6에서 대안경로 합류 지점 오감속 방지로 51(무안내)에 고정해뒀던 걸
+            // 되돌림. openpilot(carrot_serv.py) 코드표대로 우측분기=6, 좌측분기=7로 복원. #문제시 원복
+            "KNRGCode_LeftDirection" -> 7
+            "KNRGCode_RightDirection" -> 6
             // 고속도로 진출 램프
             "KNRGCode_LeftOutHighway" -> 102
             "KNRGCode_RightOutHighway", "KNRGCode_OutHighway" -> 101
             // 톨게이트
             "KNRGCode_Tollgate", "KNRGCode_NonstopTollgate" -> 153
             else -> {
+                // v: 재억 재지적(2026-08-29) - "로터리를 무조건 우회전으로 박으면 안 되고,
+                // 실제 경로(진출 각도)를 따라 판단해야 한다"는 지적이 맞음. 로터리는 진출구
+                // 위치에 따라 좌회전/우회전/직진 다 될 수 있어서 고정 매핑은 위험함. 이미
+                // Navdy HUD용으로 만들어뒀던 각도 기반 판단(KakaoToNavdyTurn.roundaboutFromAngle,
+                // direction.directionAng 실측값 사용)을 재사용해서 좌/우/직진을 구분함.
+                // RightDirection/LeftDirection(v13.6에서 대안경로 합류 지점 오감속 방지로
+                // 일부러 51 고정해둔 것)은 오늘 문제와 원인이 달라서 그대로 안 건드림. #문제시 원복
+                if (name.startsWith("KNRGCode_RoundaboutDirection") || name.startsWith("KNRGCode_RotaryDirection")) {
+                    return when (com.tmap.nda.navdy.KakaoToNavdyTurn.from(name, directionAngleForMapping)) {
+                        com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_NE, com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_E, com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_SE -> 13
+                        com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_S, com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_SW, com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_W -> 12
+                        else -> 51 // N, NW 근처(거의 직진)
+                    }
+                }
                 if (System.currentTimeMillis() - lastUnmappedTurnTypeLogTime > 15000L) {
                     lastUnmappedTurnTypeLogTime = System.currentTimeMillis()
                     NavLogger.d(context, "[카카오 회전코드 수집] 미매핑 KNRGCode=$name -> 51(무안내)로 전송됨")
