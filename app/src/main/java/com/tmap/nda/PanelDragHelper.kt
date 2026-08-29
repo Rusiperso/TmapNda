@@ -299,22 +299,6 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
-        // v: 재억 요청(2026-08-29) - 안전정보(카메라/방지턱 등)를 티맵/카카오 중 어느
-        // 쪽에서 받을지 각각 따로 끄고 켤 수 있게 함. 둘 다 켜져 있으면 기존과 동일하게
-        // "검증된 값 우선" 로직 그대로 동작. 하나를 끄면 그 소스는 안전정보 병합/우선순위
-        // 판단에서 아예 빠짐(끈 쪽 값은 없는 것처럼 취급). #문제시 원복
-        val tmapSafetyInfoCheckBox = android.widget.Switch(context).apply {
-            text = "티맵 안전정보 수신"
-            isChecked = pref.getBoolean("tmap_safety_info_enabled", true)
-            setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
-        }
-        val kakaoSafetyInfoCheckBox = android.widget.Switch(context).apply {
-            text = "카카오 안전정보 수신"
-            isChecked = pref.getBoolean("kakao_safety_info_enabled", true)
-            setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
-        }
 
         // v8.7: v8.5 조사로 확인된 Tmap MapLayerType(Default/Aerial) API를 사용자가 켜고 끌 수
         // 있게 노출. 카카오 화면엔 이런 API 자체가 없어서 Tmap 화면 한정 문구를 명시. #문제시 원복
@@ -492,10 +476,6 @@ object PanelDragHelper {
             showCategoryButtonCheckBox,      // 카테고리 버튼 표시
             showCancelWaypointButtonCheckBox // 경유지 취소 버튼 표시
         ))
-        addAccordionGroup("안전정보 수신", listOf(
-            tmapSafetyInfoCheckBox,   // 티맵 안전정보 수신
-            kakaoSafetyInfoCheckBox   // 카카오 안전정보 수신
-        ))
 
         // v: 재억 요청(2026-08-26) - 즐겨찾기 개수/길안내 음량은 아코디언 안에 넣지 않고
         // 항상 바로 보이게 그룹들 아래에 고정 배치. #문제시 원복
@@ -532,8 +512,6 @@ object PanelDragHelper {
                     .putBoolean("show_waypoint_button", showWaypointButtonCheckBox.isChecked)
                     .putBoolean("show_category_button", showCategoryButtonCheckBox.isChecked)
                     .putBoolean("show_cancel_waypoint_button", showCancelWaypointButtonCheckBox.isChecked)
-                    .putBoolean("tmap_safety_info_enabled", tmapSafetyInfoCheckBox.isChecked)
-                    .putBoolean("kakao_safety_info_enabled", kakaoSafetyInfoCheckBox.isChecked)
                     .putBoolean("tmap_satellite_view_enabled", satelliteViewCheckBox.isChecked)
                     .putBoolean("tmap_traffic_info_enabled", trafficInfoCheckBox.isChecked)
                     .putBoolean("route_line_display_enabled", routeLineDisplayCheckBox.isChecked)

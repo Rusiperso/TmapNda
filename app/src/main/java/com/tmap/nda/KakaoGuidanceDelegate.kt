@@ -668,13 +668,20 @@ class KakaoGuidanceDelegate(
                 // 가까워졌는지)"여야 함. 그래서 lane=null이어도 곧바로 지우지 않고, 회전
                 // 지점에 다 왔을 때(또는 완전히 오래돼서 안내 자체가 끝난 걸로 보일 때)만
                 // 지우도록 바꿈. #문제시 원복
+                // v: 재억 재제보(2026-08-29, 실기기 로그로 확인) - "여전히 잠깐 뜨고
+                // 사라진다"는 재발 제보. 원인: 위 30초 타임아웃(guidanceLikelyEnded)이
+                // 신호대기 같은 정상적인 정차 상황까지 "안내 끝남"으로 착각해서 지워버리고
+                // 있었음(로그로 확인 - 신호대기로 nTBTDist가 1분 넘게 안 바뀌는 동안 카카오가
+                // 차선 정보를 다시 안 줬을 뿐인데, 30초가 지났다고 지워버림). "안내가 실제로
+                // 끝났는지"는 오버레이 전체를 껐다 켜는 별도 로직(NavOverlayManager의 신선도
+                // 체크, v19.2.36)이 이미 판단하고 있어서 여기선 필요 없음 - 회전 지점 도달
+                // 여부로만 판단. #문제시 원복
                 val nearOrPastManeuver = KakaoRouteDataRepository.tbtDist in 0..15
-                val guidanceLikelyEnded = System.currentTimeMillis() - LaneSignalRepository.lastUpdateTime > 30000L
-                if (nearOrPastManeuver || guidanceLikelyEnded) {
+                if (nearOrPastManeuver) {
                     LaneSignalRepository.lanes = emptyList()
                     LaneSignalRepository.source = ""
                 }
-                NavLogger.d(context, "[차선정보] lane=null (이 구간엔 차선 안내 데이터 없음, tbtDist=${KakaoRouteDataRepository.tbtDist}, 지워짐=${nearOrPastManeuver || guidanceLikelyEnded})")
+                NavLogger.d(context, "[차선정보] lane=null (이 구간엔 차선 안내 데이터 없음, tbtDist=${KakaoRouteDataRepository.tbtDist}, 지워짐=$nearOrPastManeuver)")
                 LaneSignalRepository.notifyChanged()
             }
         } catch (e: Exception) {
