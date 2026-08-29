@@ -1404,6 +1404,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val rowsContainer = binding.llRecentSearchRows ?: return
         rowsContainer.removeAllViews()
         history.take(5).forEach { entry ->
+            // v: 재억 요청(2026-08-29) - "최근검색 더보기" 큰 목록에는 이미 있던 "경로추가"
+            // (지금 안내 중인 목적지는 그대로 두고 경유지로 끼워넣기) 버튼이, 화면에 상시
+            // 떠있는 이 작은 5줄짜리 패널에는 없었음. 동일한 스타일로 같이 추가. 안내 중이
+            // 아니면(currentDestName 비어있음) 끼워넣을 대상 자체가 없으니 버튼을 숨김. #문제시 원복
+            val rowContainer = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+            }
             val tv = android.widget.TextView(this).apply {
                 text = entry.name
                 setTextColor(android.graphics.Color.parseColor("#DDDDDD"))
@@ -1411,6 +1419,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 setPadding(24, 20, 24, 20)
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                )
                 setOnClickListener {
                     // v2.5: 재검색이 아니라 저장된 좌표로 바로 길안내 시작
                     // v4.17: 최근목적지 패널에서 "이미 있는" 항목을 다시 탭했을 때도
@@ -1423,7 +1434,28 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     showRoutePriorityDialog(entry)
                 }
             }
-            rowsContainer.addView(tv)
+            rowContainer.addView(tv)
+            if (currentDestName.isNotBlank()) {
+                val addBtn = android.widget.TextView(this).apply {
+                    text = "추가"
+                    textSize = 12f
+                    setTextColor(android.graphics.Color.parseColor("#A0E8B0"))
+                    setBackgroundColor(android.graphics.Color.parseColor("#233A2A"))
+                    setPadding(20, 10, 20, 10)
+                    val marginParams = android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    marginParams.marginStart = 12
+                    marginParams.marginEnd = 12
+                    layoutParams = marginParams
+                    setOnClickListener {
+                        addWaypointToActiveGuidance(entry)
+                    }
+                }
+                rowContainer.addView(addBtn)
+            }
+            rowsContainer.addView(rowContainer)
         }
         binding.btnMoreHistory?.setOnClickListener {
             // v1.8: 여기서 finishGuidance()를 불러서 MapActivity로 돌아가 다이얼로그를 띄웠는데,
@@ -1924,12 +1956,31 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // v: 재억 요청(2026-08-22) - 경유지 추가할 때 텍스트 입력창부터 뜨지 말고, "음성으로
     // 찾기 / 텍스트로 찾기" 중 먼저 고르게 함. 운전 중엔 음성이 더 편해서 그쪽을 앞에 둠. #문제시 원복
     private fun showWaypointSearchModeChooser() {
+        // v: 재억 요청(2026-08-29) - 경유지 검색이 음성/텍스트 두 가지뿐이라, 최근에 갔던
+        // 곳을 경유지로 넣고 싶어도 매번 다시 검색해야 했음. "최근 검색" 옵션을 추가해서
+        // 기존 "최근검색 더보기" 목록으로 바로 이동 - 그 목록엔 줄마다 이미 "경로추가"
+        // 버튼이 따로 있어서(addWaypointToActiveGuidance 직접 호출), 그걸 누르면 확실하게
+        // 경유지로 들어감. #문제시 원복
+        val history = SearchHistoryStore.get(this)
+        val items = if (history.isNotEmpty()) {
+            arrayOf("음성으로 찾기", "텍스트로 찾기", "최근 검색에서 찾기")
+        } else {
+            arrayOf("음성으로 찾기", "텍스트로 찾기")
+        }
         android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("경유지 검색 방법")
-            .setItems(arrayOf("음성으로 찾기", "텍스트로 찾기")) { _, which ->
+            .setItems(items) { _, which ->
                 when (which) {
                     0 -> startVoiceSearch()
                     1 -> showInPlaceSearchDialog()
+                    2 -> {
+                        // v: 재억 요청(2026-08-29) - 이 경로(최근검색 더보기)는 pickEntry를
+                        // 안 거치고 목록의 전용 "경로추가" 버튼으로 바로 처리되니, 여기서
+                        // 플래그를 안 꺼주면 나중에 무관한 음성/텍스트 검색까지 경유지
+                        // 모드로 잘못 처리될 수 있음. #문제시 원복
+                        pendingWaypointAddition = false
+                        showFullSearchHistoryDialog()
+                    }
                 }
             }
             .setNegativeButton("취소") { _, _ -> pendingWaypointAddition = false }

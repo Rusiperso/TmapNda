@@ -983,8 +983,25 @@ class UdpSenderService : Service() {
                         // 백업으로 사용. 기존엔 반대로 Tmap이 항상 우선이고 카카오는 Tmap이
                         // 아무것도 못 잡았을 때만 백업이었음. Tmap 대기화면(길안내 안 할 때) 동작은
                         // 이 블록 자체가 kr.isFresh() 안에서만 도니까 안 건드림. #문제시 원복
-                        val tmapHasSdi = json.optInt("nSdiType", 0) != 0 || json.optInt("nSdiDist", 0) > 0
-                        val kakaoHasSdi = kr.safetyType >= 0 && kr.safetyDist > 0 && (kr.safetySpeedLimit > 0 || kr.safetyType == 22)
+                        // v: 재억 요청(2026-08-29) - 티맵/카카오 안전정보 수신을 각각 따로
+                        // 끄고 켤 수 있는 설정 추가. 꺼진 쪽은 실제로 값이 있어도 "없는 것"으로
+                        // 취급해서 이후 우선순위 판단에서 아예 배제됨. #문제시 원복
+                        val safetyInfoPrefs = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                        val tmapSafetyEnabled = safetyInfoPrefs.getBoolean("tmap_safety_info_enabled", true)
+                        val kakaoSafetyEnabled = safetyInfoPrefs.getBoolean("kakao_safety_info_enabled", true)
+                        if (!tmapSafetyEnabled) {
+                            // v: 재억 요청(2026-08-29) - 위 코드에서 이미 티맵 자체 안전정보로
+                            // json을 채워둔 상태라, 단순히 아래 tmapHasSdi만 false로 만들면
+                            // "카카오 없음" 상황에서 이 원본값이 그대로 남아 나가버림. 명시적으로
+                            // 비워서 완전히 배제. #문제시 원복
+                            json.put("nSdiType", 0)
+                            json.put("nSdiSpeedLimit", 0)
+                            json.put("nSdiDist", 0)
+                        }
+                        val tmapHasSdi = tmapSafetyEnabled &&
+                            (json.optInt("nSdiType", 0) != 0 || json.optInt("nSdiDist", 0) > 0)
+                        val kakaoHasSdi = kakaoSafetyEnabled &&
+                            kr.safetyType >= 0 && kr.safetyDist > 0 && (kr.safetySpeedLimit > 0 || kr.safetyType == 22)
                         // v10.1: Tmap 분기(위쪽)엔 "sdiType==0인데 speedLimit/dist는 있으면 1로
                         // 강제"하는 안전장치가 있는데 여기(카카오 채택 분기)엔 없어서, 향후 또
                         // 다른 카카오 안전코드가 실수로 0에 매핑되면 여기서도 똑같이 조용히
