@@ -1418,8 +1418,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     // 다시 탭해도 맨 위로 올라오게 재저장. #문제시 원복
                     SearchHistoryStore.save(this@KakaoNaviActivity, entry)
                     renderRecentDestinationsPanel()
-                    KakaoRouteDataRepository.reset()
-                    resolveCurrentPositionThenRequestRoute(entry.name, entry.lat, entry.lon, finishOnFailure = false)
+                    // v: 재억 재지적(2026-08-28) - 길안내 화면 안의 "최근 목적지" 상시 패널도
+                    // MapActivity의 동일 패널과 똑같이 팝업을 안 거치고 있었음. #문제시 원복
+                    showRoutePriorityDialog(entry)
                 }
             }
             rowsContainer.addView(tv)
@@ -1902,21 +1903,19 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             // v: 재억 제보(2026-08-26) - 안내 중일 때 진행/역방향 표시가 안 뜬다는 지적 -
             // lastKnownBearing이 실제로 채워지는지 확인용 로그. #문제시 원복
             NavLogger.d(this, "[주변카테고리검색] 카카오화면 열림 - lastKnownBearing=$lastKnownBearing")
+            // v: 재억 재지적(2026-08-28) - 카테고리(주변) 검색 결과를 골랐을 때도 팝업 없이
+            // 곧바로 안내가 시작되고 있었음. #문제시 원복
             NearbyCategoryPopup.show(this, searchHttpClient, restKey, curLat, curLon, lastKnownBearing) { picked ->
                 if (currentDestName.isNotBlank()) {
                     android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                         .setTitle("경유지로 추가할까요?")
                         .setMessage("'${picked.name}'을(를) 지금 안내(${currentDestName})의 경유지로 추가할까요, 아니면 새 목적지로 바꿀까요?")
                         .setPositiveButton("경유지 추가") { _, _ -> addWaypointToActiveGuidance(picked) }
-                        .setNegativeButton("새 목적지로") { _, _ ->
-                            KakaoRouteDataRepository.reset()
-                            resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
-                        }
+                        .setNegativeButton("새 목적지로") { _, _ -> showRoutePriorityDialog(picked) }
                         .setNeutralButton("취소", null)
                         .show()
                 } else {
-                    KakaoRouteDataRepository.reset()
-                    resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
+                    showRoutePriorityDialog(picked)
                 }
             }
         }
@@ -2522,8 +2521,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
             SearchHistoryStore.save(this@KakaoNaviActivity, picked)
             renderRecentDestinationsPanel()
-            KakaoRouteDataRepository.reset()
-            resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
+            // v: 재억 지적(2026-08-28) - "추천/고속도로/무료도로 고르는 팝업이 왜 안 뜨고
+            // 바로 추천 경로로 안내가 시작되냐" - 티맵 화면(MapActivity)에서 검색했을 땐
+            // showRoutePriorityDialog를 거치는데, 길안내 화면(KakaoNaviActivity)에서 직접
+            // 검색했을 땐(주행 중 목적지 변경 등) 이 팝업 함수 자체는 있으면서도 정작
+            // 여기서 안 부르고 곧바로 경로 요청을 해버리고 있었음. MapActivity와 동일하게
+            // 팝업을 거치도록 수정. #문제시 원복
+            showRoutePriorityDialog(picked)
         }
 
         fun renderPage() {

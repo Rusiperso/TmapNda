@@ -903,7 +903,11 @@ class MapActivity : AppCompatActivity() {
                     // v4.17: 이미 있는 최근목적지를 다시 탭해도 맨 위로 안 올라오던 문제
                     // (사용자 요청: 최신순 정렬) - 다시 저장해서 순서 갱신. #문제시 원복
                     saveSearchHistory(entry)
-                    startKakaoOverlayGuidance(entry.name, entry.lat, entry.lon)
+                    // v: 재억 재지적(2026-08-28) - "즐겨찾기/최근검색/목적지검색/경유지검색/
+                    // 카테고리 다 확인해봐" - 화면에 상시 떠있는 이 "최근 검색" 패널(목록
+                    // 팝업이 아니라 메인 화면의 tvRecentSearch 줄)도 저장된 이동방식 여부와
+                    // 상관없이 무조건 곧바로 안내를 시작하고 있었음. #문제시 원복
+                    showRoutePriorityDialog(entry)
                     tv.postDelayed({
                         tv.isEnabled = true
                         tv.alpha = 1.0f
@@ -3016,8 +3020,10 @@ class MapActivity : AppCompatActivity() {
                 Toast.makeText(this, "현재 위치를 확인할 수 없습니다", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            // v: 재억 재지적(2026-08-28) - 카테고리(주변) 검색 결과도 팝업 없이 곧바로
+            // 안내가 시작되고 있었음. #문제시 원복
             NearbyCategoryPopup.show(this, httpClient, restKey, curLat, curLon, lastKnownBearing) { picked ->
-                startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon)
+                showRoutePriorityDialog(picked)
             }
         }
     }
