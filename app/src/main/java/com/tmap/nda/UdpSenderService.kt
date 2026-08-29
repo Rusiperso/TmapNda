@@ -586,18 +586,6 @@ class UdpSenderService : Service() {
                     // 잘못 갱신되고 그걸로 10% 초과 경고음이 오탐 발생. 이제 제한속도 숫자
                     // 유무와 무관하게, 이벤트 종류가 있고 거리가 500m 이내면 전부 카메라
                     // 근처로 인식하게 넓힘. #문제시 원복
-                    val cameraLimitPeekThisFrame = try {
-                        val sdiObjPeek = bundle.get("firstSDIInfo")
-                        val sdiJsonPeek = when {
-                            sdiObjPeek is String -> JSONObject(sdiObjPeek)
-                            sdiObjPeek != null -> JSONObject(gson.toJson(sdiObjPeek))
-                            else -> null
-                        }
-                        val peekType = sdiJsonPeek?.optInt("nSdiType", 0) ?: 0
-                        val peekDist = sdiJsonPeek?.optInt("nSdiDist", 0) ?: 0
-                        (sdiJsonPeek?.optInt("nSdiSpeedLimit", 0) ?: 0) >= 30 ||
-                            (peekType > 0 && peekDist in 1..500)
-                    } catch (e: Exception) { false }
                     if (currentLimitSpeed >= 30) {
                         lastRoadLimitUpdateTime = System.currentTimeMillis()
                         // v: 재억 재제보(2026-08-28, 실기기 로그로 확인) - realRoadLimit(엔진
@@ -625,12 +613,14 @@ class UdpSenderService : Service() {
                             pendingGeneralRoadLimitCount = 0
                             currentLimitSpeed
                         }
+                        // v: 재억 재제보(2026-08-29) - realRoadLimit 경로와 동일한 오실레이션
+                        // 버그가 여기도 있었음(확정된 값을 카메라 이벤트 있으면 기준값에는
+                        // 반영 안 해서, 카메라가 몇 초씩 계속 잡히는 상황에서 확정→미반영→
+                        // 재확정을 반복하며 roadLimitSpeed가 신구 값 사이를 오갔음). #문제시 원복
                         if (vettedCurrentLimitSpeed != null) {
                             roadLimitSpeed = vettedCurrentLimitSpeed
-                            if (!cameraLimitPeekThisFrame) {
-                                generalRoadLimitSpeed = vettedCurrentLimitSpeed
-                                lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
-                            }
+                            generalRoadLimitSpeed = vettedCurrentLimitSpeed
+                            lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
                         }
                     }
 
@@ -703,12 +693,6 @@ class UdpSenderService : Service() {
                     val realRoadLimit = getRoadLimitSpeedFromEngine()
                     if (realRoadLimit >= 30) {
                         lastRoadLimitUpdateTime = System.currentTimeMillis()
-                        val cameraEventThisFrame = lastSdiJsonStr != null && run {
-                            val j = JSONObject(lastSdiJsonStr)
-                            val evType = j.optInt("nSdiType", 0)
-                            val evDist = j.optInt("nSdiDist", 0)
-                            j.optInt("nSdiSpeedLimit", 0) >= 30 || (evType > 0 && evDist in 1..500)
-                        }
                         // v: 재억 제보(2026-08-28, 실기기 로그로 확인) - 예전엔 roadLimitSpeed(실제
                         // openpilot에 나가는 값)를 여기서 무조건 즉시 반영해두고, 나중에 "이번 프레임에
                         // 카메라 이벤트가 없으면" generalRoadLimitSpeed로 되돌리는 뒤늦은 보정에만
@@ -736,12 +720,21 @@ class UdpSenderService : Service() {
                             pendingGeneralRoadLimitCount = 0
                             realRoadLimit
                         }
+                        // v: 재억 재제보(2026-08-29, 실기기 로그로 확인) - "19버전부터 분기점에서
+                        // 급감속하려 한다"는 재발 제보로 다시 조사. 원인: 위에서 히스테리시스로
+                        // "연속 2번 확인"까지 다 통과해서 값이 확정됐는데도, 그 확정된 값을
+                        // generalRoadLimitSpeed(비교 기준)에는 "카메라 이벤트가 없을 때만"
+                        // 반영하고 있었음. 근처에 과속카메라가 몇 초씩 계속 감지되는 흔한
+                        // 상황에서는 이 기준값이 계속 옛날 값에 멈춰있게 되고, 그러면 매번
+                        // 새로 "연속 2번"을 처음부터 다시 세면서 확정→기준값 미반영→확정→...을
+                        // 반복 - roadLimitSpeed(실제 openpilot 전송값)가 옛값과 새값 사이를
+                        // 계속 오갔던 것으로 보임(로그의 "확인횟수 1/2"가 8초 내내 안 풀리던
+                        // 이유). 히스테리시스를 이미 통과한 값은 카메라 이벤트 여부와 무관하게
+                        // 기준값도 같이 확정해야 이 오실레이션이 안 생김. #문제시 원복
                         if (vettedRealRoadLimit != null) {
                             roadLimitSpeed = vettedRealRoadLimit
-                            if (!cameraEventThisFrame) {
-                                generalRoadLimitSpeed = vettedRealRoadLimit
-                                lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
-                            }
+                            generalRoadLimitSpeed = vettedRealRoadLimit
+                            lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
                         }
                     }
 

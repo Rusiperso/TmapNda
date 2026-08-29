@@ -167,6 +167,28 @@ class KakaoGuidanceDelegate(
                     NavLogger.e(context, "[경로선 조사][후보값] ${m.name}() 호출 실패: ${e.message}")
                 }
             }
+            // v: 재억 요청(2026-08-28) - "여러 교차로를 거쳐가는 회전(예: 5km 앞 우회전까지
+            // 직진-직진-우회전)일 때, 지금 당장 눈앞 교차로 말고 그 다음다음 교차로의
+            // 차선 정보까지 미리 볼 수 있냐"는 질문 - KNRoute가 "안내지점 전체 목록"을
+            // 통째로 주는 게터가 있다면, 그 목록의 각 항목마다 차선 정보가 붙어있는지까지
+            // 확인 가능. guide/turn/section/lane/tbt 키워드가 들어간 후보를 전부 찾아서
+            // 반환값까지 같이 찍음. #문제시 원복
+            val guideKeywords = listOf("guide", "turn", "section", "lane", "tbt", "direction")
+            for (m in route.javaClass.methods) {
+                if (m.parameterTypes.isNotEmpty()) continue
+                val lower = m.name.lowercase()
+                if (guideKeywords.none { lower.contains(it) }) continue
+                try {
+                    val result = m.invoke(route)
+                    val preview = when (result) {
+                        is List<*> -> "List(size=${result.size}) 첫항목=${result.firstOrNull()}"
+                        else -> result?.toString()?.take(300)
+                    }
+                    NavLogger.e(context, "[경로선 조사][안내지점후보값] ${m.name}() = $preview")
+                } catch (e: Exception) {
+                    NavLogger.e(context, "[경로선 조사][안내지점후보값] ${m.name}() 호출 실패: ${e.message}")
+                }
+            }
         } catch (e: Exception) {
             NavLogger.e(context, "[경로선 조사][전체구조] 덤프 실패: ${e.message}")
         }
@@ -563,13 +585,38 @@ class KakaoGuidanceDelegate(
                             v?.toString() ?: "null"
                         } catch (e: Exception) { "실패" }
                     }
+                    // v: 재억 재제보(2026-08-29, 실기기 로그로 확인) - getSuggest는 여전히
+                    // 대부분(90%) false만 줘서 "1,2차로" 배지가 거의 안 뜬다는 문제가 계속
+                    // 됐음. 대신 getTurnType 값을 실제 회전방향과 대조해보니 비트마스크로
+                    // 보임: 1=유턴, 2=좌회전, 8=직진, 32=우회전 (10=2+8=좌회전+직진 겸용
+                    // 차로, 40=8+32=직진+우회전 겸용 차로 - 실제 좌/우회전 상황에서 정확히
+                    // 해당 방향 비트를 가진 차로만 추천되는 게 로그로 확인됨). 지금 안내
+                    // 방향에 맞는 비트를 가진 차로만 추천 처리. 이 매핑은 이번 로그(제한된
+                    // 표본)로 추정한 것이라 확실하진 않음 - 다음 로그로 더 검증 예정. #문제시 원복
+                    val curDirectionForLane = findGetter(routeGuide, "getCurDirection")
+                    val turnCodeForLane = curDirectionForLane?.let { findGetter(it, "getRgCode") }?.toString()
+                    val requiredBit = when (turnCodeForLane) {
+                        "KNRGCode_LeftTurn", "KNRGCode_UnprotectedLeftTurn", "KNRGCode_LeftOutHighway" -> 2
+                        "KNRGCode_RightTurn", "KNRGCode_RightOutHighway", "KNRGCode_OutHighway" -> 32
+                        "KNRGCode_UTurn" -> 1
+                        else -> null
+                    }
                     val recommendedFlags = laneInfoList.mapNotNull { info ->
                         if (info == null) return@mapNotNull null
                         try {
-                            val suggestRaw = info.javaClass.methods
-                                .firstOrNull { it.name == "getSuggest" && it.parameterTypes.isEmpty() }
+                            val turnTypeRaw = info.javaClass.methods
+                                .firstOrNull { it.name == "getTurnType" && it.parameterTypes.isEmpty() }
                                 ?.invoke(info)
-                            val suggest = (suggestRaw as? Number)?.toInt() ?: 0
+                            val turnTypeBits = (turnTypeRaw as? Number)?.toInt() ?: 0
+                            val recommended = if (requiredBit != null) {
+                                (turnTypeBits and requiredBit) != 0
+                            } else {
+                                // 직진 등 매핑 안 한 방향은 기존 getSuggest로 폴백
+                                val suggestRaw = info.javaClass.methods
+                                    .firstOrNull { it.name == "getSuggest" && it.parameterTypes.isEmpty() }
+                                    ?.invoke(info)
+                                ((suggestRaw as? Number)?.toInt() ?: 0) != 0
+                            }
                             // v4.23: getBusType도 실제로 존재함(APK 바이트코드로 확인) - 버스전용차로
                             // 표시(사용자 10번)용으로 같이 읽음. Byte로 반환되니 Number로 넓게 받아서 처리. #문제시 원복
                             val busTypeRaw = info.javaClass.methods
@@ -579,7 +626,7 @@ class KakaoGuidanceDelegate(
                             if (busType != 0) {
                                 NavLogger.d(context, "[버스차로 수집] getBusType=$busType (0이 아닌 값 실제 관측)")
                             }
-                            LaneDisplayInfo(recommended = suggest != 0, busType = busType)
+                            LaneDisplayInfo(recommended = recommended, busType = busType)
                         } catch (e: Exception) { LaneDisplayInfo(recommended = false) }
                     }
                     LaneSignalRepository.lanes = recommendedFlags
