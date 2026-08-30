@@ -189,12 +189,23 @@ object MiniPlayerManager {
         }
 
         playPause.setOnClickListener {
+            // v: 재억 제보(2026-08-30, "카카오 화면은 되는데 티맵 화면에서는 미니플레이어
+            // 버튼 터치가 아예 안 된다") - 코드상으론 두 화면 호출부가 완전히 동일해서
+            // 원인을 못 짚었음. 이 로그가 안 찍히면 "터치가 버튼까지 아예 안 닿는다"는
+            // 뜻(다른 뷰가 가로챔), 찍히는데도 안 움직이면 다른 원인. #문제시 원복
+            NavLogger.d(activity, "[미니플레이어][진단] 재생/일시정지 버튼 클릭됨")
             val controller = activeController ?: return@setOnClickListener
             val playing = controller.playbackState?.state == PlaybackState.STATE_PLAYING
             if (playing) controller.transportControls.pause() else controller.transportControls.play()
         }
-        prev.setOnClickListener { activeController?.transportControls?.skipToPrevious() }
-        next.setOnClickListener { activeController?.transportControls?.skipToNext() }
+        prev.setOnClickListener {
+            NavLogger.d(activity, "[미니플레이어][진단] 이전곡 버튼 클릭됨")
+            activeController?.transportControls?.skipToPrevious()
+        }
+        next.setOnClickListener {
+            NavLogger.d(activity, "[미니플레이어][진단] 다음곡 버튼 클릭됨")
+            activeController?.transportControls?.skipToNext()
+        }
 
         refresh(activity, outerContainer, art, title, artist, playPause)
     }
