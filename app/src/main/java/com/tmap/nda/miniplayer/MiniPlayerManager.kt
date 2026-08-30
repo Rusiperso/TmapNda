@@ -416,7 +416,14 @@ object MiniPlayerManager {
         controllers: List<MediaController>?,
         outerContainer: ViewGroup, art: ImageView, title: TextView, artist: TextView, playPause: ImageButton
     ) {
-        val picked = controllers?.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+        // v: 재억 제보(2026-08-30, 실기기로 확인 - "오른쪽 진짜 위젯엔 라붐 노래가
+        // 재생중인데 미니플레이어는 엄한 노래") - "재생중" 상태인 세션 중 그냥 목록에서
+        // 맨 처음 찾은 걸 골랐음. 백그라운드에 예전에 재생하다 만 다른 앱 세션이 여전히
+        // STATE_PLAYING으로 남아있으면(흔한 경우), 그게 실제 재생 중인 세션보다 먼저
+        // 잡혀서 엉뚱한 곡이 뜰 수 있었음. "재생중"인 것들 중에서도 재생 위치가 가장
+        // 최근에 갱신된(=진짜 지금 재생 중인) 세션을 고르도록 수정. #문제시 원복
+        val playingControllers = controllers?.filter { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+        val picked = playingControllers?.maxByOrNull { it.playbackState?.lastPositionUpdateTime ?: 0L }
             ?: controllers?.firstOrNull()
 
         if (picked == activeController) {

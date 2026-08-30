@@ -204,6 +204,26 @@ class MapActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         NavLogger.appContext = applicationContext
+        // v: 재억 제보(2026-08-30) - "티맵 뜨고 내 위치로 줌인되는 그 단계에서 화면이
+        // 멈춘다"(지도만 터치가 안 먹힘, 뒤로가기는 됨. 순정 티맵 단독으로는 이런 증상
+        // 없음 - TmapNda에서만 발생 확인). onCreate의 동기 작업 자체는 다 가벼워서(자동
+        // 업데이트 체크는 이미 코루틴/IO스레드, 키해시 계산도 즉시 끝남) 원인을 못
+        // 짚었음. 정확한 원인 파악을 위해, 시작 후 15초 동안 0.3초마다 메인 스레드가
+        // 살아있는지 로그로 남김 - 다음에 같은 증상 겪으시면 이 로그의 시간 간격이
+        // 벌어진 지점을 보고 정확히 몇 초간, 어느 타이밍에 멈췄는지 확인 가능. #문제시 원복
+        run {
+            val startupWatchdogHandler = android.os.Handler(android.os.Looper.getMainLooper())
+            val startupWatchdogStart = System.currentTimeMillis()
+            lateinit var tick: Runnable
+            tick = Runnable {
+                val elapsed = System.currentTimeMillis() - startupWatchdogStart
+                NavLogger.d(this, "[시작워치독] 메인스레드 살아있음 (경과=${elapsed}ms)")
+                if (elapsed < 15000L) {
+                    startupWatchdogHandler.postDelayed(tick, 300L)
+                }
+            }
+            startupWatchdogHandler.post(tick)
+        }
         // 시스템 내비게이션 바(제스처/버튼) 뒤까지 그려지는 edge-to-edge를 명시적으로 켜야
         // 아래 인셋 리스너가 실제 하단 바 높이를 받아온다. (기존엔 미설정이라 하단 UI가
         // 기기에 따라 시스템 바에 가려지는 문제 발생)
