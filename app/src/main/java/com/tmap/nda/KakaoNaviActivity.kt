@@ -2094,6 +2094,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     Toast.makeText(this, "'${picked.name}' 경유지로 추가됨", Toast.LENGTH_SHORT).show()
                     // v: 신규기능(경유지 취소 버튼) - 추가 성공 시 취소 버튼 표시. #문제시 원복
                     activeWaypoint = picked
+                    // v: 재억 재제보(2026-08-30, "경유지 도착 전인데 벌써 없어졌다") - resolveNextStopInfo()가
+                    // 리플렉션 기반이라 가끔 실패할 수 있는데(함수 자체 주석에도 명시), 실패하면
+                    // headingToFinalDestination을 안 건드리고 그대로 둠 - 근데 기본값이 true(최종목적지로
+                    // 향함)라서, 경유지 추가 직후 판단이 한 번이라도 실패하면 곧바로 "이미 최종목적지로
+                    // 향함"으로 오인해 버튼이 즉시 사라졌음. 경유지 추가하는 바로 이 순간 명시적으로
+                    // false로 확실히 잡아둬서, 진짜로 통과했다는 게 확인될 때까지는 절대 안 지워지게 함. #문제시 원복
+                    KakaoRouteDataRepository.headingToFinalDestination = false
                     val showCancelBtn = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                         .getBoolean("show_cancel_waypoint_button", true)
                     binding.btnCancelWaypoint?.visibility = if (showCancelBtn) View.VISIBLE else View.GONE
