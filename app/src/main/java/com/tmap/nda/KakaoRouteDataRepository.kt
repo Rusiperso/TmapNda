@@ -37,6 +37,12 @@ data class KakaoRouteSnapshot(
 object KakaoRouteDataRepository {
     @Volatile var isActive: Boolean = false
     @Volatile var lastUpdateTime: Long = 0
+    // v: 재억 제보(2026-08-30) - "경유지 지나갔는데 경유지 취소 버튼이 그대로 남아있다".
+    // resolveNextStopInfo()가 매번 "지금 향하고 있는 정차지가 최종목적지인지(isFinal)"를
+    // 이미 계산하고 있어서, 그 결과를 여기 담아두고 KakaoNaviActivity가 1초마다 도는
+    // 기존 루프에서 보고 자동으로 경유지 취소 버튼을 숨기도록 함. 경유지 없는 일반
+    // 주행에서는 항상 true(최종목적지로 향함)로 둬서 기존 동작에 영향 없음. #문제시 원복
+    @Volatile var headingToFinalDestination: Boolean = true
 
     // 다음 안내지점(회전 등)까지 거리(m), openpilot nTBTTurnType 코드로 변환된 회전타입
     @Volatile var tbtDist: Int = 0
@@ -101,6 +107,7 @@ object KakaoRouteDataRepository {
     fun reset() {
         isActive = false
         lastUpdateTime = 0
+        headingToFinalDestination = true
         tbtDist = 0
         tbtTurnType = 0
         tbtMainText = ""

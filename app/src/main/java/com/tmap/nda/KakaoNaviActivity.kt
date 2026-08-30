@@ -1056,6 +1056,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // v: 사용자 최종 확정(2026-08-10)으로 연결 상태 텍스트는 updateConnectionUi()가
                 // 상태 변경 즉시 처리하므로, 여기서 1초마다 따로 갱신할 필요가 없어짐(중복
                 // 갱신은 예전에 실제로 버그를 냈던 패턴이라 아예 제거). #문제시 원복
+                // v: 재억 제보(2026-08-30, "경유지 지나갔는데 취소 버튼이 그대로 남아있다") -
+                // 경유지가 추가돼 있는 상태(activeWaypoint != null)에서, 카카오가 "이제
+                // 최종목적지로 향하고 있다"(경유지를 이미 지남)고 알려주면 자동으로 취소
+                // 버튼을 숨기고 상태를 정리. 명시적으로 "경유지 취소"를 눌렀을 때와 똑같이
+                // 처리하되, 경로 재계산은 필요 없음(이미 지나갔으니 그대로 진행). #문제시 원복
+                if (activeWaypoint != null && KakaoRouteDataRepository.headingToFinalDestination) {
+                    NavLogger.d(this@KakaoNaviActivity, "[경유지취소] 경유지 자동 통과 감지 - 취소 버튼 자동 숨김")
+                    activeWaypoint = null
+                    binding.btnCancelWaypoint?.visibility = View.GONE
+                }
                 hudPollHandler.postDelayed(this, 1000)
                 renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "kakao")
                 updateNavNotification()

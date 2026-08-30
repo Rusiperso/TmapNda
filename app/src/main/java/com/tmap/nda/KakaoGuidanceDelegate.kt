@@ -434,6 +434,7 @@ class KakaoGuidanceDelegate(
                     // 표시)으로 돌아감. #문제시 원복
                     resolveNextStopInfo(guidance, myDistFromS)?.let { (name, remainDist, isFinal) ->
                         KakaoRouteDataRepository.destinationName = name
+                        KakaoRouteDataRepository.headingToFinalDestination = isFinal
                         if (!isFinal) {
                             // 경유지 구간은 전체 남은시간을 거리 비율로 나눠 대략 추정
                             // (카카오 SDK가 경유지 단위 시간을 따로 안 줘서 근사치). #문제시 원복
