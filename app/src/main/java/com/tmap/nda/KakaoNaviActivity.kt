@@ -174,6 +174,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         NavLogger.appContext = applicationContext
+        // v: 재억 재제보(2026-08-30) - "카카오 종료할 때 등"의 멈춤도 잡기 위해 여기서도
+        // 시작 시도(이미 시작돼 있으면 내부에서 무시됨, MapActivity와 동일한 전역 워치독
+        // 하나만 계속 돎). #문제시 원복
+        MainThreadWatchdog.ensureStarted(applicationContext)
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
