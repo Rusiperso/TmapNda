@@ -58,6 +58,14 @@ object MiniPlayerManager {
     private var sessionsListener: MediaSessionManager.OnActiveSessionsChangedListener? = null
     private var activeController: MediaController? = null
     private var activeCallback: MediaController.Callback? = null
+    // v: 재억 제보(2026-08-30, 실기기로 확인 - "같은 순간인데 티맵 화면이랑 카카오 길안내
+    // 화면 미니플레이어가 서로 다른 곡을 보여준다") - 화면 전환마다(detach→attach) 완전히
+    // 처음부터 다시 골라서, 같은 순간에도 두 화면이 서로 다른 세션을 고를 수 있었음
+    // (여러 세션이 거의 동시에 "재생중"으로 보일 때 어느 쪽을 고르든 매번 새로 판단하니
+    // 화면마다 결과가 갈릴 수 있음). detach()로도 안 지워지는 이 값에 "마지막으로 고른
+    // 세션의 앱 패키지명"을 저장해뒀다가, 그 세션이 여전히 유효하면 화면이 바뀌어도
+    // 계속 우선적으로 그걸 다시 고르도록 함. #문제시 원복
+    private var lastPickedPackageName: String? = null
 
     private enum class EditMode { NONE, MOVE, RESIZE }
     private var editMode = EditMode.NONE
@@ -422,9 +430,20 @@ object MiniPlayerManager {
         // STATE_PLAYING으로 남아있으면(흔한 경우), 그게 실제 재생 중인 세션보다 먼저
         // 잡혀서 엉뚱한 곡이 뜰 수 있었음. "재생중"인 것들 중에서도 재생 위치가 가장
         // 최근에 갱신된(=진짜 지금 재생 중인) 세션을 고르도록 수정. #문제시 원복
-        val playingControllers = controllers?.filter { it.playbackState?.state == PlaybackState.STATE_PLAYING }
-        val picked = playingControllers?.maxByOrNull { it.playbackState?.lastPositionUpdateTime ?: 0L }
-            ?: controllers?.firstOrNull()
+        // v: 재억 재제보(2026-08-30, 실기기로 확인 - "정답은 카카오 화면(라붐, 일시정지
+        // 상태)이었다") - "재생중(STATE_PLAYING)" 세션만 후보로 삼던 게 근본적으로
+        // 틀렸음. 실제 정답이 일시정지 상태였다는 건, 여러 앱 세션 중 "재생중"이라고
+        // 표시된 게 오히려 배경에 남은 stale 세션이고, 진짜 지금 사용자가 만지고 있는
+        // 세션은 일시정지 상태일 수도 있다는 뜻. 재생/일시정지 여부로 거르지 말고,
+        // 상태와 무관하게 가장 최근에 실제로 갱신된 세션(lastPositionUpdateTime)을
+        // 그대로 신뢰하도록 변경. #문제시 원복
+        val stickyPick = lastPickedPackageName?.let { pkg -> controllers?.firstOrNull { it.packageName == pkg } }
+        val mostRecentlyUpdated = controllers?.maxByOrNull { it.playbackState?.lastPositionUpdateTime ?: 0L }
+        // 이전에 고르던 세션이 여전히 존재하고, 그게 여전히 "가장 최근 갱신"이기도 하면
+        // 화면 전환 시 판단이 안 흔들리게 그대로 유지. 다른 세션이 더 최근에 갱신됐으면
+        // (진짜로 다른 걸 조작 중이라는 뜻) 그쪽으로 바꿈. #문제시 원복
+        val picked = if (stickyPick != null && stickyPick == mostRecentlyUpdated) stickyPick else mostRecentlyUpdated
+        lastPickedPackageName = picked?.packageName
 
         if (picked == activeController) {
             updateUi(outerContainer, art, title, artist, playPause, picked)
