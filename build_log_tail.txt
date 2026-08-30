@@ -1,0 +1,332 @@
+Downloading https://services.gradle.org/distributions/gradle-9.1.0-bin.zip
+................................................................................................................................
+Unzipping /home/runner/.gradle/wrapper/dists/gradle-9.1.0-bin/9agqghryom9wkf8r80qlhnts3/gradle-9.1.0-bin.zip to /home/runner/.gradle/wrapper/dists/gradle-9.1.0-bin/9agqghryom9wkf8r80qlhnts3
+Set executable permissions for: /home/runner/.gradle/wrapper/dists/gradle-9.1.0-bin/9agqghryom9wkf8r80qlhnts3/gradle-9.1.0/bin/gradle
+
+Welcome to Gradle 9.1.0!
+
+Here are the highlights of this release:
+ - Full Java 25 support
+ - Native task graph visualization
+ - Enhanced console output
+
+For more details see https://docs.gradle.org/9.1.0/release-notes.html
+
+Starting a Gradle Daemon (subsequent builds will be faster)
+Calculating task graph as no cached configuration is available for tasks: assembleDebug
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :buildSrc:pluginDescriptors
+> Task :buildSrc:processResources
+> Task :buildSrc:compileKotlin
+> Task :buildSrc:compileJava NO-SOURCE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:classes
+> Task :buildSrc:jar
+> Task :app:preBuild UP-TO-DATE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:dataBindingTriggerDebug
+> Task :app:generateDebugBuildConfig
+> Task :app:generateDebugResources
+> Task :app:javaPreCompileDebug
+> Task :app:packageDebugResources
+> Task :app:dataBindingMergeDependencyArtifactsDebug
+> Task :app:desugarDebugFileDependencies
+> Task :app:processDebugNavigationResources
+> Task :app:mergeDebugAssets
+> Task :app:compressDebugAssets
+> Task :app:checkDebugAarMetadata
+> Task :app:mapDebugSourceSetPaths
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug
+> Task :app:compileDebugNavigationResources
+
+> Task :app:mergeDebugResources
+/home/runner/.gradle/caches/9.1.0/transforms/d5a065dadfbdeab410487c2397a3251d/transformed/tmap-ui-sdk-1.0.0.0155/res/values/values.xml:2617:4: Multiple substitutions specified in non-positional format of string resource string/auto_network_error. Did you mean to add the formatted="false" attribute?
+/home/runner/.gradle/caches/9.1.0/transforms/d5a065dadfbdeab410487c2397a3251d/transformed/tmap-ui-sdk-1.0.0.0155/res/values/values.xml:2855:4: Multiple substitutions specified in non-positional format of string resource string/favorite_route_auto_create_text. Did you mean to add the formatted="false" attribute?
+/home/runner/.gradle/caches/9.1.0/transforms/d5a065dadfbdeab410487c2397a3251d/transformed/tmap-ui-sdk-1.0.0.0155/res/values/values.xml:2904:4: Multiple substitutions specified in non-positional format of string resource string/gnb_drive_score_distance_info. Did you mean to add the formatted="false" attribute?
+/home/runner/.gradle/caches/9.1.0/transforms/d5a065dadfbdeab410487c2397a3251d/transformed/tmap-ui-sdk-1.0.0.0155/res/values/values.xml:2946:4: Multiple substitutions specified in non-positional format of string resource string/kakao_common_header_text. Did you mean to add the formatted="false" attribute?
+/home/runner/.gradle/caches/9.1.0/transforms/d5a065dadfbdeab410487c2397a3251d/transformed/tmap-ui-sdk-1.0.0.0155/res/values/values.xml:3869:4: Multiple substitutions specified in non-positional format of string resource string/tag_driving_popup_notification_cits_behind. Did you mean to add the formatted="false" attribute?
+/home/runner/.gradle/caches/9.1.0/transforms/d5a065dadfbdeab410487c2397a3251d/transformed/tmap-ui-sdk-1.0.0.0155/res/values/values.xml:3870:4: Multiple substitutions specified in non-positional format of string resource string/tag_driving_popup_notification_cits_front. Did you mean to add the formatted="false" attribute?
+/home/runner/.gradle/caches/9.1.0/transforms/d5a065dadfbdeab410487c2397a3251d/transformed/tmap-ui-sdk-1.0.0.0155/res/values/values.xml:3939:4: Multiple substitutions specified in non-positional format of string resource string/tag_time_predict_result_start_time. Did you mean to add the formatted="false" attribute?
+/home/runner/.gradle/caches/9.1.0/transforms/d5a065dadfbdeab410487c2397a3251d/transformed/tmap-ui-sdk-1.0.0.0155/res/values/values.xml:4143:4: Multiple substitutions specified in non-positional format of string resource string/tmap_setting_membership_expiration. Did you mean to add the formatted="false" attribute?
+
+> Task :app:parseDebugLocalResources
+> Task :app:generateDebugRFile
+> Task :app:mergeDebugJniLibFolders
+> Task :app:processDebugMainManifest
+> Task :app:mergeDebugNativeLibs
+> Task :app:processDebugManifest
+> Task :app:processDebugManifestForPackage
+> Task :app:validateSigningDebug
+> Task :app:writeDebugAppMetadata
+> Task :app:writeDebugSigningConfigVersions
+> Task :app:checkDebugDuplicateClasses
+> Task :app:stripDebugDebugSymbols
+> Task :app:dataBindingGenBaseClassesDebug
+> Task :app:processDebugResources
+> Task :app:mergeExtDexDebug
+> Task :app:mergeLibDexDebug
+> Task :app:compileDebugKotlin
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:56:1 Class 'KakaoNaviActivity' is not abstract and does not implement abstract member:
+fun onLocationChanged(p0: Location): Unit
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2855:11 Syntax error: Expecting member declaration.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2855:17 Syntax error: Expecting member declaration.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2855:18 Syntax error: Expecting member declaration.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2855:19 Syntax error: Expecting member declaration.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2855:21 Syntax error: Expecting member declaration.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2855:30 Syntax error: Expecting member declaration.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2855:32 Syntax error: Expecting member declaration.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2855:32 Function declaration must have a name.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2856:48 Unresolved reference 'e'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2860:5 Modifier 'override' is not applicable to 'top level function'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2861:9 No supertypes are accessible in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2862:21 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2865:13 Unresolved reference 'unregisterReceiver'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2865:32 Unresolved reference 'volumeChangeReceiver'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2871:5 Modifier 'override' is not applicable to 'top level function'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2872:9 No supertypes are accessible in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2873:21 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2874:43 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2877:5 Modifier 'override' is not applicable to 'top level function'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2878:9 No supertypes are accessible in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2879:21 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2880:15 Unresolved reference 'naviView'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2880:39 Unresolved reference 'logNaviViewDiagnostics'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2883:5 Modifier 'override' is not applicable to 'top level function'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2884:9 Unresolved reference 'finishGuidance'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2896:20 Unresolved reference 'getSharedPreferences'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2913:25 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2930:25 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2933:69 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2934:44 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2939:29 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2951:13 Unresolved reference 'locationManager'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2951:31 Unresolved reference 'getSystemService'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2952:13 Unresolved reference 'locationManager'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2952:91 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2953:25 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2955:25 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2957:25 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2961:5 Modifier 'override' is not applicable to 'top level function'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2964:29 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2968:29 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2972:13 Unresolved reference 'binding'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2975:17 Unresolved reference 'lastKnownBearing'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2977:13 Unresolved reference 'binding'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2978:13 Unresolved reference 'binding'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2986:21 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2992:25 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:2997:5 Modifier 'override' is not applicable to 'top level function'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3001:57 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3004:16 No supertypes are accessible in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3007:5 Modifier 'override' is not applicable to 'top level function'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3008:9 No supertypes are accessible in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3010:21 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3010:82 Unresolved reference 'isFinishing'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3010:121 Unresolved reference 'isChangingConfigurations'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3011:9 Unresolved reference 'cancelNavNotification'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3012:9 Unresolved reference 'hudPollHandler'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3015:13 Unresolved reference 'locationManager'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3015:44 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3017:25 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3020:30 Unresolved reference 'getSharedPreferences'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3022:73 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3023:33 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3025:25 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3027:25 'this' is not defined in this context.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3037:44 Unresolved reference 'kakaoGuidanceDelegate'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3038:44 Unresolved reference 'kakaoGuidanceDelegate'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3039:45 Unresolved reference 'kakaoGuidanceDelegate'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3040:44 Unresolved reference 'kakaoGuidanceDelegate'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3041:43 Unresolved reference 'kakaoGuidanceDelegate'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3042:47 Unresolved reference 'kakaoGuidanceDelegate'.
+e: file:///home/runner/work/TmapNda/TmapNda/app/src/main/java/com/tmap/nda/KakaoNaviActivity.kt:3048:1 Syntax error: Expecting a top level declaration.
+
+> Task :app:compileDebugKotlin FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileDebugKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --info or --debug option to get more log output.
+> Run with --scan to generate a Build Scan (Powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+* Exception is:
+org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:compileDebugKotlin'.
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.lambda$executeIfValid$1(ExecuteActionsTaskExecuter.java:135)
+	at org.gradle.internal.Try$Failure.ifSuccessfulOrElse(Try.java:288)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:133)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:121)
+	at org.gradle.api.internal.tasks.execution.ProblemsTaskPathTrackingTaskExecuter.execute(ProblemsTaskPathTrackingTaskExecuter.java:41)
+	at org.gradle.api.internal.tasks.execution.FinalizePropertiesTaskExecuter.execute(FinalizePropertiesTaskExecuter.java:46)
+	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
+	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
+	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
+	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
+	at org.gradle.execution.plan.LocalTaskNodeExecutor.execute(LocalTaskNodeExecutor.java:45)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:355)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:342)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.lambda$execute$0(DefaultTaskExecutionGraph.java:338)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:84)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:338)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:327)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:459)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:376)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
+Caused by: org.gradle.workers.internal.DefaultWorkerExecutor$WorkExecutionException: A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+	at org.gradle.workers.internal.DefaultWorkerExecutor$WorkItemExecution.waitForCompletion(DefaultWorkerExecutor.java:289)
+	at org.gradle.internal.work.DefaultAsyncWorkTracker.lambda$waitForItemsAndGatherFailures$2(DefaultAsyncWorkTracker.java:130)
+	at org.gradle.internal.Factories$1.create(Factories.java:31)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withoutLocks(DefaultWorkerLeaseService.java:335)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withoutLocks(DefaultWorkerLeaseService.java:318)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withoutLock(DefaultWorkerLeaseService.java:323)
+	at org.gradle.internal.work.DefaultAsyncWorkTracker.waitForItemsAndGatherFailures(DefaultAsyncWorkTracker.java:126)
+	at org.gradle.internal.work.DefaultAsyncWorkTracker.waitForItemsAndGatherFailures(DefaultAsyncWorkTracker.java:92)
+	at org.gradle.internal.work.DefaultAsyncWorkTracker.waitForAll(DefaultAsyncWorkTracker.java:78)
+	at org.gradle.internal.work.DefaultAsyncWorkTracker.waitForCompletion(DefaultAsyncWorkTracker.java:66)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$3.run(TaskExecution.java:260)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:29)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:26)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.run(DefaultBuildOperationRunner.java:47)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeAction(TaskExecution.java:237)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeActions(TaskExecution.java:220)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeWithPreviousOutputFiles(TaskExecution.java:203)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.execute(TaskExecution.java:170)
+	at org.gradle.internal.execution.steps.ExecuteStep.executeInternal(ExecuteStep.java:105)
+	at org.gradle.internal.execution.steps.ExecuteStep.access$000(ExecuteStep.java:44)
+	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:59)
+	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:56)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:56)
+	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:44)
+	at org.gradle.internal.execution.steps.CancelExecutionStep.execute(CancelExecutionStep.java:42)
+	at org.gradle.internal.execution.steps.TimeoutStep.executeWithoutTimeout(TimeoutStep.java:75)
+	at org.gradle.internal.execution.steps.TimeoutStep.execute(TimeoutStep.java:55)
+	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:50)
+	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:28)
+	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:68)
+	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:38)
+	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:61)
+	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:26)
+	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:69)
+	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:46)
+	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:39)
+	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:28)
+	at org.gradle.internal.execution.steps.BuildCacheStep.executeWithoutCache(BuildCacheStep.java:189)
+	at org.gradle.internal.execution.steps.BuildCacheStep.executeAndStoreInCache(BuildCacheStep.java:145)
+	at org.gradle.internal.execution.steps.BuildCacheStep.lambda$executeWithCache$4(BuildCacheStep.java:101)
+	at org.gradle.internal.execution.steps.BuildCacheStep.lambda$executeWithCache$5(BuildCacheStep.java:101)
+	at org.gradle.internal.Try$Success.map(Try.java:170)
+	at org.gradle.internal.execution.steps.BuildCacheStep.executeWithCache(BuildCacheStep.java:85)
+	at org.gradle.internal.execution.steps.BuildCacheStep.lambda$execute$0(BuildCacheStep.java:74)
+	at org.gradle.internal.Either$Left.fold(Either.java:116)
+	at org.gradle.internal.execution.caching.CachingState.fold(CachingState.java:62)
+	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:73)
+	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:48)
+	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:46)
+	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:35)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.executeBecause(SkipUpToDateStep.java:75)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.lambda$execute$2(SkipUpToDateStep.java:53)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:53)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:35)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:37)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:27)
+	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:49)
+	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:27)
+	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:71)
+	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:39)
+	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:64)
+	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:35)
+	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:62)
+	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:40)
+	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:76)
+	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:45)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.executeWithNonEmptySources(AbstractSkipEmptyWorkStep.java:136)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:66)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:38)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsStartedStep.execute(MarkSnapshottingInputsStartedStep.java:38)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:36)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:23)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:75)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:41)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.lambda$execute$0(AssignMutableWorkspaceStep.java:35)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$4.withWorkspace(TaskExecution.java:297)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:31)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:22)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:40)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:23)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.lambda$execute$2(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:39)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:46)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:34)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:47)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:34)
+	at org.gradle.internal.execution.impl.DefaultExecutionEngine$1.execute(DefaultExecutionEngine.java:64)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:132)
+	... 29 more
+Caused by: org.jetbrains.kotlin.gradle.tasks.CompilationErrorException: Compilation error. See log for more details
+	at org.jetbrains.kotlin.gradle.tasks.TasksUtilsKt.throwExceptionIfCompilationFailed(tasksUtils.kt:21)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.run(GradleKotlinCompilerWork.kt:119)
+	at org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction.execute(GradleCompilerRunnerWithWorkers.kt:74)
+	at org.gradle.workers.internal.DefaultWorkerServer.execute(DefaultWorkerServer.java:68)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:66)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:62)
+	at org.gradle.internal.classloader.ClassLoaderUtils.executeInClassloader(ClassLoaderUtils.java:100)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.lambda$execute$0(NoIsolationWorkerFactory.java:62)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:44)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:41)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.workers.internal.AbstractWorker.executeWrappedInBuildOperation(AbstractWorker.java:41)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.execute(NoIsolationWorkerFactory.java:59)
+	at org.gradle.workers.internal.DefaultWorkerExecutor.lambda$submitWork$0(DefaultWorkerExecutor.java:176)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runExecution(DefaultConditionalExecutionQueue.java:194)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.access$700(DefaultConditionalExecutionQueue.java:127)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner$1.run(DefaultConditionalExecutionQueue.java:169)
+	at org.gradle.internal.Factories$1.create(Factories.java:31)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:263)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:127)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:132)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runBatch(DefaultConditionalExecutionQueue.java:164)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.run(DefaultConditionalExecutionQueue.java:133)
+	... 2 more
+
+
+BUILD FAILED in 4m 28s
+37 actionable tasks: 37 executed
+Configuration cache entry stored.
