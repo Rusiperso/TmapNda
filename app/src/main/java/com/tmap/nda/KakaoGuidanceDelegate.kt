@@ -288,14 +288,41 @@ class KakaoGuidanceDelegate(
     // 누적거리(DistFromS)를 담고 있을 것으로 추정(확실친 않음, 로그 없이 시도하는
     // 부분이라 방어적으로 짬 - 실패하면 null 반환해서 기존 동작 그대로 유지). #문제시 원복
     private fun resolveNextStopInfo(guidance: KNGuidance, myDistFromS: Int): Triple<String, Int, Boolean>? {
+        // v: 재억 재제보(2026-08-30) - "경유지 지나도 취소 버튼이 안 없어진다"가 여전히
+        // 재현됨. 로그로 확인해보니 이 함수가 성공도 실패도 로그를 전혀 안 남기고 조용히
+        // null을 반환하고 있었음(중간의 여러 return null 지점 중 어디서 막히는지 전혀
+        // 안 보임). 다음 재현 때 정확히 어느 단계에서 실패하는지 잡기 위해 각 단계마다
+        // 진단 로그 추가(15초 간격으로 스로틀). #문제시 원복
+        val now = System.currentTimeMillis()
+        val shouldLog = now - lastNextStopDiagLogTime > 15000L
+        if (shouldLog) lastNextStopDiagLogTime = now
         return try {
-            val trip = guidance.trip ?: return null
-            val route = guidance.routesOnGuide?.firstOrNull() ?: return null
+            val trip = guidance.trip
+            if (trip == null) {
+                if (shouldLog) NavLogger.d(context, "[다음정차지][진단] guidance.trip == null")
+                return null
+            }
+            val route = guidance.routesOnGuide?.firstOrNull()
+            if (route == null) {
+                if (shouldLog) NavLogger.d(context, "[다음정차지][진단] routesOnGuide 비어있음")
+                return null
+            }
             val poisMethod = route.javaClass.methods.firstOrNull {
                 it.name == "getLocationsOfPois" && it.parameterTypes.isEmpty()
-            } ?: return null
-            val pois = poisMethod.invoke(route) as? List<*> ?: return null
-            if (pois.size < 3) return null // 출발/도착 2개뿐이면 경유지 없음 - 기존 동작 유지
+            }
+            if (poisMethod == null) {
+                if (shouldLog) NavLogger.d(context, "[다음정차지][진단] getLocationsOfPois() 메서드 자체가 없음(클래스=${route.javaClass.name})")
+                return null
+            }
+            val pois = poisMethod.invoke(route) as? List<*>
+            if (pois == null) {
+                if (shouldLog) NavLogger.d(context, "[다음정차지][진단] getLocationsOfPois() 호출 결과가 List가 아니거나 null")
+                return null
+            }
+            if (pois.size < 3) {
+                if (shouldLog) NavLogger.d(context, "[다음정차지][진단] pois.size=${pois.size} (3 미만 - 경유지 없음으로 판단)")
+                return null // 출발/도착 2개뿐이면 경유지 없음 - 기존 동작 유지
+            }
 
             // 경유지 이름 목록: trip 객체에서 "via"가 들어간 게터를 찾아 KNPOI 리스트를
             // 얻고, 각 항목의 getName()을 시도. 순서가 요청한 순서와 같다고 가정. #문제시 원복
@@ -310,6 +337,11 @@ class KakaoGuidanceDelegate(
                 }
             } catch (e: Exception) { null }
 
+            if (shouldLog) {
+                val distList = pois.mapIndexed { i, p -> if (p == null) "$i=null" else "$i=${findGetterInt(p, "DistFromS")}" }
+                NavLogger.d(context, "[다음정차지][진단] pois.size=${pois.size} distFromS목록=$distList myDistFromS=$myDistFromS")
+            }
+
             for (idx in 1 until pois.size) {
                 val poi = pois[idx] ?: continue
                 val dist = findGetterInt(poi, "DistFromS")
@@ -322,6 +354,7 @@ class KakaoGuidanceDelegate(
                 }
                 return Triple(name, dist - myDistFromS, isFinal)
             }
+            if (shouldLog) NavLogger.d(context, "[다음정차지][진단] 루프 끝까지 돌았는데 매칭되는 지점이 없음(전부 이미 지나쳤거나 거리 계산 실패)")
             null
         } catch (e: Exception) {
             NavLogger.e(context, "[다음정차지] 조사 실패(기존 동작 유지): ${e.message}")
@@ -605,6 +638,11 @@ class KakaoGuidanceDelegate(
                         turnCodeForLane == "KNRGCode_RightTurn" || turnCodeForLane == "KNRGCode_RightOutHighway" || turnCodeForLane == "KNRGCode_OutHighway" -> 32
                         turnCodeForLane == "KNRGCode_UTurn" -> 1
                         turnCodeForLane == "KNRGCode_OverPath" || turnCodeForLane == "KNRGCode_UnderPath" -> 8
+                        // v: 재억 재제보(2026-08-30, 실기기로 확인) - KNRGCode_LeftStraight
+                        // ("좌회전 차로 쪽에서 직진")가 매핑에 빠져있었음. 실제 그 순간 차로가
+                        // [8,8,8,16]으로 직진 차로가 여러 개 있었던 걸로 봐서 직진 비트로 처리.
+                        // RightStraight도 같은 패턴일 걸로 보여 같이 추가. #문제시 원복
+                        turnCodeForLane == "KNRGCode_LeftStraight" || turnCodeForLane == "KNRGCode_RightStraight" -> 8
                         // v: 재억 재지적(2026-08-29) - 대안경로 오감지 수정됐다고 해서
                         // 좌/우측 분기도 같이 방향 매핑에 포함. #문제시 원복
                         turnCodeForLane == "KNRGCode_LeftDirection" -> 2
@@ -798,6 +836,7 @@ class KakaoGuidanceDelegate(
     // 남겨서 다음 세션에서 매핑표를 확장할 수 있게 함. #문제시 원복
     private var lastUnmappedTurnTypeLogTime = 0L
     private var lastLaneUpdateDiagLogTime = 0L
+    private var lastNextStopDiagLogTime = 0L
     // v4.16: TmapNda 자체 APK를 디컴파일해서 KNRGCode enum을 바이트코드 레벨에서 직접
     // 추출 - 전체 92개 값을 정확히 확인함(사용자가 준 CarrotNavi 참고로 openpilot이 기대하는
     // 코드체계도 확인됨: carrot_serv.py의 turn_type_mapping). 이 둘을 대조해서 확실한
