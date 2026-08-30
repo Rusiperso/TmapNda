@@ -66,6 +66,11 @@ object MiniPlayerManager {
     // 세션의 앱 패키지명"을 저장해뒀다가, 그 세션이 여전히 유효하면 화면이 바뀌어도
     // 계속 우선적으로 그걸 다시 고르도록 함. #문제시 원복
     private var lastPickedPackageName: String? = null
+    // v: 재억 요청(2026-08-31) - "확정버튼이 상태표시줄에 가려진다" - 엣지투엣지 화면이라
+    // Y=0이 상태표시줄 뒤쪽(화면 맨 꼭대기)이라서 생긴 문제. MapActivity/KakaoNaviActivity의
+    // 인셋 리스너가 이미 계산하는 상단 안전영역 값을 여기 공유해두고, 확정버튼/손잡이
+    // 위치를 계산할 때 최소 Y로 사용해서 상태표시줄 아래로는 절대 안 올라가게 함. #문제시 원복
+    @Volatile var topSafeInsetPx: Int = 0
     private var lastPickDiagLogTime = 0L
     private val periodicRefreshHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var periodicRefreshRunnable: Runnable? = null
@@ -91,7 +96,7 @@ object MiniPlayerManager {
         val confirmOverhangPx = dpToPx(activity, CONFIRM_OVERHANG_DP)
         val handleOverhangPx = dpToPx(activity, RESIZE_HANDLE_OVERHANG_DP)
         confirmBtn.x = (outerContainer.x - confirmOverhangPx).coerceAtLeast(0f)
-        confirmBtn.y = (outerContainer.y - confirmOverhangPx).coerceAtLeast(0f)
+        confirmBtn.y = (outerContainer.y - confirmOverhangPx).coerceAtLeast(topSafeInsetPx.toFloat())
         resizeHandle.x = (outerContainer.x - handleOverhangPx).coerceAtLeast(0f)
         resizeHandle.y = outerContainer.y + outerContainer.height
     }

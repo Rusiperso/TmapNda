@@ -345,6 +345,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     WindowInsetsCompat.Type.mandatorySystemGestures()
             )
             view.setPadding(safeArea.left, safeArea.top, safeArea.right, safeArea.bottom)
+            com.tmap.nda.miniplayer.MiniPlayerManager.topSafeInsetPx = safeArea.top
             // v3.0: Tmap 화면과 동일하게 보조패널 스크롤 하단에도 안전여백 추가 (사용자 지적 5번)
             binding.svSecondaryPanel?.let { panel ->
                 panel.clipToPadding = false

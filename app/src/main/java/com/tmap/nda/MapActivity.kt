@@ -251,6 +251,7 @@ class MapActivity : AppCompatActivity() {
             )
             // 지도(root)는 좌/상/우만 인셋 적용, 하단은 지도가 풀스크린으로 남도록 0 유지
             v.setPadding(safeArea.left, safeArea.top, safeArea.right, 0)
+            com.tmap.nda.miniplayer.MiniPlayerManager.topSafeInsetPx = safeArea.top
 
             // v3.8: 티맵 SDK 내부 하단 메뉴(주행종료/현재위치/메뉴)는 tmapUILayout의
             // 맨 아래에 그려진다. 기존에는 root 하단 인셋을 0으로 둔 채 보조패널에만
