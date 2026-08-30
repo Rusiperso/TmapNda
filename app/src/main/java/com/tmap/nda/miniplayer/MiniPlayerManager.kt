@@ -67,6 +67,8 @@ object MiniPlayerManager {
     // 계속 우선적으로 그걸 다시 고르도록 함. #문제시 원복
     private var lastPickedPackageName: String? = null
     private var lastPickDiagLogTime = 0L
+    private val periodicRefreshHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var periodicRefreshRunnable: Runnable? = null
 
     private enum class EditMode { NONE, MOVE, RESIZE }
     private var editMode = EditMode.NONE
@@ -414,6 +416,11 @@ object MiniPlayerManager {
             sessionsListener = listener
             manager.addOnActiveSessionsChangedListener(listener, component)
             pickController(activity, manager.getActiveSessions(component), outerContainer, art, title, artist, playPause)
+            // v: 재억 제보(2026-08-30) - MediaSession의 onMetadataChanged 콜백이 앱에 따라
+            // 안 오거나 늦게 오는 경우가 있어서(NotificationMediaCache는 갱신됐는데 화면은
+            // 안 바뀜), 2초마다 활성 컨트롤러 기준으로 다시 그려서 알림 캐시 갱신을 놓치지
+            // 않고 반영되게 함. 화면(Activity) 전환/detach 시 자동으로 멈춤. #문제시 원복
+            startPeriodicRefresh(outerContainer, art, title, artist, playPause)
         } catch (e: Exception) {
             NavLogger.e(activity, "[미니플레이어] 세션 구독 실패: ${e.message}")
             outerContainer.visibility = View.GONE
@@ -502,10 +509,17 @@ object MiniPlayerManager {
         }
 
         outerContainer.visibility = View.VISIBLE
-        title.text = metadata.getString(MediaMetadata.METADATA_KEY_TITLE)
+        // v: 재억 제보(2026-08-30) - MediaSession 메타데이터(공식 API)가 앱/시스템 쪽
+        // 지연으로 곡이 바뀐 뒤에도 한동안 옛 정보를 물고 있는 걸 확인함. 알림창에서
+        // 직접 읽은 값(NotificationMediaCache, 훨씬 즉각적)이 있으면 그걸 우선 사용하고,
+        // 없으면 기존 MediaSession 메타데이터로 폴백. #문제시 원복
+        val notifEntry = NotificationMediaCache.get(controller.packageName)
+        title.text = notifEntry?.title
+            ?: metadata.getString(MediaMetadata.METADATA_KEY_TITLE)
             ?: metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE)
             ?: "재생 중"
-        artist.text = metadata.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
+        artist.text = notifEntry?.text
+            ?: metadata.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
 
         val bitmap = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
             ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_ART)
@@ -517,11 +531,27 @@ object MiniPlayerManager {
         )
     }
 
+    private fun startPeriodicRefresh(
+        outerContainer: ViewGroup, art: ImageView, title: TextView, artist: TextView, playPause: ImageButton
+    ) {
+        periodicRefreshRunnable?.let { periodicRefreshHandler.removeCallbacks(it) }
+        val runnable = object : Runnable {
+            override fun run() {
+                activeController?.let { updateUi(outerContainer, art, title, artist, playPause, it) }
+                periodicRefreshHandler.postDelayed(this, 2000L)
+            }
+        }
+        periodicRefreshRunnable = runnable
+        periodicRefreshHandler.postDelayed(runnable, 2000L)
+    }
+
     private fun detachSession() {
         sessionsListener?.let { listener ->
             try { sessionManager?.removeOnActiveSessionsChangedListener(listener) } catch (_: Exception) {}
         }
         activeCallback?.let { cb -> try { activeController?.unregisterCallback(cb) } catch (_: Exception) {} }
+        periodicRefreshRunnable?.let { periodicRefreshHandler.removeCallbacks(it) }
+        periodicRefreshRunnable = null
         sessionsListener = null
         activeCallback = null
         activeController = null
