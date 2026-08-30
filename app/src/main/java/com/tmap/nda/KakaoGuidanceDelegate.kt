@@ -644,6 +644,12 @@ class KakaoGuidanceDelegate(
                             LaneDisplayInfo(recommended = recommended, busType = busType)
                         } catch (e: Exception) { LaneDisplayInfo(recommended = false) }
                     }
+                    // v: 재억 재제보(2026-08-30, 실기기로 확인) - "우회전/좌회전인데 정확히
+                    // 맞는 비트가 있는 차로가 하나도 없는 경우"(우회전 전용차로가 따로 없는
+                    // 흔한 교차로)를 확인함. 가장자리 차로를 폴백으로 추천하는 방법도
+                    // 검토했으나, 그 차로가 버스전용차로거나 다른 도로로 빠지는 차로일 수도
+                    // 있어 틀린 정보를 확신하듯 보여줄 위험이 있음("엄하게 할거면 넣지마"
+                    // 재억님 판단) - 폴백 없이 정확히 맞는 차로가 있을 때만 추천 표시. #문제시 원복
                     LaneSignalRepository.lanes = recommendedFlags
                     LaneSignalRepository.source = "kakao"
                     LaneSignalRepository.lastUpdateTime = System.currentTimeMillis()
