@@ -3841,6 +3841,22 @@ class MapActivity : AppCompatActivity() {
             renderLaneSignalBar(this@MapActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "tmap")
         }
         LaneSignalRepository.notifyChanged()
+        // v: 재억 제보(2026-08-30, 실기기로 확인 - "카카오 길안내 종료 후 티맵 화면에서
+        // 미니플레이어 터치/갱신이 안 된다") - MiniPlayerManager.attach()가 onCreate에만
+        // 걸려있어서 딱 한 번만 실행됐음. 카카오 화면으로 넘어가면 그쪽 attach()가 이
+        // 싱글턴을 자기 뷰로 가져가는데, 다시 돌아올 땐 이 화면의 onCreate가 재실행되지
+        // 않아(같은 인스턴스가 계속 살아있음) attach()가 다시 안 불려서 카카오 쪽의 이미
+        // 사라진 뷰/컨트롤러를 계속 붙잡고 있었음. 화면이 다시 보일 때마다(onResume) 이
+        // 화면 것으로 재부착. #문제시 원복
+        binding.flMiniPlayerContainer?.let { outer ->
+            com.tmap.nda.miniplayer.MiniPlayerManager.attach(
+                this, outer, binding.llMiniPlayer!!,
+                binding.ivMiniPlayerArt, binding.tvMiniPlayerTitle, binding.tvMiniPlayerArtist,
+                binding.btnMiniPlayerPlayPause, binding.btnMiniPlayerPrev, binding.btnMiniPlayerNext,
+                binding.btnMiniPlayerConfirm, binding.vMiniPlayerResizeHandle,
+                "llMiniPlayer", resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            )
+        }
         // v2.4: 볼륨 실시간 캡처 리시버 등록 (onPause에서 해제)
         try {
             registerReceiver(

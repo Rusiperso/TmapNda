@@ -2834,7 +2834,20 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "kakao")
         }
         LaneSignalRepository.notifyChanged()
-        try {
+        // v: 재억 제보(2026-08-30) - MapActivity와 대칭으로, 이 화면이 다시 보일 때마다
+        // (예: 티맵 화면에서 잠깐 설정을 열었다 닫는 등으로 이 화면이 일시정지-재개될
+        // 때) 미니플레이어를 이 화면 것으로 재부착. #문제시 원복
+        if (::binding.isInitialized) {
+            binding.flMiniPlayerContainer?.let { outer ->
+                com.tmap.nda.miniplayer.MiniPlayerManager.attach(
+                    this, outer, binding.llMiniPlayer!!,
+                    binding.ivMiniPlayerArt, binding.tvMiniPlayerTitle, binding.tvMiniPlayerArtist,
+                    binding.btnMiniPlayerPlayPause, binding.btnMiniPlayerPrev, binding.btnMiniPlayerNext,
+                    binding.btnMiniPlayerConfirm, binding.vMiniPlayerResizeHandle,
+                    "llMiniPlayer", resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                )
+            }
+        }
             registerReceiver(
                 volumeChangeReceiver,
                 android.content.IntentFilter("android.media.VOLUME_CHANGED_ACTION")
