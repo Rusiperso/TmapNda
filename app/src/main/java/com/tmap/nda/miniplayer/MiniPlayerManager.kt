@@ -146,46 +146,58 @@ object MiniPlayerManager {
         val suffix = if (isLandscape) "land" else "port"
         val prefs = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-        val base = BaseSizes(
-            artPx = art.layoutParams.width,
-            titlePx = title.textSize,
-            artistPx = artist.textSize,
-            prevPx = prev.layoutParams.width,
-            playPausePx = playPause.layoutParams.width,
-            nextPx = next.layoutParams.width,
-            titleMaxWidthPx = title.maxWidth,
-            artistMaxWidthPx = artist.maxWidth
-        )
-        val savedScale = prefs.getFloat("${keyPrefix}_scale_$suffix", 1.0f)
-        applyScale(savedScale, base, art, title, artist, playPause, prev, next)
+        // v: 재억 제보(2026-08-30, "UI 크기가 지 멋대로 커진다", 실기기로 확인 - 카카오
+        // 갔다 돌아올 때마다 미니플레이어가 점점 거대해짐) - onResume에서도 attach()를
+        // 다시 부르게 만든 게(미니플레이어 재부착 수정) 원인이었음. base(원본 크기)를
+        // "지금 뷰의 현재 크기"에서 매번 다시 재는데, attach()가 두 번째 불릴 땐 그
+        // "현재 크기"가 이미 저장된 배율이 한 번 적용된 뒤였음 - 그 위에 배율을 또
+        // 곱해버려서 화면 돌아올 때마다 크기가 기하급수적으로 불어남. 이 뷰 세트에
+        // 크기/위치/리스너 설정을 이미 한 번 했으면(태그로 표시) 그 부분은 건너뛰고,
+        // 아래 세션 재구독 부분만 다시 하도록 분리. #문제시 원복
+        val alreadyInitialized = outerContainer.tag == "miniplayer_initialized"
+        if (!alreadyInitialized) {
+            outerContainer.tag = "miniplayer_initialized"
+            val base = BaseSizes(
+                artPx = art.layoutParams.width,
+                titlePx = title.textSize,
+                artistPx = artist.textSize,
+                prevPx = prev.layoutParams.width,
+                playPausePx = playPause.layoutParams.width,
+                nextPx = next.layoutParams.width,
+                titleMaxWidthPx = title.maxWidth,
+                artistMaxWidthPx = artist.maxWidth
+            )
+            val savedScale = prefs.getFloat("${keyPrefix}_scale_$suffix", 1.0f)
+            applyScale(savedScale, base, art, title, artist, playPause, prev, next)
 
-        outerContainer.post {
-            val x = prefs.getFloat("${keyPrefix}_x_$suffix", -1f)
-            val y = prefs.getFloat("${keyPrefix}_y_$suffix", -1f)
-            if (x != -1f && y != -1f) {
-                val parent = outerContainer.parent as? View
-                if (parent != null) {
-                    val maxX = (parent.width - outerContainer.width).toFloat().coerceAtLeast(0f)
-                    val maxY = (parent.height - outerContainer.height).toFloat().coerceAtLeast(0f)
-                    outerContainer.x = x.coerceIn(0f, maxX)
-                    outerContainer.y = y.coerceIn(0f, maxY)
+            outerContainer.post {
+                val x = prefs.getFloat("${keyPrefix}_x_$suffix", -1f)
+                val y = prefs.getFloat("${keyPrefix}_y_$suffix", -1f)
+                if (x != -1f && y != -1f) {
+                    val parent = outerContainer.parent as? View
+                    if (parent != null) {
+                        val maxX = (parent.width - outerContainer.width).toFloat().coerceAtLeast(0f)
+                        val maxY = (parent.height - outerContainer.height).toFloat().coerceAtLeast(0f)
+                        outerContainer.x = x.coerceIn(0f, maxX)
+                        outerContainer.y = y.coerceIn(0f, maxY)
+                    }
                 }
+                repositionOverlayButtons(activity, outerContainer, confirmBtn, resizeHandle)
             }
-            repositionOverlayButtons(activity, outerContainer, confirmBtn, resizeHandle)
-        }
 
-        card.setOnLongClickListener {
-            repositionOverlayButtons(activity, outerContainer, confirmBtn, resizeHandle)
-            showEditMenu(activity, it, confirmBtn, resizeHandle, prev, playPause, next)
-            true
-        }
-        setupMoveTouch(activity, card, outerContainer, confirmBtn, resizeHandle, keyPrefix, suffix)
-        setupResizeTouch(activity, outerContainer, confirmBtn, resizeHandle, base, art, title, artist, playPause, prev, next, keyPrefix, suffix)
-        confirmBtn.setOnClickListener {
-            editMode = EditMode.NONE
-            confirmBtn.visibility = View.GONE
-            resizeHandle.visibility = View.GONE
-            setChildrenClickable(true, prev, playPause, next)
+            card.setOnLongClickListener {
+                repositionOverlayButtons(activity, outerContainer, confirmBtn, resizeHandle)
+                showEditMenu(activity, it, confirmBtn, resizeHandle, prev, playPause, next)
+                true
+            }
+            setupMoveTouch(activity, card, outerContainer, confirmBtn, resizeHandle, keyPrefix, suffix)
+            setupResizeTouch(activity, outerContainer, confirmBtn, resizeHandle, base, art, title, artist, playPause, prev, next, keyPrefix, suffix)
+            confirmBtn.setOnClickListener {
+                editMode = EditMode.NONE
+                confirmBtn.visibility = View.GONE
+                resizeHandle.visibility = View.GONE
+                setChildrenClickable(true, prev, playPause, next)
+            }
         }
 
         playPause.setOnClickListener {
