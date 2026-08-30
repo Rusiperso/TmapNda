@@ -637,7 +637,12 @@ class KakaoGuidanceDelegate(
                         turnCodeForLane == "KNRGCode_LeftTurn" || turnCodeForLane == "KNRGCode_UnprotectedLeftTurn" || turnCodeForLane == "KNRGCode_LeftOutHighway" -> 2
                         turnCodeForLane == "KNRGCode_RightTurn" || turnCodeForLane == "KNRGCode_RightOutHighway" || turnCodeForLane == "KNRGCode_OutHighway" -> 32
                         turnCodeForLane == "KNRGCode_UTurn" -> 1
-                        turnCodeForLane == "KNRGCode_OverPath" || turnCodeForLane == "KNRGCode_UnderPath" -> 8
+                        // v: 재억 재제보(2026-08-30, 실기기로 확인) - "700m부터 0m까지 계속
+                        // 떠있어야 하는데 도중에 사라진다"의 정확한 원인을 로그로 잡음:
+                        // RightTurn으로 2분간 잘 뜨다가, 같은 회전을 하는 도중에 갑자기
+                        // KNRGCode_OverPathSide(고가차도 옆길)로 코드가 바뀌면서 매핑이
+                        // 없어 추천이 통째로 꺼졌음. OverPath와 동일하게 처리. #문제시 원복
+                        turnCodeForLane == "KNRGCode_OverPath" || turnCodeForLane == "KNRGCode_UnderPath" || turnCodeForLane == "KNRGCode_OverPathSide" || turnCodeForLane == "KNRGCode_UnderPathSide" -> 8
                         // v: 재억 재제보(2026-08-30, 실기기로 확인) - KNRGCode_LeftStraight
                         // ("좌회전 차로 쪽에서 직진")가 매핑에 빠져있었음. 실제 그 순간 차로가
                         // [8,8,8,16]으로 직진 차로가 여러 개 있었던 걸로 봐서 직진 비트로 처리.
@@ -653,7 +658,22 @@ class KakaoGuidanceDelegate(
                                 com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_S, com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_SW, com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_W -> 2
                                 else -> 8
                             }
-                        else -> null
+                        // v: 재억 요청(2026-08-30) - "그 상황만이 아니라 모든 상황에 대응해야
+                        // 한다" - 지금까지 로그에 새 회전코드(OverPathSide 등)가 나올 때마다
+                        // 하나씩 땜빵 추가해왔는데, 앞으로도 이런 미확인 코드가 계속 나올 수
+                        // 있음. 급회전 계열(좌/우회전, 유턴, 로터리, 좌우분기)은 위에서 이미
+                        // 전부 명시적으로 잡아뒀으므로, 그 외의 모르는 코드는 급회전이 아닐
+                        // 가능성이 압도적으로 높음 - 기본값을 null(불안정한 getSuggest 폴백)
+                        // 대신 직진(8)으로 둬서, 새 코드가 나와도 매번 코드를 추가하지 않고
+                        // 자동으로 합리적인 값이 나오게 함. 실제로 급회전인데 놓친 코드가
+                        // 있는지 확인할 수 있게 로그는 남김. #문제시 원복
+                        else -> {
+                            if (turnCodeForLane != null && System.currentTimeMillis() - lastUnmappedLaneBitLogTime > 15000L) {
+                                lastUnmappedLaneBitLogTime = System.currentTimeMillis()
+                                NavLogger.d(context, "[차선진단][미매핑회전코드] KNRGCode=$turnCodeForLane -> 직진(8)으로 기본 처리됨")
+                            }
+                            8
+                        }
                     }
                     val recommendedFlags = laneInfoList.mapNotNull { info ->
                         if (info == null) return@mapNotNull null
@@ -837,6 +857,7 @@ class KakaoGuidanceDelegate(
     private var lastUnmappedTurnTypeLogTime = 0L
     private var lastLaneUpdateDiagLogTime = 0L
     private var lastNextStopDiagLogTime = 0L
+    private var lastUnmappedLaneBitLogTime = 0L
     // v4.16: TmapNda 자체 APK를 디컴파일해서 KNRGCode enum을 바이트코드 레벨에서 직접
     // 추출 - 전체 92개 값을 정확히 확인함(사용자가 준 CarrotNavi 참고로 openpilot이 기대하는
     // 코드체계도 확인됨: carrot_serv.py의 turn_type_mapping). 이 둘을 대조해서 확실한
