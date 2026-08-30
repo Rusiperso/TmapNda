@@ -310,6 +310,12 @@ class UdpSenderService : Service() {
     private var pendingGeneralRoadLimit = 0
     private var pendingGeneralRoadLimitCount = 0
     private val GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE = 2
+    // v: 재억 제안(2026-08-30) - 경로상 진출/회전이 예정돼 있지 않을 때(그냥 직진 중이거나
+    // 다음 회전이 한참 멀 때)는, 낮은 값이 몇 번 연속으로 나와야 "진짜 도로 제한속도가
+    // 바뀐 것"으로 볼지를 훨씬 더 엄격하게 잡음. 분기 오매칭(GPS 순간 튐)은 보통 1~2초
+    // 안에 사라지지만, 진짜 제한속도 변화(예: 80→60 구간 진입)는 몇 초씩 계속 유지됨.
+    // 이 판단이 도는 루프(sendSdiData)가 300ms 주기라서, 15번 ≈ 4.5초로 설정. #문제시 원복
+    private val GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE_FAR_FROM_ROUTE_TURN = 15
     private val GENERAL_ROAD_LIMIT_TBT_NEAR_THRESHOLD_M = 250
     private var sdiType = 0
     private var sdiSpeedLimit = 0
@@ -594,7 +600,11 @@ class UdpSenderService : Service() {
                         // 여기도 동일하게 적용. pending 상태는 realRoadLimit 경로와 공유해도
                         // 안전함(둘 다 "지금 도로의 기본 제한속도"라는 같은 개념을 다른 소스에서
                         // 가져오는 것뿐이라, 어느 쪽에서 오든 똑같이 연속 확인이 필요함). #문제시 원복
-                        val nearManeuverPointForLimitSpeed = KakaoRouteDataRepository.tbtDist in 0..GENERAL_ROAD_LIMIT_TBT_NEAR_THRESHOLD_M
+                        val routeExpectsExitOrTurnSoonForLimitSpeed = KakaoRouteDataRepository.tbtDist < 500 &&
+                            KakaoRouteDataRepository.tbtTurnType in setOf(12, 13, 6, 7, 101, 102)
+                        val nearManeuverPointForLimitSpeed = routeExpectsExitOrTurnSoonForLimitSpeed &&
+                            KakaoRouteDataRepository.tbtDist in 0..GENERAL_ROAD_LIMIT_TBT_NEAR_THRESHOLD_M
+                        val requiredConsecutiveNowForLimitSpeed = if (routeExpectsExitOrTurnSoonForLimitSpeed) GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE else GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE_FAR_FROM_ROUTE_TURN
                         val vettedCurrentLimitSpeed: Int? = if (currentLimitSpeed < generalRoadLimitSpeed && !nearManeuverPointForLimitSpeed) {
                             if (currentLimitSpeed == pendingGeneralRoadLimit) {
                                 pendingGeneralRoadLimitCount++
@@ -602,11 +612,11 @@ class UdpSenderService : Service() {
                                 pendingGeneralRoadLimit = currentLimitSpeed
                                 pendingGeneralRoadLimitCount = 1
                             }
-                            if (pendingGeneralRoadLimitCount >= GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE) {
+                            if (pendingGeneralRoadLimitCount >= requiredConsecutiveNowForLimitSpeed) {
                                 pendingGeneralRoadLimitCount = 0
                                 currentLimitSpeed
                             } else {
-                                NavLogger.d(this@UdpSenderService, "[도로제한][분기오매칭방지][limitSpeed] currentLimitSpeed=$currentLimitSpeed < 기존=$generalRoadLimitSpeed, 분기점근처=false, 확인횟수=$pendingGeneralRoadLimitCount/$GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE - 보류")
+                                NavLogger.d(this@UdpSenderService, "[도로제한][분기오매칭방지][limitSpeed] currentLimitSpeed=$currentLimitSpeed < 기존=$generalRoadLimitSpeed, 경로상진출예정=$routeExpectsExitOrTurnSoonForLimitSpeed, 확인횟수=$pendingGeneralRoadLimitCount/$requiredConsecutiveNowForLimitSpeed - 보류")
                                 null
                             }
                         } else {
@@ -701,7 +711,29 @@ class UdpSenderService : Service() {
                         // 있었음(화면 표시용 generalRoadLimitSpeed만 보호되고 있었던 것). 이제
                         // roadLimitSpeed 자체에 처음부터 히스테리시스를 적용해서, 카메라 정보 유무와
                         // 무관하게 항상 보호되게 함. #문제시 원복
-                        val nearManeuverPoint = KakaoRouteDataRepository.tbtDist in 0..GENERAL_ROAD_LIMIT_TBT_NEAR_THRESHOLD_M
+                        // v: 재억 제안(2026-08-30) - "지금까지는 GPS/도로매칭 기반으로만
+                        // 판단했는데, 카카오가 이미 알고 있는 경로 정보(다음 안내가 뭐고
+                        // 얼마나 남았는지)를 직접 물어보면 분기점 오매칭 자체를 원천 차단할
+                        // 수 있지 않겠냐"는 제안. 정확히 그 방향으로 구현: 지금 안내 중인
+                        // 다음 지점이 실제로 진출로/회전(고속도로 나가기, 좌우회전, 좌우측
+                        // 분기)이고 그게 가까이(500m 이내) 있을 때만 "지금 속도가 낮아지는
+                        // 게 진짜일 수 있다"고 보고 기존 판단(히스테리시스/즉시반영)을 그대로
+                        // 적용. 그게 아니면(그냥 직진 중이거나, 다음 회전이 한참 멀리 있으면)
+                        // 낮은 값 자체를 아예 무시 - GPS가 순간적으로 옆 도로에 붙어도
+                        // "지금 나갈 계획 자체가 없다"는 걸 경로가 알고 있으니 절대 안 잡힘. #문제시 원복
+                        // v: 재억 제안(2026-08-30) - "카카오 경로를 보고 실제 진출/회전
+                        // 예정일 때만 속도를 잡게 하자"는 제안을 반영하되, 완전히 무시하는
+                        // 방식은 위험함을 스스로 재검토함: 진출로가 없는 일반 도로에서도
+                        // 제한속도가 바뀌는 구간(80→60 등)이 흔한데, 그런 정상적인 변화까지
+                        // 영원히 막아버리면 안 됨. 대신 "지금 경로상 진출/회전 예정이 없으면
+                        // 확인 횟수 요구치를 훨씬 늘림"으로 바꿈 - 분기 오매칭은 보통 GPS
+                        // 순간 튐이라 1~2초면 사라지는데, 진짜 도로 제한속도 변화는 몇 초씩
+                        // 계속 유지되므로 이 방식으로 안전하게 구분됨. #문제시 원복
+                        val routeExpectsExitOrTurnSoon = KakaoRouteDataRepository.tbtDist < 500 &&
+                            KakaoRouteDataRepository.tbtTurnType in setOf(12, 13, 6, 7, 101, 102)
+                        val nearManeuverPoint = routeExpectsExitOrTurnSoon &&
+                            KakaoRouteDataRepository.tbtDist in 0..GENERAL_ROAD_LIMIT_TBT_NEAR_THRESHOLD_M
+                        val requiredConsecutiveNow = if (routeExpectsExitOrTurnSoon) GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE else GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE_FAR_FROM_ROUTE_TURN
                         val vettedRealRoadLimit: Int? = if (realRoadLimit < generalRoadLimitSpeed && !nearManeuverPoint) {
                             if (realRoadLimit == pendingGeneralRoadLimit) {
                                 pendingGeneralRoadLimitCount++
@@ -709,11 +741,11 @@ class UdpSenderService : Service() {
                                 pendingGeneralRoadLimit = realRoadLimit
                                 pendingGeneralRoadLimitCount = 1
                             }
-                            if (pendingGeneralRoadLimitCount >= GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE) {
+                            if (pendingGeneralRoadLimitCount >= requiredConsecutiveNow) {
                                 pendingGeneralRoadLimitCount = 0
                                 realRoadLimit
                             } else {
-                                NavLogger.d(this@UdpSenderService, "[도로제한][분기오매칭방지] realRoadLimit=$realRoadLimit < 기존=$generalRoadLimitSpeed, 분기점근처=false, 확인횟수=$pendingGeneralRoadLimitCount/$GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE - 보류")
+                                NavLogger.d(this@UdpSenderService, "[도로제한][분기오매칭방지] realRoadLimit=$realRoadLimit < 기존=$generalRoadLimitSpeed, 경로상진출예정=$routeExpectsExitOrTurnSoon, 확인횟수=$pendingGeneralRoadLimitCount/$requiredConsecutiveNow - 보류")
                                 null
                             }
                         } else {
