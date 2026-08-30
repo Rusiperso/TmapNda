@@ -66,6 +66,7 @@ object MiniPlayerManager {
     // 세션의 앱 패키지명"을 저장해뒀다가, 그 세션이 여전히 유효하면 화면이 바뀌어도
     // 계속 우선적으로 그걸 다시 고르도록 함. #문제시 원복
     private var lastPickedPackageName: String? = null
+    private var lastPickDiagLogTime = 0L
 
     private enum class EditMode { NONE, MOVE, RESIZE }
     private var editMode = EditMode.NONE
@@ -444,6 +445,21 @@ object MiniPlayerManager {
         // (진짜로 다른 걸 조작 중이라는 뜻) 그쪽으로 바꿈. #문제시 원복
         val picked = if (stickyPick != null && stickyPick == mostRecentlyUpdated) stickyPick else mostRecentlyUpdated
         lastPickedPackageName = picked?.packageName
+
+        // v: 재억 재제보(2026-08-30, "카카오 화면엔 정확한데 티맵 화면에선 여전히 엉뚱한
+        // 곡") - 여러 차례 로직을 고쳤는데도 재현돼서, 이번엔 로직을 또 추측으로 고치는
+        // 대신 실제 후보 목록/판단 근거를 전부 로그로 남김(15초 스로틀). 다음 재현 때
+        // 이 로그로 후보가 몇 개였는지, 각각 상태/최근갱신시각이 어땠는지, 최종적으로
+        // 뭘 왜 골랐는지 정확히 확인 가능. #문제시 원복
+        if (System.currentTimeMillis() - lastPickDiagLogTime > 15000L) {
+            lastPickDiagLogTime = System.currentTimeMillis()
+            val candList = controllers?.joinToString(" | ") { c ->
+                val st = c.playbackState?.state
+                val upd = c.playbackState?.lastPositionUpdateTime ?: 0L
+                "${c.packageName}(state=$st, upd=$upd, title=${c.metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)})"
+            } ?: "null"
+            NavLogger.d(activity, "[미니플레이어][진단] 후보=[$candList] sticky=${stickyPick?.packageName} 최종선택=${picked?.packageName}")
+        }
 
         if (picked == activeController) {
             updateUi(outerContainer, art, title, artist, playPause, picked)

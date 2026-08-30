@@ -314,11 +314,24 @@ class KakaoGuidanceDelegate(
                 if (shouldLog) NavLogger.d(context, "[다음정차지][진단] getLocationsOfPois() 메서드 자체가 없음(클래스=${route.javaClass.name})")
                 return null
             }
-            val pois = poisMethod.invoke(route) as? List<*>
-            if (pois == null) {
-                if (shouldLog) NavLogger.d(context, "[다음정차지][진단] getLocationsOfPois() 호출 결과가 List가 아니거나 null")
-                return null
+            val poisRaw = poisMethod.invoke(route)
+            // v: 재억 재제보(2026-08-30, 실기기로 확인) - "getLocationsOfPois() 호출 결과가
+            // List가 아니거나 null"이 203번 다 찍혔는데, 예외 로그는 단 한 번도 없었음 -
+            // 즉 호출 자체는 성공하는데 반환값이 List가 아닌 다른 타입(배열 등)이었던 것.
+            // List로 캐스팅 안 되면 배열(Array<*>)로도 시도. #문제시 원복
+            val pois: List<*>? = when (poisRaw) {
+                is List<*> -> poisRaw
+                is Array<*> -> poisRaw.toList()
+                null -> {
+                    if (shouldLog) NavLogger.d(context, "[다음정차지][진단] getLocationsOfPois() 결과 null")
+                    null
+                }
+                else -> {
+                    if (shouldLog) NavLogger.d(context, "[다음정차지][진단] getLocationsOfPois() 반환 타입=${poisRaw.javaClass.name} (List/Array 둘 다 아님)")
+                    null
+                }
             }
+            if (pois == null) return null
             if (pois.size < 3) {
                 if (shouldLog) NavLogger.d(context, "[다음정차지][진단] pois.size=${pois.size} (3 미만 - 경유지 없음으로 판단)")
                 return null // 출발/도착 2개뿐이면 경유지 없음 - 기존 동작 유지
