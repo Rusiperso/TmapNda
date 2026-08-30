@@ -2848,6 +2848,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 )
             }
         }
+        try {
             registerReceiver(
                 volumeChangeReceiver,
                 android.content.IntentFilter("android.media.VOLUME_CHANGED_ACTION")
