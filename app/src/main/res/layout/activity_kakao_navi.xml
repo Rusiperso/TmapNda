@@ -659,26 +659,30 @@
                  늘어나도록(wrap_content) 바꿈. #문제시 원복 -->
             <TextView
                 android:id="@+id/tvMiniPlayerTitle"
-                android:layout_width="wrap_content"
+                android:layout_width="220dp"
                 android:layout_height="wrap_content"
-                android:maxWidth="220dp"
                 android:text="재생 중인 음악 없음"
                 android:textColor="#FFFFFF"
                 android:textSize="12sp"
                 android:textStyle="bold"
                 android:singleLine="true"
-                android:ellipsize="end"/>
+                android:ellipsize="marquee"
+                android:marqueeRepeatLimit="marquee_forever"
+                android:focusable="true"
+                android:focusableInTouchMode="true"/>
 
             <TextView
                 android:id="@+id/tvMiniPlayerArtist"
-                android:layout_width="wrap_content"
+                android:layout_width="220dp"
                 android:layout_height="wrap_content"
-                android:maxWidth="220dp"
                 android:text=""
                 android:textColor="#9AA1AC"
                 android:textSize="10sp"
                 android:singleLine="true"
-                android:ellipsize="end"/>
+                android:ellipsize="marquee"
+                android:marqueeRepeatLimit="marquee_forever"
+                android:focusable="true"
+                android:focusableInTouchMode="true"/>
         </LinearLayout>
 
         <ImageButton

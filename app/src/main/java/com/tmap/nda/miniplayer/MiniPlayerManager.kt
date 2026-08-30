@@ -169,8 +169,8 @@ object MiniPlayerManager {
                 prevPx = prev.layoutParams.width,
                 playPausePx = playPause.layoutParams.width,
                 nextPx = next.layoutParams.width,
-                titleMaxWidthPx = title.maxWidth,
-                artistMaxWidthPx = artist.maxWidth
+                titleMaxWidthPx = title.layoutParams.width,
+                artistMaxWidthPx = artist.layoutParams.width
             )
             val savedScale = prefs.getFloat("${keyPrefix}_scale_$suffix", 1.0f)
             applyScale(savedScale, base, art, title, artist, playPause, prev, next)
@@ -205,23 +205,41 @@ object MiniPlayerManager {
             }
         }
 
+        // v: 재억 제보(2026-08-30/31, "카카오 종료 후 티맵에서 간헐적으로 터치가 안
+        // 먹힌다") - 로그로 확인: 버튼 클릭 자체(진단 로그)는 계속 찍히는데, 그 순간
+        // activeController가 비어있으면 아무 반응 없이 조용히 끝나버렸음(짧은 시간에
+        // "이전곡"이 8번 연달아 눌린 걸로 봐서 반응이 없어 계속 다시 누르신 것으로
+        // 보임). 클릭 시점에 대상이 비어있으면, 포기하지 않고 그 자리에서 즉시 세션을
+        // 다시 찾아보고 그걸로 바로 조작. #문제시 원복
+        fun ensureController(): MediaController? {
+            activeController?.let { return it }
+            val comp = ComponentName(activity, MiniPlayerNotificationListener::class.java)
+            val fresh = try { sessionManager?.getActiveSessions(comp) } catch (e: Exception) { null }
+            val recovered = fresh?.maxByOrNull { it.playbackState?.lastPositionUpdateTime ?: 0L }
+            if (recovered != null) {
+                activeController = recovered
+                lastPickedPackageName = recovered.packageName
+            }
+            return recovered
+        }
+
         playPause.setOnClickListener {
             // v: 재억 제보(2026-08-30, "카카오 화면은 되는데 티맵 화면에서는 미니플레이어
             // 버튼 터치가 아예 안 된다") - 코드상으론 두 화면 호출부가 완전히 동일해서
             // 원인을 못 짚었음. 이 로그가 안 찍히면 "터치가 버튼까지 아예 안 닿는다"는
             // 뜻(다른 뷰가 가로챔), 찍히는데도 안 움직이면 다른 원인. #문제시 원복
             NavLogger.d(activity, "[미니플레이어][진단] 재생/일시정지 버튼 클릭됨")
-            val controller = activeController ?: return@setOnClickListener
+            val controller = ensureController() ?: return@setOnClickListener
             val playing = controller.playbackState?.state == PlaybackState.STATE_PLAYING
             if (playing) controller.transportControls.pause() else controller.transportControls.play()
         }
         prev.setOnClickListener {
             NavLogger.d(activity, "[미니플레이어][진단] 이전곡 버튼 클릭됨")
-            activeController?.transportControls?.skipToPrevious()
+            ensureController()?.transportControls?.skipToPrevious()
         }
         next.setOnClickListener {
             NavLogger.d(activity, "[미니플레이어][진단] 다음곡 버튼 클릭됨")
-            activeController?.transportControls?.skipToNext()
+            ensureController()?.transportControls?.skipToNext()
         }
 
         refresh(activity, outerContainer, art, title, artist, playPause)
@@ -396,9 +414,15 @@ object MiniPlayerManager {
             height = (base.artPx * scale).toInt()
         }
         title.setTextSize(TypedValue.COMPLEX_UNIT_PX, base.titlePx * scale)
-        title.maxWidth = (base.titleMaxWidthPx * scale).toInt()
+        title.layoutParams = title.layoutParams.apply { width = (base.titleMaxWidthPx * scale).toInt() }
+        // v: 재억 요청(2026-08-31) - "제목 길이에 따라 창 크기가 바뀐다, 폭 고정하고
+        // 넘치면 흘러가게(마퀴) 해달라" - layout_width를 고정폭으로 바꾸고 여기서
+        // isSelected=true를 줘야 마퀴가 실제로 움직임(안드로이드 마퀴는 선택된 뷰에서만
+        // 애니메이션됨). #문제시 원복
+        title.isSelected = true
         artist.setTextSize(TypedValue.COMPLEX_UNIT_PX, base.artistPx * scale)
-        artist.maxWidth = (base.artistMaxWidthPx * scale).toInt()
+        artist.layoutParams = artist.layoutParams.apply { width = (base.artistMaxWidthPx * scale).toInt() }
+        artist.isSelected = true
         prev.layoutParams = prev.layoutParams.apply {
             width = (base.prevPx * scale).toInt()
             height = (base.prevPx * scale).toInt()
@@ -548,6 +572,10 @@ object MiniPlayerManager {
             ?: "재생 중"
         artist.text = notifEntry?.text
             ?: metadata.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
+        // v: 재억 요청(2026-08-31) - 곡이 바뀔 때마다 마퀴가 확실히 처음부터 다시
+        // 흐르도록 재설정. #문제시 원복
+        title.isSelected = true
+        artist.isSelected = true
 
         val bitmap = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
             ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_ART)
