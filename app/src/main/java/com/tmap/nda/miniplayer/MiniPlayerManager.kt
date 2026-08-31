@@ -172,8 +172,9 @@ object MiniPlayerManager {
                 titleMaxWidthPx = title.layoutParams.width,
                 artistMaxWidthPx = artist.layoutParams.width
             )
-            val savedScale = prefs.getFloat("${keyPrefix}_scale_$suffix", 1.0f)
-            applyScale(savedScale, base, art, title, artist, playPause, prev, next)
+            val savedScaleX = prefs.getFloat("${keyPrefix}_scaleX_$suffix", 1.0f)
+            val savedScaleY = prefs.getFloat("${keyPrefix}_scaleY_$suffix", 1.0f)
+            applyScale(savedScaleX, savedScaleY, base, art, title, artist, playPause, prev, next)
 
             outerContainer.post {
                 val x = prefs.getFloat("${keyPrefix}_x_$suffix", -1f)
@@ -340,6 +341,11 @@ object MiniPlayerManager {
      * 이제 크기 조절을 시작하는 순간 카드의 오른쪽 위 모서리 좌표를 고정해두고, 커질
      * 때마다 그 모서리 좌표를 그대로 유지한 채 outerContainer.x/y를 직접 계산해서
      * 왼쪽/아래로만 자라도록 함 - 목업(HTML/CSS)의 "앵커 고정 리사이즈"와 동일한 방식. #문제시 원복
+     *
+     * v: 재억 지적(2026-08-31) - 핸들을 어느 방향으로 끌든 dx 하나로 가로/세로/글자/아이콘을
+     * 전부 같은 비율로 키워서 "대각선으로만" 커지는 것처럼 보였음. 가로(dx)는 글자칸 너비
+     * (scaleX)만, 세로(dy)는 앨범아트/버튼/글자 크기(scaleY)만 담당하도록 분리해서 가로/세로를
+     * 각각 원하는 만큼 따로 늘릴 수 있게 함. #문제시 원복
      */
     private fun setupResizeTouch(
         activity: Activity, outerContainer: ViewGroup, confirmBtn: View, resizeHandle: View, base: BaseSizes,
@@ -347,7 +353,9 @@ object MiniPlayerManager {
         keyPrefix: String, suffix: String
     ) {
         var startRawX = 0f
-        var startScale = 1f
+        var startRawY = 0f
+        var startScaleX = 1f
+        var startScaleY = 1f
         var anchorRight = 0f
         var anchorTop = 0f
         resizeHandle.setOnTouchListener { _, event ->
@@ -355,17 +363,22 @@ object MiniPlayerManager {
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     startRawX = event.rawX
-                    startScale = art.layoutParams.width.toFloat() / base.artPx.toFloat()
+                    startRawY = event.rawY
+                    startScaleX = title.layoutParams.width.toFloat() / base.titleMaxWidthPx.toFloat()
+                    startScaleY = art.layoutParams.width.toFloat() / base.artPx.toFloat()
                     anchorRight = outerContainer.x + outerContainer.width
                     anchorTop = outerContainer.y
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     // 핸들이 카드 왼쪽 아래(확정버튼 바로 밑)에 있으니, 왼쪽으로 끌수록
-                    // (rawX 감소) 커지게. #문제시 원복
+                    // (rawX 감소) 가로로 커지고, 아래로 끌수록(rawY 증가) 세로로 커지게 -
+                    // 두 방향을 독립적으로 계산. #문제시 원복
                     val dx = event.rawX - startRawX
-                    val scale = (startScale - dx / 300f).coerceIn(MIN_SCALE, MAX_SCALE)
-                    applyScale(scale, base, art, title, artist, playPause, prev, next)
+                    val dy = event.rawY - startRawY
+                    val scaleX = (startScaleX - dx / 300f).coerceIn(MIN_SCALE, MAX_SCALE)
+                    val scaleY = (startScaleY + dy / 300f).coerceIn(MIN_SCALE, MAX_SCALE)
+                    applyScale(scaleX, scaleY, base, art, title, artist, playPause, prev, next)
                     outerContainer.post {
                         // 오른쪽 위 모서리(anchor)를 기준으로 왼쪽/아래로 키우되, 화면
                         // 밖으로 나가려 하면 그 이상은 화면 가장자리에 걸리게 함(임의의
@@ -391,9 +404,11 @@ object MiniPlayerManager {
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    val scale = art.layoutParams.width.toFloat() / base.artPx.toFloat()
+                    val scaleX = title.layoutParams.width.toFloat() / base.titleMaxWidthPx.toFloat()
+                    val scaleY = art.layoutParams.width.toFloat() / base.artPx.toFloat()
                     activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                        .putFloat("${keyPrefix}_scale_$suffix", scale)
+                        .putFloat("${keyPrefix}_scaleX_$suffix", scaleX)
+                        .putFloat("${keyPrefix}_scaleY_$suffix", scaleY)
                         .putFloat("${keyPrefix}_x_$suffix", outerContainer.x)
                         .putFloat("${keyPrefix}_y_$suffix", outerContainer.y)
                         .apply()
@@ -404,36 +419,41 @@ object MiniPlayerManager {
         }
     }
 
-    /** 앨범아트/글자/버튼 각각의 실제 크기를 배율만큼 다시 계산해서 반영 - 진짜로 커짐. */
+    /**
+     * 앨범아트/글자/버튼 각각의 실제 크기를 배율만큼 다시 계산해서 반영 - 진짜로 커짐.
+     *
+     * v: 재억 지적(2026-08-31) - 가로(scaleX)는 글자칸 고정폭만, 세로(scaleY)는
+     * 앨범아트/버튼/글자 크기만 따로 담당해서 가로/세로를 독립적으로 조절 가능. #문제시 원복
+     */
     private fun applyScale(
-        scale: Float, base: BaseSizes,
+        scaleX: Float, scaleY: Float, base: BaseSizes,
         art: ImageView, title: TextView, artist: TextView, playPause: ImageButton, prev: ImageButton, next: ImageButton
     ) {
         art.layoutParams = art.layoutParams.apply {
-            width = (base.artPx * scale).toInt()
-            height = (base.artPx * scale).toInt()
+            width = (base.artPx * scaleY).toInt()
+            height = (base.artPx * scaleY).toInt()
         }
-        title.setTextSize(TypedValue.COMPLEX_UNIT_PX, base.titlePx * scale)
-        title.layoutParams = title.layoutParams.apply { width = (base.titleMaxWidthPx * scale).toInt() }
+        title.setTextSize(TypedValue.COMPLEX_UNIT_PX, base.titlePx * scaleY)
+        title.layoutParams = title.layoutParams.apply { width = (base.titleMaxWidthPx * scaleX).toInt() }
         // v: 재억 요청(2026-08-31) - "제목 길이에 따라 창 크기가 바뀐다, 폭 고정하고
         // 넘치면 흘러가게(마퀴) 해달라" - layout_width를 고정폭으로 바꾸고 여기서
         // isSelected=true를 줘야 마퀴가 실제로 움직임(안드로이드 마퀴는 선택된 뷰에서만
         // 애니메이션됨). #문제시 원복
         title.isSelected = true
-        artist.setTextSize(TypedValue.COMPLEX_UNIT_PX, base.artistPx * scale)
-        artist.layoutParams = artist.layoutParams.apply { width = (base.artistMaxWidthPx * scale).toInt() }
+        artist.setTextSize(TypedValue.COMPLEX_UNIT_PX, base.artistPx * scaleY)
+        artist.layoutParams = artist.layoutParams.apply { width = (base.artistMaxWidthPx * scaleX).toInt() }
         artist.isSelected = true
         prev.layoutParams = prev.layoutParams.apply {
-            width = (base.prevPx * scale).toInt()
-            height = (base.prevPx * scale).toInt()
+            width = (base.prevPx * scaleY).toInt()
+            height = (base.prevPx * scaleY).toInt()
         }
         playPause.layoutParams = playPause.layoutParams.apply {
-            width = (base.playPausePx * scale).toInt()
-            height = (base.playPausePx * scale).toInt()
+            width = (base.playPausePx * scaleY).toInt()
+            height = (base.playPausePx * scaleY).toInt()
         }
         next.layoutParams = next.layoutParams.apply {
-            width = (base.nextPx * scale).toInt()
-            height = (base.nextPx * scale).toInt()
+            width = (base.nextPx * scaleY).toInt()
+            height = (base.nextPx * scaleY).toInt()
         }
     }
 
