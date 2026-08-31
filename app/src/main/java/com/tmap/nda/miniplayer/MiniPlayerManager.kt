@@ -162,6 +162,15 @@ object MiniPlayerManager {
         val alreadyInitialized = outerContainer.tag == "miniplayer_initialized"
         if (!alreadyInitialized) {
             outerContainer.tag = "miniplayer_initialized"
+            // v: 재억 제보(2026-08-31, 실기기 스크린샷 - "제목 따라 크기 바뀌고 대각선으로만
+            // 조절됨"이 여전히 재현) - 원인은 세로용 레이아웃(layout/)만 고정폭으로 고쳐지고
+            // 가로용(layout-land/) 두 파일이 wrap_content로 남아있었던 것. 그 경우
+            // layoutParams.width가 실제 픽셀이 아니라 음수 상수(-2)로 잡혀서, 이 값을 기준
+            // 삼는 가로 크기조절 계산 전체가 무의미해지고(음수 폭) 세로 방향만 먹혀
+            // "대각선으로만 커지는" 것처럼 보였음. 레이아웃 네 파일을 모두 고정폭으로
+            // 맞췄고, 여기에도 같은 실수가 재발하면 조용히 깨지는 대신 안전한 기본값
+            // (220dp - 레이아웃과 동일)으로 버티도록 방어를 둠. #문제시 원복
+            val fallbackTextWidthPx = dpToPx(activity, 220f).toInt()
             val base = BaseSizes(
                 artPx = art.layoutParams.width,
                 titlePx = title.textSize,
@@ -169,8 +178,8 @@ object MiniPlayerManager {
                 prevPx = prev.layoutParams.width,
                 playPausePx = playPause.layoutParams.width,
                 nextPx = next.layoutParams.width,
-                titleMaxWidthPx = title.layoutParams.width,
-                artistMaxWidthPx = artist.layoutParams.width
+                titleMaxWidthPx = title.layoutParams.width.takeIf { it > 0 } ?: fallbackTextWidthPx,
+                artistMaxWidthPx = artist.layoutParams.width.takeIf { it > 0 } ?: fallbackTextWidthPx
             )
             val savedScaleX = prefs.getFloat("${keyPrefix}_scaleX_$suffix", 1.0f)
             val savedScaleY = prefs.getFloat("${keyPrefix}_scaleY_$suffix", 1.0f)
