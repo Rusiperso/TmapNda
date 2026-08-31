@@ -98,34 +98,53 @@ object NavdySender {
                     s
                 } catch (e: IOException) {
                     try { s?.close() } catch (_: Exception) {}
-                    NavLogger.d("[Navdy] 표준 연결 실패(${e.message}), 채널 우회 연결 시도")
-                    // v: 재억 재제보(2026-08-28) - "나브디 쓰는 다른 사람도 안 된다"는 제보로
-                    // 다시 파봄. 표준 방식이 98% 이상 실패하는 건 확인했었지만, 그동안 우회
-                    // 방식도 "무조건 1번 채널"만 시도하고 있었음 - 근데 SPP 채널 번호는
-                    // 기기/펌웨어마다 다를 수 있어서, 1번이 애초에 이 나브디 기기의 실제
-                    // 채널이 아닐 가능성이 있음. 흔히 쓰이는 범위(1~5번)를 순서대로 시도해서
-                    // 맞는 채널을 찾도록 확장. #문제시 원복
-                    var fallback: BluetoothSocket? = null
-                    var lastFallbackError: Exception? = null
-                    for (channel in 1..5) {
-                        try {
-                            fallback = device.javaClass
-                                .getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
-                                .invoke(device, channel) as BluetoothSocket
-                            fallback.connect()
-                            NavLogger.d("[Navdy] 채널 $channel 로 연결 성공")
-                            lastFallbackError = null
-                            break
-                        } catch (e2: Exception) {
-                            try { fallback?.close() } catch (_: Exception) {}
-                            fallback = null
-                            lastFallbackError = e2
+                    NavLogger.d("[Navdy] 표준(보안) 연결 실패(${e.message}), 비보안 연결 시도")
+                    // v: 재억 요청(2026-08-31, 실기기 로그 분석) - "채널 찍기 전에 표준 방식으로
+                    // 더 못 해보냐"는 지적으로 나브디 공식 안드로이드 앱(디컴파일 오픈소스,
+                    // gitlab.com/alelec/navdy/alelec_navdy_client, BTSocketFactory.java)을 직접
+                    // 확인함. 공식 앱도 같은 UUID로 createRfcommSocketToServiceRecord(보안)를
+                    // 기본으로 쓰지만, 같은 클래스에 createInsecureRfcommSocketToServiceRecord
+                    // (비보안) 경로도 존재함. 비보안 방식은 채널 번호를 추측하는 게 아니라
+                    // SDP로 정확한 채널을 정식으로 조회하면서, 실패 원인으로 의심되는 페어링/
+                    // 암호화 협상 단계만 건너뜀 - "채널 1~5번 찍기"보다 훨씬 표준에 가까운
+                    // 방법이라 이걸 먼저 시도하고, 그래도 안 되면 기존 채널 찍기로 넘어감. #문제시 원복
+                    var insecure: BluetoothSocket? = null
+                    val insecureSock = try {
+                        insecure = device.createInsecureRfcommSocketToServiceRecord(NAVDY_SERVICE_UUID)
+                        insecure.connect()
+                        NavLogger.d("[Navdy] 비보안 연결 성공")
+                        insecure
+                    } catch (e3: IOException) {
+                        try { insecure?.close() } catch (_: Exception) {}
+                        NavLogger.d("[Navdy] 비보안 연결도 실패(${e3.message}), 채널 우회 연결 시도")
+                        null
+                    }
+                    insecureSock ?: run {
+                        // v: 재억 재제보(2026-08-28) - "나브디 쓰는 다른 사람도 안 된다"는 제보로
+                        // 다시 파봄. 표준 방식이 98% 이상 실패하는 건 확인했었지만, 그동안 우회
+                        // 방식도 "무조건 1번 채널"만 시도하고 있었음 - 근데 SPP 채널 번호는
+                        // 기기/펌웨어마다 다를 수 있어서, 1번이 애초에 이 나브디 기기의 실제
+                        // 채널이 아닐 가능성이 있음. 흔히 쓰이는 범위(1~5번)를 순서대로 시도해서
+                        // 맞는 채널을 찾도록 확장. #문제시 원복
+                        var fallback: BluetoothSocket? = null
+                        var lastFallbackError: Exception? = null
+                        for (channel in 1..5) {
+                            try {
+                                fallback = device.javaClass
+                                    .getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
+                                    .invoke(device, channel) as BluetoothSocket
+                                fallback.connect()
+                                NavLogger.d("[Navdy] 채널 $channel 로 연결 성공")
+                                lastFallbackError = null
+                                break
+                            } catch (e2: Exception) {
+                                try { fallback?.close() } catch (_: Exception) {}
+                                fallback = null
+                                lastFallbackError = e2
+                            }
                         }
+                        fallback ?: throw (lastFallbackError ?: e)
                     }
-                    if (fallback == null) {
-                        throw lastFallbackError ?: e
-                    }
-                    fallback
                 }
                 socket = sock
                 outputStream = sock.outputStream
