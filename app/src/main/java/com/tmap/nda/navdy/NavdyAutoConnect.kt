@@ -49,7 +49,7 @@ object NavdyAutoConnect {
             }
             if (navdyDevice != null) {
                 NavLogger.d(context, "[Navdy] 페어링된 기기 발견: ${navdyDevice.name} - 연결 시도")
-                NavdySender.connect(navdyDevice)
+                NavdySender.connect(context, navdyDevice)
             } else {
                 NavLogger.d(context, "[Navdy] 페어링된 Navdy 기기 없음 (블루투스 설정에서 먼저 페어링 필요)")
             }

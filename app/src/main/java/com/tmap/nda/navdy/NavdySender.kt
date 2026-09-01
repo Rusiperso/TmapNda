@@ -3,12 +3,20 @@ package com.tmap.nda.navdy
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
+import android.os.ParcelUuid
 import com.tmap.nda.NavLogger
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.OutputStream
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * Navdy 애프터마켓 HUD/클러스터로 경로 안내 정보를 블루투스로 전송.
@@ -58,7 +66,7 @@ object NavdySender {
      * 지정한 블루투스 기기(Navdy 또는 Navdy 프로토콜 호환 기기)로 연결 시도.
      * 이미 페어링되어 있는 BluetoothDevice를 넘겨줘야 함.
      */
-    fun connect(device: BluetoothDevice) {
+    fun connect(context: Context, device: BluetoothDevice) {
         if (connecting || socket?.isConnected == true) return
         connecting = true
         executor.execute {
@@ -76,6 +84,18 @@ object NavdySender {
                 } catch (e: SecurityException) {
                     NavLogger.d("[Navdy] cancelDiscovery 권한 없음 - 건너뛰고 연결 계속 시도")
                 }
+                // v: 재억 제보(2026-08-31, 로그 재분석) - 정식 연결(보안/비보안) 시도가
+                // 매번 "read failed, socket might closed or timeout"으로 즉시(0.1초 내) 실패하고,
+                // 그 다음 채널 우회 연결은 항상 2번 채널에서 "성공"으로 뜨지만 처음 데이터를
+                // 보내는 순간(빠르면 17ms, 늦어도 1초 내) 100% Broken pipe로 끊기는 걸 확인함.
+                // 연결 유지 시간과 상관없이 "첫 전송"에서 무조건 끊긴다는 건, 채널 우회 연결이
+                // 진짜 연결이 아니라 안드로이드가 SDP(기기가 어느 채널을 쓰는지 조회하는 절차)를
+                // 건너뛰고 억지로 연 껍데기일 가능성이 높다는 뜻. 이 "read failed" 에러 자체는
+                // 삼성 최신 안드로이드에서 흔히 보고되는 문제로, SDP 캐시가 새로 갱신되기 전에
+                // 연결을 시도해서 생기는 경우가 많다고 알려져 있음. 그래서 정식 연결을 시도하기
+                // 전에 fetchUuidsWithSdp()로 강제로 새로 조회하고, 그 결과(ACTION_UUID 브로드캐스트)를
+                // 최대 3초까지 기다렸다가 연결하도록 함. #문제시 원복
+                refreshSdpAndWait(context, device)
                 // v: 재억 제보(2026-08-28, 실기기 로그로 확인) - "IOException read failed, socket
                 // might closed or timeout, read ret: -1" 실패가 계속 남음. 표준 방식
                 // (createRfcommSocketToServiceRecord)은 연결 전에 SDP로 UUID 서비스 조회를
@@ -158,6 +178,37 @@ object NavdySender {
             } finally {
                 connecting = false
             }
+        }
+    }
+
+    // v: 재억 제보(2026-08-31, 로그 재분석) - fetchUuidsWithSdp()는 비동기라 호출만 하고 바로
+    // connect()하면 아무 의미가 없음(기존 캐시 그대로 씀). ACTION_UUID 브로드캐스트가 올 때까지
+    // 최대 3초 기다림 - SDP 조회가 실패하거나 너무 오래 걸리면 그냥 넘어가서 기존 방식대로
+    // 진행(최소한 지금보다 나빠지진 않음). #문제시 원복
+    private fun refreshSdpAndWait(context: Context, device: BluetoothDevice) {
+        val latch = CountDownLatch(1)
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                if (intent?.action == BluetoothDevice.ACTION_UUID) {
+                    val uuids = intent.getParcelableArrayExtra(BluetoothDevice.EXTRA_UUID)
+                    NavLogger.d("[Navdy] SDP 새로고침 결과: ${uuids?.joinToString { (it as? ParcelUuid)?.uuid.toString() } ?: "없음"}")
+                    latch.countDown()
+                }
+            }
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(receiver, IntentFilter(BluetoothDevice.ACTION_UUID), Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                context.registerReceiver(receiver, IntentFilter(BluetoothDevice.ACTION_UUID))
+            }
+            if (device.fetchUuidsWithSdp()) {
+                latch.await(3, TimeUnit.SECONDS)
+            }
+        } catch (e: Exception) {
+            NavLogger.d("[Navdy] SDP 새로고침 실패(${e.message}) - 기존 방식으로 계속 진행")
+        } finally {
+            try { context.unregisterReceiver(receiver) } catch (_: Exception) {}
         }
     }
 
