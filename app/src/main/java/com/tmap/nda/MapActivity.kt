@@ -1792,7 +1792,7 @@ class MapActivity : AppCompatActivity() {
                 tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ tone.release() }, 500)
             } catch (e: Exception) {
-                NavLogger.e(this, "속도경고음 재생 예외: ${e.message}")
+                NavLogger.flushTrace(this, "voice", "속도경고음 재생 예외: ${e.message}")
             }
         }
     }

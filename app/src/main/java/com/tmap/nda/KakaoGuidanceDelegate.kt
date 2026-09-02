@@ -415,7 +415,7 @@ class KakaoGuidanceDelegate(
                 val distToDest = locationGuide.javaClass.methods.firstOrNull { it.name == "getDist" }?.invoke(locationGuide)
                 "[경로추적] 도로=$roadName 남은거리=$distToDest (경로선 위에서 매칭된 위치를 계속 받고 있으면 정상 추종 중)"
             } catch (e: Exception) { "[경로추적] 요약 실패: ${e.message}" }
-            NavLogger.d(context, summary)
+            NavLogger.trace("route", summary)   // 평소엔 메모리에만, 문제 생길 때 같이 나옴 #문제시 원복
         }
 
         // 현재 카카오 경로와 현재 위치를 기준으로 목적지까지 남은 거리/시간 계산
@@ -519,7 +519,7 @@ class KakaoGuidanceDelegate(
                 }
                 if (now - lastLocationLogAt < 50) {
                     // 위 2초 스로틀 로그와 같은 타이밍에 한 번만 같이 남김
-                    NavLogger.d(context, "[카카오 도로제한속도 조사] 매칭게터=$matchedGetterName 값=$kakaoLimit (30~150 범위 밖이면 0으로 무시됨)")
+                    NavLogger.dIfChanged(context, "kakao_limit", "[카카오 도로제한속도 조사] 매칭게터=$matchedGetterName 값=$kakaoLimit")
                 }
 
                 val myDistFromS = findGetterInt(currentLocation, "DistFromS")
@@ -1230,7 +1230,7 @@ class KakaoGuidanceDelegate(
         newData: MutableList<ByteArray>
     ): Boolean {
         val allow = isRouteGuideActive()
-        NavLogger.d(context, "[음성] shouldPlayVoiceGuide 호출됨 allow=$allow ${tmapMuteStateSnapshot()}")
+        NavLogger.trace("voice", "[음성] shouldPlayVoiceGuide allow=$allow ${tmapMuteStateSnapshot()}")
         // v1.0.99: naviView.shouldPlayVoiceGuide()를 relay하면 naviView가 재생 여부를
         // 자체적으로 다시 판단해서(우리 kakaoMuted 값과 무관하게) 소리가 계속 나던 것으로
         // 의심됨 - CarrotNavi도 이 메서드는 naviView로 relay 안 함. 우리 델리게이트가
@@ -1304,7 +1304,7 @@ class KakaoGuidanceDelegate(
     }
 
     override fun willPlayVoiceGuide(guidance: KNGuidance, voiceGuide: KNGuide_Voice) {
-        NavLogger.d(context, "[음성] willPlayVoiceGuide(카카오 음성 재생 시작) ${tmapMuteStateSnapshot()}")
+        NavLogger.trace("voice", "[음성] 카카오 음성 재생 시작 ${tmapMuteStateSnapshot()}")
         AudioStreamDiagnostics.log(context, "카카오음성시작")
         // v: 재억 제보(2026-08-23) - 안내음량을 30%로 낮춰놔도 경로 중간에 카카오 음성이
         // 나올 때 갑자기 소리가 커지는 증상. [볼륨진단] 로그로 확인해보니 카카오 음성이
@@ -1325,7 +1325,7 @@ class KakaoGuidanceDelegate(
     }
 
     override fun didFinishPlayVoiceGuide(guidance: KNGuidance, voiceGuide: KNGuide_Voice) {
-        NavLogger.d(context, "[음성] didFinishPlayVoiceGuide(카카오 음성 재생 끝) ${tmapMuteStateSnapshot()}")
+        NavLogger.trace("voice", "[음성] 카카오 음성 재생 끝 ${tmapMuteStateSnapshot()}")
         // v: 재억 제보(2026-08-22) - "소리가 들락날락한다"는 원인을 잡으려면 재생 시작
         // 순간뿐 아니라 끝나는 순간의 볼륨도 같이 봐야 비교가 됨(시작=X, 끝=Y처럼).
         // 기존엔 시작 순간만 찍었음. #문제시 원복

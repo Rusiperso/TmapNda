@@ -3151,7 +3151,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         if (shouldWarn) {
             SdiDataRepository.lastOverSpeedWarningTime = now
             if (nearCamera) SdiDataRepository.cameraApproachWarned = true
-            NavLogger.e(this, "[과속경고음발생][카카오화면] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1}) nearCamera=$nearCamera")
+// v: 재억 요청(2026-09-02) - 경고음이 왜 울렸는지는 그 직전 GPS·경로 상황을 봐야
+            // 알 수 있어서, 평소 메모리에만 쌓아둔 기록을 이 순간 같이 뱉음. #문제시 원복
+            NavLogger.flushTrace(this, "gps", "[과속경고음발생][카카오화면] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1}) nearCamera=$nearCamera")
             try {
                 // v: 재억 지적(2026-08-22) - MapActivity와 동일한 문제(안내음량 설정이 안 먹힘). #문제시 원복
                 val volumePercent = VolumeHelper.guideVolumePercent(this).coerceIn(1, 100)
@@ -3160,7 +3162,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ tone.release() }, 500)
             } catch (e: Exception) {
-                NavLogger.e(this, "속도경고음 재생 예외: ${e.message}")
+                NavLogger.flushTrace(this, "voice", "속도경고음 재생 예외: ${e.message}")
             }
         }
     }
@@ -3206,8 +3208,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     gpsOnLocationChangedMethod = gpsManager.javaClass.getMethod("onLocationChanged", Location::class.java)
                 }
                 gpsOnLocationChangedMethod?.invoke(gpsManager, location)
-                NavLogger.d(
-                    this,
+                NavLogger.trace(
+                    "gps",
                     "[GPS] KNSDK로 전달됨: lat=${location.latitude} lon=${location.longitude} " +
                         "speed=${location.speed} bearing=${location.bearing} accuracy=${location.accuracy}"
                 )

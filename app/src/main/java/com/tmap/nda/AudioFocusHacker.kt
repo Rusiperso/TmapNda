@@ -68,12 +68,12 @@ object AudioStreamDiagnostics {
             val volDump = streams.entries.joinToString(", ") { (name, stream) ->
                 "$name=${am.getStreamVolume(stream)}/${am.getStreamMaxVolume(stream)}"
             }
-            NavLogger.e(context, "[볼륨진단][$tag] 스트림볼륨: $volDump")
+            NavLogger.trace("voice", "[볼륨진단][$tag] 스트림볼륨: $volDump")
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                 val configs = am.activePlaybackConfigurations
                 for (cfg in configs) {
                     val attrs = cfg.audioAttributes
-                    NavLogger.e(context, "[볼륨진단][$tag] 활성재생: usage=${attrs.usage} contentType=${attrs.contentType}")
+                    NavLogger.trace("voice", "[볼륨진단][$tag] 활성재생: usage=${attrs.usage} contentType=${attrs.contentType}")
                 }
             }
         } catch (e: Exception) {

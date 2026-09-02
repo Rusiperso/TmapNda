@@ -483,7 +483,10 @@ object NavdySender {
                     // 한 줄로 남김. #문제시 원복
                     receivedCountSinceConnect++
                     if (receivedCountSinceConnect == 1) {
-                        NavLogger.d("[Navdy] 나브디에서 데이터 받기 시작(${n}바이트) - 이후 수신은 로그 생략")
+                        NavLogger.d("[Navdy] 나브디에서 데이터 받기 시작(${n}바이트) - 이후 수신은 메모리에만 기록")
+                    } else {
+                        // 평소엔 파일에 안 남기고 메모리에만. 끊길 때 한꺼번에 나옴. #문제시 원복
+                        NavLogger.trace("navdy", "수신 ${n}바이트")
                     }
                 }
             } catch (e: Exception) {
@@ -492,7 +495,7 @@ object NavdySender {
                 // 남김 - 전송 쪽 Broken pipe 로그와 대조해서 어느 쪽이 먼저 끊었는지
                 // 판단하는 데 씀. 연결 유지 시간/그동안 보낸 성공 횟수도 같이 남겨서
                 // "받아보지도 못하고 끊겼는지 vs 한동안 잘 받다 끊겼는지" 구분되게 함. #문제시 원복
-                NavLogger.d("[Navdy] 받는 스레드 종료: ${e.javaClass.simpleName} ${e.message}, ${connectionAgeMs()}ms만에, 그동안 보낸 전송 성공 ${sentCountSinceConnect}회, 살아있음 신호 ${pingCountSinceConnect}회, 수신 ${receivedCountSinceConnect}회")
+                NavLogger.flushTrace("navdy", "[Navdy] 받는 스레드 종료: ${e.javaClass.simpleName} ${e.message}, ${connectionAgeMs()}ms만에, 그동안 보낸 전송 성공 ${sentCountSinceConnect}회, 살아있음 신호 ${pingCountSinceConnect}회, 수신 ${receivedCountSinceConnect}회")
             }
         }
         thread.isDaemon = true
@@ -564,7 +567,10 @@ object NavdySender {
                 sentCountSinceConnect++
                 lastSentAtMs = System.currentTimeMillis()
                 if (sentCountSinceConnect == 1) {
-                    NavLogger.d("[Navdy] 첫 전송 성공: 도로=$currentRoad 턴=${turn.name} 거리=$distanceToTurn 크기=${eventBytes.size}B (이후 전송은 로그 생략)")
+                    NavLogger.d("[Navdy] 첫 전송 성공: 도로=$currentRoad 턴=${turn.name} 거리=$distanceToTurn 크기=${eventBytes.size}B (이후 전송은 메모리에만 기록)")
+                } else {
+                    // 평소엔 파일에 안 남기고 메모리에만. 끊길 때 직전 상황으로 같이 나옴. #문제시 원복
+                    NavLogger.trace("navdy", "전송 도로=$currentRoad 턴=${turn.name} 거리=$distanceToTurn ${eventBytes.size}B")
                 }
             } catch (e: Exception) {
                 // v: 재억 요청(2026-09-02) - "보내다 끊겼는지 보내보지도 못하고 끊겼는지"까지
@@ -573,7 +579,7 @@ object NavdySender {
                 // 성공하지 못하고 끊긴 것. e.message에는 writeFramed()가 붙인 단계 정보
                 // ([길이헤더 전송 중]/[본문 전송 중]/[flush 중])가 포함되어 있어 정확히
                 // 어느 단계에서 끊겼는지도 같이 남음. #문제시 원복
-                NavLogger.e("[Navdy] 전송 실패로 연결 끊김 처리: ${e.javaClass.simpleName} ${e.message}, 이 연결에서 성공 ${sentCountSinceConnect}회 후 끊김, 살아있음 신호 ${pingCountSinceConnect}회, 연결 유지 ${connectionAgeMs()}ms")
+                NavLogger.flushTrace("navdy", "[Navdy] 전송 실패로 연결 끊김 처리: ${e.javaClass.simpleName} ${e.message}, 이 연결에서 성공 ${sentCountSinceConnect}회 후 끊김, 살아있음 신호 ${pingCountSinceConnect}회, 연결 유지 ${connectionAgeMs()}ms")
                 // v: 재억 요청(2026-08-28) - 전송이 실패해도 socket/outputStream을 그대로 두면,
                 // 안드로이드 BluetoothSocket.isConnected()가 물리적 연결 끊김을 실시간으로
                 // 반영 안 해줘서(close() 호출 전까진 계속 true로 보고할 수 있음) 재연결 루프가
@@ -659,6 +665,8 @@ object NavdySender {
                     // 누적 횟수로 확인 가능. #문제시 원복
                     if (pingCountSinceConnect == 1) {
                         NavLogger.d("[Navdy] 살아있음 신호(Ping) 전송 시작 - 이후 4초마다 자동 전송")
+                    } else {
+                        NavLogger.trace("navdy", "살아있음 신호 ${pingCountSinceConnect}번째")
                     }
                 } catch (e: InterruptedException) {
                     return@Thread

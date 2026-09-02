@@ -32,7 +32,7 @@ object MainThreadWatchdog {
                 if (sinceLast > 1000L) {
                     NavLogger.e(context, "[전역워치독] 메인스레드 멈춤 감지! 공백=${sinceLast}ms")
                 } else if (now % 5000L < 300L) {
-                    NavLogger.d(context, "[전역워치독] 정상 (틱간격=${sinceLast}ms)")
+                    NavLogger.dIfChanged(context, "watchdog", "[전역워치독] 정상")
                 }
                 lastTickAt = now
                 handler.postDelayed(this, 300L)

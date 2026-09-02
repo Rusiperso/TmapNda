@@ -107,6 +107,80 @@ object NavLogger {
         appContext?.let { appendToFile(it, "E", message) }
     }
 
+    // v: 재억 요청(2026-09-02) - "로그를 계속 쌓지 말고 상태가 바뀔 때만 남게 정리하자".
+    // 실기기 로그 5.6만 줄을 세어보니 70%가 "같은 상태를 반복해서 알리는 줄"이었음
+    // (예: "비콘 타임아웃" 10,766줄, "전송됨" 7,639줄, "워치독 정상" 1,092줄).
+    // 값이 실제로 바뀌는 순간만 남기면 정보는 그대로면서 용량만 줄어듦.
+    //
+    // dIfChanged: 같은 key로 들어온 직전 메시지와 내용이 같으면 생략.
+    //             (상태가 다시 바뀌면 그때 다시 남으므로 변화는 절대 놓치지 않음)
+    // dThrottled: 값이 매번 달라지는 로그(좌표 등)를 최소 간격 이상일 때만 남김.
+    // #문제시 원복: 각 호출부를 NavLogger.d(...)로 되돌리면 됨
+    private val lastLoggedMessage = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val lastLoggedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    fun dIfChanged(context: Context, key: String, message: String) {
+        if (lastLoggedMessage.put(key, message) == message) return
+        d(context, message)
+    }
+
+    fun dIfChanged(key: String, message: String) {
+        if (lastLoggedMessage.put(key, message) == message) return
+        d(message)
+    }
+
+    // v: 재억 질문(2026-09-02) - "끊겼을 때 왜?만 남기면 앞뒤 상황을 몰라서 또 안 되나?"
+    // 정확한 지적. 원인이 그 한 줄에 다 담기는 경우(권한 없음, 블루투스 꺼짐)는 괜찮지만,
+    // "연결이 끊겼다" 같은 건 **직전에 뭘 하다 끊겼는지**가 곧 원인이라 한 줄로는 부족함.
+    //
+    // 그래서 평소에는 파일에 안 쓰고 메모리에만 최근 기록을 들고 있다가(trace),
+    // 문제가 터지는 순간 그 직전 상황까지 한꺼번에 파일에 남김(flushTrace).
+    // 평소 용량은 0이고, 문제 순간에만 앞뒤 맥락이 남음.
+    // #문제시 원복: trace() 호출을 d()로 바꾸면 예전처럼 전부 기록됨
+    private const val TRACE_MAX = 40
+    private val traceBuffers = java.util.concurrent.ConcurrentHashMap<String, java.util.ArrayDeque<String>>()
+
+    /** 평소엔 파일에 안 남기고 메모리에만 쌓아둠(최근 40줄). */
+    fun trace(key: String, message: String) {
+        val buf = traceBuffers.getOrPut(key) { java.util.ArrayDeque() }
+        synchronized(buf) {
+            buf.addLast("${timestamp()} $message")
+            while (buf.size > TRACE_MAX) buf.removeFirst()
+        }
+    }
+
+    /** 문제가 생긴 순간 호출 - 직전 상황을 한꺼번에 파일에 남기고 버퍼를 비움. */
+    fun flushTrace(context: Context, key: String, reason: String) {
+        val buf = traceBuffers[key]
+        val lines = synchronized(buf ?: java.util.ArrayDeque<String>()) {
+            buf?.toList().orEmpty().also { buf?.clear() }
+        }
+        e(context, reason)
+        if (lines.isEmpty()) return
+        e(context, "  ↑ 직전 상황 ${lines.size}줄:")
+        lines.forEach { e(context, "  | $it") }
+    }
+
+    fun flushTrace(key: String, reason: String) {
+        val ctx = appContext
+        if (ctx != null) {
+            flushTrace(ctx, key, reason)
+        } else {
+            e(reason)
+        }
+    }
+
+    private fun timestamp(): String =
+        java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.KOREA).format(java.util.Date())
+
+    fun dThrottled(context: Context, key: String, minIntervalMs: Long, message: String) {
+        val now = System.currentTimeMillis()
+        val last = lastLoggedAt[key] ?: 0L
+        if (now - last < minIntervalMs) return
+        lastLoggedAt[key] = now
+        d(context, message)
+    }
+
     /** 로그 파일(들)을 이메일로 공유하는 Intent 생성. 회전되어 쌓여있던 로그가 있으면 전부 한번에 첨부함.
      *  v10.1: 공유 화면에서 돌아오면 MapActivity/KakaoNaviActivity의 shareLogLauncher가
      *  deleteAllLogFiles를 호출해서 삭제함(재억 재요청으로 원복). #문제시 원복 */

@@ -151,7 +151,7 @@ object VolumeHelper {
         try {
             kakaoGuideVolumeApplier?.invoke(percent / 100f)
         } catch (e: Exception) {
-            NavLogger.e(context, "[안내음량] 카카오 적용 예외: ${e.message}")
+            NavLogger.flushTrace(context, "voice", "[안내음량] 카카오 적용 예외: ${e.message}")
         }
         // 티맵 안내 음성(0~100). 티맵 SDK 자체 음성 볼륨이라 미디어 음량과는 별개.
         //
@@ -166,7 +166,7 @@ object VolumeHelper {
                 .getBoolean("tmap_muted", false)
             TmapUISDK.setVolume(context.applicationContext, if (tmapMuted) 0 else percent)
         } catch (e: Exception) {
-            NavLogger.e(context, "[안내음량] 티맵 적용 예외: ${e.message}")
+            NavLogger.flushTrace(context, "voice", "[안내음량] 티맵 적용 예외: ${e.message}")
         }
     }
 

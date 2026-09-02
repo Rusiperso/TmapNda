@@ -1282,7 +1282,7 @@ class UdpSenderService : Service() {
                             if (kr.safetyType == 22) {
                                 json.put("roadcate", 8)
                             }
-                            NavLogger.d(this@UdpSenderService, "[안전정보 우선순위] 검증된 카카오값 우선 채택: type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}")
+                            NavLogger.dIfChanged(this@UdpSenderService, "sdi_priority", "[안전정보 우선순위] 검증된 카카오값 우선 채택: type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit}")
                         } else if (!tmapHasSdi && kakaoHasSdi) {
                             if (kr.safetyDistTrusted) {
                                 json.put("nSdiType", safeKakaoSdiType)
@@ -1337,7 +1337,7 @@ class UdpSenderService : Service() {
                         // 자주 안 바뀌니 10초 간격으로 줄임. #문제시 원복
                         if (System.currentTimeMillis() - lastKakaoOverwriteLogTime > 10_000L) {
                             lastKakaoOverwriteLogTime = System.currentTimeMillis()
-                            NavLogger.d(this@UdpSenderService, "[카카오->openpilot] UDP 페이로드 카카오 데이터로 덮어씀: nGoPosDist=${kr.remainDist} nTBTDist=$kakaoTbtDist turnType=${kr.tbtTurnType}")
+                            NavLogger.dIfChanged(this@UdpSenderService, "kakao_udp", "[카카오->openpilot] UDP 페이로드 카카오 데이터로 덮어씀: turnType=${kr.tbtTurnType}")
                         }
                     }
 
@@ -1535,7 +1535,7 @@ class UdpSenderService : Service() {
                         // 실제 값을 확실히 볼 수 있게 함. #문제시 원복
                         if (System.currentTimeMillis() - lastActivePeriodicLogTime > 5000) {
                             lastActivePeriodicLogTime = System.currentTimeMillis()
-                            NavLogger.d(this@UdpSenderService, "[OP상태 주기] active=$active, xState=$xState, trafficState=$trafficState, ip=$ip, carrot2=$carrot2")
+                            NavLogger.dIfChanged(this@UdpSenderService, "op_state", "[OP상태] active=$active, xState=$xState, trafficState=$trafficState, ip=$ip, carrot2=$carrot2")
                         }
 
                         OpenpilotStateRepository.updateState(carrot2, ip, trafficState, xState, active)
@@ -1804,7 +1804,7 @@ class UdpSenderService : Service() {
                 }
 
                 if (System.currentTimeMillis() - lastHttpNaviLogTime > 5000) {
-                    NavLogger.d(this@UdpSenderService, "[콤마 HTTP API] 5초 요약: 성공=$httpNaviSuccessCount 실패=$httpNaviFailCount ${if (httpNaviFailCount > 0) "마지막실패이유=$lastHttpNaviErrorMsg" else ""}")
+                    NavLogger.dIfChanged(this@UdpSenderService, "http_api", "[콤마 HTTP API] 성공=$httpNaviSuccessCount 실패=$httpNaviFailCount ${if (httpNaviFailCount > 0) "마지막실패이유=$lastHttpNaviErrorMsg" else ""}")
                     httpNaviSuccessCount = 0
                     httpNaviFailCount = 0
                     lastHttpNaviLogTime = System.currentTimeMillis()
@@ -1948,7 +1948,9 @@ class UdpSenderService : Service() {
 
                     // 8초 넘게 비콘이 없으면 연결 끊긴 것으로 보고 초기화
                     if (System.currentTimeMillis() - ndaLastBeaconTime > NDA_ACTIVE_TIMEOUT_MS) {
-                        NavLogger.d(this@UdpSenderService, "[NDA] 비콘 타임아웃, openpilot 연결 해제")
+                        if (ndaRemoteAddr != null) {
+                            NavLogger.d(this@UdpSenderService, "[NDA] 비콘 타임아웃, openpilot 연결 해제")
+                        }
                         ndaRemoteAddr = null
                         OpenpilotStateRepository.updateNdaConnected(false)
                     }
@@ -1974,7 +1976,7 @@ class UdpSenderService : Service() {
                 // 방지턱 미감속 문제 진단용: Tmap SDK의 nSdiType 원본값이 openpilot이
                 // 기대하는 cam_type=22(방지턱) 체계와 실제로 일치하는지 확인하기 위한 로그.
                 // #문제시 원복
-                NavLogger.d(this@UdpSenderService, "[NDA] nSdiType=$sdiType (openpilot cam_type으로 그대로 전달됨) speedLimit=$sdiSpeedLimit dist=$sdiDist")
+                NavLogger.dIfChanged(this@UdpSenderService, "nda_sdi", "[NDA] nSdiType=$sdiType (openpilot cam_type으로 그대로 전달됨) speedLimit=$sdiSpeedLimit")
             }
 
             var effectiveRoadLimit = src.optInt("nRoadLimitSpeed", 0)
