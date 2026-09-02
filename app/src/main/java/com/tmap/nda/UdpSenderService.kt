@@ -376,6 +376,9 @@ class UdpSenderService : Service() {
         return kr.safetyType >= 0 && kr.safetyDist > 0
     }
     private var lastCameraLimitBlockLogTime = 0L
+    // v: 재억 요청(2026-09-02) - 티맵 자체 도로매칭 진단 로그 스로틀용. #문제시 원복
+    private var lastMatchingDiagLogTime = 0L
+    private var lastMatchingBaselineLogTime = 0L
     private var sdiType = 0
     private var sdiSpeedLimit = 0
     private var sdiDistance = 0
@@ -804,6 +807,19 @@ class UdpSenderService : Service() {
                     // realRoadLimit로 generalRoadLimitSpeed를 갱신하지 않음(roadLimitSpeed는
                     // 계속 갱신 - openpilot 카메라 감속용이라 문제 없음). #문제시 원복
                     val realRoadLimit = getRoadLimitSpeedFromEngine()
+                    // v: 재억 요청(2026-09-02) - 티맵 단독 주행에서도 같은 방어를 걸 수 있는지
+                    // 확인하기 위한 진단(동작 변경 없음). 값이 실제로 바뀌려는 순간에 남겨야
+                    // 의미가 있으므로, 제한속도가 지금과 다른 프레임에서만(그리고 3초 스로틀)
+                    // 남김. 값이 안정된 구간에서는 30초에 한 번 기준선만 남김. #문제시 원복
+                    if (realRoadLimit >= 30 && realRoadLimit != generalRoadLimitSpeed) {
+                        if (System.currentTimeMillis() - lastMatchingDiagLogTime > 3000L) {
+                            lastMatchingDiagLogTime = System.currentTimeMillis()
+                            logTmapMatchingDiagnostics("제한속도 변화시도 티맵=$realRoadLimit 기존=$generalRoadLimitSpeed")
+                        }
+                    } else if (System.currentTimeMillis() - lastMatchingBaselineLogTime > 30_000L) {
+                        lastMatchingBaselineLogTime = System.currentTimeMillis()
+                        logTmapMatchingDiagnostics("기준선(값 안정, 현재=$generalRoadLimitSpeed)")
+                    }
                     if (realRoadLimit >= 30) {
                         lastRoadLimitUpdateTime = System.currentTimeMillis()
                         // v: 재억 제보(2026-08-28, 실기기 로그로 확인) - 예전엔 roadLimitSpeed(실제
@@ -2087,5 +2103,56 @@ class UdpSenderService : Service() {
             NavLogger.e(this, "Reflection error (RoadLimitSpeed): ${e.message}")
         }
         return -1
+    }
+
+    /**
+     * v: 재억 질문(2026-09-02) - "카카오 길안내를 안 하고 티맵으로만 갈 때도 옆도로 튀는 게
+     * 줄어드느냐" -> 지금은 안 줄어듦. 이번에 넣은 방어는 전부 카카오 경로를 심판으로 쓰기
+     * 때문에, 카카오 안내가 없으면 통째로 건너뜀.
+     *
+     * 다만 티맵 엔진(rgData)도 같은 판정에 쓸 수 있는 재료를 갖고 있음:
+     *   - linkId / nLinkIdx : 지금 매칭된 도로 링크. 바뀌면 도로가 진짜 바뀐 것(카카오 도로명 대체)
+     *   - roadcate          : 도로 등급(고속/국도/일반). 등급 변화도 실제 도로 변경 신호
+     *   - nearLinks         : 근처 후보 링크 개수. 2개 이상 = 고가도로/평행도로/진출로가 겹치는
+     *                         구간 = 바로 오매칭이 일어나는 지점
+     * 즉 "후보가 여러 개인데 링크는 그대로 -> 하향 거부"로 카카오 없이도 같은 방어가 가능함.
+     *
+     * 그런데 직전 로그의 rgData 덤프는 안내가 안 돌던 순간에 찍혀서 이 값들이 전부 0이었음.
+     * 안전운전 모드에서 실제로 채워지는지 확인이 안 된 상태로 규칙을 걸면, 값이 0인 채로
+     * "항상 오매칭 위험"으로 판정해서 제한속도가 영영 안 바뀌는 더 나쁜 상황이 됨.
+     * 그래서 이번 버전은 동작을 전혀 바꾸지 않고 값만 남김. 다음 실주행 로그에서
+     * (1) 값이 채워지는지 (2) 실제로 튀는 순간 nearLinks가 2 이상으로 올라가는지
+     * 두 가지가 확인되면, 그때 카카오와 동일한 방어를 티맵 단독 모드에도 붙일 예정. #문제시 원복
+     */
+    private fun logTmapMatchingDiagnostics(reason: String) {
+        try {
+            val sdkManager = getInstanceMethod?.invoke(sdkManagerCompanion) ?: return
+            if (getRecentRGDataMethod == null) {
+                getRecentRGDataMethod = sdkManager.javaClass.getMethod("getRecentRGData")
+            }
+            val rgData = getRecentRGDataMethod?.invoke(sdkManager) ?: return
+            fun intOf(name: String): String = try {
+                val f = rgData.javaClass.getField(name)
+                f.isAccessible = true
+                "${f.get(rgData)}"
+            } catch (e: Exception) { "없음" }
+
+            val nearLinkCount = try {
+                val f = rgData.javaClass.getField("nearLinkInfos")
+                f.isAccessible = true
+                (f.get(rgData) as? Array<*>)?.size ?: -1
+            } catch (e: Exception) { -1 }
+
+            NavLogger.d(
+                this,
+                "[도로매칭진단] $reason | linkId=${intOf("linkId")} nLinkIdx=${intOf("nLinkIdx")} " +
+                    "roadcate=${intOf("roadcate")} nearLinks=${intOf("nearLinks")} nearLinkInfos크기=$nearLinkCount " +
+                    "linkLength=${intOf("linkLength")} currentLinkAngle=${intOf("currentLinkAngle")} " +
+                    "nPosAngle=${intOf("nPosAngle")} nPosSpeed=${intOf("nPosSpeed")} " +
+                    "카카오안내중=${KakaoRouteDataRepository.isFresh()}"
+            )
+        } catch (e: Exception) {
+            NavLogger.e(this, "[도로매칭진단] 실패: ${e.message}")
+        }
     }
 }
