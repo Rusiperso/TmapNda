@@ -153,9 +153,18 @@ object VolumeHelper {
         } catch (e: Exception) {
             NavLogger.e(context, "[안내음량] 카카오 적용 예외: ${e.message}")
         }
-        // 티맵 안내 음성(0~100). 티맵 SDK 자체 음성 볼륨이라 미디어 음량과는 별개. #문제시 원복
+        // 티맵 안내 음성(0~100). 티맵 SDK 자체 음성 볼륨이라 미디어 음량과는 별개.
+        //
+        // v: 재억 제보(2026-09-02) - "카카오 길안내 중에 티맵 음성이(음소거 사용 중인데도)
+        // 섞여 들어온다". v19.2.78에서 제가 만든 버그였음. 이 함수가 티맵 음소거 설정을
+        // 보지 않고 무조건 길안내 음량%를 티맵에도 적용해버려서, 음소거(볼륨 0)로 눌러둔
+        // 걸 이 함수가 매번 되살리고 있었음. 게다가 이 함수는 카카오 음성이 재생될 때마다
+        // (willPlayVoiceGuide/didFinishPlayVoiceGuide) 호출돼서 음소거가 계속 풀렸음.
+        // 이제 음소거가 켜져 있으면 티맵 볼륨은 0으로 유지함. #문제시 원복
         try {
-            TmapUISDK.setVolume(context.applicationContext, percent)
+            val tmapMuted = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .getBoolean("tmap_muted", false)
+            TmapUISDK.setVolume(context.applicationContext, if (tmapMuted) 0 else percent)
         } catch (e: Exception) {
             NavLogger.e(context, "[안내음량] 티맵 적용 예외: ${e.message}")
         }

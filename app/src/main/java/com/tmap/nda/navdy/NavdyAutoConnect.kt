@@ -21,6 +21,9 @@ object NavdyAutoConnect {
     // 권한 미허용 상태 로그 스로틀용(5분). #문제시 원복
     @Volatile private var lastPermissionLogTime = 0L
 
+    // 기기 통신 창구 목록을 앱 실행당 한 번만 기록하기 위한 플래그. #문제시 원복
+    @Volatile private var navdyServiceDumpDone = false
+
     // v: 재억 요청(2026-08-27) - 원래 Activity에서 1회만 호출되던 걸, UdpSenderService의
     // 백그라운드 재연결 루프에서도 주기적으로 호출할 수 있도록 Context로 일반화. #문제시 원복
     fun tryConnect(context: Context) {
@@ -64,6 +67,27 @@ object NavdyAutoConnect {
             }
             if (navdyDevice == null) {
                 NavLogger.d(context, "[Navdy] 페어링된 Navdy 기기 없음 (블루투스 설정에서 먼저 페어링 필요) - 그래도 대기는 시작함")
+            } else if (!navdyServiceDumpDone) {
+                // v: 재억 제보(2026-09-02, "나브디 화면 반응 없음") - v19.2.77~79로 폰이
+                // 대기하는 것까지는 로그로 확인됐는데(대기 소켓 열림 + 프록시 창구 열림)
+                // 기기가 70초 넘게 접속해오지 않음. 더 이상 추측으로 코드를 바꾸는 건
+                // 소득이 없어서, 나브디 기기가 실제로 어떤 통신 창구를 열어두고 있는지를
+                // 한 번만 기록으로 남김. 이 목록에 우리가 아는 UUID(1992B7D7/D72BC85F)가
+                // 있으면 "기기도 받는 쪽 창구를 갖고 있다"는 뜻이라 폰에서 거는 방식이
+                // 다시 후보가 되고, 아무것도 없으면 기기가 먼저 걸어오기만 기다리는
+                // 구조가 맞다는 뜻이라 다음에 볼 곳이 갈림. #문제시 원복
+                navdyServiceDumpDone = true
+                try {
+                    val uuids = navdyDevice.uuids
+                    if (uuids.isNullOrEmpty()) {
+                        NavLogger.e(context, "[Navdy][기기창구조사] 기기가 알려주는 통신 창구 목록이 비어있음(폰이 아직 조회를 못 했거나 기기가 안 알려줌)")
+                    } else {
+                        NavLogger.e(context, "[Navdy][기기창구조사] ${navdyDevice.name} 이 열어둔 창구 ${uuids.size}개:")
+                        uuids.forEach { NavLogger.e(context, "[Navdy][기기창구조사]   ${it.uuid}") }
+                    }
+                } catch (e: Exception) {
+                    NavLogger.e(context, "[Navdy][기기창구조사] 실패: ${e.message}")
+                }
             }
             NavdySender.startListening(context)
         } catch (e: Exception) {

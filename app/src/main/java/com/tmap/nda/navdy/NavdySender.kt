@@ -179,6 +179,40 @@ object NavdySender {
         listenerThread = thread
         thread.start()
         startProxyTunnelListening()
+        startDialing(context)
+    }
+
+    /**
+     * 정품 앱처럼 "거는 쪽"도 같이 돌림(위 connectLegacy 주석의 근거 참고).
+     * 20초마다 한 번, 아직 연결이 없을 때만 시도. 이름에 navdy 또는 hud가 들어간 기기를
+     * 대상으로 하는 것도 정품 앱과 동일(BTDeviceBroadcaster.isDisplay의 정규식 "navdy|hud").
+     * #문제시 원복: 이 함수 호출만 빼면 대기만 하는 v19.2.79 동작으로 돌아감
+     */
+    private fun startDialing(context: Context) {
+        val thread = Thread {
+            while (listening) {
+                try {
+                    if (socket?.isConnected != true && !connecting) {
+                        val adapter = BluetoothAdapter.getDefaultAdapter()
+                        val target = adapter?.bondedDevices?.firstOrNull { d ->
+                            val n = (try { d.name } catch (e: SecurityException) { null } ?: "").lowercase()
+                            n.contains("navdy") || n.contains("hud")
+                        }
+                        if (target != null) {
+                            connectLegacy(context, target)
+                        }
+                    }
+                    Thread.sleep(20_000)
+                } catch (e: InterruptedException) {
+                    return@Thread
+                } catch (e: Exception) {
+                    try { Thread.sleep(20_000) } catch (_: InterruptedException) { return@Thread }
+                }
+            }
+        }
+        thread.isDaemon = true
+        thread.name = "NavdyDialer"
+        thread.start()
     }
 
     /**
@@ -232,10 +266,28 @@ object NavdySender {
     }
 
     /**
-     * (예전 방식) 폰이 나브디한테 거는 연결. 실기기에서 100% 실패하는 게 확인돼서
-     * 더 이상 쓰지 않음 - startListening()으로 대체됨. #문제시 원복
+     * v: 재억 제보(2026-09-02, "나브디 화면 반응 없음") - 정품 앱 소스를 더 깊이 파본 결과
+     * v19.2.77의 결론("폰은 받기만 한다")이 반쪽이었음을 확인함. 정품 앱은 **양쪽을 다 함**:
+     *
+     *   1) 받는 쪽 - ClientConnectionService.getConnectionListeners()
+     *        BTSocketAcceptor("Navdy", 1992B7D7-...)
+     *   2) 거는 쪽 - ConnectionService.PendingConnectHandler / reconnectRunnable
+     *        -> mRemoteDevice.connect() -> Connection.build() -> BTSocketFactory(address)
+     *        -> device.createRfcommSocketToServiceRecord(serviceUUID)
+     *      이때 쓰는 주소/UUID는 BTRemoteDeviceScanner가 만들어 둔 것으로,
+     *        new ServiceAddress(address, NAVDY_PROTO_SERVICE_UUID)  <- 우리가 쓰던 그 UUID
+     *      즉 **나브디 기기 쪽에도 같은 UUID의 받는 창구가 있고, 폰이 거기로 건다.**
+     *
+     *   그리고 기기를 찾는 방법도 확인됨 - BTRemoteDeviceScanner가 블루투스 "검색"으로
+     *   찾은 기기 중 이름에 navdy 또는 hud가 들어간 것(BTDeviceBroadcaster.isDisplay,
+     *   정규식 "navdy|hud")을 나브디로 판단함. 페어링 목록이 아니라 검색 결과를 씀 -
+     *   검색을 돌리면 안드로이드가 그 기기의 서비스 목록(SDP)도 새로 받아오기 때문에,
+     *   지금까지 SDP 조회 결과가 로그에 한 줄도 없던 것과 직접 관련이 있을 수 있음.
+     *
+     * 그래서 이제 대기(받기)와 걸기를 동시에 함. 걸기는 20초마다 한 번씩만 시도해서
+     * 예전처럼 로그가 도배되지 않게 하고, 채널 1~5 억지 찍기는 계속 제외(가짜 성공만 만듦).
+     * #문제시 원복: startDialing() 호출을 지우면 v19.2.79처럼 대기만 함
      */
-    @Suppress("unused")
     private fun connectLegacy(context: Context, device: BluetoothDevice) {
         if (connecting || socket?.isConnected == true) return
         connecting = true
@@ -309,32 +361,11 @@ object NavdySender {
                         NavLogger.d("[Navdy] 비보안 연결도 실패(${e3.message}), 채널 우회 연결 시도")
                         null
                     }
-                    insecureSock ?: run {
-                        // v: 재억 재제보(2026-08-28) - "나브디 쓰는 다른 사람도 안 된다"는 제보로
-                        // 다시 파봄. 표준 방식이 98% 이상 실패하는 건 확인했었지만, 그동안 우회
-                        // 방식도 "무조건 1번 채널"만 시도하고 있었음 - 근데 SPP 채널 번호는
-                        // 기기/펌웨어마다 다를 수 있어서, 1번이 애초에 이 나브디 기기의 실제
-                        // 채널이 아닐 가능성이 있음. 흔히 쓰이는 범위(1~5번)를 순서대로 시도해서
-                        // 맞는 채널을 찾도록 확장. #문제시 원복
-                        var fallback: BluetoothSocket? = null
-                        var lastFallbackError: Exception? = null
-                        for (channel in 1..5) {
-                            try {
-                                fallback = device.javaClass
-                                    .getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
-                                    .invoke(device, channel) as BluetoothSocket
-                                fallback.connect()
-                                NavLogger.d("[Navdy] 채널 $channel 로 연결 성공")
-                                lastFallbackError = null
-                                break
-                            } catch (e2: Exception) {
-                                try { fallback?.close() } catch (_: Exception) {}
-                                fallback = null
-                                lastFallbackError = e2
-                            }
-                        }
-                        fallback ?: throw (lastFallbackError ?: e)
-                    }
+                    // v: 재억 요청(2026-09-02) - 채널 1~5 억지 찍기는 제거함. 실기기 로그에서
+                    // 매번 "채널 2 로 연결 성공" 뒤 2~50ms 만에 상대가 끊는 게 확인됐고
+                    // (전송 성공 0회), 이건 나브디 서비스가 아닌 다른 창구에 잘못 붙은
+                    // 가짜 성공이었음. 정품 앱도 이런 방식은 쓰지 않음. #문제시 원복
+                    insecureSock ?: throw e
                 }
                 socket = sock
                 outputStream = sock.outputStream

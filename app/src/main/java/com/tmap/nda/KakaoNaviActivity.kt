@@ -2308,8 +2308,33 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     }
 
     // 안내 중 경유지 추가 - 기존 경유지는 그대로 두고 맨 뒤에 이어붙임. #문제시 원복
+    // v: 재억 요청(2026-09-02) - "경유지로 추가할 때는 저장된 방식이 있어도 그냥 물어보게
+    // 할 수 있나?" -> 가능. 즐겨찾기에 저장된 경로 방식은 "그 목적지로 새로 갈 때" 쓰라고
+    // 저장해둔 것이고, 경유지를 끼워넣는 건 경로 전체를 다시 짜는 일이라 그때그때 다를 수
+    // 있음. 그래서 경유지 추가할 때는 저장값과 무관하게 매번 물어봄.
+    //
+    // 참고(카카오 SDK 한계): 경로 방식은 guideNewDestinations(trip, priority, avoidOption)처럼
+    // **경로 전체에 하나만** 지정할 수 있음. "A까지는 고속도로, B까지는 무료도로"처럼 구간별로
+    // 다르게는 카카오가 지원하지 않아서, 여기서 고르는 값도 경로 전체에 적용됨. #문제시 원복
     private fun addWaypointToActiveGuidance(picked: HistoryEntry) {
-        rebuildRouteWithWaypoints(activeWaypoints + picked, "경유지추가", addedName = picked.name)
+        val optionLabels = arrayOf("추천 경로", "고속도로 우선", "무료도로 우선")
+        val optionPriorities = listOf(
+            KNRoutePriority.KNRoutePriority_Recommand,
+            KNRoutePriority.KNRoutePriority_HighWay,
+            KNRoutePriority.KNRoutePriority_Recommand
+        )
+        val optionAvoidOptions = listOf(0, 0, KNRouteAvoidOption.KNRouteAvoidOption_Fare.value)
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("'${picked.name}' 경유지로 추가")
+            .setMessage("어떤 방식으로 갈까요? (경로 전체에 적용됩니다)")
+            .setItems(optionLabels) { _, which ->
+                activeRoutePriority = optionPriorities[which]
+                activeRouteAvoidOption = optionAvoidOptions[which]
+                NavLogger.d(this, "[경유지추가] 경로 방식 선택: ${optionLabels[which]}")
+                rebuildRouteWithWaypoints(activeWaypoints + picked, "경유지추가", addedName = picked.name)
+            }
+            .setNegativeButton("취소", null)
+            .show()
     }
 
     private fun showInPlaceSearchDialog() {
