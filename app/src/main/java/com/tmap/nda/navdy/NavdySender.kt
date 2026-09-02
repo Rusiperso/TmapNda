@@ -495,7 +495,9 @@ object NavdySender {
                 // 남김 - 전송 쪽 Broken pipe 로그와 대조해서 어느 쪽이 먼저 끊었는지
                 // 판단하는 데 씀. 연결 유지 시간/그동안 보낸 성공 횟수도 같이 남겨서
                 // "받아보지도 못하고 끊겼는지 vs 한동안 잘 받다 끊겼는지" 구분되게 함. #문제시 원복
-                NavLogger.flushTrace("navdy", "[Navdy] 받는 스레드 종료: ${e.javaClass.simpleName} ${e.message}, ${connectionAgeMs()}ms만에, 그동안 보낸 전송 성공 ${sentCountSinceConnect}회, 살아있음 신호 ${pingCountSinceConnect}회, 수신 ${receivedCountSinceConnect}회")
+                val reason = "[Navdy] 받는 스레드 종료: ${e.javaClass.simpleName} ${e.message}, ${connectionAgeMs()}ms만에, 그동안 보낸 전송 성공 ${sentCountSinceConnect}회, 살아있음 신호 ${pingCountSinceConnect}회, 수신 ${receivedCountSinceConnect}회"
+                NavLogger.flushTrace("navdy", reason)
+                com.tmap.nda.DiscordReporter.reportNavdyDisconnect(reason)
             }
         }
         thread.isDaemon = true
@@ -579,7 +581,9 @@ object NavdySender {
                 // 성공하지 못하고 끊긴 것. e.message에는 writeFramed()가 붙인 단계 정보
                 // ([길이헤더 전송 중]/[본문 전송 중]/[flush 중])가 포함되어 있어 정확히
                 // 어느 단계에서 끊겼는지도 같이 남음. #문제시 원복
-                NavLogger.flushTrace("navdy", "[Navdy] 전송 실패로 연결 끊김 처리: ${e.javaClass.simpleName} ${e.message}, 이 연결에서 성공 ${sentCountSinceConnect}회 후 끊김, 살아있음 신호 ${pingCountSinceConnect}회, 연결 유지 ${connectionAgeMs()}ms")
+                val reason = "[Navdy] 전송 실패로 연결 끊김 처리: ${e.javaClass.simpleName} ${e.message}, 이 연결에서 성공 ${sentCountSinceConnect}회 후 끊김, 살아있음 신호 ${pingCountSinceConnect}회, 연결 유지 ${connectionAgeMs()}ms"
+                NavLogger.flushTrace("navdy", reason)
+                com.tmap.nda.DiscordReporter.reportNavdyDisconnect(reason)
                 // v: 재억 요청(2026-08-28) - 전송이 실패해도 socket/outputStream을 그대로 두면,
                 // 안드로이드 BluetoothSocket.isConnected()가 물리적 연결 끊김을 실시간으로
                 // 반영 안 해줘서(close() 호출 전까진 계속 true로 보고할 수 있음) 재연결 루프가

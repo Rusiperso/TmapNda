@@ -136,6 +136,30 @@
         android:text="다른 앱 위에 표시 (백그라운드 방향 안내, 실험적 기능)"
         android:layout_marginBottom="16dp"/>
 
+    <!-- v: 재억 요청(2026-09-02) - 크래시/나브디 연결끊김을 사람이 안 눌러도 자동으로
+         디스코드로 보고하는 기능 추가. 기존 이메일 "로그 보내기"는 그대로 둠. #문제시 원복 -->
+    <CheckBox
+        android:id="@+id/cbAutoReport"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="자동 오류 보고 (크래시·연결끊김 시 디스코드로 전송, 실험적)"
+        android:layout_marginBottom="8dp"/>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/tilNickname"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="내 닉네임 (선택 - 오류 보고에 같이 표시됨)"
+        android:layout_marginBottom="16dp">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etNickname"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"/>
+
+    </com.google.android.material.textfield.TextInputLayout>
+
     <TextView
         android:id="@+id/tvAppVersion"
         android:layout_width="wrap_content"

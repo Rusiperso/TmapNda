@@ -122,9 +122,11 @@ object AutoUpdater {
                                 }
                             } else {
                                 NavLogger.e(context, "[업데이트확인] apk 에셋을 찾지 못함(assets=${assets.length()}개)")
+                                DiscordReporter.reportUpdateFailure(context, "apk 에셋을 찾지 못함(assets=${assets.length()}개, 대상버전=$tagName)")
                             }
                         } else {
                             NavLogger.e(context, "[업데이트확인] 릴리즈에 에셋이 0개")
+                            DiscordReporter.reportUpdateFailure(context, "릴리즈에 에셋이 0개(대상버전=$tagName)")
                         }
                     } else if (isManual) {
                         // v8.8: "업데이트 확인" 눌러도 최신버전이면 지금까지 아무 반응이 없어서
@@ -138,6 +140,7 @@ object AutoUpdater {
                     }
                 } else {
                     NavLogger.e(context, "[업데이트확인] HTTP 실패 code=${connection.responseCode}")
+                    DiscordReporter.reportUpdateFailure(context, "업데이트 확인 HTTP 실패 code=${connection.responseCode}")
                     if (isManual) {
                         withContext(Dispatchers.Main) {
                             Toast.makeText(context, "업데이트 확인 실패 (HTTP ${connection.responseCode})", Toast.LENGTH_SHORT).show()
@@ -147,6 +150,7 @@ object AutoUpdater {
             } catch (e: Exception) {
                 Log.e(TAG, "Update check failed", e)
                 NavLogger.e(context, "Update check failed: ${e.message}")
+                DiscordReporter.reportUpdateFailure(context, "업데이트 확인 예외: ${e.message}")
                 if (isManual) {
                     withContext(Dispatchers.Main) {
                         Toast.makeText(context, "업데이트 확인 실패: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -295,6 +299,7 @@ object AutoUpdater {
             Toast.makeText(context, "업데이트 설치에 실패했습니다.", Toast.LENGTH_SHORT).show()
             Log.e(TAG, "Install Failed", e)
             NavLogger.e(context, "Install Failed: ${e.message}")
+            DiscordReporter.reportUpdateFailure(context, "설치 실패: ${e.message}")
         }
     }
 

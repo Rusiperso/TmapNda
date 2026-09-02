@@ -1950,6 +1950,10 @@ class UdpSenderService : Service() {
                     if (System.currentTimeMillis() - ndaLastBeaconTime > NDA_ACTIVE_TIMEOUT_MS) {
                         if (ndaRemoteAddr != null) {
                             NavLogger.d(this@UdpSenderService, "[NDA] 비콘 타임아웃, openpilot 연결 해제")
+                            DiscordReporter.reportVehicleDisconnect(
+                                this@UdpSenderService,
+                                "비콘 타임아웃 - ${NDA_ACTIVE_TIMEOUT_MS}ms 이상 openpilot 패킷 없음"
+                            )
                         }
                         ndaRemoteAddr = null
                         OpenpilotStateRepository.updateNdaConnected(false)

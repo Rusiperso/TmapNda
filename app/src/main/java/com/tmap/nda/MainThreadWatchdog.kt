@@ -31,6 +31,7 @@ object MainThreadWatchdog {
                 // 로그 용량 아끼려고 5초에 한 번만 남김.
                 if (sinceLast > 1000L) {
                     NavLogger.e(context, "[전역워치독] 메인스레드 멈춤 감지! 공백=${sinceLast}ms")
+                    DiscordReporter.reportMainThreadFreeze(context, sinceLast)
                 } else if (now % 5000L < 300L) {
                     NavLogger.dIfChanged(context, "watchdog", "[전역워치독] 정상")
                 }

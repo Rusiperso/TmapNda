@@ -157,13 +157,21 @@ class MainActivity : AppCompatActivity() {
         // 최소한 스택트레이스라도 파일에 남긴 뒤 기존 핸들러(시스템 강제종료 다이얼로그 등)로 넘김.
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            val stackTrace = Log.getStackTraceString(throwable)
             try {
                 NavLogger.e(
                     applicationContext,
-                    "===== FATAL: 앱 강제종료 (thread=${thread.name}) =====\n${Log.getStackTraceString(throwable)}"
+                    "===== FATAL: 앱 강제종료 (thread=${thread.name}) =====\n$stackTrace"
                 )
             } catch (_: Exception) {
                 // 로깅 자체가 실패해도 앱 종료 흐름은 막지 않음
+            }
+            try {
+                // v: 재억 요청(2026-09-02) - 크래시가 나면 사람이 로그를 보내주지 않아도
+                // 자동으로 디스코드에 도착하게 함(기존 이메일 "로그 보내기"는 그대로 둠). #문제시 원복
+                DiscordReporter.reportCrash(applicationContext, thread.name, stackTrace)
+            } catch (_: Exception) {
+                // 자동 보고 실패도 앱 종료 흐름엔 영향 없어야 함
             }
             defaultHandler?.uncaughtException(thread, throwable)
         }
@@ -240,6 +248,12 @@ class MainActivity : AppCompatActivity() {
             sharedPref.edit().putBoolean("background_overlay_enabled", isChecked).apply()
         }
 
+        binding.cbAutoReport.isChecked = DiscordReporter.isEnabled(this)
+        binding.cbAutoReport.setOnCheckedChangeListener { _, isChecked ->
+            DiscordReporter.setEnabled(this, isChecked)
+        }
+        binding.etNickname.setText(DiscordReporter.getNickname(this))
+
         try {
             val pInfo = packageManager.getPackageInfo(packageName, 0)
             binding.tvAppVersion.text = "버전: ${pInfo.versionName}"
@@ -268,6 +282,8 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "App Key를 입력하세요.", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+
+            DiscordReporter.setNickname(this, binding.etNickname.text.toString())
 
             // Save to SharedPreferences
             sharedPref.edit().apply {

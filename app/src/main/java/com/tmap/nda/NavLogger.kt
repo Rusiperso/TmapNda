@@ -71,6 +71,9 @@ object NavLogger {
         }
     }
 
+    /** 현재 쓰고 있는 로그 파일(회전 안 된 최신 파일). 디스코드 자동 보고 등 외부에서 첨부용으로 씀. */
+    fun activeLogFile(context: Context): File = logFile(context)
+
     /** logs 디렉토리에 있는 tmapnda_log*.txt 전부 (현재 쓰는 파일 + 회전되어 보관중인 파일들) */
     private fun allLogFiles(context: Context): List<File> {
         val dir = File(context.getExternalFilesDir(null), "logs")
@@ -207,6 +210,10 @@ object NavLogger {
         } catch (e: Exception) { "" }
         val opBranchGuess = OpenpilotStateRepository.state.value?.carrot2?.takeIf { it.isNotBlank() && it != "-" } ?: ""
 
+        // v: 재억 요청(2026-09-02) - "자동 오류 보고"에 넣어둔 닉네임을 여기 이메일 양식에도
+        // 그대로 재활용 - 저장해뒀으면 매번 다시 안 적어도 되게 함(설정 안 했으면 빈칸 유지). #문제시 원복
+        val savedNickname = DiscordReporter.getNickname(context)
+
         val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_EMAIL, recipients)
@@ -214,7 +221,7 @@ object NavLogger {
             putExtra(
             Intent.EXTRA_TEXT,
             """
-            1. 오픈 카톡 닉네임:
+            1. 디스코드 닉네임: $savedNickname
             2. 브렌치 이름: $opBranchGuess
             3. 브렌치 주소:
             4. 현재 사용 중인 버전: $appVersion

@@ -337,6 +337,7 @@ object KakaoSdkState {
             }
             if (routeMethod == null) {
                 NavLogger.e(context, "[소요시간계산] routeWithPriority(3개 인자) 함수를 못 찾음")
+                DiscordReporter.reportRouteCalcFailure(context, "routeWithPriority(3개 인자) 함수를 못 찾음")
                 callback(null, null)
                 return
             }
@@ -379,6 +380,7 @@ object KakaoSdkState {
             routeMethod.invoke(trip, priority, avoidOption, proxy)
         } catch (e: Exception) {
             NavLogger.e(context, "[소요시간계산] routeWithPriority 호출 예외: ${e.message}")
+            DiscordReporter.reportRouteCalcFailure(context, "routeWithPriority 호출 예외: ${e.message}")
             callback(null, null)
         }
     }
@@ -409,6 +411,7 @@ object KakaoSdkState {
                 }, 500)
             } else {
                 NavLogger.e(context, "[소요시간계산] 10번 재시도해도 KNSDK 준비 안 됨 - 포기")
+                DiscordReporter.reportRouteCalcFailure(context, "10번 재시도해도 KNSDK 준비 안 됨")
                 onTripReady(null)
                 options.indices.forEach { callback(it, null, null) }
             }
@@ -422,6 +425,7 @@ object KakaoSdkState {
             KNSDK.makeTripWithStart(startPoi, goalPoi, null) { error, trip ->
                 if (error != null || trip == null) {
                     NavLogger.e(context, "[소요시간계산] makeTripWithStart 실패: ${error?.msg ?: "trip=null"}")
+                    DiscordReporter.reportRouteCalcFailure(context, "makeTripWithStart 실패: ${error?.msg ?: "trip=null"}")
                     onTripReady(null)
                     options.indices.forEach { callback(it, null, null) }
                     return@makeTripWithStart
@@ -435,6 +439,7 @@ object KakaoSdkState {
             }
         } catch (e: Exception) {
             NavLogger.e(context, "[소요시간계산] 경로계산 요청 자체 예외: ${e.message}")
+            DiscordReporter.reportRouteCalcFailure(context, "경로계산 요청 자체 예외: ${e.message}")
             onTripReady(null)
             options.indices.forEach { callback(it, null, null) }
         }
@@ -463,6 +468,7 @@ object KakaoSdkState {
                 }, 500)
             } else {
                 NavLogger.e(context, "[소요시간계산] 10번 재시도해도 KNSDK 준비 안 됨 - 포기")
+                DiscordReporter.reportRouteCalcFailure(context, "10번 재시도해도 KNSDK 준비 안 됨")
                 callback(null, null)
             }
             return
@@ -476,6 +482,7 @@ object KakaoSdkState {
             KNSDK.makeTripWithStart(startPoi, goalPoi, null) { error, trip ->
                 if (error != null || trip == null) {
                     NavLogger.e(context, "[소요시간계산] makeTripWithStart 실패: ${error?.msg ?: "trip=null"}")
+                    DiscordReporter.reportRouteCalcFailure(context, "makeTripWithStart 실패: ${error?.msg ?: "trip=null"}")
                     callback(null, null)
                     return@makeTripWithStart
                 }
@@ -492,6 +499,7 @@ object KakaoSdkState {
                     }
                     if (routeMethod == null) {
                         NavLogger.e(context, "[소요시간계산] routeWithPriority(3개 인자) 함수를 못 찾음")
+                DiscordReporter.reportRouteCalcFailure(context, "routeWithPriority(3개 인자) 함수를 못 찾음")
                         callback(null, null)
                         return@makeTripWithStart
                     }
@@ -542,11 +550,13 @@ object KakaoSdkState {
                     routeMethod.invoke(trip, priority, avoidOption, proxy)
                 } catch (e: Exception) {
                     NavLogger.e(context, "[소요시간계산] routeWithPriority 호출 예외: ${e.message}")
+            DiscordReporter.reportRouteCalcFailure(context, "routeWithPriority 호출 예외: ${e.message}")
                     callback(null, null)
                 }
             }
         } catch (e: Exception) {
             NavLogger.e(context, "[소요시간계산] 경로계산 요청 자체 예외: ${e.message}")
+            DiscordReporter.reportRouteCalcFailure(context, "경로계산 요청 자체 예외: ${e.message}")
             callback(null, null)
         }
     }
