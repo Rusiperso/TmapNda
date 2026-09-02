@@ -175,21 +175,45 @@ object VolumeHelper {
 
     // v: 신규기능(물리 볼륨버튼으로 안내음량 조절) - dispatchKeyEvent로 가로챈 볼륨키를 처리.
     // v: 재억 요청(2026-09-02, A안) - 이제 미디어(STREAM_MUSIC)는 건드리지 않고 길안내
-    // 음량만 5%씩 조절함. 음악은 그대로 유지됨. #문제시 원복
-    fun adjustGuideVolumeByHardwareKey(context: Context, up: Boolean) {
+    // 음량만 조절함. 음악은 그대로 유지됨. #문제시 원복
+    //
+    // v: 재억 제보(2026-09-02) - "50에서 0까지 쭉 누르고 있는데 화면에는 50/45/35처럼
+    // 띄엄띄엄 뜬다". 원인 두 가지:
+    //   1) 토스트는 한 번에 하나씩 순서대로 뜨고 각각 최소 2초씩 머물러서, 빠르게 여러 번
+    //      바뀌면 뒤늦게 밀린 값이 하나씩 나타남(값 자체는 정상적으로 5%씩 잘 바뀌고 있었음 -
+    //      로그의 18:13:12.5/12.8/13.1/13.5/13.8 참고). 화면 표시만 밀렸던 것.
+    //   2) 길게 누를 때 반복 입력이 300ms 간격이라 뚝뚝 끊겨 보였음.
+    // 그래서 표시는 토스트 대신 액티비티가 직접 그리는 오버레이(즉시 갱신)로 넘기고,
+    // 길게 누르는 중(repeat)에는 더 촘촘하게(2%) 움직이도록 함. #문제시 원복
+    private const val GUIDE_VOLUME_STEP_REPEAT = 2
+
+    /** 화면에 현재 음량을 즉시 표시하는 함수(액티비티가 등록). 없으면 표시 생략. */
+    @Volatile
+    var guideVolumeIndicator: ((Int) -> Unit)? = null
+
+    fun adjustGuideVolumeByHardwareKey(context: Context, up: Boolean, isRepeat: Boolean = false) {
         try {
             val current = guideVolumePercent(context)
+            val step = if (isRepeat) GUIDE_VOLUME_STEP_REPEAT else GUIDE_VOLUME_STEP
             val target = if (up) {
-                (current + GUIDE_VOLUME_STEP).coerceAtMost(100)
+                (current + step).coerceAtMost(100)
             } else {
-                (current - GUIDE_VOLUME_STEP).coerceAtLeast(0)
+                (current - step).coerceAtLeast(0)
             }
             if (target == current) return
             setGuideVolumePercent(context, target)
-            NavLogger.d(context, "[안내음량] 물리버튼으로 조절: ${target}% (미디어 음량은 안 건드림)")
-            try {
-                android.widget.Toast.makeText(context, "길안내 음량 ${target}%", android.widget.Toast.LENGTH_SHORT).show()
-            } catch (_: Exception) { /* 토스트 실패는 무시 */ }
+            // 길게 누르는 동안 로그가 도배되지 않게 처음/끝만 남김. #문제시 원복
+            if (!isRepeat || target == 0 || target == 100) {
+                NavLogger.d(context, "[안내음량] 물리버튼으로 조절: ${target}% (미디어 음량은 안 건드림)")
+            }
+            val indicator = guideVolumeIndicator
+            if (indicator != null) {
+                indicator.invoke(target)
+            } else {
+                try {
+                    android.widget.Toast.makeText(context, "길안내 음량 ${target}%", android.widget.Toast.LENGTH_SHORT).show()
+                } catch (_: Exception) { /* 토스트 실패는 무시 */ }
+            }
         } catch (e: Exception) {
             NavLogger.e(context, "VolumeHelper 물리버튼 조절 예외: ${e.message}")
         }

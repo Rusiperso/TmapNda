@@ -39,6 +39,21 @@ object NavdySender {
     // 나브디가 폰의 이 이름/UUID를 보고 찾아 붙는 것으로 보임. #문제시 원복
     private const val NAVDY_SDP_NAME = "Navdy"
 
+    // v: 재억 제보(2026-09-02, "나브디 아직 안됨") - v19.2.77로 방향은 고쳤고 실기기 로그에서
+    // "대기 소켓 열림 - 나브디가 연결해오길 기다리는 중"까지 확인됐지만(18:12:47), 그 뒤
+    // 1분 40초 동안 나브디가 걸어오지 않았음. 정품 앱 소스를 다시 보니 폰이 대기 소켓을
+    // 하나가 아니라 **두 개** 열고 있었음:
+    //   ClientConnectionService.getConnectionListeners() -> BTSocketAcceptor("Navdy", 1992B7D7-...)
+    //   ClientConnectionService.createProxyService()     -> BTSocketAcceptor("Navdy-Proxy-Tunnel", D72BC85F-...)
+    // 나브디가 폰을 "정품 앱이 돌고 있는 폰"으로 인정하는 조건에 이 두 번째 창구의 존재가
+    // 포함될 가능성이 있어서(둘 다 보고 판단하거나, 프록시 쪽으로 먼저 접속을 시도할 수 있음)
+    // 정품과 동일하게 두 개를 다 열어둠. 프록시 쪽으로 들어온 연결은 아직 우리가 쓸 일이
+    // 없으므로 기록만 남기고 정리함 - 다음 로그에서 나브디가 어느 쪽으로 접속을 시도하는지
+    // 확인하는 용도로도 씀. #문제시 원복
+    private val NAVDY_PROXY_TUNNEL_UUID: UUID =
+        UUID.fromString("D72BC85F-F015-4F24-A72F-35924E10888F")
+    private const val NAVDY_PROXY_SDP_NAME = "Navdy-Proxy-Tunnel"
+
     // NavdyEvent.MessageType.NavigationManeuverEvent
     private const val MSG_TYPE_NAVIGATION_MANEUVER_EVENT = 8
 
@@ -163,12 +178,54 @@ object NavdySender {
         thread.name = "NavdyAcceptor"
         listenerThread = thread
         thread.start()
+        startProxyTunnelListening()
+    }
+
+    /**
+     * 정품 앱과 동일하게 "Navdy-Proxy-Tunnel" 대기 창구도 같이 열어둠(위 상수 주석 참고).
+     * 들어온 연결은 기록만 남기고 닫음 - 나브디가 어느 쪽으로 접속하는지 확인하는 용도. #문제시 원복
+     */
+    @Volatile private var proxyServerSocket: android.bluetooth.BluetoothServerSocket? = null
+    private fun startProxyTunnelListening() {
+        val thread = Thread {
+            while (listening) {
+                try {
+                    val adapter = BluetoothAdapter.getDefaultAdapter()
+                    if (adapter == null || !adapter.isEnabled) {
+                        Thread.sleep(10_000)
+                        continue
+                    }
+                    val server = adapter.listenUsingRfcommWithServiceRecord(
+                        NAVDY_PROXY_SDP_NAME, NAVDY_PROXY_TUNNEL_UUID
+                    )
+                    proxyServerSocket = server
+                    NavLogger.d("[Navdy] 프록시 대기 창구도 열림(정품 앱과 동일하게 2개 운영)")
+                    val sock = server.accept()
+                    NavLogger.d("[Navdy] 프록시 창구로 연결이 들어옴 - 나브디가 이쪽을 쓰는 것으로 보임(기록만 하고 닫음)")
+                    try { sock.close() } catch (_: Exception) {}
+                    try { server.close() } catch (_: Exception) {}
+                    proxyServerSocket = null
+                } catch (e: SecurityException) {
+                    NavLogger.e("[Navdy] 프록시 대기 권한 없음: ${e.message}")
+                    return@Thread
+                } catch (e: Exception) {
+                    try { proxyServerSocket?.close() } catch (_: Exception) {}
+                    proxyServerSocket = null
+                    try { Thread.sleep(10_000) } catch (_: InterruptedException) { return@Thread }
+                }
+            }
+        }
+        thread.isDaemon = true
+        thread.name = "NavdyProxyAcceptor"
+        thread.start()
     }
 
     fun stopListening() {
         listening = false
         try { serverSocket?.close() } catch (_: Exception) {}
         serverSocket = null
+        try { proxyServerSocket?.close() } catch (_: Exception) {}
+        proxyServerSocket = null
         listenerThread?.interrupt()
         listenerThread = null
         closeQuietly()

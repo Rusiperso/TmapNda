@@ -491,6 +491,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         VolumeHelper.kakaoGuideVolumeApplier = { fraction ->
             runOnUiThread { if (::naviView.isInitialized) applyKakaoSdkVolume(fraction) }
         }
+        // v: 재억 제보(2026-09-02) - 토스트는 하나씩 순서대로 뜨고 각각 2초씩 머물러서,
+        // 볼륨키를 길게 누르면 값이 뒤늦게 띄엄띄엄(50/45/35) 나타났음. 화면에 직접 그리는
+        // 표시로 바꿔서 누르는 즉시 숫자가 갱신되게 함. #문제시 원복
+        VolumeHelper.guideVolumeIndicator = { percent ->
+            runOnUiThread { showGuideVolumeIndicator(percent) }
+        }
         applyKakaoSdkVolume()
         naviView.post { logNaviViewDiagnostics("idle map 초기화 직후") }
 
@@ -507,6 +513,74 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private var sndVolumeSetterField: java.lang.reflect.Field? = null
     private var sndVolumeSetterMethod: java.lang.reflect.Method? = null
     private var sndVolumeLookupFailed = false
+    // v: 재억 요청(2026-09-02) - 카카오 자체 음량 메뉴에서 바꾼 값을 실시간으로 따라감.
+    // 카카오가 값을 바꾸면 우리 저장값도 같이 바꾸고, 화면에도 똑같이 표시해줌(어느 쪽에서
+    // 조절하든 같은 표시가 뜨도록). 우리가 방금 적용한 값과 같으면 아무 일도 안 함. #문제시 원복
+    private fun syncGuideVolumeFromKakaoNow() {
+        try {
+            if (!::naviView.isInitialized) return
+            if (!sndVolumeGetterLookupFailed && sndVolumeGetterMethod == null) {
+                try {
+                    sndVolumeGetterMethod = naviView.javaClass.getMethod("getSndVolume")
+                } catch (e: NoSuchMethodException) {
+                    sndVolumeGetterLookupFailed = true
+                    return
+                }
+            }
+            val snd = (sndVolumeGetterMethod?.invoke(naviView) as? Float) ?: return
+            val kakaoPercent = (snd * 100).toInt().coerceIn(0, 100)
+            val ourPercent = VolumeHelper.guideVolumePercent(this)
+            if (kotlin.math.abs(kakaoPercent - ourPercent) <= 1) return
+            VolumeHelper.syncGuideVolumeFromKakao(this, snd)
+            showGuideVolumeIndicator(kakaoPercent)
+        } catch (e: Exception) {
+            // 조용히 무시 - 250ms마다 도는 루프라 로그를 남기면 도배됨
+        }
+    }
+
+    // v: 재억 제보(2026-09-02) - 볼륨키를 길게 누를 때 값이 즉시 보이도록, 화면 가운데
+    // 아래쪽에 잠깐 떴다 사라지는 표시를 직접 그림(토스트와 달리 밀리지 않고 바로 갱신됨).
+    // 1.2초 동안 새 입력이 없으면 자동으로 사라짐. #문제시 원복
+    private var guideVolumeIndicatorView: android.widget.TextView? = null
+    private val guideVolumeIndicatorHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private fun showGuideVolumeIndicator(percent: Int) {
+        try {
+            val root = window?.decorView as? android.view.ViewGroup ?: return
+            var view = guideVolumeIndicatorView
+            if (view == null || view.parent == null) {
+                view = android.widget.TextView(this).apply {
+                    setTextColor(android.graphics.Color.WHITE)
+                    textSize = 22f
+                    gravity = android.view.Gravity.CENTER
+                    setPadding(56, 28, 56, 28)
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        setColor(android.graphics.Color.parseColor("#CC1A1A1A"))
+                        cornerRadius = 28f
+                        setStroke(2, android.graphics.Color.parseColor("#66FFFFFF"))
+                    }
+                    elevation = 40f
+                }
+                val lp = android.widget.FrameLayout.LayoutParams(
+                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.BOTTOM
+                    bottomMargin = 160
+                }
+                root.addView(view, lp)
+                guideVolumeIndicatorView = view
+            }
+            view.text = "🔊 길안내 음량 ${percent}%"
+            view.visibility = View.VISIBLE
+            guideVolumeIndicatorHandler.removeCallbacksAndMessages(null)
+            guideVolumeIndicatorHandler.postDelayed({
+                guideVolumeIndicatorView?.visibility = View.GONE
+            }, 1200)
+        } catch (e: Exception) {
+            NavLogger.e(this, "[안내음량] 화면 표시 예외: ${e.message}")
+        }
+    }
+
     // v: 재억 요청(2026-09-02, A안) - 이제 "길안내 음량"이 미디어 음량과 완전히 분리된
     // 별도 값(VolumeHelper.guideVolumePercent)이라 그걸 읽어서 적용함. #문제시 원복
     private fun applyKakaoSdkVolume() {
@@ -1158,8 +1232,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         }
                     }
                 }
-                // v: 재억 제보(2026-09-02) - "우리 앱에서 안내 음량을 올려도 카카오 메뉴의
-                // 길 안내 음량이랑 동기화가 안 된다". 진단용 관찰만 함(동작 변경 없음). #문제시 원복
+                // v: 재억 제보(2026-09-02) - 카카오 메뉴 음량과의 동기화. 이 1초 루프는
+                // 진단 로그용으로만 남기고, 실제 동기화는 아래 250ms 루프가 담당함. #문제시 원복
                 logKakaoVolumeDiagnostics()
                 hudPollHandler.postDelayed(this, 1000)
                 renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "kakao")
@@ -1167,6 +1241,19 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
         }
         hudPollHandler.postDelayed(sdiRunnable, 1000)
+
+        // v: 재억 요청(2026-09-02) - "카카오 길안내 화면에서 카카오 자체 음량이랑 실시간
+        // 동기화도 가능한가?" -> 가능. 1초 주기 진단 루프에 얹어두면 최대 1초까지 늦어서
+        // "실시간"으로 안 느껴지므로, 카카오 쪽 음량 값만 따로 250ms마다 확인해서 바뀐 게
+        // 보이면 즉시 앱 저장값에 반영하고 화면에도 표시함. 값을 읽기만 하는 가벼운 작업이라
+        // 부담이 거의 없음. #문제시 원복
+        val kakaoVolumeSyncRunnable = object : Runnable {
+            override fun run() {
+                syncGuideVolumeFromKakaoNow()
+                hudPollHandler.postDelayed(this, 250)
+            }
+        }
+        hudPollHandler.postDelayed(kakaoVolumeSyncRunnable, 250)
 
         try {
             val vn = packageManager.getPackageInfo(packageName, 0).versionName
@@ -3105,12 +3192,19 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
-    // v: 신규기능(물리 볼륨버튼으로 안내음량 조절) - Tmap 화면과 동일한 방식. #문제시 원복
+    // v: 신규기능(물리 볼륨버튼으로 안내음량 조절) - 카카오 안내 화면에서만 가로챔.
+    // (티맵 화면에서는 재억 요청으로 가로채지 않고 음악 볼륨이 조절됨)
+    // v: 재억 제보(2026-09-02) - 길게 누르고 있을 때(event.repeatCount > 0) 더 촘촘하게
+    // 움직이도록 반복 여부를 같이 넘김. #문제시 원복
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
         if (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP ||
             keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN
         ) {
-            VolumeHelper.adjustGuideVolumeByHardwareKey(this, keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP)
+            VolumeHelper.adjustGuideVolumeByHardwareKey(
+                this,
+                keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP,
+                isRepeat = (event?.repeatCount ?: 0) > 0
+            )
             return true
         }
         return super.onKeyDown(keyCode, event)
@@ -3125,6 +3219,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // v: 재억 요청(2026-09-02, A안) - 화면이 사라지면 카카오 음량 적용 함수도 해제.
         // (이미 없어진 naviView를 붙잡고 있으면 안 됨) #문제시 원복
         VolumeHelper.kakaoGuideVolumeApplier = null
+        VolumeHelper.guideVolumeIndicator = null
+        guideVolumeIndicatorHandler.removeCallbacksAndMessages(null)
         com.tmap.nda.miniplayer.MiniPlayerManager.detach()
         try {
             locationManager?.removeUpdates(this)
