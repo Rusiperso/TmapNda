@@ -1577,10 +1577,23 @@ class UdpSenderService : Service() {
                 targetAddresses.add(InetAddress.getByName(targetIp))
             }
 
+            // v: 재억 지적(2026-09-03) - 주소 목록(127.0.0.1 / 255.255.255.255 / 각
+            // 인터페이스 전용 브로드캐스트)을 애써 만들어놓고 전체를 try 하나로 묶어
+            // 돌리고 있어서, 목록 두 번째인 255.255.255.255가 EINVAL로 막히면 거기서
+            // 반복문이 통째로 중단됐음. 정작 정상적으로 나갔을 인터페이스 전용 주소
+            // (172.27.16.255 등)는 시도조차 못 하고 있었음. 주소마다 따로 감싸서
+            // 하나가 막혀도 나머지는 계속 시도되게 함. #문제시 원복
+            var lastError: Exception? = null
+            var anySucceeded = false
             for (address in targetAddresses) {
-                val packet = DatagramPacket(buffer, buffer.size, address, UDP_PORT)
-                udpSocket?.send(packet)
+                try {
+                    udpSocket?.send(DatagramPacket(buffer, buffer.size, address, UDP_PORT))
+                    anySucceeded = true
+                } catch (e: Exception) {
+                    lastError = e
+                }
             }
+            if (!anySucceeded && lastError != null) throw lastError
         } catch (e: Exception) {
             val now = System.currentTimeMillis()
             if (now - lastSendErrorLogTime > 5000) {
@@ -1590,11 +1603,12 @@ class UdpSenderService : Service() {
             // v: ENETUNREACH가 뜨면 소켓이 죽은 네트워크에 묶여서 다시는 자연 복구가
             // 안 되는 걸로 확인됨(1시간 15분 26,619번 연속 실패 사례). 너무 자주 재생성하면
             // 오히려 부담이 되니 5초에 한 번씩만 시도. #문제시 원복
-            if ((e.message?.contains("ENETUNREACH") == true || e.message?.contains("ENETDOWN") == true) &&
-                now - lastSocketRecreateTime > 5000
-            ) {
+            // v: 재억 제보(2026-09-03, v19.2.53 로그) - 감시 대상에 EINVAL이 빠져 있어서,
+            // 소켓이 EINVAL 상태에 빠지면 되살리기를 아예 시도조차 안 하고 무한히 같은
+            // 실패만 반복했음(수 분간 실패=10/10/10). EINVAL도 같이 감시함. #문제시 원복
+            if (isRecoverableSendError(e) && now - lastSocketRecreateTime > 5000) {
                 lastSocketRecreateTime = now
-                NavLogger.d(this, "[자가치유] ENETUNREACH 감지 - 전송 소켓 재생성 시도")
+                NavLogger.d(this, "[자가치유] 전송 불가 오류 감지(${e.message}) - 전송 소켓 재생성 시도")
                 createUdpSendSocket()
             }
         }
@@ -1823,6 +1837,48 @@ class UdpSenderService : Service() {
      * (UDP send()는 상대가 없어도 거의 예외를 안 던짐), 5초 요약 로그로 "포트별 sendto 시도/실패 횟수"만
      * 확인 가능. 실제 도달 여부 확인은 openpilot 쪽 수신 로그가 있어야 함.
      */
+    /**
+     * 소켓이 되살리기(재생성)로 회복될 수 있는 종류의 송신 오류인지.
+     * ENETUNREACH/ENETDOWN은 묶여있던 네트워크가 죽은 경우, EINVAL은 그 네트워크에
+     * 해당 주소로 가는 경로가 없는 경우 - 셋 다 소켓을 다시 만들면 회복될 수 있음.
+     */
+    private fun isRecoverableSendError(e: Exception): Boolean {
+        val msg = e.message ?: return false
+        return msg.contains("ENETUNREACH") || msg.contains("ENETDOWN") || msg.contains("EINVAL")
+    }
+
+    /**
+     * v: 재억 지적(2026-09-03) - "192든 172든 다 대응되게 만들어놓은 거 아니냐". 맞는
+     * 지적이고 carrot 전송 경로(sendUdp)는 실제로 인터페이스마다 전용 브로드캐스트 주소를
+     * 계산해서 쓰고 있었는데, NDA 경로(843/2843/3843)만 255.255.255.255 하나로 고정돼
+     * 있었음. 255.255.255.255는 소켓이 특정 네트워크에 묶여 있으면 "그 네트워크에 이
+     * 주소로 가는 길이 없다"며 EINVAL/ENETUNREACH로 막히는데, 인터페이스 전용 주소
+     * (172.27.16.255, 192.168.43.255 등)는 그 인터페이스의 실제 라우팅을 그대로 타서
+     * 정상적으로 나감. 주소 대역이 뭐든 인터페이스가 알려주는 값을 그대로 쓰므로
+     * 대역에 관계없이 동작함. #문제시 원복
+     */
+    private fun ndaBroadcastTargets(): List<InetAddress> {
+        val targets = mutableSetOf<InetAddress>()
+        try {
+            targets.add(InetAddress.getByName("255.255.255.255"))
+        } catch (e: Exception) {
+            // 무시 - 아래 인터페이스 전용 주소만으로도 동작함
+        }
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val iface = interfaces.nextElement()
+                if (iface.isLoopback || !iface.isUp) continue
+                for (ifaceAddr in iface.interfaceAddresses) {
+                    ifaceAddr.broadcast?.let { targets.add(it) }
+                }
+            }
+        } catch (e: Exception) {
+            NavLogger.dIfChanged(this, "nda_bcast_scan", "[NDA] 인터페이스 브로드캐스트 주소 조회 실패: ${e.message}")
+        }
+        return targets.toList()
+    }
+
     private fun createNdaSendSocket(): Boolean {
         try {
             ndaSendSocket?.close()
@@ -1889,12 +1945,10 @@ class UdpSenderService : Service() {
                 // 그래서 지금까지 그 누구한테도(캘빈 포함) 이 기능이 작동할 수 없었음.
                 // 상대 주소를 아직 모르면 브로드캐스트(255.255.255.255)로 먼저 찔러서
                 // openpilot이 우리 주소를 등록할 기회를 줌. #문제시 원복
-                val addr = ndaRemoteAddr ?: try {
-                    InetAddress.getByName("255.255.255.255")
-                } catch (e: Exception) {
-                    null
-                }
-                if (addr != null) {
+                // 상대 주소를 이미 알면 그쪽으로만, 아직 모르면 255.255.255.255와
+                // 인터페이스별 전용 브로드캐스트 주소 전부에 뿌려서 찾음.
+                val targets = ndaRemoteAddr?.let { listOf(it) } ?: ndaBroadcastTargets()
+                if (targets.isNotEmpty()) {
                     val json = buildNdaRoadLimitJson()
                     val bytes = json.toString().toByteArray(Charsets.UTF_8)
 
@@ -1906,30 +1960,37 @@ class UdpSenderService : Service() {
                         .toByteArray(Charsets.UTF_8)
 
                     for ((idx, port) in NDA_SEND_PORTS.withIndex()) {
-                        try {
-                            // 1. 길안내·안전운전 데이터 전송
-                            ndaSendSocket?.send(DatagramPacket(bytes, bytes.size, addr, port))
+                        var portSucceeded = false
+                        var portLastError: Exception? = null
+                        for (addr in targets) {
+                            try {
+                                // 1. 길안내·안전운전 데이터 전송
+                                ndaSendSocket?.send(DatagramPacket(bytes, bytes.size, addr, port))
 
-                            // 2. GPS 요청은 별도 패킷으로 전송
-                            ndaSendSocket?.send(
-                                DatagramPacket(
-                                    gpsRequestBytes,
-                                    gpsRequestBytes.size,
-                                    addr,
-                                    port
+                                // 2. GPS 요청은 별도 패킷으로 전송
+                                ndaSendSocket?.send(
+                                    DatagramPacket(gpsRequestBytes, gpsRequestBytes.size, addr, port)
                                 )
-                            )
-
+                                portSucceeded = true
+                            } catch (e: Exception) {
+                                portLastError = e
+                            }
+                        }
+                        if (portSucceeded) {
                             successCount[idx]++
-                        } catch (e: Exception) {
+                        } else if (portLastError != null) {
                             failCount[idx]++
-                            NavLogger.e(this@UdpSenderService, "[NDA] 송신 실패 target=$addr:$port: ${e.message}")
+                            NavLogger.dIfChanged(
+                                this@UdpSenderService,
+                                "nda_send_fail_$port",
+                                "[NDA] 송신 실패 port=$port 대상=${targets.joinToString { it.hostAddress ?: "?" }}: ${portLastError.message}"
+                            )
                             val nowRecreate = System.currentTimeMillis()
-                            if ((e.message?.contains("ENETUNREACH") == true || e.message?.contains("ENETDOWN") == true) &&
+                            if (isRecoverableSendError(portLastError) &&
                                 nowRecreate - lastNdaSocketRecreateTime > 5000
                             ) {
                                 lastNdaSocketRecreateTime = nowRecreate
-                                NavLogger.d(this@UdpSenderService, "[자가치유] NDA 송신 소켓 ENETUNREACH 감지 - 재생성 시도")
+                                NavLogger.d(this@UdpSenderService, "[자가치유] NDA 송신 불가 오류 감지(${portLastError.message}) - 소켓 재생성 시도")
                                 createNdaSendSocket()
                             }
                         }
@@ -1946,7 +2007,8 @@ class UdpSenderService : Service() {
                         // 가장 큰 덩어리였음(956줄 중 623줄이 직전 줄과 완전 동일). 송신
                         // 성공/실패 숫자가 실제로 바뀔 때만 남김 - 실패가 생기는 순간은
                         // 값이 바뀌는 순간이라 그대로 잡힘. #문제시 원복
-                        NavLogger.dIfChanged(this@UdpSenderService, "nda_send_summary", "[NDA] 송신 요약(최근 5초): target=$addr $summary")
+                        val targetLabel = targets.joinToString { it.hostAddress ?: "?" }
+                        NavLogger.dIfChanged(this@UdpSenderService, "nda_send_summary", "[NDA] 송신 요약(최근 5초): target=$targetLabel $summary")
                         for (i in NDA_SEND_PORTS.indices) {
                             successCount[i] = 0
                             failCount[i] = 0
