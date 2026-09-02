@@ -35,6 +35,10 @@ object NavdySender {
     private val NAVDY_SERVICE_UUID: UUID =
         UUID.fromString("1992B7D7-C9B9-4F4F-AA7F-9FE33D95851E")
 
+    // 정품 앱이 대기 소켓을 열 때 쓰는 서비스 이름과 동일해야 함(BTSocketAcceptor("Navdy", ...)).
+    // 나브디가 폰의 이 이름/UUID를 보고 찾아 붙는 것으로 보임. #문제시 원복
+    private const val NAVDY_SDP_NAME = "Navdy"
+
     // NavdyEvent.MessageType.NavigationManeuverEvent
     private const val MSG_TYPE_NAVIGATION_MANEUVER_EVENT = 8
 
@@ -71,10 +75,111 @@ object NavdySender {
 
 
     /**
-     * 지정한 블루투스 기기(Navdy 또는 Navdy 프로토콜 호환 기기)로 연결 시도.
-     * 이미 페어링되어 있는 BluetoothDevice를 넘겨줘야 함.
+     * v: 재억 제보(2026-09-02, 실기기 로그로 원인 확정) - 나브디가 계속 안 붙던 진짜 이유는
+     * "연결 방향이 반대"였음.
+     *
+     * 실기기 로그에서 매번 똑같이 반복되던 패턴:
+     *   정식(보안) 연결 실패 -> 비보안 연결도 실패 -> 채널 2번으로 억지 연결 "성공" ->
+     *   2~50ms 만에 상대가 끊음 -> 첫 전송에서 Broken pipe -> 15초 뒤 처음부터 반복
+     *   (전송 성공 0회, 328줄 내내 동일)
+     *
+     * 나브디 정품 안드로이드 앱 소스(gitlab.com/alelec/navdy/alelec_navdy_client를 직접
+     * 받아서 확인, ClientConnectionService.getConnectionListeners())를 보니 폰 쪽은
+     *   new AcceptorListener(context, new BTSocketAcceptor("Navdy", NAVDY_PROTO_SERVICE_UUID), ...)
+     * 즉 BTSocketAcceptor = "연결을 받는 쪽(서버)"이었음. 나브디 기기가 폰한테 걸어오는
+     * 구조인데, 이 앱은 지금까지 반대로 폰이 나브디한테 걸고 있었음. 그래서 정식 통로는
+     * 애초에 열려있지도 않았고(그래서 100% 실패), 채널을 억지로 찍어 붙은 건 진짜 연결이
+     * 아니라 나브디가 모르는 손님으로 보고 즉시 끊은 것. 재페어링이 소용없던 이유도 이것.
+     *
+     * UUID(1992B7D7-...)는 정품 앱과 동일해서 맞았고, 서비스 이름은 정확히 "Navdy",
+     * 기본은 보안(secure) 방식인 것도 같은 소스에서 확인함.
+     *
+     * 이제 정품 앱과 동일하게 폰이 기다리는 쪽이 됨. 채널 1~5 억지 찍기는 "가짜 성공"만
+     * 만들어내던 코드라 같이 제거함.
+     * #문제시 원복: 아래 startListening()을 지우고 이 파일 히스토리의 connect() 복원
      */
-    fun connect(context: Context, device: BluetoothDevice) {
+    @Volatile private var serverSocket: android.bluetooth.BluetoothServerSocket? = null
+    @Volatile private var listenerThread: Thread? = null
+    @Volatile private var listening = false
+
+    fun startListening(context: Context) {
+        if (listening) return
+        listening = true
+        val thread = Thread {
+            NavLogger.d("[Navdy] 연결 대기 시작 (정품 앱과 동일하게 폰이 받는 쪽)")
+            while (listening) {
+                var accepted: BluetoothSocket? = null
+                try {
+                    val adapter = BluetoothAdapter.getDefaultAdapter()
+                    if (adapter == null || !adapter.isEnabled) {
+                        NavLogger.d("[Navdy] 블루투스 꺼져있음 - 10초 뒤 다시 대기 시도")
+                        Thread.sleep(10_000)
+                        continue
+                    }
+                    // 정품 앱과 동일: 서비스 이름 "Navdy", 같은 UUID, 보안 방식이 기본.
+                    // 보안 방식으로 대기 소켓을 못 열면 비보안으로 한 번 더 시도. #문제시 원복
+                    val server = try {
+                        adapter.listenUsingRfcommWithServiceRecord(NAVDY_SDP_NAME, NAVDY_SERVICE_UUID)
+                    } catch (e: IOException) {
+                        NavLogger.d("[Navdy] 보안 대기 소켓 열기 실패(${e.message}) - 비보안으로 재시도")
+                        adapter.listenUsingInsecureRfcommWithServiceRecord(NAVDY_SDP_NAME, NAVDY_SERVICE_UUID)
+                    }
+                    serverSocket = server
+                    NavLogger.d("[Navdy] 대기 소켓 열림 - 나브디가 연결해오길 기다리는 중")
+
+                    // 나브디가 붙을 때까지 여기서 멈춰 있음(연결되면 반환됨)
+                    accepted = server.accept()
+                    try { server.close() } catch (_: Exception) {}
+                    serverSocket = null
+
+                    socket = accepted
+                    outputStream = accepted.outputStream
+                    connectedAtMs = System.currentTimeMillis()
+                    sentCountSinceConnect = 0
+                    val remoteName = try { accepted.remoteDevice?.name } catch (e: SecurityException) { null }
+                    NavLogger.d("[Navdy] 연결됨(나브디가 걸어옴): ${remoteName ?: "이름 확인 불가"}")
+
+                    // 정품 앱처럼 받는 쪽도 같이 열어둠. 끊길 때까지 여기서 대기했다가,
+                    // 끊기면 다시 위로 올라가 새 대기 소켓을 염. #문제시 원복
+                    startReaderThread(accepted)
+                    readerThread?.join()
+                    NavLogger.d("[Navdy] 연결 종료됨 - 다시 대기 상태로 돌아감")
+                    closeQuietly()
+                } catch (e: SecurityException) {
+                    NavLogger.e("[Navdy] 블루투스 권한 없음(주변 기기) - 대기 불가: ${e.message}")
+                    listening = false
+                } catch (e: Exception) {
+                    NavLogger.e("[Navdy] 대기 중 오류: ${e.javaClass.simpleName} ${e.message} - 10초 뒤 재시도")
+                    try { accepted?.close() } catch (_: Exception) {}
+                    try { serverSocket?.close() } catch (_: Exception) {}
+                    serverSocket = null
+                    closeQuietly()
+                    try { Thread.sleep(10_000) } catch (_: InterruptedException) { break }
+                }
+            }
+            NavLogger.d("[Navdy] 연결 대기 종료")
+        }
+        thread.isDaemon = true
+        thread.name = "NavdyAcceptor"
+        listenerThread = thread
+        thread.start()
+    }
+
+    fun stopListening() {
+        listening = false
+        try { serverSocket?.close() } catch (_: Exception) {}
+        serverSocket = null
+        listenerThread?.interrupt()
+        listenerThread = null
+        closeQuietly()
+    }
+
+    /**
+     * (예전 방식) 폰이 나브디한테 거는 연결. 실기기에서 100% 실패하는 게 확인돼서
+     * 더 이상 쓰지 않음 - startListening()으로 대체됨. #문제시 원복
+     */
+    @Suppress("unused")
+    private fun connectLegacy(context: Context, device: BluetoothDevice) {
         if (connecting || socket?.isConnected == true) return
         connecting = true
         executor.execute {

@@ -534,6 +534,62 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
+    // v: 재억 제보(2026-09-02) - "우리 앱에서 안내 음량을 올려도 카카오 메뉴에 있는 길 안내
+    // 음량과 동기화가 안 된다".
+    //
+    // SDK를 뜯어보니 음량이 서로 다른 두 개로 갈라져 있었음:
+    //   - sndVolume (0.0~1.0)  : 카카오 음성 자체 크기. 지금 우리 앱만 건드림(applyKakaoSdkVolume)
+    //   - 기기 볼륨(STREAM_MUSIC): 카카오 메뉴 하단 볼륨 +/- 버튼이 건드리는 값
+    //     (KNComponentBottomMenuView가 DeviceVolumeUseCase / trackingDeviceVolumeUseCase 사용)
+    // 서로 다른 값이라 한쪽을 바꿔도 다른 쪽에 반영이 안 됨.
+    //
+    // 고치기 전에 확인이 필요한 게 두 가지 있어서, 동작은 그대로 두고 값만 관찰함:
+    //   1) 카카오 메뉴에서 음량을 조절하면 sndVolume이 바뀌는가, 기기 볼륨이 바뀌는가(아니면 둘 다)
+    //   2) 두 값이 곱해지는가(둘 다 50%면 실제로 25%로 들리는지) - 이건 로그의 두 값 조합과
+    //      실제로 들리는 크기를 대조해야 알 수 있음
+    // 확인되면 "안내 음량" 값 하나로 세 곳(우리 저장값/sndVolume/기기 볼륨)을 함께 맞추는
+    // 양방향 동기화를 넣을 예정.
+    //
+    // 값이 바뀔 때만 남기므로 평소엔 로그가 거의 안 쌓임. #문제시 원복
+    private var sndVolumeGetterMethod: java.lang.reflect.Method? = null
+    private var sndVolumeGetterLookupFailed = false
+    private var lastVolumeDiagKey = ""
+    private fun logKakaoVolumeDiagnostics() {
+        try {
+            if (!::naviView.isInitialized) return
+            val am = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            val deviceCur = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+            val deviceMax = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+            val devicePercent = if (deviceMax > 0) (deviceCur * 100) / deviceMax else -1
+            val savedPercent = VolumeHelper.savedVolumePercent(this)
+
+            if (!sndVolumeGetterLookupFailed && sndVolumeGetterMethod == null) {
+                try {
+                    sndVolumeGetterMethod = naviView.javaClass.getMethod("getSndVolume")
+                } catch (e: NoSuchMethodException) {
+                    sndVolumeGetterLookupFailed = true
+                    NavLogger.e(this, "[안내음량진단] getSndVolume() 없음 - 이 SDK 버전에선 읽기 불가")
+                }
+            }
+            val sndVolume = try {
+                (sndVolumeGetterMethod?.invoke(naviView) as? Float)
+            } catch (e: Exception) { null }
+
+            // 셋 중 하나라도 바뀌었을 때만 남김
+            val key = "$savedPercent/$devicePercent/${sndVolume?.let { String.format("%.2f", it) }}"
+            if (key == lastVolumeDiagKey) return
+            lastVolumeDiagKey = key
+            NavLogger.d(
+                this,
+                "[안내음량진단] 우리저장값=${savedPercent}% | 기기볼륨=${deviceCur}/${deviceMax}(${devicePercent}%) | " +
+                    "카카오 sndVolume=${sndVolume ?: "읽기실패"} " +
+                    "(둘이 곱해지면 실제 체감은 약 ${if (sndVolume != null && devicePercent >= 0) (devicePercent * sndVolume).toInt() else -1}%)"
+            )
+        } catch (e: Exception) {
+            NavLogger.e(this, "[안내음량진단] 예외: ${e.message}")
+        }
+    }
+
     private fun resolveCurrentPositionThenRequestRoute(destName: String, destLat: Double, destLon: Double, finishOnFailure: Boolean = true) {
         // v: 재억 재지적(2026-08-29, 실기기 로그로 확인) - "추천/무료도로 골라도 실제
         // 경로가 안 바뀌는 것 같다"는 강한 제보로 아래 "캐시된 경로 재사용" 최적화(v13.7-2)를
@@ -1084,6 +1140,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         }
                     }
                 }
+                // v: 재억 제보(2026-09-02) - "우리 앱에서 안내 음량을 올려도 카카오 메뉴의
+                // 길 안내 음량이랑 동기화가 안 된다". 진단용 관찰만 함(동작 변경 없음). #문제시 원복
+                logKakaoVolumeDiagnostics()
                 hudPollHandler.postDelayed(this, 1000)
                 renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "kakao")
                 updateNavNotification()

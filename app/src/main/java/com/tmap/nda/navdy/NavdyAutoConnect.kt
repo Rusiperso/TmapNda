@@ -52,17 +52,20 @@ object NavdyAutoConnect {
                 NavLogger.d(context, "[Navdy] 블루투스 꺼져있음 - 자동연결 건너뜀")
                 return
             }
+            // v: 재억 제보(2026-09-02, 원인 확정) - 여기서 폰이 나브디한테 "연결을 걸던" 게
+            // 방향이 반대였음(자세한 내용은 NavdySender.startListening 주석 참고). 이제
+            // 폰은 대기만 하고, 나브디가 걸어오면 붙음. 대기는 한 번만 시작하면 되고
+            // 두 번째부터는 내부에서 그냥 무시되므로, 15초 루프에서 계속 불려도 안전함.
+            // 페어링 여부 확인은 그대로 두되, 없으면 안내 로그만 남김(대기 자체는 시작). #문제시 원복
             val bonded = adapter.bondedDevices
             val navdyDevice = bonded?.firstOrNull { device ->
                 val name = device.name ?: ""
                 name.contains("Navdy", ignoreCase = true)
             }
-            if (navdyDevice != null) {
-                NavLogger.d(context, "[Navdy] 페어링된 기기 발견: ${navdyDevice.name} - 연결 시도")
-                NavdySender.connect(context, navdyDevice)
-            } else {
-                NavLogger.d(context, "[Navdy] 페어링된 Navdy 기기 없음 (블루투스 설정에서 먼저 페어링 필요)")
+            if (navdyDevice == null) {
+                NavLogger.d(context, "[Navdy] 페어링된 Navdy 기기 없음 (블루투스 설정에서 먼저 페어링 필요) - 그래도 대기는 시작함")
             }
+            NavdySender.startListening(context)
         } catch (e: Exception) {
             NavLogger.e(context, "[Navdy] 자동연결 시도 실패: ${e.message}")
         }
