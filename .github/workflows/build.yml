@@ -83,11 +83,7 @@ jobs:
           fi
           VERSION=$(grep 'versionName' app/build.gradle.kts | grep -oP '"\K[^"]*')
           NOTES=$(head -c 1500 THIS_VERSION_RELEASE_NOTES.md)
-          MESSAGE="🚀 **TmapNda v${VERSION}** 업데이트
-
-${NOTES}
-
-다운로드: https://github.com/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}"
+          MESSAGE=$(printf '🚀 **TmapNda v%s** 업데이트\n\n%s\n\n다운로드: https://github.com/%s/releases/tag/v%s' "$VERSION" "$NOTES" "$GITHUB_REPOSITORY" "$VERSION")
           jq -n --arg content "$MESSAGE" '{content: $content}' | \
             curl -sS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK"
         env:
