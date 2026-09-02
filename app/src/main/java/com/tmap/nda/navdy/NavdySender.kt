@@ -87,6 +87,26 @@ object NavdySender {
     // 끊겼다"를 바로 구분할 수 있게 함. #문제시 원복
     @Volatile private var connectedAtMs = 0L
     @Volatile private var sentCountSinceConnect = 0
+    // v: 재억 요청(2026-09-02) - "왜 실패하는지도 로그에 남게 했지?" 확인 중 빠진 걸 찾음.
+    // 다음에 또 27초쯤에 끊기면 "살아있음 신호를 보냈는데도 끊긴 것"인지 "신호 자체가 안
+    // 나간 것"인지 구분돼야 원인을 좁힐 수 있음. 이 연결에서 핑을 몇 번 보냈는지 세서
+    // 끊길 때 로그에 같이 남김. #문제시 원복
+    @Volatile private var pingCountSinceConnect = 0
+    @Volatile private var receivedCountSinceConnect = 0
+
+    // v: 재억 요청(2026-09-02) - "로그를 계속 쌓지 말고 그때 왜 끊겼는지 정도만 남게 해.
+    // 계속 쌓으면 용량만 늘어난다". 지금까지 나브디 로그는 전송할 때마다(초당 1회),
+    // 받을 때마다(4초마다), 연결 실패할 때마다(20초마다 3줄씩) 계속 쌓이고 있었음.
+    // 상태가 "바뀌는 순간"만 남기고 같은 상태 반복은 생략함. 끊긴 이유와 그때까지의
+    // 누적 횟수는 끊길 때 한 줄에 다 들어가므로 정보 손실은 없음. #문제시 원복
+    private val lastLoggedByKey = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private fun logIfChanged(key: String, message: String, isError: Boolean = false) {
+        if (lastLoggedByKey.put(key, message) == message) return
+        if (isError) NavLogger.e(message) else NavLogger.d(message)
+    }
+    private fun resetLogState(vararg keys: String) {
+        keys.forEach { lastLoggedByKey.remove(it) }
+    }
 
 
     /**
@@ -140,7 +160,7 @@ object NavdySender {
                         adapter.listenUsingInsecureRfcommWithServiceRecord(NAVDY_SDP_NAME, NAVDY_SERVICE_UUID)
                     }
                     serverSocket = server
-                    NavLogger.d("[Navdy] 대기 소켓 열림 - 나브디가 연결해오길 기다리는 중")
+                    logIfChanged("listen", "[Navdy] 대기 소켓 열림 - 나브디가 연결해오길 기다리는 중")
 
                     // 나브디가 붙을 때까지 여기서 멈춰 있음(연결되면 반환됨)
                     accepted = server.accept()
@@ -151,12 +171,15 @@ object NavdySender {
                     outputStream = accepted.outputStream
                     connectedAtMs = System.currentTimeMillis()
                     sentCountSinceConnect = 0
+                    pingCountSinceConnect = 0
+                    receivedCountSinceConnect = 0
                     val remoteName = try { accepted.remoteDevice?.name } catch (e: SecurityException) { null }
                     NavLogger.d("[Navdy] 연결됨(나브디가 걸어옴): ${remoteName ?: "이름 확인 불가"}")
 
                     // 정품 앱처럼 받는 쪽도 같이 열어둠. 끊길 때까지 여기서 대기했다가,
                     // 끊기면 다시 위로 올라가 새 대기 소켓을 염. #문제시 원복
                     startReaderThread(accepted)
+                    startPingThread()   // 4초마다 살아있음 신호(정품 앱과 동일) #문제시 원복
                     readerThread?.join()
                     NavLogger.d("[Navdy] 연결 종료됨 - 다시 대기 상태로 돌아감")
                     closeQuietly()
@@ -164,7 +187,7 @@ object NavdySender {
                     NavLogger.e("[Navdy] 블루투스 권한 없음(주변 기기) - 대기 불가: ${e.message}")
                     listening = false
                 } catch (e: Exception) {
-                    NavLogger.e("[Navdy] 대기 중 오류: ${e.javaClass.simpleName} ${e.message} - 10초 뒤 재시도")
+                    logIfChanged("listenerr", "[Navdy] 대기 중 오류: ${e.javaClass.simpleName} ${e.message} - 10초 뒤 재시도", isError = true)
                     try { accepted?.close() } catch (_: Exception) {}
                     try { serverSocket?.close() } catch (_: Exception) {}
                     serverSocket = null
@@ -233,7 +256,7 @@ object NavdySender {
                         NAVDY_PROXY_SDP_NAME, NAVDY_PROXY_TUNNEL_UUID
                     )
                     proxyServerSocket = server
-                    NavLogger.d("[Navdy] 프록시 대기 창구도 열림(정품 앱과 동일하게 2개 운영)")
+                    logIfChanged("proxy", "[Navdy] 프록시 대기 창구도 열림(정품 앱과 동일하게 2개 운영)")
                     val sock = server.accept()
                     NavLogger.d("[Navdy] 프록시 창구로 연결이 들어옴 - 나브디가 이쪽을 쓰는 것으로 보임(기록만 하고 닫음)")
                     try { sock.close() } catch (_: Exception) {}
@@ -340,7 +363,7 @@ object NavdySender {
                     s
                 } catch (e: IOException) {
                     try { s?.close() } catch (_: Exception) {}
-                    NavLogger.d("[Navdy] 표준(보안) 연결 실패(${e.message}), 비보안 연결 시도")
+                    logIfChanged("dial1", "[Navdy] 표준(보안) 연결 실패(${e.message}), 비보안 연결 시도")
                     // v: 재억 요청(2026-08-31, 실기기 로그 분석) - "채널 찍기 전에 표준 방식으로
                     // 더 못 해보냐"는 지적으로 나브디 공식 안드로이드 앱(디컴파일 오픈소스,
                     // gitlab.com/alelec/navdy/alelec_navdy_client, BTSocketFactory.java)을 직접
@@ -358,7 +381,9 @@ object NavdySender {
                         insecure
                     } catch (e3: IOException) {
                         try { insecure?.close() } catch (_: Exception) {}
-                        NavLogger.d("[Navdy] 비보안 연결도 실패(${e3.message}), 채널 우회 연결 시도")
+                        // v: 재억 제보(2026-09-02) - 채널 우회는 v19.2.80에서 제거했는데
+                        // 이 문구만 예전 그대로 남아 있어서 로그가 헷갈렸음. #문제시 원복
+                        logIfChanged("dial2", "[Navdy] 비보안 연결도 실패(${e3.message}) - 이번 시도는 여기서 끝(20초 뒤 재시도)")
                         null
                     }
                     // v: 재억 요청(2026-09-02) - 채널 1~5 억지 찍기는 제거함. 실기기 로그에서
@@ -378,14 +403,17 @@ object NavdySender {
                 // 바로 끊어버리는 것으로 추정됨. 정품처럼 받는 스레드를 같이 띄워서 양방향을
                 // 살려둠(받은 내용 자체는 아직 안 쓰므로 그냥 읽어서 버림). #문제시 원복
                 startReaderThread(sock)
+                startPingThread()   // 4초마다 살아있음 신호(정품 앱과 동일) #문제시 원복
                 connectedAtMs = System.currentTimeMillis()
                 sentCountSinceConnect = 0
+                pingCountSinceConnect = 0
+                receivedCountSinceConnect = 0
                 NavLogger.d("[Navdy] 연결 성공: ${device.name}")
             } catch (e: Exception) {
                 // v: 재억 제보(2026-08-27) - 로그 파일에는 "연결 시도"만 계속 남고 성공/실패 여부가
                 // 안 남아서 원인 파악이 안 됐음. 기존엔 android.util.Log만 써서 logcat에만 남고
                 // 앱이 공유하는 로그 파일(NavLogger)에는 기록이 안 됐던 게 원인. #문제시 원복
-                NavLogger.e("[Navdy] 연결 실패: ${e.javaClass.simpleName} ${e.message}")
+                logIfChanged("dial3", "[Navdy] 연결 실패: ${e.javaClass.simpleName} ${e.message}", isError = true)
                 closeQuietly()
             } finally {
                 connecting = false
@@ -447,10 +475,16 @@ object NavdySender {
                 while (true) {
                     val n = input.read(buffer)
                     if (n == -1) {
-                        NavLogger.d("[Navdy] 받는 쪽 스트림이 상대방에 의해 정상 종료됨(EOF), ${connectionAgeMs()}ms만에, 그동안 보낸 전송 성공 ${sentCountSinceConnect}회")
+                        NavLogger.d("[Navdy] 받는 쪽 스트림이 상대방에 의해 정상 종료됨(EOF), ${connectionAgeMs()}ms만에, 그동안 보낸 전송 성공 ${sentCountSinceConnect}회, 살아있음 신호 ${pingCountSinceConnect}회, 수신 ${receivedCountSinceConnect}회")
                         break
                     }
-                    NavLogger.d("[Navdy] 데이터 수신: ${n}바이트")
+                    // v: 재억 요청(2026-09-02) - 나브디가 4초마다 보내는 신호를 매번 남기면
+                    // 로그가 계속 쌓임. 처음 받은 것만 남기고, 총 몇 번 받았는지는 끊길 때
+                    // 한 줄로 남김. #문제시 원복
+                    receivedCountSinceConnect++
+                    if (receivedCountSinceConnect == 1) {
+                        NavLogger.d("[Navdy] 나브디에서 데이터 받기 시작(${n}바이트) - 이후 수신은 로그 생략")
+                    }
                 }
             } catch (e: Exception) {
                 // v: 재억 제보(2026-09-02) - "받는 쪽도 로그가 남아야 왜 끊기는지 알지"라는
@@ -458,7 +492,7 @@ object NavdySender {
                 // 남김 - 전송 쪽 Broken pipe 로그와 대조해서 어느 쪽이 먼저 끊었는지
                 // 판단하는 데 씀. 연결 유지 시간/그동안 보낸 성공 횟수도 같이 남겨서
                 // "받아보지도 못하고 끊겼는지 vs 한동안 잘 받다 끊겼는지" 구분되게 함. #문제시 원복
-                NavLogger.d("[Navdy] 받는 스레드 종료: ${e.javaClass.simpleName} ${e.message}, ${connectionAgeMs()}ms만에, 그동안 보낸 전송 성공 ${sentCountSinceConnect}회")
+                NavLogger.d("[Navdy] 받는 스레드 종료: ${e.javaClass.simpleName} ${e.message}, ${connectionAgeMs()}ms만에, 그동안 보낸 전송 성공 ${sentCountSinceConnect}회, 살아있음 신호 ${pingCountSinceConnect}회, 수신 ${receivedCountSinceConnect}회")
             }
         }
         thread.isDaemon = true
@@ -522,13 +556,16 @@ object NavdySender {
                     currentRoad, turn.protoValue, distanceToTurn, pendingStreet, eta, speed
                 )
                 val eventBytes = buildNavdyEvent(maneuverBytes)
-                // v: 재억 요청(2026-09-02) - 전송을 "시도"한 시점 자체를 남겨서, 아래 실패 로그가
-                // 없어도(예: 앱이 죽는 등 극단적 케이스) 최소한 마지막으로 뭘 보내려 했는지는
-                // 로그에 남게 함. #문제시 원복
-                NavLogger.d("[Navdy] 전송 시도: 도로=$currentRoad 턴=${turn.name} 거리=$distanceToTurn 크기=${eventBytes.size}B")
+                // v: 재억 요청(2026-09-02) - 예전엔 전송할 때마다(초당 1회) "시도"와 "성공"
+                // 두 줄을 남겨서 로그가 계속 쌓였음. 이 연결에서 처음 성공한 한 번만 남기고
+                // 나머지는 생략함 - 몇 번 보냈는지는 끊길 때 누적 횟수로 다 나오고,
+                // 실패하면 실패 로그가 이유와 함께 따로 남으므로 정보 손실은 없음. #문제시 원복
                 writeFramed(stream, eventBytes)
                 sentCountSinceConnect++
-                NavLogger.d("[Navdy] 전송 성공 (이 연결에서 누적 ${sentCountSinceConnect}회)")
+                lastSentAtMs = System.currentTimeMillis()
+                if (sentCountSinceConnect == 1) {
+                    NavLogger.d("[Navdy] 첫 전송 성공: 도로=$currentRoad 턴=${turn.name} 거리=$distanceToTurn 크기=${eventBytes.size}B (이후 전송은 로그 생략)")
+                }
             } catch (e: Exception) {
                 // v: 재억 요청(2026-09-02) - "보내다 끊겼는지 보내보지도 못하고 끊겼는지"까지
                 // 바로 알 수 있게, 이 연결에서 지금까지 성공한 전송 횟수와 연결 유지 시간을
@@ -536,7 +573,7 @@ object NavdySender {
                 // 성공하지 못하고 끊긴 것. e.message에는 writeFramed()가 붙인 단계 정보
                 // ([길이헤더 전송 중]/[본문 전송 중]/[flush 중])가 포함되어 있어 정확히
                 // 어느 단계에서 끊겼는지도 같이 남음. #문제시 원복
-                NavLogger.e("[Navdy] 전송 실패로 연결 끊김 처리: ${e.javaClass.simpleName} ${e.message}, 이 연결에서 성공 ${sentCountSinceConnect}회 후 끊김, 연결 유지 ${connectionAgeMs()}ms")
+                NavLogger.e("[Navdy] 전송 실패로 연결 끊김 처리: ${e.javaClass.simpleName} ${e.message}, 이 연결에서 성공 ${sentCountSinceConnect}회 후 끊김, 살아있음 신호 ${pingCountSinceConnect}회, 연결 유지 ${connectionAgeMs()}ms")
                 // v: 재억 요청(2026-08-28) - 전송이 실패해도 socket/outputStream을 그대로 두면,
                 // 안드로이드 BluetoothSocket.isConnected()가 물리적 연결 끊김을 실시간으로
                 // 반영 안 해줘서(close() 호출 전까진 계속 true로 보고할 수 있음) 재연결 루프가
@@ -572,6 +609,70 @@ object NavdySender {
         // 값 확인함). "안내 중"임을 명시적으로 알려줌. #문제시 원복
         writeVarintField(out, FIELD_NAVIGATION_STATE, NAV_SESSION_STARTED.toLong())
         return out.toByteArray()
+    }
+
+    // v: 재억 제보(2026-09-02, 로그로 원인 확정) - v19.2.80에서 처음으로 연결과 전송이
+    // 실제로 성공했음(19:29:52 연결 -> 전송 성공 7회 -> 나브디가 보낸 데이터 12회 수신).
+    // 그런데 26.9초 만에 나브디가 연결을 끊었음.
+    //
+    // 로그의 수신 패턴이 답이었음: 처음 194바이트(첫 인사로 보임) 뒤로 4초마다 5~12바이트짜리
+    // 작은 데이터가 계속 들어왔는데, 이 앱은 그걸 읽고 버리기만 하고 아무 답도 안 보냈음.
+    // 정품 앱 소스를 확인하니 ConnectionService.sendPingIfNeeded()가
+    //   "마지막으로 뭔가 보낸 지 4초가 넘었으면 Ping 이벤트를 보낸다"
+    // 를 계속 반복하고 있었음. 즉 서로 4초마다 살아있다는 신호를 주고받는 구조인데,
+    // 우리가 답을 안 해서 나브디가 죽은 연결로 보고 끊은 것.
+    //
+    // Ping 이벤트 형식도 같은 소스에서 확인함:
+    //   NavdyEvent.MessageType.Ping = 40
+    //   Ext_NavdyEvent.ping = 확장 태그 140, 내용은 빈 메시지
+    // #문제시 원복: startPingThread() 호출을 빼면 됨
+    private const val MSG_TYPE_PING = 40
+    private const val NAVDY_EVENT_EXT_TAG_PING = 140
+    private const val PING_INTERVAL_MS = 4000L
+
+    @Volatile private var pingThread: Thread? = null
+    @Volatile private var lastSentAtMs = 0L
+
+    private fun buildPingEvent(): ByteArray {
+        val out = ByteArrayOutputStream()
+        writeVarintField(out, NAVDY_EVENT_TAG_TYPE, MSG_TYPE_PING.toLong())
+        // 내용이 없는 빈 메시지를 확장 태그 140에 담음
+        writeEmbeddedMessage(out, NAVDY_EVENT_EXT_TAG_PING, ByteArray(0))
+        return out.toByteArray()
+    }
+
+    private fun startPingThread() {
+        pingThread?.interrupt()
+        val thread = Thread {
+            while (socket?.isConnected == true) {
+                try {
+                    Thread.sleep(1000)
+                    val stream = outputStream ?: break
+                    if (System.currentTimeMillis() - lastSentAtMs < PING_INTERVAL_MS) continue
+                    synchronized(this) {
+                        writeFramed(stream, buildPingEvent())
+                        stream.flush()
+                        lastSentAtMs = System.currentTimeMillis()
+                        pingCountSinceConnect++
+                    }
+                    // 첫 핑만 로그로 남김(4초마다 찍으면 로그 도배됨). 나머지는 끊길 때
+                    // 누적 횟수로 확인 가능. #문제시 원복
+                    if (pingCountSinceConnect == 1) {
+                        NavLogger.d("[Navdy] 살아있음 신호(Ping) 전송 시작 - 이후 4초마다 자동 전송")
+                    }
+                } catch (e: InterruptedException) {
+                    return@Thread
+                } catch (e: Exception) {
+                    NavLogger.d("[Navdy] 살아있음 신호(Ping) 전송 실패 - 연결 끊긴 것으로 보고 정리: ${e.message}")
+                    closeQuietly()
+                    return@Thread
+                }
+            }
+        }
+        thread.isDaemon = true
+        thread.name = "NavdyPing"
+        pingThread = thread
+        thread.start()
     }
 
     private fun buildNavdyEvent(maneuverEventBytes: ByteArray): ByteArray {
