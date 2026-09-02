@@ -14,6 +14,7 @@ import java.io.RandomAccessFile
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
@@ -53,6 +54,12 @@ object DiscordReporter {
     private const val COLOR_FEATURE_FAIL = 0x5865F2L
 
     private val lastSentAt = ConcurrentHashMap<String, Long>()
+
+    // v: 재억 재제보(2026-09-03) - 워치독 멈춤 보고가 메인 스레드에서 그대로 호출되고 있었고,
+    // 그 안에서 로그 파일을 최대 7MB까지 읽는 tailOfLogFile()이 동기적으로 실행됨 - 멈춤을
+    // 보고하려는 행위 자체가 메인 스레드를 더 오래 묶어서 다음 멈춤을 더 키우는 악순환이
+    // 있었을 것으로 보임. 파일 읽기+요청 조립을 전용 백그라운드 스레드로 옮김. #문제시 원복
+    private val reportExecutor = Executors.newSingleThreadExecutor()
 
     private val client by lazy {
         OkHttpClient.Builder()
@@ -149,32 +156,39 @@ object DiscordReporter {
         if (now - last < THROTTLE_MS) return
         lastSentAt[throttleKey] = now
 
-        val payload = buildPayload(title, color, extraFields + commonFields(context))
-        val logBytes = try { tailOfLogFile(NavLogger.activeLogFile(context)) } catch (e: Exception) { null }
+        val appContextSafe = context.applicationContext
+        val task = Runnable {
+            val payload = buildPayload(title, color, extraFields + commonFields(appContextSafe))
+            val logBytes = try { tailOfLogFile(NavLogger.activeLogFile(appContextSafe)) } catch (e: Exception) { null }
 
-        val bodyBuilder = MultipartBody.Builder().setType(MultipartBody.FORM)
-            .addFormDataPart("payload_json", payload)
-        if (logBytes != null) {
-            bodyBuilder.addFormDataPart(
-                "files[0]", "tmapnda_log_tail.txt",
-                logBytes.toRequestBody("text/plain".toMediaTypeOrNull())
-            )
+            val bodyBuilder = MultipartBody.Builder().setType(MultipartBody.FORM)
+                .addFormDataPart("payload_json", payload)
+            if (logBytes != null) {
+                bodyBuilder.addFormDataPart(
+                    "files[0]", "tmapnda_log_tail.txt",
+                    logBytes.toRequestBody("text/plain".toMediaTypeOrNull())
+                )
+            }
+
+            val request = Request.Builder().url(WEBHOOK_URL).post(bodyBuilder.build()).build()
+            try {
+                client.newCall(request).execute().close()
+            } catch (e: Exception) {
+                // 자동 보고 자체의 실패가 앱 동작에 영향을 주면 안 되므로 조용히 무시
+            }
         }
 
-        val request = Request.Builder().url(WEBHOOK_URL).post(bodyBuilder.build()).build()
-        try {
-            if (blocking) {
-                // 크래시 직후처럼 프로세스가 곧 죽을 수 있는 상황 - 응답을 기다렸다가 넘어감
-                // (client의 callTimeout(6초)이 상한이라 무한정 앱 종료가 늦어지진 않음).
-                client.newCall(request).execute().close()
-            } else {
-                client.newCall(request).enqueue(object : okhttp3.Callback {
-                    override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {}
-                    override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) { response.close() }
-                })
+        if (blocking) {
+            // 크래시 직후처럼 프로세스가 곧 죽을 수 있는 상황 - 완료(또는 타임아웃)까지
+            // 기다렸다가 넘어감. 단, 대기 자체는 호출부 스레드에서 하되 실제 파일 IO/네트워크는
+            // 백그라운드 스레드(reportExecutor)에서 실행되므로 그 스레드가 메인 스레드일 때도
+            // 최소 작업(대기)만 하게 됨.
+            try {
+                reportExecutor.submit(task).get(7, TimeUnit.SECONDS)
+            } catch (e: Exception) {
             }
-        } catch (e: Exception) {
-            // 자동 보고 자체의 실패가 앱 동작에 영향을 주면 안 되므로 조용히 무시
+        } else {
+            reportExecutor.execute(task)
         }
     }
 

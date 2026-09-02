@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executors
 
 /**
  * TmapNav 관련 로그를 logcat에 찍는 동시에 파일에도 누적 저장.
@@ -55,19 +56,30 @@ object NavLogger {
         }
     }
 
+    // v: 재억 재제보(2026-09-03) - 워치독이 "메인스레드 멈춤"을 감지할 때마다 그걸 로그로
+    // 남기고 디스코드로 보고하는 과정이 전부 메인 스레드에서(동기적으로 디스크 IO까지)
+    // 실행되고 있었음. 멈춤이 한 번 생기면 → 그걸 보고하려고 메인 스레드가 또 파일 IO로
+    // 묶여서 → 다음 감지 때 더 심한 멈춤으로 이어지는 악순환 가능성이 실제 로그 패턴
+    // (1초대 → 25초까지 점점 심해짐)과 들어맞음. 파일 쓰기를 전용 백그라운드 스레드로
+    // 옮겨서, 로그를 남기는 행위 자체가 메인 스레드를 묶지 않도록 함. #문제시 원복
+    private val ioExecutor = Executors.newSingleThreadExecutor()
+
     private fun appendToFile(context: Context, level: String, message: String) {
-        try {
-            val file = logFile(context)
-            if (file.exists() && file.length() > MAX_LOG_SIZE_BYTES) {
-                val rotatedName = "tmapnda_log_${System.currentTimeMillis()}.txt"
-                file.renameTo(File(file.parentFile, rotatedName))
+        val appContextSafe = context.applicationContext
+        ioExecutor.execute {
+            try {
+                val file = logFile(appContextSafe)
+                if (file.exists() && file.length() > MAX_LOG_SIZE_BYTES) {
+                    val rotatedName = "tmapnda_log_${System.currentTimeMillis()}.txt"
+                    file.renameTo(File(file.parentFile, rotatedName))
+                }
+                val line = "${timeFormat.format(Date())} [${versionTag(appContextSafe)}] [$level] $message\n"
+                // 플랫폼 기본 charset에 의존하던 FileWriter 대신 UTF-8을 명시함.
+                // 예전엔 로그 공유/전송 과정에서 한글이 mojibake(占쏙옙 패턴)로 영구 손상되는 문제가 있었음. #문제시 원복
+                OutputStreamWriter(FileOutputStream(logFile(appContextSafe), true), StandardCharsets.UTF_8).use { it.write(line) }
+            } catch (e: Exception) {
+                Log.e(TAG, "NavLogger appendToFile error: ${e.message}")
             }
-            val line = "${timeFormat.format(Date())} [${versionTag(context)}] [$level] $message\n"
-            // 플랫폼 기본 charset에 의존하던 FileWriter 대신 UTF-8을 명시함.
-            // 예전엔 로그 공유/전송 과정에서 한글이 mojibake(占쏙옙 패턴)로 영구 손상되는 문제가 있었음. #문제시 원복
-            OutputStreamWriter(FileOutputStream(logFile(context), true), StandardCharsets.UTF_8).use { it.write(line) }
-        } catch (e: Exception) {
-            Log.e(TAG, "NavLogger appendToFile error: ${e.message}")
         }
     }
 
