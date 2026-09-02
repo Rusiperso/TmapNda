@@ -73,3 +73,22 @@ jobs:
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Announce release to Discord
+        continue-on-error: true
+        run: |
+          if [ -z "$DISCORD_WEBHOOK" ]; then
+            echo "DISCORD_RELEASE_WEBHOOK secret not set - skipping Discord announcement"
+            exit 0
+          fi
+          VERSION=$(grep 'versionName' app/build.gradle.kts | grep -oP '"\K[^"]*')
+          NOTES=$(head -c 1500 THIS_VERSION_RELEASE_NOTES.md)
+          MESSAGE="🚀 **TmapNda v${VERSION}** 업데이트
+
+${NOTES}
+
+다운로드: https://github.com/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}"
+          jq -n --arg content "$MESSAGE" '{content: $content}' | \
+            curl -sS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK"
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}

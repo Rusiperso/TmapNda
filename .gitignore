@@ -11,3 +11,4 @@ local.properties
 *.apk
 /app/build
 /buildSrc/build
+.claude/settings.local.json
