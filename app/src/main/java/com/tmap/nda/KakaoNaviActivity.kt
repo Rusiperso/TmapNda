@@ -164,8 +164,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     private fun unmuteTmapVolume() {
         try {
-            TmapUISDK.setVolume(this, VolumeHelper.savedVolumePercent(this))
-            KakaoSdkState.lastAppliedTmapVolume = VolumeHelper.savedVolumePercent(this)
+            TmapUISDK.setVolume(this, VolumeHelper.guideVolumePercent(this))
+            KakaoSdkState.lastAppliedTmapVolume = VolumeHelper.guideVolumePercent(this)
         } catch (e: Exception) {
             NavLogger.e(this, "티맵 볼륨 복원 예외: ${e.message}")
         }
@@ -221,10 +221,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         applyTmapMute(wasTmapMuted)
         kakaoMuted = sharedPref.getBoolean("kakao_muted", false)
 
-        // v3.13: 카카오 길안내 시작할 때마다 시스템 볼륨이 100%로 리셋되던 문제 - 마지막에
-        // 저장해둔 볼륨 퍼센트로 강제로 다시 맞춤 (사용자: "50, 60으로 조정해도 다음 안내
-        // 할 때 또 100프로"). #문제시 원복
-        VolumeHelper.applySavedSystemVolume(this)
+        // v3.13: 카카오 길안내 시작할 때마다 볼륨이 100%로 리셋되던 문제 - 저장해둔 값으로 다시 맞춤.
+        // v: 재억 요청(2026-09-02, A안) - 미디어(음악) 볼륨을 건드리던 걸 길안내 음량만
+        // 맞추는 것으로 교체. 음악 볼륨은 이제 앱이 절대 안 건드림. #문제시 원복
+        VolumeHelper.applyGuideVolume(this)
 
       KakaoSdkState.ensureInitialized(
     application,
@@ -485,6 +485,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // SDK가 시스템 볼륨과 무관하게 내부적으로 항상 1.0(100%)로 재생하고 있었던 것.
         // 저장된 볼륨%(VolumeHelper)를 0.0~1.0으로 변환해서 실제로 반영.
         // PR#9 병합 과정에서 이 함수 전체가 실수로 같이 삭제됐었음 - 복원. #문제시 원복
+        // v: 재억 요청(2026-09-02, A안) - 물리 볼륨버튼으로 "길안내 음량만" 조절하려면
+        // VolumeHelper가 카카오 화면의 naviView에 값을 넣을 수 있어야 함. 화면이 살아있는
+        // 동안만 등록해두고 onDestroy에서 해제. #문제시 원복
+        VolumeHelper.kakaoGuideVolumeApplier = { fraction ->
+            runOnUiThread { if (::naviView.isInitialized) applyKakaoSdkVolume(fraction) }
+        }
         applyKakaoSdkVolume()
         naviView.post { logNaviViewDiagnostics("idle map 초기화 직후") }
 
@@ -501,10 +507,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private var sndVolumeSetterField: java.lang.reflect.Field? = null
     private var sndVolumeSetterMethod: java.lang.reflect.Method? = null
     private var sndVolumeLookupFailed = false
+    // v: 재억 요청(2026-09-02, A안) - 이제 "길안내 음량"이 미디어 음량과 완전히 분리된
+    // 별도 값(VolumeHelper.guideVolumePercent)이라 그걸 읽어서 적용함. #문제시 원복
     private fun applyKakaoSdkVolume() {
+        applyKakaoSdkVolume(VolumeHelper.guideVolumePercent(this) / 100f)
+    }
+
+    private fun applyKakaoSdkVolume(fractionIn: Float) {
         try {
-            val percent = VolumeHelper.savedVolumePercent(this).coerceIn(0, 100)
-            val fraction = percent / 100f
+            val fraction = fractionIn.coerceIn(0f, 1f)
+            val percent = (fraction * 100).toInt()
 
             if (!sndVolumeLookupFailed && sndVolumeSetterMethod == null && sndVolumeSetterField == null) {
                 // Kotlin의 "var sndVolume: Float"는 바이트코드상 setSndVolume(float) 메서드로 컴파일됨
@@ -561,7 +573,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             val deviceCur = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
             val deviceMax = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
             val devicePercent = if (deviceMax > 0) (deviceCur * 100) / deviceMax else -1
-            val savedPercent = VolumeHelper.savedVolumePercent(this)
+            val savedPercent = VolumeHelper.guideVolumePercent(this)
 
             if (!sndVolumeGetterLookupFailed && sndVolumeGetterMethod == null) {
                 try {
@@ -575,15 +587,21 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 (sndVolumeGetterMethod?.invoke(naviView) as? Float)
             } catch (e: Exception) { null }
 
+            // v: 재억 요청(2026-09-02, A안) - 카카오 자체 메뉴에서 안내 음량을 바꾼 경우도
+            // 앱 저장값에 그대로 반영해서 양쪽이 항상 같은 값을 가리키게 함(양방향 동기화).
+            // 우리가 방금 적용한 값과 같으면 아무 일도 안 일어남. #문제시 원복
+            if (sndVolume != null) {
+                VolumeHelper.syncGuideVolumeFromKakao(this, sndVolume)
+            }
+
             // 셋 중 하나라도 바뀌었을 때만 남김
             val key = "$savedPercent/$devicePercent/${sndVolume?.let { String.format("%.2f", it) }}"
             if (key == lastVolumeDiagKey) return
             lastVolumeDiagKey = key
             NavLogger.d(
                 this,
-                "[안내음량진단] 우리저장값=${savedPercent}% | 기기볼륨=${deviceCur}/${deviceMax}(${devicePercent}%) | " +
-                    "카카오 sndVolume=${sndVolume ?: "읽기실패"} " +
-                    "(둘이 곱해지면 실제 체감은 약 ${if (sndVolume != null && devicePercent >= 0) (devicePercent * sndVolume).toInt() else -1}%)"
+                "[안내음량진단] 길안내음량=${savedPercent}% | 미디어(음악)음량=${deviceCur}/${deviceMax}(${devicePercent}%) | " +
+                    "카카오 sndVolume=${sndVolume ?: "읽기실패"}"
             )
         } catch (e: Exception) {
             NavLogger.e(this, "[안내음량진단] 예외: ${e.message}")
@@ -3024,7 +3042,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             NavLogger.e(this, "[과속경고음발생][카카오화면] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1}) nearCamera=$nearCamera")
             try {
                 // v: 재억 지적(2026-08-22) - MapActivity와 동일한 문제(안내음량 설정이 안 먹힘). #문제시 원복
-                val volumePercent = VolumeHelper.savedVolumePercent(this).coerceIn(1, 100)
+                val volumePercent = VolumeHelper.guideVolumePercent(this).coerceIn(1, 100)
                 AudioStreamDiagnostics.log(this, "경고음발생[카카오화면]")
                 val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, volumePercent)
                 tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
@@ -3104,6 +3122,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         NavLogger.d(this, "[KakaoNaviActivity lifecycle] onDestroy (isFinishing=$isFinishing, isChangingConfigurations=$isChangingConfigurations)")
         cancelNavNotification()
         hudPollHandler.removeCallbacksAndMessages(null)
+        // v: 재억 요청(2026-09-02, A안) - 화면이 사라지면 카카오 음량 적용 함수도 해제.
+        // (이미 없어진 naviView를 붙잡고 있으면 안 됨) #문제시 원복
+        VolumeHelper.kakaoGuideVolumeApplier = null
         com.tmap.nda.miniplayer.MiniPlayerManager.detach()
         try {
             locationManager?.removeUpdates(this)
@@ -3113,7 +3134,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         try {
             val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             val muted = sharedPref.getBoolean("tmap_muted", false)
-            val vol = if (muted) 0 else VolumeHelper.savedVolumePercent(this)
+            val vol = if (muted) 0 else VolumeHelper.guideVolumePercent(this)
             TmapUISDK.setVolume(this, vol)
             KakaoSdkState.lastAppliedTmapVolume = vol
             NavLogger.d(this, "[음소거] KakaoNaviActivity 종료 - 티맵 볼륨 복원(muted=$muted, vol=$vol)")

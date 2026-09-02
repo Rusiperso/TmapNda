@@ -1315,7 +1315,10 @@ class KakaoGuidanceDelegate(
         // 나오게" - 음성이 시작되는 바로 그 순간에 우리가 저장해둔 음량%를 시스템 볼륨에
         // 즉시 다시 강제 적용해서, 카카오가 자기 마음대로 볼륨을 건드렸더라도 재생 시작
         // 시점엔 항상 재억이 설정한 값으로 맞춰지게 함. #문제시 원복
-        VolumeHelper.applySavedSystemVolume(context)
+        // v: 재억 요청(2026-09-02, A안) - 예전엔 여기서 미디어(음악) 볼륨을 강제로 되돌렸는데,
+        // 그건 음악 볼륨까지 같이 바꿔버리는 방식이었음. 이제 길안내 음량은 미디어와 완전히
+        // 분리된 값이라 카카오 음성 볼륨만 다시 맞춤. #문제시 원복
+        VolumeHelper.applyGuideVolume(context)
         scanForVolumeApiOnce(guidance)
         if (!isRouteGuideActive()) return
         naviView?.willPlayVoiceGuide(guidance, voiceGuide)
@@ -1329,7 +1332,10 @@ class KakaoGuidanceDelegate(
         AudioStreamDiagnostics.log(context, "카카오음성끝")
         // v: 재억 제보(2026-08-23) - 음성이 끝난 뒤에도 카카오가 건드려놓은 볼륨이 그대로
         // 남아있을 수 있어서, 끝나는 시점에도 한 번 더 저장된 음량%로 재적용. #문제시 원복
-        VolumeHelper.applySavedSystemVolume(context)
+        // v: 재억 요청(2026-09-02, A안) - 예전엔 여기서 미디어(음악) 볼륨을 강제로 되돌렸는데,
+        // 그건 음악 볼륨까지 같이 바꿔버리는 방식이었음. 이제 길안내 음량은 미디어와 완전히
+        // 분리된 값이라 카카오 음성 볼륨만 다시 맞춤. #문제시 원복
+        VolumeHelper.applyGuideVolume(context)
         naviView?.didFinishPlayVoiceGuide(guidance, voiceGuide)
     }
 

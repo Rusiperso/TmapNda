@@ -105,22 +105,91 @@ object VolumeHelper {
         }
     }
 
-    // v: 신규기능(물리 볼륨버튼으로 안내음량 조절) - dispatchKeyEvent로 가로챈 볼륨키를
-    // 처리. 안내 음성이 STREAM_MUSIC이라 물리 버튼이 자연스럽게도 어느 정도 이 스트림을
-    // 건드리긴 하지만, 조용한 순간엔 안드로이드가 다른 스트림을 잡을 수 있어 무조건
-    // STREAM_MUSIC을 직접 조절하도록 고정. UI 음량 안내(토스트)도 같이 띄움. #문제시 원복
+    // ===== 길안내 음량(= 음성 안내만) - 미디어(음악) 음량과 완전히 분리 =====
+    //
+    // v: 재억 요청(2026-09-02, 실기기 로그로 원인 확정) - "볼륨 버튼으로 카카오 길안내
+    // 음량만 바꾸고 싶다".
+    //
+    // 로그로 확인된 사실:
+    //   17:17:30~41 (앱/볼륨버튼으로 조절) 저장값 33->100->46%, 기기볼륨도 똑같이 따라감,
+    //                                     카카오 안내음량은 0.33에 멈춰서 안 따라옴
+    //   17:17:45~49 (카카오 메뉴로 조절)   기기볼륨 46% 고정, 카카오 안내음량만 0.7->0.2->0.9
+    // 즉 "미디어 음량"과 "카카오 안내 음량"은 완전히 별개이고, 실제로 들리는 크기는 둘의
+    // 곱이었음(미디어 46% x 안내 0.5 = 체감 23%). 그래서 앱에서 아무리 키워도 카카오 쪽이
+    // 낮으면 계속 작게 들렸던 것.
+    //
+    // 이제 물리 볼륨버튼은 미디어(STREAM_MUSIC)를 건드리지 않고 길안내 음량만 조절함.
+    // 음악 볼륨은 재억이 다른 앱/화면에서 따로 조절(재억 선택: A안).
+    // #문제시 원복: adjustGuideVolumeByHardwareKey를 이 파일 히스토리의 예전 버전
+    // (STREAM_MUSIC을 직접 조절하던 것)으로 되돌리면 됨.
+    private const val PREF_KEY_GUIDE_VOLUME = "guide_volume_percent"
+    private const val GUIDE_VOLUME_STEP = 5
+
+    /** 카카오 화면이 살아있는 동안 등록해두는 적용 함수(naviView.sndVolume 설정). */
+    @Volatile
+    var kakaoGuideVolumeApplier: ((Float) -> Unit)? = null
+
+    fun guideVolumePercent(context: Context): Int =
+        context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .getInt(PREF_KEY_GUIDE_VOLUME, 100)
+            .coerceIn(0, 100)
+
+    /**
+     * 길안내 음량 저장 + 즉시 적용(카카오 음성 + 티맵 음성).
+     * 미디어(음악) 음량은 건드리지 않음.
+     */
+    fun setGuideVolumePercent(context: Context, percent: Int) {
+        val clamped = percent.coerceIn(0, 100)
+        context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .edit().putInt(PREF_KEY_GUIDE_VOLUME, clamped).apply()
+        applyGuideVolume(context)
+    }
+
+    fun applyGuideVolume(context: Context) {
+        val percent = guideVolumePercent(context)
+        // 카카오 안내 음성(0.0~1.0)
+        try {
+            kakaoGuideVolumeApplier?.invoke(percent / 100f)
+        } catch (e: Exception) {
+            NavLogger.e(context, "[안내음량] 카카오 적용 예외: ${e.message}")
+        }
+        // 티맵 안내 음성(0~100). 티맵 SDK 자체 음성 볼륨이라 미디어 음량과는 별개. #문제시 원복
+        try {
+            TmapUISDK.setVolume(context.applicationContext, percent)
+        } catch (e: Exception) {
+            NavLogger.e(context, "[안내음량] 티맵 적용 예외: ${e.message}")
+        }
+    }
+
+    /**
+     * 카카오 메뉴에서 사용자가 직접 안내 음량을 바꾼 걸 감지했을 때, 앱 저장값도 같이 맞춤
+     * (양방향 동기화). 우리가 방금 적용한 값과 같으면 아무것도 안 함.
+     */
+    fun syncGuideVolumeFromKakao(context: Context, kakaoFraction: Float) {
+        val percent = (kakaoFraction * 100).toInt().coerceIn(0, 100)
+        if (kotlin.math.abs(percent - guideVolumePercent(context)) <= 1) return
+        context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .edit().putInt(PREF_KEY_GUIDE_VOLUME, percent).apply()
+        NavLogger.d(context, "[안내음량] 카카오 메뉴에서 바뀐 값 반영: ${percent}%")
+    }
+
+    // v: 신규기능(물리 볼륨버튼으로 안내음량 조절) - dispatchKeyEvent로 가로챈 볼륨키를 처리.
+    // v: 재억 요청(2026-09-02, A안) - 이제 미디어(STREAM_MUSIC)는 건드리지 않고 길안내
+    // 음량만 5%씩 조절함. 음악은 그대로 유지됨. #문제시 원복
     fun adjustGuideVolumeByHardwareKey(context: Context, up: Boolean) {
         try {
-            val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-            val current = am.getStreamVolume(AudioManager.STREAM_MUSIC)
-            val step = (max / 30).coerceAtLeast(1) // 재억 요청 - 15단계는 너무 크게 움직여서 30단계로 세분화
-            val target = if (up) (current + step).coerceAtMost(max) else (current - step).coerceAtLeast(0)
-            am.setStreamVolume(AudioManager.STREAM_MUSIC, target, AudioManager.FLAG_SHOW_UI)
-            val percent = if (max > 0) (target * 100) / max else 0
-            context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-                .edit().putInt(PREF_KEY, percent).apply()
-            NavLogger.d(context, "[안내음량] 물리버튼으로 조절: ${percent}%")
+            val current = guideVolumePercent(context)
+            val target = if (up) {
+                (current + GUIDE_VOLUME_STEP).coerceAtMost(100)
+            } else {
+                (current - GUIDE_VOLUME_STEP).coerceAtLeast(0)
+            }
+            if (target == current) return
+            setGuideVolumePercent(context, target)
+            NavLogger.d(context, "[안내음량] 물리버튼으로 조절: ${target}% (미디어 음량은 안 건드림)")
+            try {
+                android.widget.Toast.makeText(context, "길안내 음량 ${target}%", android.widget.Toast.LENGTH_SHORT).show()
+            } catch (_: Exception) { /* 토스트 실패는 무시 */ }
         } catch (e: Exception) {
             NavLogger.e(context, "VolumeHelper 물리버튼 조절 예외: ${e.message}")
         }

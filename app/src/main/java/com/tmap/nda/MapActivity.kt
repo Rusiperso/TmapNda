@@ -195,7 +195,7 @@ class MapActivity : AppCompatActivity() {
 
     private fun unmuteTmapVolume() {
         try {
-            TmapUISDK.setVolume(this, VolumeHelper.savedVolumePercent(this))
+            TmapUISDK.setVolume(this, VolumeHelper.guideVolumePercent(this))
         } catch (e: Exception) {
             NavLogger.e(this, "티맵 볼륨 복원 예외: ${e.message}")
         }
@@ -1786,7 +1786,7 @@ class MapActivity : AppCompatActivity() {
                 // v2: 숫자만 맞추고 채널은 STREAM_NOTIFICATION 그대로 둬서, 안내음성
                 // (미디어 볼륨)이랑 여전히 따로 놀았음(재억 지적) - 안내음성과 같은
                 // 미디어 채널로 재생해서 실제로 같이 움직이게 함. #문제시 원복
-                val volumePercent = VolumeHelper.savedVolumePercent(this).coerceIn(1, 100)
+                val volumePercent = VolumeHelper.guideVolumePercent(this).coerceIn(1, 100)
                 AudioStreamDiagnostics.log(this, "경고음발생[Tmap화면]")
                 val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, volumePercent)
                 tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)

@@ -54,7 +54,7 @@ object ArrivalRadiusAlert {
         try {
             // v: 신규기능(목적지 반경 도착알림) - 소리+진동 둘 다. 소리는 기존 과속경고음과
             // 같은 방식(ToneGenerator, 저장된 안내음량 사용)으로 일관성 유지. #문제시 원복
-            val volumePercent = VolumeHelper.savedVolumePercent(context).coerceIn(1, 100)
+            val volumePercent = VolumeHelper.guideVolumePercent(context).coerceIn(1, 100)
             val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, volumePercent)
             tone.startTone(android.media.ToneGenerator.TONE_PROP_BEEP2, 300)
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ tone.release() }, 400)

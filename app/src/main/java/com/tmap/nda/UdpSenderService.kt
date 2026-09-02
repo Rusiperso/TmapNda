@@ -593,7 +593,7 @@ class UdpSenderService : Service() {
         val versionName = try {
             packageManager.getPackageInfo(packageName, 0).versionName
         } catch (e: Exception) { "?" }
-        val volumePercent = try { VolumeHelper.savedVolumePercent(ctx) } catch (e: Exception) { -1 }
+        val volumePercent = try { VolumeHelper.guideVolumePercent(ctx) } catch (e: Exception) { -1 }
         val am = getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
         val musicVol = am?.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
         val musicMax = am?.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
