@@ -12,6 +12,7 @@ import android.os.ParcelUuid
 import com.tmap.nda.NavLogger
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.io.OutputStream
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -60,6 +61,7 @@ object NavdySender {
     @Volatile private var socket: BluetoothSocket? = null
     @Volatile private var outputStream: OutputStream? = null
     @Volatile private var connecting = false
+    @Volatile private var readerThread: Thread? = null
 
 
     /**
@@ -168,6 +170,15 @@ object NavdySender {
                 }
                 socket = sock
                 outputStream = sock.outputStream
+                // v: 재억 제보(2026-09-02) - 순정 티맵은 같은 나브디 기기에 문제없이 붙는데
+                // 이 앱만 연결 직후 첫 전송에서 100% Broken pipe로 끊기는 걸 로그로 재확인함.
+                // 나브디 정품 앱 소스(alelec 오픈소스, ProtobufLink.java)를 직접 대조해보니,
+                // 정품은 연결되자마자 반드시 받는 쪽(InputStream)도 같이 읽는 스레드를 띄움 -
+                // 이 앱은 지금까지 보내는 쪽(OutputStream)만 쓰고 받는 쪽은 아예 열지도 않았음.
+                // 받는 쪽을 안 열어두면 기기/블루투스 스택이 "응답 없는 이상한 연결"로 보고
+                // 바로 끊어버리는 것으로 추정됨. 정품처럼 받는 스레드를 같이 띄워서 양방향을
+                // 살려둠(받은 내용 자체는 아직 안 쓰므로 그냥 읽어서 버림). #문제시 원복
+                startReaderThread(sock)
                 NavLogger.d("[Navdy] 연결 성공: ${device.name}")
             } catch (e: Exception) {
                 // v: 재억 제보(2026-08-27) - 로그 파일에는 "연결 시도"만 계속 남고 성공/실패 여부가
@@ -218,11 +229,45 @@ object NavdySender {
         executor.execute { closeQuietly() }
     }
 
+    // v: 재억 제보(2026-09-02) - 나브디 정품 앱처럼 연결 유지 중엔 항상 받는 쪽을 읽어줌.
+    // 별도 스레드로 돌리는 이유: executor는 전송(쓰기) 전용 단일 스레드라, 여기서 블로킹
+    // read()를 돌리면 전송 루프까지 같이 막힘. 받은 내용 자체는 지금은 안 쓰고 버리기만
+    // 하지만, 읽는 동작 자체가 연결을 살아있게 유지하는 데 필요함(위 connect() 주석 참고).
+    // 소켓이 끊기면 read()가 예외를 던지며 자연히 스레드가 종료됨. #문제시 원복
+    private fun startReaderThread(sock: BluetoothSocket) {
+        val thread = Thread {
+            NavLogger.d("[Navdy] 받는 스레드 시작")
+            try {
+                val input: InputStream = sock.inputStream
+                val buffer = ByteArray(1024)
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n == -1) {
+                        NavLogger.d("[Navdy] 받는 쪽 스트림이 상대방에 의해 정상 종료됨(EOF)")
+                        break
+                    }
+                    NavLogger.d("[Navdy] 데이터 수신: ${n}바이트")
+                }
+            } catch (e: Exception) {
+                // v: 재억 제보(2026-09-02) - "받는 쪽도 로그가 남아야 왜 끊기는지 알지"라는
+                // 지적. 여기서 나는 예외가 곧 "받다가 끊긴 이유"이므로 조용히 삼키지 않고
+                // 남김 - 전송 쪽 Broken pipe 로그와 대조해서 어느 쪽이 먼저 끊었는지
+                // 판단하는 데 씀. #문제시 원복
+                NavLogger.d("[Navdy] 받는 스레드 종료: ${e.javaClass.simpleName} ${e.message}")
+            }
+        }
+        thread.isDaemon = true
+        thread.name = "NavdyReader"
+        readerThread = thread
+        thread.start()
+    }
+
     private fun closeQuietly() {
         try { outputStream?.close() } catch (_: Exception) {}
         try { socket?.close() } catch (_: Exception) {}
         outputStream = null
         socket = null
+        readerThread = null
     }
 
     /**
