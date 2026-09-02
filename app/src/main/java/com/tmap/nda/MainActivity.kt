@@ -77,19 +77,42 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun tryConnectNavdyWithPermission() {
+    // v: 재억 제보(2026-09-02, 실기기 로그로 확인) - 로그 전체가 "[Navdy] 권한 없음
+    // (android.permission.BLUETOOTH_SCAN) - 자동연결 건너뜀"이었음. BLUETOOTH_CONNECT는
+    // 허용됐는데 BLUETOOTH_SCAN만 거부 상태라, 나브디는 연결 시도조차 못 하고 있었음.
+    // 예전 코드는 "한 번 거부한 적 있음(navdy_permission_denied_once)"이면 앱 켤 때마다
+    // 말없이 설정 화면으로 튕겨보내면서 체크박스까지 꺼버려서, 사용자 입장에선 "왜 자꾸
+    // 설정으로 가지?"였고 실제로 허용될 때까지 이어지지도 않았음. 이제:
+    //  - 시작 시(fromUserToggle=false)에는 설정으로 강제 이동하지 않고, 무슨 권한이 왜
+    //    필요한지 설명하는 창을 띄워 "설정 열기 / 나중에"를 고르게 함(체크는 안 풂).
+    //  - 사용자가 직접 체크박스를 켠 경우(fromUserToggle=true)에만 예전처럼 바로 안내.
+    //  - 거부 이력이 없으면 그냥 시스템 권한 팝업을 다시 띄움. #문제시 원복
+    private fun tryConnectNavdyWithPermission(fromUserToggle: Boolean = false) {
         val missingBluetoothPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
                 .filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
         } else {
             emptyList()
         }
-        if (missingBluetoothPermissions.isNotEmpty()) {
-            val deniedBefore = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-                .getBoolean("navdy_permission_denied_once", false)
-            if (deniedBefore) {
-                binding.cbNavdyConnect.isChecked = false
-                Toast.makeText(this, "설정 > 앱 > TmapNda > 권한 > 주변 기기(블루투스)에서 직접 허용해 주세요.", Toast.LENGTH_LONG).show()
+        if (missingBluetoothPermissions.isEmpty()) {
+            NavdyAutoConnect.tryConnect(this)
+            return
+        }
+        NavLogger.d(this, "[Navdy] 권한 미허용 상태: ${missingBluetoothPermissions.joinToString()} (사용자조작=$fromUserToggle)")
+        val deniedBefore = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .getBoolean("navdy_permission_denied_once", false)
+        if (!deniedBefore) {
+            navdyBluetoothPermissionLauncher.launch(missingBluetoothPermissions.toTypedArray())
+            return
+        }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("나브디 연결에 블루투스 권한이 필요합니다")
+            .setMessage(
+                "'주변 기기' 권한이 꺼져 있어서 나브디에 연결을 시도조차 못 하고 있습니다.\n" +
+                    "(모자란 권한: ${missingBluetoothPermissions.joinToString { it.substringAfterLast('.') }})\n\n" +
+                    "설정 > 앱 > TmapNda > 권한 > 주변 기기에서 허용해 주세요."
+            )
+            .setPositiveButton("설정 열기") { _, _ ->
                 try {
                     val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
                     intent.data = android.net.Uri.fromParts("package", packageName, null)
@@ -97,10 +120,30 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: Exception) {
                     NavLogger.e(this, "설정 화면 이동 실패: ${e.message}")
                 }
-            } else {
-                navdyBluetoothPermissionLauncher.launch(missingBluetoothPermissions.toTypedArray())
             }
-        } else {
+            .setNegativeButton("나중에") { _, _ ->
+                if (fromUserToggle) binding.cbNavdyConnect.isChecked = false
+            }
+            .show()
+    }
+
+    // v: 재억 요청(2026-09-02) - 설정 화면에서 '주변 기기' 권한을 켜고 돌아왔을 때, 앱을
+    // 다시 껐다 켜지 않아도 그 자리에서 바로 연결을 시도하게 함. 거부 이력 플래그도
+    // 실제로 허용됐으면 지워서 다음부터는 안내창이 안 뜨게 함. #문제시 원복
+    override fun onResume() {
+        super.onResume()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        val allGranted = listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
+            .all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }
+        if (!allGranted) return
+        val prefs = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("navdy_permission_denied_once", false)) {
+            prefs.edit().putBoolean("navdy_permission_denied_once", false).apply()
+            NavLogger.d(this, "[Navdy] 블루투스 권한이 허용된 것을 확인 - 거부 이력 초기화 후 연결 재시도")
+        }
+        if (getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("REQ_NAVDY", false) ||
+            (::binding.isInitialized && binding.cbNavdyConnect.isChecked)
+        ) {
             NavdyAutoConnect.tryConnect(this)
         }
     }
@@ -178,7 +221,7 @@ class MainActivity : AppCompatActivity() {
         // 앱 켤 때 저장된 값을 되살리는 것만으로는 팝업이 뜨지 않음. #문제시 원복
         binding.cbNavdyConnect.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
-                tryConnectNavdyWithPermission()
+                tryConnectNavdyWithPermission(fromUserToggle = true)
             }
             sharedPref.edit().putBoolean("REQ_NAVDY", isChecked).apply()
         }

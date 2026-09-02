@@ -328,10 +328,25 @@ object PanelDragHelper {
             setPadding(40, 0, 40, 30)
         }
 
+        // v: 재억 요청(2026-09-02) - "카카오 길안내를 기반으로 카메라를 매칭하고 싶다".
+        // 켜면 카카오 안내 중에는 카카오가 경로 위에서 잡은 카메라/방지턱만 콤마로 보내고,
+        // 티맵이 옆도로(고가도로 아래, 분기 진출로 등)에서 혼자 잡아온 이벤트는 안 보냄.
+        // 혹시 카카오가 놓치는 카메라가 있으면 꺼서 예전 동작(티맵 폴백)으로 되돌리면 됨. #문제시 원복
+        // v: 재억 질문(2026-09-02) - 기본을 꺼짐으로 둠. 꺼두면 티맵 카메라도 예전처럼 그대로
+        // 나가서 카메라를 놓칠 위험이 없고, 급감속의 원인이던 "티맵 카메라가 도로제한속도를
+        // 끌어내리는 통로"는 이 옵션과 무관하게 항상 막히기 때문. #문제시 원복
+        val kakaoOnlySdiCheckBox = android.widget.Switch(context).apply {
+            text = "카카오 안내 중 카메라는 카카오 것만 사용"
+            isChecked = pref.getBoolean("kakao_only_sdi_when_guiding", false)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
+
         // v13.0-4: 재억 요청 - 즐겨찾기 5칸이 다 필요없는 사람도 있어서, 표시 개수를
         // -/+ 버튼으로 0~5까지 조절 가능하게 함. 집/회사는 상단바 고정이라 이 설정과
         // 무관하게 항상 보임. #문제시 원복
-        var favoriteCount = pref.getInt("quickslot_favorite_count", 5).coerceIn(0, 5)
+        // v: 재억 요청(2026-09-02) - 상한을 5 -> 10으로 확장(QuickSlotStore.MAX_FAVORITE_SLOTS). #문제시 원복
+        var favoriteCount = QuickSlotStore.favoriteCount(context)
         val favoriteCountValueText = android.widget.TextView(context).apply {
             text = favoriteCount.toString()
             setTextColor(android.graphics.Color.WHITE)
@@ -361,7 +376,7 @@ object PanelDragHelper {
             setBackgroundColor(android.graphics.Color.parseColor("#262626"))
             setPadding(24, 12, 24, 12)
             setOnClickListener {
-                if (favoriteCount < 5) {
+                if (favoriteCount < QuickSlotStore.MAX_FAVORITE_SLOTS) {
                     favoriteCount++
                     favoriteCountValueText.text = favoriteCount.toString()
                 }
@@ -460,7 +475,8 @@ object PanelDragHelper {
             disableMobileCamCheckBox,   // 이동식카메라 감속
             checkBox,                   // 속도 10% 초과 시 경고음
             arrivalRadiusAlertCheckBox, // 목적지 근처 도착 알림 (소리+진동)
-            showTopBarEventCheckBox     // 상단바에 이벤트(카메라/구간단속/방지턱) 표시
+            showTopBarEventCheckBox,    // 상단바에 이벤트(카메라/구간단속/방지턱) 표시
+            kakaoOnlySdiCheckBox        // 카카오 안내 중 카메라는 카카오 것만 사용
         ))
         addAccordionGroup("화면 표시", listOfNotNull(
             satelliteViewCheckBox,          // 티맵 위성지도 보기
@@ -515,6 +531,7 @@ object PanelDragHelper {
                     .putBoolean("tmap_satellite_view_enabled", satelliteViewCheckBox.isChecked)
                     .putBoolean("tmap_traffic_info_enabled", trafficInfoCheckBox.isChecked)
                     .putBoolean("route_line_display_enabled", routeLineDisplayCheckBox.isChecked)
+                    .putBoolean("kakao_only_sdi_when_guiding", kakaoOnlySdiCheckBox.isChecked)
                     .putBoolean(com.tmap.nda.miniplayer.MiniPlayerManager.PREF_KEY_ENABLED, showMiniPlayerCheckBox.isChecked)
                     .putInt("quickslot_favorite_count", favoriteCount)
                     .apply {

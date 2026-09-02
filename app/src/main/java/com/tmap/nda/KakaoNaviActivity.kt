@@ -1062,14 +1062,27 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // 상태 변경 즉시 처리하므로, 여기서 1초마다 따로 갱신할 필요가 없어짐(중복
                 // 갱신은 예전에 실제로 버그를 냈던 패턴이라 아예 제거). #문제시 원복
                 // v: 재억 제보(2026-08-30, "경유지 지나갔는데 취소 버튼이 그대로 남아있다") -
-                // 경유지가 추가돼 있는 상태(activeWaypoint != null)에서, 카카오가 "이제
-                // 최종목적지로 향하고 있다"(경유지를 이미 지남)고 알려주면 자동으로 취소
-                // 버튼을 숨기고 상태를 정리. 명시적으로 "경유지 취소"를 눌렀을 때와 똑같이
-                // 처리하되, 경로 재계산은 필요 없음(이미 지나갔으니 그대로 진행). #문제시 원복
-                if (activeWaypoint != null && KakaoRouteDataRepository.headingToFinalDestination) {
-                    NavLogger.d(this@KakaoNaviActivity, "[경유지취소] 경유지 자동 통과 감지 - 취소 버튼 자동 숨김")
-                    activeWaypoint = null
-                    binding.btnCancelWaypoint?.visibility = View.GONE
+                // 경유지가 추가돼 있는 상태에서, 카카오가 "이제 최종목적지로 향하고 있다"
+                // (경유지를 이미 지남)고 알려주면 자동으로 취소 버튼을 숨기고 상태를 정리.
+                // 명시적으로 "경유지 취소"를 눌렀을 때와 똑같이 처리하되, 경로 재계산은
+                // 필요 없음(이미 지나갔으니 그대로 진행). #문제시 원복
+                // v: 재억 요청(2026-09-02) - 경유지 여러 개 지원. 전부 지난 경우(최종목적지로
+                // 향함)뿐 아니라 "앞의 몇 개만 지난" 경우도 처리해야 해서, 델리게이트가
+                // 계산해둔 passedViaCount만큼 목록 앞에서 지움. #문제시 원복
+                if (activeWaypoints.isNotEmpty()) {
+                    val passed = KakaoRouteDataRepository.passedViaCount
+                    if (KakaoRouteDataRepository.headingToFinalDestination) {
+                        NavLogger.d(this@KakaoNaviActivity, "[경유지취소] 경유지 전부 통과 감지 - 목록 비우고 취소 버튼 자동 숨김")
+                        activeWaypoints.clear()
+                        binding.btnCancelWaypoint?.visibility = View.GONE
+                    } else if (passed > 0) {
+                        val removeCount = passed.coerceAtMost(activeWaypoints.size)
+                        if (removeCount > 0) {
+                            val removed = activeWaypoints.take(removeCount).joinToString { it.name }
+                            repeat(removeCount) { activeWaypoints.removeAt(0) }
+                            NavLogger.d(this@KakaoNaviActivity, "[경유지] 통과한 경유지 ${removeCount}개 목록에서 제거: $removed (남은 ${activeWaypoints.size}개)")
+                        }
+                    }
                 }
                 hudPollHandler.postDelayed(this, 1000)
                 renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "kakao")
@@ -1246,7 +1259,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 NavLogger.d(this, "[버튼표시설정] 저장직후 적용: 경유지=$showWaypointButton 카테고리=$showCategoryButton 경유지취소=$showCancelWaypointButton")
                 binding.btnAddWaypoint?.visibility = if (showWaypointButton) View.VISIBLE else View.GONE
                 binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
-                binding.btnCancelWaypoint?.visibility = if (showCancelWaypointButton && activeWaypoint != null) View.VISIBLE else View.GONE
+                binding.btnCancelWaypoint?.visibility = if (showCancelWaypointButton && activeWaypoints.isNotEmpty()) View.VISIBLE else View.GONE
                 binding.flMiniPlayerContainer?.let { outer ->
                     com.tmap.nda.miniplayer.MiniPlayerManager.refresh(
                         this, outer,
@@ -1258,7 +1271,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // 움직이던 문제 - 처음엔 GONE 상태라 크기가 0이라 위치복원이 제대로 안 됐고,
                 // 그 뒤 VISIBLE로 바뀔 때마다 저장된 위치를 다시 안 불러서 기본위치로 돌아갔음.
                 // VISIBLE 되는 시점마다 위치를 다시 복원. #문제시 원복
-                if (showCancelWaypointButton && activeWaypoint != null) {
+                if (showCancelWaypointButton && activeWaypoints.isNotEmpty()) {
                     binding.btnCancelWaypoint?.post {
                         PanelDragHelper.restorePosition(this, binding.btnCancelWaypoint!!, "btnCancelWaypoint", resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE, emptyList())
                     }
@@ -1361,24 +1374,49 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             .show()
     }
 
+    // v: 재억 제보(2026-09-02) - "안내 중에 즐겨찾기(집/회사/하트)를 누르면 바로 안내할지
+    // 경유지로 추가할지 물어봐야 하는데 곧바로 목적지를 갈아치운다". 짧게 누르는 경로가
+    // 화면마다 여러 군데 흩어져 있어서, "등록된 칸을 눌렀을 때"의 처리를 이 함수 하나로
+    // 모음. 이미 카테고리 검색 결과 선택에 쓰던 확인창(경유지 추가 / 새 목적지)과 같은
+    // 방식이고, 안내 중이 아닐 땐 예전과 완전히 동일하게 바로 안내를 시작함. #문제시 원복
+    private fun handleQuickSlotTap(existing: HistoryEntry) {
+        if (currentDestName.isNotBlank() && KakaoRouteDataRepository.isFresh()) {
+            android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("경유지로 추가할까요?")
+                .setMessage("'${existing.name}'을(를) 지금 안내(${currentDestName})의 경유지로 추가할까요, 아니면 새 목적지로 바꿀까요?")
+                .setPositiveButton("경유지 추가") { _, _ -> addWaypointToActiveGuidance(existing) }
+                .setNegativeButton("새 목적지로") { _, _ -> startGuidanceToQuickSlot(existing) }
+                .setNeutralButton("취소", null)
+                .show()
+        } else {
+            startGuidanceToQuickSlot(existing)
+        }
+    }
+
+    /** 즐겨찾기 칸의 장소로 새 안내 시작(예전 동작 그대로). #문제시 원복 */
+    private fun startGuidanceToQuickSlot(existing: HistoryEntry) {
+        // v13.5: 재억 지적 - 저장 안 됐으면 매번 물어보되 그 선택은 이번 한 번만,
+        // 자동 저장 안 함. #문제시 원복
+        if (existing.routePriorityName == null) {
+            showRoutePriorityDialog(existing)
+        } else {
+            activeRoutePriority = try {
+                KNRoutePriority.valueOf(existing.routePriorityName)
+            } catch (e: Exception) {
+                KNRoutePriority.KNRoutePriority_Recommand
+            }
+            activeRouteAvoidOption = existing.routeAvoidOption
+            KakaoRouteDataRepository.reset()
+            activeWaypoints.clear()
+            resolveCurrentPositionThenRequestRoute(existing.name, existing.lat, existing.lon, finishOnFailure = false)
+        }
+    }
+
     private fun wireTopBarQuickSlotButton(button: View?, slot: String) {
         button?.setOnClickListener {
             val existing = QuickSlotStore.get(this, slot)
             if (existing != null) {
-                // v13.5: 재억 지적 - 저장 안 됐으면 매번 물어보되 그 선택은 이번 한 번만,
-                // 자동 저장 안 함. #문제시 원복
-                if (existing.routePriorityName == null) {
-                    showRoutePriorityDialog(existing)
-                } else {
-                    activeRoutePriority = try {
-                        KNRoutePriority.valueOf(existing.routePriorityName)
-                    } catch (e: Exception) {
-                        KNRoutePriority.KNRoutePriority_Recommand
-                    }
-                    activeRouteAvoidOption = existing.routeAvoidOption
-                    KakaoRouteDataRepository.reset()
-                    resolveCurrentPositionThenRequestRoute(existing.name, existing.lat, existing.lon, finishOnFailure = false)
-                }
+                handleQuickSlotTap(existing)
             } else {
                 pendingQuickSlotRegistration = slot
                 showInPlaceSearchDialog()
@@ -1469,16 +1507,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 카카오 화면에도 이식. 티맵 쪽처럼 카드+그리드로 꾸미는 대신, 목록형으로 간단히
     // 구현(같은 QuickSlotStore를 공유하므로 저장 결과는 동일). #문제시 원복
     private fun showKakaoQuickSlotPickerForSave(entry: HistoryEntry) {
-        val favoriteCount = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-            .getInt("quickslot_favorite_count", 5).coerceIn(0, 5)
+        // v: 재억 요청(2026-09-02) - 즐겨찾기 10칸까지 동적 생성. #문제시 원복
+        val favoriteCount = QuickSlotStore.favoriteCount(this)
         val slotLabels = mutableListOf("집" to QuickSlotStore.SLOT_HOME, "회사" to QuickSlotStore.SLOT_WORK)
-        val favoriteSlots = listOf(
-            "즐겨찾기 1" to QuickSlotStore.SLOT_FAV1,
-            "즐겨찾기 2" to QuickSlotStore.SLOT_FAV2,
-            "즐겨찾기 3" to QuickSlotStore.SLOT_FAV3,
-            "즐겨찾기 4" to QuickSlotStore.SLOT_FAV4,
-            "즐겨찾기 5" to QuickSlotStore.SLOT_FAV5
-        ).take(favoriteCount)
+        val favoriteSlots = QuickSlotStore.favoriteSlots(favoriteCount)
+            .mapIndexed { index, slot -> "즐겨찾기 ${index + 1}" to slot }
         slotLabels.addAll(favoriteSlots)
 
         val items = slotLabels.map { (label, slot) ->
@@ -1731,20 +1764,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     val existing = QuickSlotStore.get(this@KakaoNaviActivity, slot)
                     dialog.dismiss()
                     if (existing != null) {
-                        // v13.5: wireTopBarQuickSlotButton과 동일 - 저장 안 됐으면 매번
-                        // 물어보되 그 선택은 이번 한 번만, 자동 저장 안 함. #문제시 원복
-                        if (existing.routePriorityName == null) {
-                            showRoutePriorityDialog(existing)
-                        } else {
-                            activeRoutePriority = try {
-                                KNRoutePriority.valueOf(existing.routePriorityName)
-                            } catch (e: Exception) {
-                                KNRoutePriority.KNRoutePriority_Recommand
-                            }
-                            activeRouteAvoidOption = existing.routeAvoidOption
-                            KakaoRouteDataRepository.reset()
-                            resolveCurrentPositionThenRequestRoute(existing.name, existing.lat, existing.lon, finishOnFailure = false)
-                        }
+                        // v: 재억 제보(2026-09-02) - 상단바 버튼과 동일하게, 안내 중이면
+                        // "경유지 추가 / 새 목적지"를 먼저 물어봄. #문제시 원복
+                        handleQuickSlotTap(existing)
                     } else {
                         pendingQuickSlotRegistration = slot
                         showInPlaceSearchDialog()
@@ -1759,15 +1781,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             return Pair(container, etaText)
         }
         // v13.0-4: MapActivity와 동일 - 설정에서 정한 개수(0~5)만큼만 보여줌(재억 요청). #문제시 원복
-        val favoriteCount = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-            .getInt("quickslot_favorite_count", 5).coerceIn(0, 5)
-        val quickSlotButtons = listOf(
-            QuickSlotStore.SLOT_FAV1 to "\u2764\uFE0F",
-            QuickSlotStore.SLOT_FAV2 to "\u2764\uFE0F",
-            QuickSlotStore.SLOT_FAV3 to "\u2764\uFE0F",
-            QuickSlotStore.SLOT_FAV4 to "\u2764\uFE0F",
-            QuickSlotStore.SLOT_FAV5 to "\u2764\uFE0F"
-        ).take(favoriteCount).map { (slot, emoji) -> slot to buildQuickSlotButton(slot, emoji) }
+        // v: \uC7AC\uC5B5 \uC694\uCCAD(2026-09-02) - \uCD5C\uB300 5\uAC1C \uD558\uB4DC\uCF54\uB529\uC744 10\uAC1C\uAE4C\uC9C0 \uB3D9\uC801 \uC0DD\uC131\uC73C\uB85C \uBCC0\uACBD. #\uBB38\uC81C\uC2DC \uC6D0\uBCF5
+        val favoriteCount = QuickSlotStore.favoriteCount(this)
+        val quickSlotButtons = QuickSlotStore.favoriteSlots(favoriteCount)
+            .map { slot -> slot to buildQuickSlotButton(slot, "\u2764\uFE0F") }
         // v11.9: MapActivity와 동일 - 집/회사는 상단바로 빠져서 즐겨찾기 3칸만 남음,
         // 제목과 같은 줄 오른쪽에 고정폭으로 배치(재억 요청). #문제시 원복
         val quickSlotRow = android.widget.LinearLayout(this).apply {
@@ -1845,7 +1862,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
                 )
             })
-            addView(quickSlotRow)
+            // v: 재억 요청(2026-09-02) - MapActivity와 동일 - 즐겨찾기 최대 10칸이 한 줄에
+            // 안 들어가므로 가로 스크롤로 감쌈. #문제시 원복
+            addView(android.widget.HorizontalScrollView(this@KakaoNaviActivity).apply {
+                isHorizontalScrollBarEnabled = false
+                addView(quickSlotRow)
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 2f
+                )
+            })
         }
 
         dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
@@ -1892,8 +1917,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // v: 신규기능(주변검색 진행/역방향 표시) - Tmap 화면과 동일. #문제시 원복
     private var lastKnownBearing: Float? = null
     // v: 신규기능(경유지 취소 버튼) - 경유지가 추가돼 있는지, 그 경유지 정보가 뭔지 기억.
-    // 취소 버튼은 이 값이 있을 때만 보임. #문제시 원복
-    private var activeWaypoint: HistoryEntry? = null
+    // 취소 버튼은 이 목록이 비어있지 않을 때만 보임.
+    // v: 재억 요청(2026-09-02) - 예전엔 단일 변수(activeWaypoint)라서 경유지를 하나만
+    // 들고 있었고, 두 번째 경유지를 추가하면 첫 번째가 조용히 사라졌음(makeTripWithStart에
+    // 새 경유지 1개만 넘겼기 때문). 목록으로 바꿔서 추가할 때마다 기존 경유지 뒤에
+    // 이어붙이고, 지나간 것만 자동으로 앞에서 지움. #문제시 원복
+    private val activeWaypoints: MutableList<HistoryEntry> = mutableListOf()
     private var currentDestLat: Double = Double.NaN
     private var currentDestLon: Double = Double.NaN
     // v11.3: MapActivity와 동일 - 집/회사/즐겨찾기 칸 등록용 검색을 여는 중이면 어느 칸인지 담아둠. #문제시 원복
@@ -1911,12 +1940,36 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             showWaypointSearchModeChooser()
         }
         binding.btnCancelWaypoint?.setOnClickListener {
-            android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle("경유지 취소")
-                .setMessage("'${activeWaypoint?.name ?: "경유지"}'를 경로에서 뺄까요?")
-                .setPositiveButton("취소하기") { _, _ -> cancelActiveWaypoint() }
-                .setNegativeButton("아니요", null)
-                .show()
+            // v: 재억 요청(2026-09-02) - 경유지가 여러 개일 수 있으므로, 하나만 있을 땐
+            // 예전처럼 바로 물어보고, 여러 개면 어느 걸 뺄지(또는 전부 뺄지) 고르게 함. #문제시 원복
+            when {
+                activeWaypoints.isEmpty() -> {
+                    Toast.makeText(this, "등록된 경유지가 없습니다", Toast.LENGTH_SHORT).show()
+                }
+                activeWaypoints.size == 1 -> {
+                    android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                        .setTitle("경유지 취소")
+                        .setMessage("'${activeWaypoints[0].name}'를 경로에서 뺄까요?")
+                        .setPositiveButton("취소하기") { _, _ -> rebuildRouteWithWaypoints(emptyList(), "경유지취소") }
+                        .setNegativeButton("아니요", null)
+                        .show()
+                }
+                else -> {
+                    val labels = activeWaypoints.mapIndexed { i, w -> "${i + 1}. ${w.name} 빼기" } + "경유지 전부 빼기"
+                    android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                        .setTitle("경유지 취소 (${activeWaypoints.size}개)")
+                        .setItems(labels.toTypedArray()) { _, which ->
+                            if (which == activeWaypoints.size) {
+                                rebuildRouteWithWaypoints(emptyList(), "경유지취소")
+                            } else {
+                                val remaining = activeWaypoints.filterIndexed { i, _ -> i != which }
+                                rebuildRouteWithWaypoints(remaining, "경유지취소")
+                            }
+                        }
+                        .setNegativeButton("아니요", null)
+                        .show()
+                }
+            }
         }
     }
 
@@ -1987,11 +2040,19 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             .show()
     }
 
-    // v: 신규기능(경유지 취소 버튼) - 경유지 없이 현재위치->원래 목적지로 다시 경로 계산.
-    // addWaypointToActiveGuidance()와 거의 같은 구조, via 목록만 비움. #문제시 원복
-    private fun cancelActiveWaypoint() {
+    // v: 재억 요청(2026-09-02) - 경유지 여러 개 지원. 예전엔 "경유지 추가"와 "경유지 취소"가
+    // 거의 똑같은 코드를 각자 들고 있으면서 via 목록만 (새 경유지 1개) / (비움)으로 달랐고,
+    // 그래서 두 번째 경유지를 추가하면 첫 번째가 조용히 사라졌음. 이제 "지금 유지할 경유지
+    // 목록 전체"를 받아서 한 번에 경로를 다시 짜는 함수 하나로 합침 - 추가는 기존 목록 +
+    // 새 경유지, 취소는 뺄 것만 제외한 목록을 넘기면 됨. #문제시 원복
+    private fun rebuildRouteWithWaypoints(
+        waypoints: List<HistoryEntry>,
+        logTag: String,
+        addedName: String? = null
+    ) {
         if (currentDestLat.isNaN() || currentDestLon.isNaN()) {
-            Toast.makeText(this, "경유지 취소 실패: 목적지 정보 없음", Toast.LENGTH_SHORT).show()
+            NavLogger.e(this, "[$logTag] 현재 목적지 정보가 없어 취소")
+            Toast.makeText(this, "$logTag 실패: 목적지 정보 없음", Toast.LENGTH_SHORT).show()
             return
         }
         var startPoi: KNPOI? = null
@@ -2008,61 +2069,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     startPoi = KNPOI("현 위치", katec.x.toInt(), katec.y.toInt(), "")
                 }
             } catch (e: SecurityException) {
-                NavLogger.e(this, "[경유지취소] 위치 권한 없음: ${e.message}")
-            }
-        }
-        if (startPoi == null) {
-            Toast.makeText(this, "GPS 확인 중입니다. 잠시 후 다시 시도해주세요", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val goalKatec = KNSDK.convertWGS84ToKATEC(currentDestLon, currentDestLat)
-        val goalPoi = KNPOI(currentDestName, goalKatec.x.toInt(), goalKatec.y.toInt(), "")
-
-        NavLogger.d(this, "[경유지취소] 요청: 현재위치 -> $currentDestName (경유지 제거)")
-        KNSDK.makeTripWithStart(startPoi, goalPoi, mutableListOf()) { error, trip ->
-            runOnUiThread {
-                if (error != null || trip == null) {
-                    NavLogger.e(this, "[경유지취소] 경로 재계산 실패: ${error?.msg ?: "알 수 없는 오류"}")
-                    Toast.makeText(this, "경유지 취소 실패: ${error?.msg ?: "알 수 없는 오류"}", Toast.LENGTH_SHORT).show()
-                    return@runOnUiThread
-                }
-                try {
-                    naviView.guideNewDestinations(trip, activeRoutePriority, activeRouteAvoidOption)
-                    naviView.requestLayout()
-                    naviView.invalidate()
-                    NavLogger.d(this, "[경유지취소] 성공")
-                    Toast.makeText(this, "경유지가 취소됐습니다", Toast.LENGTH_SHORT).show()
-                    activeWaypoint = null
-                    binding.btnCancelWaypoint?.visibility = View.GONE
-                } catch (e: Exception) {
-                    NavLogger.e(this, "[경유지취소] guideNewDestinations 예외: ${e.message}")
-                    Toast.makeText(this, "경유지 취소 실패(화면 반영 오류)", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
-
-    private fun addWaypointToActiveGuidance(picked: HistoryEntry) {
-        if (currentDestLat.isNaN() || currentDestLon.isNaN()) {
-            NavLogger.e(this, "[경유지추가] 현재 목적지 정보가 없어 취소")
-            Toast.makeText(this, "경유지 추가 실패: 목적지 정보 없음", Toast.LENGTH_SHORT).show()
-            return
-        }
-        var startPoi: KNPOI? = null
-        val currentGps = KNSDK.sharedGpsManager()?.recentGpsData
-        if (currentGps != null && currentGps.pos.x > 0 && currentGps.pos.y > 0) {
-            startPoi = KNPOI("현 위치", currentGps.pos.x.toInt(), currentGps.pos.y.toInt(), "")
-        } else {
-            try {
-                val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
-                val loc = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
-                    ?: locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
-                if (loc != null) {
-                    val katec = KNSDK.convertWGS84ToKATEC(loc.longitude, loc.latitude)
-                    startPoi = KNPOI("현 위치", katec.x.toInt(), katec.y.toInt(), "")
-                }
-            } catch (e: SecurityException) {
-                NavLogger.e(this, "[경유지추가] 위치 권한 없음: ${e.message}")
+                NavLogger.e(this, "[$logTag] 위치 권한 없음: ${e.message}")
             }
         }
         if (startPoi == null) {
@@ -2070,42 +2077,56 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             return
         }
 
-        val viaKatec = KNSDK.convertWGS84ToKATEC(picked.lon, picked.lat)
-        val viaPoi = KNPOI(picked.name, viaKatec.x.toInt(), viaKatec.y.toInt(), "")
+        val viaPois = waypoints.map { w ->
+            val katec = KNSDK.convertWGS84ToKATEC(w.lon, w.lat)
+            KNPOI(w.name, katec.x.toInt(), katec.y.toInt(), "")
+        }.toMutableList()
         val goalKatec = KNSDK.convertWGS84ToKATEC(currentDestLon, currentDestLat)
         val goalPoi = KNPOI(currentDestName, goalKatec.x.toInt(), goalKatec.y.toInt(), "")
 
-        NavLogger.d(this, "[경유지추가] 요청: 현재위치 -> ${picked.name} -> $currentDestName")
-        Toast.makeText(this, "'${picked.name}' 경유지로 추가 중...", Toast.LENGTH_SHORT).show()
+        val routeDesc = (listOf("현재위치") + waypoints.map { it.name } + currentDestName).joinToString(" -> ")
+        NavLogger.d(this, "[$logTag] 요청: $routeDesc (경유지 ${waypoints.size}개)")
+        if (addedName != null) {
+            Toast.makeText(this, "'$addedName' 경유지로 추가 중...", Toast.LENGTH_SHORT).show()
+        }
 
         // v: 재억 제보(2026-08-22) - 리플렉션 방식이 실제 기기에서 "메서드를 못 찾음"으로
-        // 매번 조용히 실패하고 있었음(SDK 컴파일 결과물에서 리플렉션으로 찾는 조건과
-        // 실제 메서드 형태가 안 맞았던 것으로 추정). 확인해보니 애초에 리플렉션이 필요
-        // 없었음 - 지난번 빌드 실패는 콜백 문법 오류 때문이었지, 이 자리(via 목록)
-        // 자체는 원래도 문제없이 컴파일됐음. 이 앱 다른 곳에서 이미 검증된 것과 동일하게
-        // 직접 호출로 되돌림. #문제시 원복
-        KNSDK.makeTripWithStart(startPoi, goalPoi, mutableListOf(viaPoi)) { error, trip ->
+        // 매번 조용히 실패하고 있었음. 확인해보니 애초에 리플렉션이 필요 없었음 - 이 앱
+        // 다른 곳에서 이미 검증된 것과 동일하게 직접 호출. #문제시 원복
+        KNSDK.makeTripWithStart(startPoi, goalPoi, viaPois) { error, trip ->
             runOnUiThread {
                 if (error != null || trip == null) {
-                    NavLogger.e(this, "[경유지추가] 경로 재계산 실패: ${error?.msg ?: "알 수 없는 오류"}")
-                    Toast.makeText(this, "경유지 추가 실패: ${error?.msg ?: "알 수 없는 오류"}", Toast.LENGTH_SHORT).show()
+                    NavLogger.e(this, "[$logTag] 경로 재계산 실패: ${error?.msg ?: "알 수 없는 오류"}")
+                    Toast.makeText(this, "$logTag 실패: ${error?.msg ?: "알 수 없는 오류"}", Toast.LENGTH_SHORT).show()
                     return@runOnUiThread
                 }
                 try {
                     naviView.guideNewDestinations(trip, activeRoutePriority, activeRouteAvoidOption)
                     naviView.requestLayout()
                     naviView.invalidate()
-                    NavLogger.d(this, "[경유지추가] 성공: ${picked.name}")
-                    Toast.makeText(this, "'${picked.name}' 경유지로 추가됨", Toast.LENGTH_SHORT).show()
-                    // v: 신규기능(경유지 취소 버튼) - 추가 성공 시 취소 버튼 표시. #문제시 원복
-                    activeWaypoint = picked
-                    // v: 재억 재제보(2026-08-30, "경유지 도착 전인데 벌써 없어졌다") - resolveNextStopInfo()가
-                    // 리플렉션 기반이라 가끔 실패할 수 있는데(함수 자체 주석에도 명시), 실패하면
-                    // headingToFinalDestination을 안 건드리고 그대로 둠 - 근데 기본값이 true(최종목적지로
-                    // 향함)라서, 경유지 추가 직후 판단이 한 번이라도 실패하면 곧바로 "이미 최종목적지로
-                    // 향함"으로 오인해 버튼이 즉시 사라졌음. 경유지 추가하는 바로 이 순간 명시적으로
-                    // false로 확실히 잡아둬서, 진짜로 통과했다는 게 확인될 때까지는 절대 안 지워지게 함. #문제시 원복
+                    NavLogger.d(this, "[$logTag] 성공 (경유지 ${waypoints.size}개)")
+                    activeWaypoints.clear()
+                    activeWaypoints.addAll(waypoints)
+                    Toast.makeText(
+                        this,
+                        when {
+                            addedName != null -> "'$addedName' 경유지로 추가됨 (총 ${waypoints.size}개)"
+                            waypoints.isEmpty() -> "경유지가 취소됐습니다"
+                            else -> "경유지가 ${waypoints.size}개 남았습니다"
+                        },
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    if (waypoints.isEmpty()) {
+                        binding.btnCancelWaypoint?.visibility = View.GONE
+                        return@runOnUiThread
+                    }
+                    // v: 재억 재제보(2026-08-30, "경유지 도착 전인데 벌써 없어졌다") -
+                    // resolveNextStopInfo()가 실패하면 headingToFinalDestination을 안 건드리는데
+                    // 기본값이 true라서, 판단이 한 번이라도 실패하면 곧바로 "이미 최종목적지로
+                    // 향함"으로 오인해 버튼이 즉시 사라졌음. 경유지가 남아있는 이 순간 명시적으로
+                    // false로 잡아둬서, 진짜로 통과했다는 게 확인될 때까지는 안 지워지게 함. #문제시 원복
                     KakaoRouteDataRepository.headingToFinalDestination = false
+                    KakaoRouteDataRepository.passedViaCount = -1
                     val showCancelBtn = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                         .getBoolean("show_cancel_waypoint_button", true)
                     binding.btnCancelWaypoint?.visibility = if (showCancelBtn) View.VISIBLE else View.GONE
@@ -2115,11 +2136,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         }
                     }
                 } catch (e: Exception) {
-                    NavLogger.e(this, "[경유지추가] guideNewDestinations 예외: ${e.message}")
-                    Toast.makeText(this, "경유지 추가 실패(화면 반영 오류)", Toast.LENGTH_SHORT).show()
+                    NavLogger.e(this, "[$logTag] guideNewDestinations 예외: ${e.message}")
+                    Toast.makeText(this, "$logTag 실패(화면 반영 오류)", Toast.LENGTH_SHORT).show()
                 }
             }
         }
+    }
+
+    // 안내 중 경유지 추가 - 기존 경유지는 그대로 두고 맨 뒤에 이어붙임. #문제시 원복
+    private fun addWaypointToActiveGuidance(picked: HistoryEntry) {
+        rebuildRouteWithWaypoints(activeWaypoints + picked, "경유지추가", addedName = picked.name)
     }
 
     private fun showInPlaceSearchDialog() {
@@ -2808,6 +2834,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     override fun onResume() {
         super.onResume()
         NavLogger.d(this, "[lifecycle] onResume")
+        // v: 재억 제보(2026-09-02) - 티맵 화면에서 즐겨찾기를 눌러 "경유지 추가"를 고른 경우,
+        // 그쪽엔 경로를 다시 짜는 코드가 없어서 요청만 남기고 화면을 닫음. 이 화면이 다시
+        // 올라오는 지금 그걸 집어서 실제 경유지 추가를 수행. #문제시 원복
+        PendingWaypointRequest.take()?.let { pending ->
+            NavLogger.d(this, "[경유지추가] 티맵 화면에서 넘어온 요청 처리: ${pending.name}")
+            addWaypointToActiveGuidance(pending)
+        }
         // v: 재억 제보(2026-08-26) - "lateinit property binding has not been initialized"
         // 크래시 발생. KNSDK 초기화(비동기)가 끝나서 setupContentAndStart()가 binding을
         // 실제로 만들기 전에 onResume이 먼저 호출될 수 있는데, 이 코드가 그 순간 즉시
@@ -2821,8 +2854,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 .getBoolean("show_cancel_waypoint_button", true)
             binding.btnAddWaypoint?.visibility = if (showWaypointButton) View.VISIBLE else View.GONE
             binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
-            binding.btnCancelWaypoint?.visibility = if (showCancelWaypointButton && activeWaypoint != null) View.VISIBLE else View.GONE
-            if (showCancelWaypointButton && activeWaypoint != null) {
+            binding.btnCancelWaypoint?.visibility = if (showCancelWaypointButton && activeWaypoints.isNotEmpty()) View.VISIBLE else View.GONE
+            if (showCancelWaypointButton && activeWaypoints.isNotEmpty()) {
                 binding.btnCancelWaypoint?.post {
                     PanelDragHelper.restorePosition(this, binding.btnCancelWaypoint!!, "btnCancelWaypoint", resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE, emptyList())
                 }

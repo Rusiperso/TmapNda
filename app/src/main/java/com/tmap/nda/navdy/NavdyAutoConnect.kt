@@ -18,6 +18,9 @@ import com.tmap.nda.NavLogger
  */
 object NavdyAutoConnect {
 
+    // 권한 미허용 상태 로그 스로틀용(5분). #문제시 원복
+    @Volatile private var lastPermissionLogTime = 0L
+
     // v: 재억 요청(2026-08-27) - 원래 Activity에서 1회만 호출되던 걸, UdpSenderService의
     // 백그라운드 재연결 루프에서도 주기적으로 호출할 수 있도록 Context로 일반화. #문제시 원복
     fun tryConnect(context: Context) {
@@ -33,7 +36,14 @@ object NavdyAutoConnect {
                 val missing = listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
                     .filter { ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED }
                 if (missing.isNotEmpty()) {
-                    NavLogger.d(context, "[Navdy] 권한 없음(${missing.joinToString()}) - 자동연결 건너뜀")
+                    // v: 재억 제보(2026-09-02) - 이 줄이 15초마다 계속 찍혀서 로그 파일을
+                    // 가득 채우고 있었음(권한이 안 켜지는 한 영원히 반복되는 상태 로그라
+                    // 매번 남길 이유가 없음). 5분에 한 번만 남김. #문제시 원복
+                    val now = System.currentTimeMillis()
+                    if (now - lastPermissionLogTime > 5 * 60 * 1000L) {
+                        lastPermissionLogTime = now
+                        NavLogger.d(context, "[Navdy] 권한 없음(${missing.joinToString()}) - 자동연결 건너뜀 (설정 > 앱 > TmapNda > 권한 > 주변 기기에서 허용 필요)")
+                    }
                     return
                 }
             }

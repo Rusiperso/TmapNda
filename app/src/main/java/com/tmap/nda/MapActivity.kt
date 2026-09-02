@@ -753,22 +753,52 @@ class MapActivity : AppCompatActivity() {
             .show()
     }
 
+    // v: 재억 제보(2026-09-02) - "안내 중에 즐겨찾기를 누르면 경유지로 추가할지 물어봐야
+    // 하는데 바로 새 안내를 시작한다". 티맵 화면에도 카카오 화면과 동일한 확인창을 붙임.
+    // 티맵 화면엔 경로를 다시 짜는 코드가 없으므로, "경유지 추가"를 고르면 요청만 남기고
+    // 화면을 닫아서 뒤에 살아있는 카카오 안내 화면이 이어받아 처리하게 함. #문제시 원복
+    private fun handleQuickSlotTap(existing: HistoryEntry) {
+        val guidingNow = KakaoRouteDataRepository.isFresh()
+        val destName = KakaoRouteDataRepository.destinationName
+        if (guidingNow) {
+            android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("경유지로 추가할까요?")
+                .setMessage("'${existing.name}'을(를) 지금 안내($destName)의 경유지로 추가할까요, 아니면 새 목적지로 바꿀까요?")
+                .setPositiveButton("경유지 추가") { _, _ ->
+                    PendingWaypointRequest.put(existing)
+                    NavLogger.d(this, "[경유지추가][티맵화면] '${existing.name}' 요청 남기고 카카오 안내 화면으로 복귀")
+                    Toast.makeText(this, "'${existing.name}' 경유지로 추가 중...", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
+                .setNegativeButton("새 목적지로") { _, _ -> startGuidanceToQuickSlot(existing) }
+                .setNeutralButton("취소", null)
+                .show()
+        } else {
+            startGuidanceToQuickSlot(existing)
+        }
+    }
+
+    /** 즐겨찾기 칸의 장소로 새 안내 시작(예전 동작 그대로). #문제시 원복 */
+    private fun startGuidanceToQuickSlot(existing: HistoryEntry) {
+        // v13.5: 재억 지적 - 처음 고른 걸 자동으로 영구 저장해버리면 안 됨.
+        // 저장 안 된 상태에서는 매번 물어보되, 그때 고른 건 "이번 한 번만" 쓰고
+        // 저장은 안 함. 진짜로 계속 그 방식 쓰고 싶으면 길게 눌러서 "이동방식
+        // 저장"으로 따로 저장해야 함. #문제시 원복
+        if (existing.routePriorityName == null) {
+            showRoutePriorityDialog(existing)
+        } else {
+            startKakaoOverlayGuidance(
+                existing.name, existing.lat, existing.lon,
+                existing.routePriorityName, existing.routeAvoidOption
+            )
+        }
+    }
+
     private fun wireTopBarQuickSlotButton(button: View?, slot: String) {
         button?.setOnClickListener {
             val existing = QuickSlotStore.get(this, slot)
             if (existing != null) {
-                // v13.5: 재억 지적 - 처음 고른 걸 자동으로 영구 저장해버리면 안 됨.
-                // 저장 안 된 상태에서는 매번 물어보되, 그때 고른 건 "이번 한 번만" 쓰고
-                // 저장은 안 함. 진짜로 계속 그 방식 쓰고 싶으면 길게 눌러서 "이동방식
-                // 저장"으로 따로 저장해야 함. #문제시 원복
-                if (existing.routePriorityName == null) {
-                    showRoutePriorityDialog(existing)
-                } else {
-                    startKakaoOverlayGuidance(
-                        existing.name, existing.lat, existing.lon,
-                        existing.routePriorityName, existing.routeAvoidOption
-                    )
-                }
+                handleQuickSlotTap(existing)
             } else {
                 pendingQuickSlotRegistration = slot
                 showTmapTextSearchDialog()
@@ -1160,16 +1190,9 @@ class MapActivity : AppCompatActivity() {
                     val existing = QuickSlotStore.get(this@MapActivity, slot)
                     dialog.dismiss()
                     if (existing != null) {
-                        // v13.5: wireTopBarQuickSlotButton과 동일 - 저장 안 됐으면 매번
-                        // 물어보되 그 선택은 이번 한 번만, 자동 저장 안 함. #문제시 원복
-                        if (existing.routePriorityName == null) {
-                            showRoutePriorityDialog(existing)
-                        } else {
-                            startKakaoOverlayGuidance(
-                                existing.name, existing.lat, existing.lon,
-                                existing.routePriorityName, existing.routeAvoidOption
-                            )
-                        }
+                        // v: 재억 제보(2026-09-02) - 상단바 버튼과 동일하게, 안내 중이면
+                        // "경유지 추가 / 새 목적지"를 먼저 물어봄. #문제시 원복
+                        handleQuickSlotTap(existing)
                     } else {
                         pendingQuickSlotRegistration = slot
                         showTmapTextSearchDialog()
@@ -1184,15 +1207,10 @@ class MapActivity : AppCompatActivity() {
             return Pair(container, etaText)
         }
         // v13.0-4: 재억 요청 - 설정에서 정한 개수(0~5)만큼만 즐겨찾기 칸을 보여줌. #문제시 원복
-        val favoriteCount = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-            .getInt("quickslot_favorite_count", 5).coerceIn(0, 5)
-        val quickSlotButtons = listOf(
-            QuickSlotStore.SLOT_FAV1 to "\u2764\uFE0F",
-            QuickSlotStore.SLOT_FAV2 to "\u2764\uFE0F",
-            QuickSlotStore.SLOT_FAV3 to "\u2764\uFE0F",
-            QuickSlotStore.SLOT_FAV4 to "\u2764\uFE0F",
-            QuickSlotStore.SLOT_FAV5 to "\u2764\uFE0F"
-        ).take(favoriteCount).map { (slot, emoji) -> slot to buildQuickSlotButton(slot, emoji) }
+        // v: \uC7AC\uC5B5 \uC694\uCCAD(2026-09-02) - \uCD5C\uB300 5\uAC1C \uD558\uB4DC\uCF54\uB529\uC744 10\uAC1C\uAE4C\uC9C0 \uB3D9\uC801 \uC0DD\uC131\uC73C\uB85C \uBCC0\uACBD. #\uBB38\uC81C\uC2DC \uC6D0\uBCF5
+        val favoriteCount = QuickSlotStore.favoriteCount(this)
+        val quickSlotButtons = QuickSlotStore.favoriteSlots(favoriteCount)
+            .map { slot -> slot to buildQuickSlotButton(slot, "\u2764\uFE0F") }
         // v11.9: 집/회사는 상단바 고정 버튼으로 빠져서 여기 팝업엔 즐겨찾기 3칸만 남음.
         // 카드 하나당 너비를 고정폭(52dp)으로 줄여서, 제목("검색 이력 전체")과 같은 줄
         // 오른쪽에 나란히 놓이도록 함(재억 요청). #문제시 원복
@@ -1276,7 +1294,16 @@ class MapActivity : AppCompatActivity() {
                     0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
                 )
             })
-            addView(quickSlotRow)
+            // v: 재억 요청(2026-09-02) - 즐겨찾기가 최대 10칸까지 늘어나면서 한 줄에 다
+            // 안 들어감(칸당 고정폭 130px). 가로 스크롤로 감싸서 개수와 무관하게 항상
+            // 전부 접근 가능하게 함. 5칸 이하일 땐 예전과 똑같이 보임. #문제시 원복
+            addView(android.widget.HorizontalScrollView(this@MapActivity).apply {
+                isHorizontalScrollBarEnabled = false
+                addView(quickSlotRow)
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 2f
+                )
+            })
         }
 
         dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
@@ -2146,16 +2173,11 @@ class MapActivity : AppCompatActivity() {
     // 그리드로 배치된 모양이었는데, 실제 코드는 그냥 안드로이드 기본 세로 목록(setItems)으로
     // 구현되어 있었음. 미리보기와 똑같이 카드+그리드 버튼 모양으로 다시 만듦. #문제시 원복
     private fun showQuickSlotPickerForSave(entry: HistoryEntry) {
-        val favoriteCount = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-            .getInt("quickslot_favorite_count", 5).coerceIn(0, 5)
+        // v: 재억 요청(2026-09-02) - 즐겨찾기 10칸까지 동적 생성. #문제시 원복
+        val favoriteCount = QuickSlotStore.favoriteCount(this)
         val slotLabels = mutableListOf("집" to QuickSlotStore.SLOT_HOME, "회사" to QuickSlotStore.SLOT_WORK)
-        val favoriteSlots = listOf(
-            "즐겨찾기 1" to QuickSlotStore.SLOT_FAV1,
-            "즐겨찾기 2" to QuickSlotStore.SLOT_FAV2,
-            "즐겨찾기 3" to QuickSlotStore.SLOT_FAV3,
-            "즐겨찾기 4" to QuickSlotStore.SLOT_FAV4,
-            "즐겨찾기 5" to QuickSlotStore.SLOT_FAV5
-        ).take(favoriteCount)
+        val favoriteSlots = QuickSlotStore.favoriteSlots(favoriteCount)
+            .mapIndexed { index, slot -> "즐겨찾기 ${index + 1}" to slot }
         slotLabels.addAll(favoriteSlots)
 
         val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)

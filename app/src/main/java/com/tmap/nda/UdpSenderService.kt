@@ -297,6 +297,8 @@ class UdpSenderService : Service() {
     // 마지막으로 유효한 값을 받은 시각. #문제시 원복
     private var lastRoadLimitUpdateTime = 0L
     private var lastGeneralRoadLimitUpdateTime = 0L
+    // v: 재억 요청(2026-09-02) - "카카오 안내 중엔 카카오 제한속도 우선" 채택 로그 스로틀용. #문제시 원복
+    private var lastKakaoRoadLimitLogTime = 0L
 
     // v: 재억 제보(2026-08-28, 실기기 로그로 확인) - 분기점(예: IC/JC)을 지나칠 때
     // Tmap 엔진 리플렉션(getRoadLimitSpeedFromEngine)이 순간적으로 진출로의 낮은
@@ -317,6 +319,63 @@ class UdpSenderService : Service() {
     // 이 판단이 도는 루프(sendSdiData)가 300ms 주기라서, 15번 ≈ 4.5초로 설정. #문제시 원복
     private val GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE_FAR_FROM_ROUTE_TURN = 15
     private val GENERAL_ROAD_LIMIT_TBT_NEAR_THRESHOLD_M = 250
+
+    // v: 재억 재설명(2026-09-02) - "잘 가다가 옆도로를 잡는 게 계속 문제. 70도로를 직진 중인데
+    // 고가도로 아래 도로나 분기점으로 빠지는 도로의 속도를 갑자기 잡는다."
+    // 지금까지의 방어는 "낮은 값이 15번(약 4.5초) 연속으로 나오면 진짜로 보고 받아들인다"였는데,
+    // 티맵이 옆도로에 한 번 붙으면 4.5초쯤은 그대로 붙어있기 때문에 결국 잘못된 값이 통과했음
+    // (로그의 "확인횟수 n/15 - 보류"가 계속 나오다가 결국 넘어감).
+    // 카카오는 우리가 지금 경로의 어느 지점을 달리는지(경로 매칭)와 다음 안내가 뭔지를 정확히
+    // 알고 있으므로, 카카오 안내 중이라면 이걸 기준으로 삼음:
+    //   - 카카오가 곧 진출/회전한다고 하거나(기존 판단), 카카오가 알려주는 도로명이 실제로
+    //     방금 바뀌었으면 -> 도로가 진짜 바뀌는 중이므로 낮아지는 값을 받아들임
+    //   - 둘 다 아니면(= 카카오 기준 본선 직진 중) -> 티맵이 뭐라고 하든 낮추지 않음(횟수 무관)
+    // 카카오 안내 중이 아닐 땐 기존 히스테리시스 그대로. #문제시 원복
+    private var lastKakaoRoadNameForLimit = ""
+    private var kakaoRoadNameChangedAt = 0L
+    private var lastMainlineHoldLogTime = 0L
+    private val KAKAO_ROAD_NAME_CHANGE_GRACE_MS = 15_000L
+    private var lastTmapSdiSuppressLogTime = 0L
+
+    /**
+     * v: 재억 재정리(2026-09-02) - 원하는 규칙은 정확히 두 줄이고, 방향이 서로 반대임:
+     *   1) 카카오가 본선 직진 중이면(예: 70) 분기점 값(예: 50)을 "잡지 마라" = 하향 거부
+     *   2) 카카오가 분기점으로 나가는 중이면(예: 50) 본선 값(예: 70)을 "잡지 마라" = 상향 거부
+     * 그래서 "지금 도로가 바뀌는 중인지"만 보고 양쪽을 다 허용/거부하면 안 되고, 상황에 따라
+     * 방향을 나눠서 판단해야 함:
+     *   - 진출/회전 구간(임박 또는 막 통과한 직후) : 낮아지는 건 받고, 높아지는 건 거부
+     *     -> 진출로를 타는 중엔 본선 값으로 다시 안 튀어오름
+     *   - 본선 직진 중                              : 높아지는 건 받고, 낮아지는 건 거부
+     *     -> 옆도로/진출로 값으로 안 떨어짐(급감속 방지). 본선 값 복귀는 즉시 반영
+     * 어느 쪽이든 "잘못 잡아서 급감속"은 안 생기고, 반대로 진짜 변화는 카카오가 알려줄 때
+     * 바로 따라감. 카카오 안내 중이 아닐 땐 이 판단 자체를 안 씀(기존 히스테리시스). #문제시 원복
+     *
+     * @return true = 이 변화를 받아들여도 됨, false = 카카오 기준으로 틀린 값이니 무시
+     */
+    private fun kakaoVetsLimitChange(newLimit: Int, currentLimit: Int, nearManeuverPoint: Boolean): Boolean {
+        val kakaoRoadName = KakaoRouteDataRepository.roadName
+        if (kakaoRoadName != lastKakaoRoadNameForLimit) {
+            lastKakaoRoadNameForLimit = kakaoRoadName
+            kakaoRoadNameChangedAt = System.currentTimeMillis()
+        }
+        val roadNameJustChanged =
+            kakaoRoadNameChangedAt > 0 &&
+                System.currentTimeMillis() - kakaoRoadNameChangedAt < KAKAO_ROAD_NAME_CHANGE_GRACE_MS
+        // 진출/회전 구간 = 카카오가 곧 빠진다고 하거나, 방금 도로가 바뀐 직후(진출로 진입 직후)
+        val onRampOrTurn = nearManeuverPoint || roadNameJustChanged
+        return if (onRampOrTurn) {
+            newLimit <= currentLimit   // 규칙 2: 진출 중엔 본선(더 높은) 값 거부
+        } else {
+            newLimit >= currentLimit   // 규칙 1: 본선 직진 중엔 분기(더 낮은) 값 거부
+        }
+    }
+
+    /** 지금 이 순간 카카오도 경로 위에서 안전이벤트(카메라/방지턱 등)를 잡고 있는지. #문제시 원복 */
+    private fun kakaoConfirmsSafetyEventNow(): Boolean {
+        val kr = KakaoRouteDataRepository
+        return kr.safetyType >= 0 && kr.safetyDist > 0
+    }
+    private var lastCameraLimitBlockLogTime = 0L
     private var sdiType = 0
     private var sdiSpeedLimit = 0
     private var sdiDistance = 0
@@ -605,7 +664,31 @@ class UdpSenderService : Service() {
                         val nearManeuverPointForLimitSpeed = routeExpectsExitOrTurnSoonForLimitSpeed &&
                             KakaoRouteDataRepository.tbtDist in 0..GENERAL_ROAD_LIMIT_TBT_NEAR_THRESHOLD_M
                         val requiredConsecutiveNowForLimitSpeed = if (routeExpectsExitOrTurnSoonForLimitSpeed) GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE else GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE_FAR_FROM_ROUTE_TURN
-                        val vettedCurrentLimitSpeed: Int? = if (currentLimitSpeed < generalRoadLimitSpeed && !nearManeuverPointForLimitSpeed) {
+                        // v: 재억 재설명(2026-09-02) - 카카오 안내 중이고 카카오 기준 본선 직진
+                        // 중이면, 티맵이 낮은 값을 아무리 여러 번 줘도 받아들이지 않음. #문제시 원복
+                        val kakaoGuidingForLimitSpeed = KakaoRouteDataRepository.isFresh()
+                        val kakaoBlocksForLimitSpeed = kakaoGuidingForLimitSpeed &&
+                            generalRoadLimitSpeed > 0 &&
+                            currentLimitSpeed != generalRoadLimitSpeed &&
+                            !kakaoVetsLimitChange(currentLimitSpeed, generalRoadLimitSpeed, nearManeuverPointForLimitSpeed)
+                        val vettedCurrentLimitSpeed: Int? = if (kakaoBlocksForLimitSpeed) {
+                            // 값을 유지하는 게 지금의 "판단"이므로, 유지되는 동안 값이 8초 만료로
+                            // 0이 되어버리지 않도록 기준 시각도 같이 갱신. #문제시 원복
+                            lastRoadLimitUpdateTime = System.currentTimeMillis()
+                            lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
+                            pendingGeneralRoadLimitCount = 0
+                            if (System.currentTimeMillis() - lastMainlineHoldLogTime > 5000L) {
+                                lastMainlineHoldLogTime = System.currentTimeMillis()
+                                NavLogger.d(
+                                    this@UdpSenderService,
+                                    "[도로제한][카카오기준거부][limitSpeed] 티맵=$currentLimitSpeed 기존=$generalRoadLimitSpeed " +
+                                        "(${if (currentLimitSpeed < generalRoadLimitSpeed) "하향" else "상향"}) - 카카오 기준 " +
+                                        "${if (nearManeuverPointForLimitSpeed) "진출/회전 중이라 본선값 거부" else "본선 직진 중이라 분기값 거부"} " +
+                                        "(도로=${KakaoRouteDataRepository.roadName} 다음안내=${KakaoRouteDataRepository.tbtTurnType}/${KakaoRouteDataRepository.tbtDist}m)"
+                                )
+                            }
+                            null
+                        } else if (currentLimitSpeed < generalRoadLimitSpeed && !nearManeuverPointForLimitSpeed) {
                             if (currentLimitSpeed == pendingGeneralRoadLimit) {
                                 pendingGeneralRoadLimitCount++
                             } else {
@@ -681,8 +764,28 @@ class UdpSenderService : Service() {
                             // v4.13: 이건 카메라(구간단속/스쿨존 등)의 개별 제한속도라
                             // generalRoadLimitSpeed는 절대 건드리지 않음 - roadLimitSpeed만
                             // (openpilot 카메라 감속용) 갱신. #문제시 원복
-                            roadLimitSpeed = sdiSpeedLimit
-                            lastRoadLimitUpdateTime = System.currentTimeMillis()
+                            // v: 재억 재설명(2026-09-02) - "잘 가다가 갑자기 속도를 확 줄이려 해서
+                            // 뒤차가 크락션 누른다"의 남은 통로가 여기였음. 위쪽 도로제한 경로는
+                            // 카카오 기준으로 막아놨는데, 옆도로 카메라의 개별 제한속도(예: 진출로
+                            // 50)는 이 줄에서 곧바로 roadLimitSpeed(=콤마로 나가는 nRoadLimitSpeed)를
+                            // 덮어써서 그대로 급감속을 유발할 수 있었음. 카카오가 안내 중인데 카카오
+                            // 경로엔 그 이벤트가 없다면, 카메라 정보 자체는 그대로 내보내되(콤마가
+                            // nSdiType/nSdiDist로 알아서 판단) 도로제한속도까지 끌어내리지는 않음.
+                            // 카카오 안내 중이 아니면 예전 동작 그대로. #문제시 원복
+                            val kakaoGuidingNowForCamera = KakaoRouteDataRepository.isFresh()
+                            if (kakaoGuidingNowForCamera && !kakaoConfirmsSafetyEventNow()) {
+                                if (System.currentTimeMillis() - lastCameraLimitBlockLogTime > 5000L) {
+                                    lastCameraLimitBlockLogTime = System.currentTimeMillis()
+                                    NavLogger.d(
+                                        this@UdpSenderService,
+                                        "[도로제한][카카오기준거부][카메라] 티맵 카메라 제한속도=$sdiSpeedLimit 이지만 카카오 경로엔 " +
+                                            "해당 이벤트 없음 - 도로제한속도(현재=$roadLimitSpeed)는 안 낮춤(카메라 정보 자체는 그대로 전송)"
+                                    )
+                                }
+                            } else {
+                                roadLimitSpeed = sdiSpeedLimit
+                                lastRoadLimitUpdateTime = System.currentTimeMillis()
+                            }
                         }
 
                         if (sdiType == 0 && sdiSpeedLimit > 0 && sdiDist > 0) {
@@ -734,7 +837,28 @@ class UdpSenderService : Service() {
                         val nearManeuverPoint = routeExpectsExitOrTurnSoon &&
                             KakaoRouteDataRepository.tbtDist in 0..GENERAL_ROAD_LIMIT_TBT_NEAR_THRESHOLD_M
                         val requiredConsecutiveNow = if (routeExpectsExitOrTurnSoon) GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE else GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE_FAR_FROM_ROUTE_TURN
-                        val vettedRealRoadLimit: Int? = if (realRoadLimit < generalRoadLimitSpeed && !nearManeuverPoint) {
+                        // v: 재억 재설명(2026-09-02) - limitSpeed 경로와 동일하게, 카카오 기준
+                        // 본선 직진 중이면 티맵 엔진의 하향 값도 받아들이지 않음. #문제시 원복
+                        val kakaoBlocksForRealLimit = KakaoRouteDataRepository.isFresh() &&
+                            generalRoadLimitSpeed > 0 &&
+                            realRoadLimit != generalRoadLimitSpeed &&
+                            !kakaoVetsLimitChange(realRoadLimit, generalRoadLimitSpeed, nearManeuverPoint)
+                        val vettedRealRoadLimit: Int? = if (kakaoBlocksForRealLimit) {
+                            lastRoadLimitUpdateTime = System.currentTimeMillis()
+                            lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
+                            pendingGeneralRoadLimitCount = 0
+                            if (System.currentTimeMillis() - lastMainlineHoldLogTime > 5000L) {
+                                lastMainlineHoldLogTime = System.currentTimeMillis()
+                                NavLogger.d(
+                                    this@UdpSenderService,
+                                    "[도로제한][카카오기준거부][realRoadLimit] 티맵=$realRoadLimit 기존=$generalRoadLimitSpeed " +
+                                        "(${if (realRoadLimit < generalRoadLimitSpeed) "하향" else "상향"}) - 카카오 기준 " +
+                                        "${if (nearManeuverPoint) "진출/회전 중이라 본선값 거부" else "본선 직진 중이라 분기값 거부"} " +
+                                        "(도로=${KakaoRouteDataRepository.roadName} 다음안내=${KakaoRouteDataRepository.tbtTurnType}/${KakaoRouteDataRepository.tbtDist}m)"
+                                )
+                            }
+                            null
+                        } else if (realRoadLimit < generalRoadLimitSpeed && !nearManeuverPoint) {
                             if (realRoadLimit == pendingGeneralRoadLimit) {
                                 pendingGeneralRoadLimitCount++
                             } else {
@@ -792,6 +916,33 @@ class UdpSenderService : Service() {
                     if (lastSdiJsonStr == null && generalRoadLimitSpeed > 0 && roadLimitSpeed != generalRoadLimitSpeed) {
                         NavLogger.d(this@UdpSenderService, "[도로제한] 카메라 이벤트 없음 - roadLimitSpeed($roadLimitSpeed)를 generalRoadLimitSpeed($generalRoadLimitSpeed)로 즉시 복귀")
                         roadLimitSpeed = generalRoadLimitSpeed
+                    }
+
+                    // v: 재억 요청(2026-09-02) - "카카오 길안내 중에는 카카오 제한속도를
+                    // 우선으로". 지금까지 콤마로 나가는 도로제한속도는 100% 티맵 소스(EDCData
+                    // limitSpeed + 티맵 엔진 리플렉션)였고, 티맵 GPS 매칭이 옆 도로를 물면
+                    // 카카오 경로가 70인 구간에서도 50이 그대로 나갔음(재억 제보 4번).
+                    // 카카오 안내 중이고 카카오 도로제한속도가 신선하면 그 값을 우선 채택.
+                    // 카카오가 값을 못 주면(현재 게터 미확정 상태) 기존 티맵 값 그대로 -
+                    // 즉 나빠질 일은 없고, 게터가 확정되는 순간 자동으로 카카오 우선이 됨.
+                    // 단, 이번 프레임에 카메라 개별 제한속도(sdiSpeedLimit)가 잡혀 있으면
+                    // 그건 카메라 감속용이라 덮지 않음(기존 동작 유지). #문제시 원복
+                    val kakaoGuidingNow = KakaoRouteDataRepository.isFresh()
+                    val kakaoLimitFresh = SdiDataRepository.isKakaoRoadLimitFresh()
+                    val cameraLimitActiveNow = lastSdiJsonStr != null &&
+                        JSONObject(lastSdiJsonStr!!).optInt("nSdiSpeedLimit", 0) >= 30
+                    if (kakaoGuidingNow && kakaoLimitFresh && !cameraLimitActiveNow) {
+                        val kakaoLimit = SdiDataRepository.kakaoRoadLimitSpeed
+                        if (kakaoLimit != roadLimitSpeed &&
+                            System.currentTimeMillis() - lastKakaoRoadLimitLogTime > 10_000L
+                        ) {
+                            lastKakaoRoadLimitLogTime = System.currentTimeMillis()
+                            NavLogger.d(this@UdpSenderService, "[도로제한][카카오우선] 카카오=$kakaoLimit 티맵=$roadLimitSpeed -> 카카오 값 채택")
+                        }
+                        roadLimitSpeed = kakaoLimit
+                        generalRoadLimitSpeed = kakaoLimit
+                        lastRoadLimitUpdateTime = System.currentTimeMillis()
+                        lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
                     }
 
                     json.put("nRoadLimitSpeed", roadLimitSpeed)
@@ -1068,6 +1219,42 @@ class UdpSenderService : Service() {
                                 NavLogger.d(this@UdpSenderService, "[안전정보 우선순위] Tmap 없음 -> 검증된 카카오값으로 폴백: type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}")
                             } else {
                                 NavLogger.d(this@UdpSenderService, "[카카오 안전정보 검증용][실제전송안함 - 미검증 폴백] type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}")
+                            }
+                        }
+
+                        // v: 재억 재설명(2026-09-02) - "카카오 길안내를 기반으로 카메라를 매칭하고
+                        // 싶다". 위 분기들은 "카카오가 잡은 게 있으면 카카오 우선"까지는 하는데,
+                        // 카카오가 이 경로에 아무 이벤트도 없다고 할 때(kakaoHasSdi=false) 티맵이
+                        // 옆도로/고가도로 아래에서 잡아온 카메라가 그대로 콤마로 나갔음 - 이게
+                        // 바로 "직진 중인데 옆으로 빠지는 도로 카메라/속도를 잡는" 증상의 카메라
+                        // 쪽 절반임. 카카오가 경로 위 이벤트를 실제로 관리하고 있는 상태(안내 중)
+                        // 라면, 카카오가 "없다"고 하는 건 진짜로 경로상에 없다는 뜻으로 보고
+                        // 티맵 단독 이벤트는 내보내지 않음. 혹시 카카오가 놓치는 카메라가 있으면
+                        // 설정에서 이 항목을 꺼서 예전 동작(티맵 폴백)으로 즉시 되돌릴 수 있음. #문제시 원복
+                        // v: 재억 질문(2026-09-02, "기본을 꺼짐으로 두면 문제가 되나?") - 안 됨.
+                        // 이 옵션은 "카카오가 못 잡은 카메라를 아예 안 보낼 것인가"만 정하는데,
+                        // 꺼두면 예전과 똑같이 티맵 카메라도 그대로 나가므로 카메라를 놓칠 위험이
+                        // 없는 쪽(보수적)임. 급감속의 실제 원인이던 "티맵 카메라 제한속도가 도로
+                        // 제한속도를 끌어내리는 통로"는 이 옵션과 무관하게 위쪽에서 항상 막히므로,
+                        // 기본을 꺼짐으로 둬도 원하는 효과는 그대로 남음. 기본값 false로 변경. #문제시 원복
+                        val kakaoOnlySdi = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                            .getBoolean("kakao_only_sdi_when_guiding", false)
+                        if (kakaoOnlySdi && !kakaoHasSdi && tmapHasSdi) {
+                            val suppressedType = json.optInt("nSdiType", 0)
+                            val suppressedLimit = json.optInt("nSdiSpeedLimit", 0)
+                            val suppressedDist = json.optInt("nSdiDist", 0)
+                            json.put("nSdiType", 0)
+                            json.put("nSdiSpeedLimit", 0)
+                            json.put("nSdiDist", 0)
+                            json.put("nSdiBlockType", 0)
+                            json.put("nSdiSection", 0)
+                            if (System.currentTimeMillis() - lastTmapSdiSuppressLogTime > 5000L) {
+                                lastTmapSdiSuppressLogTime = System.currentTimeMillis()
+                                NavLogger.d(
+                                    this@UdpSenderService,
+                                    "[안전정보 우선순위][티맵단독 억제] 카카오 경로엔 이벤트 없음 - 티맵이 잡은 " +
+                                        "type=$suppressedType limit=$suppressedLimit dist=${suppressedDist}m 이벤트는 옆도로 오매칭으로 보고 전송 생략"
+                                )
                             }
                         }
                         // v: 재억 요청(2026-08-22) - 이 로그가 UDP 전송 주기마다 매번 찍혀서

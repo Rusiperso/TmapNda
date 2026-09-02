@@ -319,9 +319,16 @@ class KakaoGuidanceDelegate(
             // List가 아니거나 null"이 203번 다 찍혔는데, 예외 로그는 단 한 번도 없었음 -
             // 즉 호출 자체는 성공하는데 반환값이 List가 아닌 다른 타입(배열 등)이었던 것.
             // List로 캐스팅 안 되면 배열(Array<*>)로도 시도. #문제시 원복
+            // v: 재억 제보(2026-09-02, 실기기 로그로 확정) - 로그에 "반환 타입=
+            // java.util.LinkedHashMap (List/Array 둘 다 아님)"이 전부 찍혔음. 즉
+            // getLocationsOfPois()는 Map(키=지점 구분, 값=위치 객체)을 돌려주고 있었고,
+            // 그래서 이 함수가 항상 null을 반환 -> headingToFinalDestination이 영원히
+            // 갱신 안 됨 -> 경유지를 지나도 목록/취소버튼이 안 사라졌음. LinkedHashMap은
+            // 삽입 순서를 유지하므로 values를 그대로 순서(출발/경유.../도착)로 사용. #문제시 원복
             val pois: List<*>? = when (poisRaw) {
                 is List<*> -> poisRaw
                 is Array<*> -> poisRaw.toList()
+                is Map<*, *> -> poisRaw.values.toList()
                 null -> {
                     if (shouldLog) NavLogger.d(context, "[다음정차지][진단] getLocationsOfPois() 결과 null")
                     null
@@ -365,6 +372,10 @@ class KakaoGuidanceDelegate(
                 } else {
                     viaNames?.getOrNull(idx - 1)?.takeIf { !it.isNullOrBlank() } ?: "경유지"
                 }
+                // v: 재억 요청(2026-09-02) - 경유지 여러 개 지원. 지금 향하는 지점이 idx번째면
+                // 그 앞의 경유지(idx-1개)는 이미 지나온 것. 최종목적지로 향하는 중이면 경유지
+                // 전부(pois.size-2개)를 지나온 것으로 계산. #문제시 원복
+                KakaoRouteDataRepository.passedViaCount = if (isFinal) pois.size - 2 else idx - 1
                 return Triple(name, dist - myDistFromS, isFinal)
             }
             if (shouldLog) NavLogger.d(context, "[다음정차지][진단] 루프 끝까지 돌았는데 매칭되는 지점이 없음(전부 이미 지나쳤거나 거리 계산 실패)")
@@ -416,11 +427,21 @@ class KakaoGuidanceDelegate(
                 val remainDist = currentRoute.remainDistFromLocation(currentLocation)
                 val remainTime = currentRoute.remainTimeFromLocation(currentLocation)
 
-                if (remainDist > 0 && remainTime > 0) {
+                // v: 재억 제보(2026-09-02, 실기기 로그로 확정) - "멈추면 콤마에서 경로가
+                // 사라진다"의 진짜 원인이 여기였음. 정차하면 remainTime이 0이 되는데(로그:
+                // remainDist=2259 remainTime=0), 예전 조건(remainTime > 0)이 lastUpdateTime
+                // 갱신까지 같이 막아버려서 5초 뒤 isFresh()가 false가 되고, UdpSenderService의
+                // 카카오 덮어쓰기 블록이 통째로 건너뛰어졌음. UdpSenderService 안에는 이미
+                // "정지로 remainTime만 0일 때 직전값 유지" 보정이 있는데, isFresh가 먼저
+                // 막혀서 그 보정이 실행될 기회조차 없었음. 이제 거리만 살아있으면 안내가
+                // 살아있는 것으로 보고 계속 갱신하고, remainTime이 0이면 직전 값을 유지함. #문제시 원복
+                if (remainDist > 0) {
                     KakaoRouteDataRepository.isActive = true
                     KakaoRouteDataRepository.lastUpdateTime = System.currentTimeMillis()
                     KakaoRouteDataRepository.remainDist = remainDist
-                    KakaoRouteDataRepository.remainTime = remainTime
+                    if (remainTime > 0) {
+                        KakaoRouteDataRepository.remainTime = remainTime
+                    }
 
                     // v: 재억 요청(2026-08-22) - 이 로그가 GPS 갱신마다(보통 초당 1회) 매번
                     // 찍혀서 로그 파일에서 가장 큰 비중(4천줄 이상)을 차지하고 있었음.
@@ -449,7 +470,16 @@ class KakaoGuidanceDelegate(
                 // 확실치 않아서(공식 문서에 명시 안 됨), 후보 이름들을 순서대로 리플렉션으로
                 // 찔러보고 처음 유효한(>=30) 값을 채택. 게터 이름이 로그로 남으므로, 다음 실주행
                 // 로그를 보고 진짜 맞는 값인지 검증 후 이 후보 목록을 정리할 예정. #문제시 원복
-                val roadLimitCandidates = listOf("RoadSpeedLimit", "CurRoadSpeedLimit", "CurSpeedLimit", "LinkSpeedLimit", "RoadLimitSpeed")
+                // v: 재억 제보(2026-09-02, 실기기 로그로 확정) - 이 후보 5개가 실주행 내내
+                // 전부 매칭 실패(매칭게터=null 값=0)였음. 그래서 카카오 화면 과속경고음이
+                // 아예 한 번도 안 울렸고(로그상 발생 0건), 콤마로 나가는 도로제한속도도
+                // 계속 티맵 매칭값(옆 도로 50)만 쓸 수밖에 없었음. 후보 이름을 넓히고,
+                // 그래도 못 찾으면 KNGuide_Location/그 안의 location 객체가 실제로 가진
+                // 게터를 값과 함께 딱 한 번 통째로 남겨서 다음 로그로 진짜 이름을 확정. #문제시 원복
+                val roadLimitCandidates = listOf(
+                    "RoadSpeedLimit", "CurRoadSpeedLimit", "CurSpeedLimit", "LinkSpeedLimit", "RoadLimitSpeed",
+                    "SpeedLimit", "LimitSpeed", "RoadLimit", "MaxSpeed", "SpeedMax", "LinkSpeed"
+                )
                 var kakaoLimit = 0
                 var matchedGetterName: String? = null
                 for (candidate in roadLimitCandidates) {
@@ -463,6 +493,29 @@ class KakaoGuidanceDelegate(
                 if (kakaoLimit > 0) {
                     SdiDataRepository.kakaoRoadLimitSpeed = kakaoLimit
                     SdiDataRepository.kakaoRoadLimitSpeedUpdatedAt = System.currentTimeMillis()
+                } else if (!roadLimitApiScanDone) {
+                    // 후보를 하나도 못 찾은 경우에만, 실제 게터 목록을 값과 함께 딱 한 번 덤프.
+                    // (차선API스캔과 동일한 방식 - 다음 실주행 로그에서 진짜 이름을 확정하기 위함)
+                    roadLimitApiScanDone = true
+                    try {
+                        NavLogger.e(context, "===== [도로제한API스캔] ${currentLocation.javaClass.name} =====")
+                        currentLocation.javaClass.methods
+                            .filter { it.parameterTypes.isEmpty() && it.name.startsWith("get") }
+                            .forEach { m ->
+                                val value = try { m.invoke(currentLocation) } catch (e: Exception) { "실패" }
+                                NavLogger.e(context, "[도로제한API스캔] ${m.name}() = $value")
+                            }
+                        NavLogger.e(context, "===== [도로제한API스캔] locationGuide=${locationGuide.javaClass.name} =====")
+                        locationGuide.javaClass.methods
+                            .filter { it.parameterTypes.isEmpty() && it.name.startsWith("get") }
+                            .forEach { m ->
+                                val value = try { m.invoke(locationGuide) } catch (e: Exception) { "실패" }
+                                NavLogger.e(context, "[도로제한API스캔] locationGuide.${m.name}() = $value")
+                            }
+                        NavLogger.e(context, "===== [도로제한API스캔] 끝 =====")
+                    } catch (e: Exception) {
+                        NavLogger.e(context, "[도로제한API스캔] 실패: ${e.message}")
+                    }
                 }
                 if (now - lastLocationLogAt < 50) {
                     // 위 2초 스로틀 로그와 같은 타이밍에 한 번만 같이 남김
@@ -646,7 +699,14 @@ class KakaoGuidanceDelegate(
                     // 안 되고, 진출 각도에 따라 좌/우/직진이 다 될 수 있음. 위 아이콘 매핑과
                     // 동일한 각도 기반 판단(KakaoToNavdyTurn)을 재사용해서 일관되게 처리. #문제시 원복
                     val directionAngleForLane = curDirectionForLane?.let { findGetterInt(it, "DirectionAng") } ?: 0
-                    val requiredBit = when {
+                    val requiredBit: Int? = when {
+                        // v: 재억 제보(2026-09-02, "차선 매칭이 가끔 틀린 게 나온다") - 로그에
+                        // 유일하게 반복 관측된 미매핑 코드가 KNRGCode_Via(경유지 도착 안내)였음.
+                        // 경유지는 좌/우 어느 쪽에 있을지 알 수 없는데 아래 else가 "모르면 직진(8)"
+                        // 으로 단정해버려서, 경유지 접근 구간 내내 직진 차로를 추천으로 잘못
+                        // 표시하고 있었음. 방향을 확신할 수 없는 코드는 비트 매칭을 하지 말고
+                        // 카카오 자체 추천(getSuggest)으로 폴백. #문제시 원복
+                        turnCodeForLane == "KNRGCode_Via" || turnCodeForLane == "KNRGCode_Goal" -> null
                         turnCodeForLane == "KNRGCode_LeftTurn" || turnCodeForLane == "KNRGCode_UnprotectedLeftTurn" || turnCodeForLane == "KNRGCode_LeftOutHighway" -> 2
                         turnCodeForLane == "KNRGCode_RightTurn" || turnCodeForLane == "KNRGCode_RightOutHighway" || turnCodeForLane == "KNRGCode_OutHighway" -> 32
                         turnCodeForLane == "KNRGCode_UTurn" -> 1
@@ -729,9 +789,26 @@ class KakaoGuidanceDelegate(
                     // 조사용. lanes 개수만으론 "추천 차선이 실제로 있었는지"를 알 수 없어서,
                     // 차선별 recommended 값을 그대로 남김(전부 false면 SDK가 이 구간에서
                     // 추천 차선 자체를 안 준 것 - 배지가 안 뜨는 게 정상 동작). #문제시 원복
-                    NavLogger.d(context, "[차선진단][추천여부] ${recommendedFlags.mapIndexed { i, f -> "${i + 1}번=${f.recommended}" }}")
+                    // v: 재억 제보(2026-09-02, "차선 매칭이 가끔 틀린다") - 추천 결과만 봐서는
+                    // "무슨 회전 기준으로 어떤 비트를 찾은 결과인지"를 알 수 없어서 틀린 순간을
+                    // 사후에 특정할 수가 없었음. 판단 근거(회전코드/요구비트/남은거리)를 같은
+                    // 줄에 붙여서, 다음 로그에선 틀린 프레임 하나만 봐도 원인이 보이게 함. #문제시 원복
+                    NavLogger.d(
+                        context,
+                        "[차선진단][추천여부] ${recommendedFlags.mapIndexed { i, f -> "${i + 1}번=${f.recommended}" }} " +
+                            "(회전코드=$turnCodeForLane 요구비트=${requiredBit ?: "없음(getSuggest 폴백)"} " +
+                            "각도=$directionAngleForLane 다음안내까지=${KakaoRouteDataRepository.tbtDist}m)"
+                    )
                     NavLogger.d(context, "[차선진단][getTurnType] ${turnTypeValues.mapIndexed { i, v -> "${i + 1}번=$v" }}")
-                    NavLogger.d(context, "[차선진단][getColorType] ${colorTypeValues.mapIndexed { i, v -> "${i + 1}번=$v" }}")
+                    // v: 재억 질문(2026-09-02, "색깔 유도선 정보가 있는지?") - getColorType 필드는
+                    // 실제로 존재하지만, 직전 실주행 로그 124회 중 116회가 -1(값 없음)이고 의미
+                    // 있는 값은 단 1회(2)뿐이었음 = 카카오 SDK가 이 구간들에서 색상 정보를 사실상
+                    // 안 채워줌. 매 갱신마다 남기던 걸(로그 용량만 차지) -1이 아닌 값이 실제로
+                    // 관측될 때만 남기도록 줄임. 값이 꾸준히 나오는 구간이 발견되면 그때 유도선
+                    // 표시를 구현. #문제시 원복
+                    if (colorTypeValues.any { it != "-1" && it != "null" && it != "실패" }) {
+                        NavLogger.d(context, "[차선진단][getColorType] ${colorTypeValues.mapIndexed { i, v -> "${i + 1}번=$v" }} (색깔 유도선 값 실제 관측)")
+                    }
                     // v13.6: 재억 지적 - "평소엔 안뜨고 카카오 안내 끝내야 뜬다" 원인을
                     // 다음 재현 때 정확히 잡기 위한 진단 로그. 카카오가 실제로 차선을
                     // 갱신하는 매 순간을 15초 간격으로 남김. #문제시 원복
@@ -1188,6 +1265,10 @@ class KakaoGuidanceDelegate(
         // 녹색/분홍색과 매칭되는 안내) 기능 조사용. KNLane_LaneInfo에 색상 관련 getter가
         // 있는지 앱 켜있는 동안 1번만 전체 메서드 목록을 스캔해서 남김. #문제시 원복
         @Volatile private var laneInfoApiScanDone = false
+
+        // v: 재억 요청(2026-09-02) - 카카오 도로제한속도 게터를 후보 이름으로 못 찾은
+        // 경우에만, 실제 게터 목록을 앱 켜있는 동안 1번만 덤프하기 위한 플래그. #문제시 원복
+        @Volatile private var roadLimitApiScanDone = false
     }
     private var lastEtaLogTime = 0L
     private fun scanForVolumeApiOnce(guidance: KNGuidance) {

@@ -18,7 +18,24 @@ object QuickSlotStore {
     const val SLOT_FAV4 = "fav4"
     const val SLOT_FAV5 = "fav5"
 
-    val ALL_SLOTS = listOf(SLOT_HOME, SLOT_WORK, SLOT_FAV1, SLOT_FAV2, SLOT_FAV3, SLOT_FAV4, SLOT_FAV5)
+    // v: 재억 요청(2026-09-02) - 즐겨찾기를 10개까지 늘림. 저장은 원래부터 슬롯 이름을
+    // SharedPreferences 키로 쓰는 방식이라 개수 제한이 없었고, 상수 5개가 하드코딩돼
+    // 있던 것뿐임. fav1~fav10을 이름으로 만들어 쓰고, 기존 fav1~fav5 상수는 이미 저장된
+    // 데이터/다른 호출부 호환을 위해 그대로 남겨둠(값이 동일해서 그대로 이어짐). #문제시 원복
+    const val MAX_FAVORITE_SLOTS = 10
+    const val DEFAULT_FAVORITE_COUNT = 5
+
+    /** fav1..fav{count} 슬롯 이름 목록 */
+    fun favoriteSlots(count: Int): List<String> =
+        (1..count.coerceIn(0, MAX_FAVORITE_SLOTS)).map { "fav$it" }
+
+    /** 설정에 저장된 즐겨찾기 표시 개수(0~10) */
+    fun favoriteCount(context: Context): Int =
+        context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .getInt("quickslot_favorite_count", DEFAULT_FAVORITE_COUNT)
+            .coerceIn(0, MAX_FAVORITE_SLOTS)
+
+    val ALL_SLOTS = listOf(SLOT_HOME, SLOT_WORK) + favoriteSlots(MAX_FAVORITE_SLOTS)
 
     private fun prefs(context: Context) =
         context.getSharedPreferences("TmapNdaQuickSlots", Context.MODE_PRIVATE)

@@ -44,6 +44,12 @@ object KakaoRouteDataRepository {
     // 주행에서는 항상 true(최종목적지로 향함)로 둬서 기존 동작에 영향 없음. #문제시 원복
     @Volatile var headingToFinalDestination: Boolean = true
 
+    // v: 재억 요청(2026-09-02) - 경유지 여러 개 지원. resolveNextStopInfo()가 "지금 향하고
+    // 있는 정차지"를 찾을 때 그게 몇 번째 지점인지 이미 알고 있으므로, 그 앞의 경유지
+    // 개수(=이미 지나온 경유지 수)를 여기 담아둠. KakaoNaviActivity가 1초 루프에서 보고
+    // 지나간 경유지만 목록에서 지움. -1 = 아직 판단 못 함(목록을 건드리지 않음). #문제시 원복
+    @Volatile var passedViaCount: Int = -1
+
     // 다음 안내지점(회전 등)까지 거리(m), openpilot nTBTTurnType 코드로 변환된 회전타입
     @Volatile var tbtDist: Int = 0
     @Volatile var tbtTurnType: Int = 0
@@ -108,6 +114,7 @@ object KakaoRouteDataRepository {
         isActive = false
         lastUpdateTime = 0
         headingToFinalDestination = true
+        passedViaCount = -1
         tbtDist = 0
         tbtTurnType = 0
         tbtMainText = ""
