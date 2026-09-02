@@ -62,6 +62,12 @@ object NavdySender {
     @Volatile private var outputStream: OutputStream? = null
     @Volatile private var connecting = false
     @Volatile private var readerThread: Thread? = null
+    // v: 재억 요청(2026-09-02) - "보내다가 끊겼는지 보내보지도 못하고 끊겼는지도 알아야지"라는
+    // 지적. 이 연결에서 지금까지 몇 번 전송에 성공했는지/언제 연결됐는지를 기억해뒀다가,
+    // 끊길 때 로그에 같이 남겨서 "이번 연결은 한 번도 성공 못 하고 끊겼다" vs "N번 잘 보내다
+    // 끊겼다"를 바로 구분할 수 있게 함. #문제시 원복
+    @Volatile private var connectedAtMs = 0L
+    @Volatile private var sentCountSinceConnect = 0
 
 
     /**
@@ -179,6 +185,8 @@ object NavdySender {
                 // 바로 끊어버리는 것으로 추정됨. 정품처럼 받는 스레드를 같이 띄워서 양방향을
                 // 살려둠(받은 내용 자체는 아직 안 쓰므로 그냥 읽어서 버림). #문제시 원복
                 startReaderThread(sock)
+                connectedAtMs = System.currentTimeMillis()
+                sentCountSinceConnect = 0
                 NavLogger.d("[Navdy] 연결 성공: ${device.name}")
             } catch (e: Exception) {
                 // v: 재억 제보(2026-08-27) - 로그 파일에는 "연결 시도"만 계속 남고 성공/실패 여부가
@@ -225,6 +233,9 @@ object NavdySender {
 
     fun isConnected(): Boolean = socket?.isConnected == true
 
+    private fun connectionAgeMs(): Long =
+        if (connectedAtMs == 0L) 0L else System.currentTimeMillis() - connectedAtMs
+
     fun disconnect() {
         executor.execute { closeQuietly() }
     }
@@ -243,7 +254,7 @@ object NavdySender {
                 while (true) {
                     val n = input.read(buffer)
                     if (n == -1) {
-                        NavLogger.d("[Navdy] 받는 쪽 스트림이 상대방에 의해 정상 종료됨(EOF)")
+                        NavLogger.d("[Navdy] 받는 쪽 스트림이 상대방에 의해 정상 종료됨(EOF), ${connectionAgeMs()}ms만에, 그동안 보낸 전송 성공 ${sentCountSinceConnect}회")
                         break
                     }
                     NavLogger.d("[Navdy] 데이터 수신: ${n}바이트")
@@ -252,8 +263,9 @@ object NavdySender {
                 // v: 재억 제보(2026-09-02) - "받는 쪽도 로그가 남아야 왜 끊기는지 알지"라는
                 // 지적. 여기서 나는 예외가 곧 "받다가 끊긴 이유"이므로 조용히 삼키지 않고
                 // 남김 - 전송 쪽 Broken pipe 로그와 대조해서 어느 쪽이 먼저 끊었는지
-                // 판단하는 데 씀. #문제시 원복
-                NavLogger.d("[Navdy] 받는 스레드 종료: ${e.javaClass.simpleName} ${e.message}")
+                // 판단하는 데 씀. 연결 유지 시간/그동안 보낸 성공 횟수도 같이 남겨서
+                // "받아보지도 못하고 끊겼는지 vs 한동안 잘 받다 끊겼는지" 구분되게 함. #문제시 원복
+                NavLogger.d("[Navdy] 받는 스레드 종료: ${e.javaClass.simpleName} ${e.message}, ${connectionAgeMs()}ms만에, 그동안 보낸 전송 성공 ${sentCountSinceConnect}회")
             }
         }
         thread.isDaemon = true
@@ -268,6 +280,8 @@ object NavdySender {
         outputStream = null
         socket = null
         readerThread = null
+        connectedAtMs = 0L
+        sentCountSinceConnect = 0
     }
 
     /**
@@ -315,9 +329,21 @@ object NavdySender {
                     currentRoad, turn.protoValue, distanceToTurn, pendingStreet, eta, speed
                 )
                 val eventBytes = buildNavdyEvent(maneuverBytes)
+                // v: 재억 요청(2026-09-02) - 전송을 "시도"한 시점 자체를 남겨서, 아래 실패 로그가
+                // 없어도(예: 앱이 죽는 등 극단적 케이스) 최소한 마지막으로 뭘 보내려 했는지는
+                // 로그에 남게 함. #문제시 원복
+                NavLogger.d("[Navdy] 전송 시도: 도로=$currentRoad 턴=${turn.name} 거리=$distanceToTurn 크기=${eventBytes.size}B")
                 writeFramed(stream, eventBytes)
+                sentCountSinceConnect++
+                NavLogger.d("[Navdy] 전송 성공 (이 연결에서 누적 ${sentCountSinceConnect}회)")
             } catch (e: Exception) {
-                NavLogger.e("[Navdy] 전송 실패로 연결 끊김 처리: ${e.javaClass.simpleName} ${e.message}")
+                // v: 재억 요청(2026-09-02) - "보내다 끊겼는지 보내보지도 못하고 끊겼는지"까지
+                // 바로 알 수 있게, 이 연결에서 지금까지 성공한 전송 횟수와 연결 유지 시간을
+                // 같이 남김. sentCountSinceConnect==0 이면 이 연결은 단 한 번도 전송에
+                // 성공하지 못하고 끊긴 것. e.message에는 writeFramed()가 붙인 단계 정보
+                // ([길이헤더 전송 중]/[본문 전송 중]/[flush 중])가 포함되어 있어 정확히
+                // 어느 단계에서 끊겼는지도 같이 남음. #문제시 원복
+                NavLogger.e("[Navdy] 전송 실패로 연결 끊김 처리: ${e.javaClass.simpleName} ${e.message}, 이 연결에서 성공 ${sentCountSinceConnect}회 후 끊김, 연결 유지 ${connectionAgeMs()}ms")
                 // v: 재억 요청(2026-08-28) - 전송이 실패해도 socket/outputStream을 그대로 두면,
                 // 안드로이드 BluetoothSocket.isConnected()가 물리적 연결 끊김을 실시간으로
                 // 반영 안 해줘서(close() 호출 전까진 계속 true로 보고할 수 있음) 재연결 루프가
@@ -364,6 +390,9 @@ object NavdySender {
         return out.toByteArray()
     }
 
+    // v: 재억 요청(2026-09-02) - "보내다 끊어졌는지 아니면 보내보지도 못하고 끊어졌는지"까지
+    // 구분해달라는 지적. 헤더/본문/flush 세 단계를 각각 try로 감싸서, 실패하면 어느 단계에서
+    // 끊겼는지를 예외 메시지 앞에 붙여서 던짐 - sendManeuver()의 catch 로그에 그대로 찍힘. #문제시 원복
     private fun writeFramed(stream: OutputStream, payload: ByteArray) {
         // Frame { tag1 required FIXED32 size } — Wire의 FIXED32는 리틀엔디안 4바이트
         val frame = ByteArrayOutputStream()
@@ -372,9 +401,22 @@ object NavdySender {
         frame.write((payload.size shr 8) and 0xFF)
         frame.write((payload.size shr 16) and 0xFF)
         frame.write((payload.size shr 24) and 0xFF)
-        stream.write(frame.toByteArray())
-        stream.write(payload)
-        stream.flush()
+        val frameBytes = frame.toByteArray()
+        try {
+            stream.write(frameBytes)
+        } catch (e: IOException) {
+            throw IOException("[길이헤더(${frameBytes.size}B) 전송 중 끊김] ${e.message}", e)
+        }
+        try {
+            stream.write(payload)
+        } catch (e: IOException) {
+            throw IOException("[본문(${payload.size}B) 전송 중 끊김 - 헤더는 보냈음] ${e.message}", e)
+        }
+        try {
+            stream.flush()
+        } catch (e: IOException) {
+            throw IOException("[flush 중 끊김 - 헤더+본문은 다 썼음] ${e.message}", e)
+        }
     }
 
     private fun writeVarint(out: ByteArrayOutputStream, value: Long) {
