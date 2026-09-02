@@ -606,13 +606,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 }
             }
             when {
+                // v: 재억 요청(2026-09-03) - 이 두 줄은 실기기 로그 348줄 중 347줄이
+                // 직전 줄과 완전 동일했음(같은 음량을 계속 다시 적용하니 당연). 음량 값이
+                // 실제로 바뀔 때만 남김. #문제시 원복
                 sndVolumeSetterMethod != null -> {
                     sndVolumeSetterMethod!!.invoke(naviView, fraction)
-                    NavLogger.d(this, "[카카오SDK볼륨] setSndVolume($fraction) 호출됨 (저장된 ${percent}%)")
+                    NavLogger.dIfChanged(this, "카카오SDK볼륨", "[카카오SDK볼륨] setSndVolume($fraction) 호출됨 (저장된 ${percent}%)")
                 }
                 sndVolumeSetterField != null -> {
                     sndVolumeSetterField!!.setFloat(naviView, fraction)
-                    NavLogger.d(this, "[카카오SDK볼륨] sndVolume 필드에 $fraction 직접 대입 (저장된 ${percent}%)")
+                    NavLogger.dIfChanged(this, "카카오SDK볼륨", "[카카오SDK볼륨] sndVolume 필드에 $fraction 직접 대입 (저장된 ${percent}%)")
                 }
             }
         } catch (e: Exception) {
@@ -3101,7 +3104,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         NavLogger.d(this, "[lifecycle] onWindowFocusChanged hasFocus=$hasFocus")
-        if (::naviView.isInitialized) logNaviViewDiagnostics("onWindowFocusChanged(hasFocus=$hasFocus)")
+        // v: 재억 요청(2026-09-03) - 여기서 화면 전체 뷰트리를 통째로 덤프하고 있었는데
+        // 한 번에 4.7KB짜리 한 줄이라, 앱을 들락날락할 때마다 로그가 급격히 불어났음
+        // (실기기 로그 1MB 중 38KB를 이 네 줄이 차지). 뷰트리 덤프는 길안내 시작 시점
+        // 3곳에만 남기고 포커스 전환 때는 생략. #문제시 원복
     }
 
     override fun onBackPressed() {
@@ -3115,7 +3121,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 반복돼서(예: 매초 완전히 동일한 좌표) GPS_PROVIDER의 정확한 실시간 값과 번갈아
     // KNSDK로 들어가는 바람에 위치가 오락가락했음(사용자 - "평택인데 용인으로 잡힘").
     // GPS_PROVIDER만 반영하고, 정확도가 너무 나쁜 픽스(accuracy > 50m)는 무시함. #문제시 원복
-    private var lastOverSpeedDiagLogTime = 0L
     private fun checkOverSpeedWarning(speedKph: Int) {
         val pref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         if (!pref.getBoolean("over_speed_warning_enabled", true)) return
@@ -3130,12 +3135,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val limit = SdiDataRepository.kakaoRoadLimitSpeed
         if (limit < 30 || speedKph <= 0) return
         val now = System.currentTimeMillis()
-        // v: MapActivity와 동일한 진단 로그 - 트리거 여부와 무관하게 3초마다 limit 흐름을
-        // 남겨서 "65 주행 당시 limit이 실제로 몇이었는지" 대조 가능하게 함. #문제시 원복
-        if (now - lastOverSpeedDiagLogTime > 3000L) {
-            lastOverSpeedDiagLogTime = now
-            NavLogger.d(this, "[과속경고음진단] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1})")
-        }
+        // v: MapActivity와 동일한 진단 로그 - "65 주행 당시 limit이 실제로 몇이었는지"
+        // 대조용. v: 재억 요청(2026-09-03) - 3초마다 무조건 남기던 걸 제한속도가 실제로
+        // 바뀌는 순간만 남기도록 변경(MapActivity와 동일 처리). #문제시 원복
+        NavLogger.dIfChanged(this, "과속경고음진단", "[과속경고음진단] limit=$limit (limit*1.1=${limit * 1.1}) 이때속도=$speedKph")
         // v: 재억 제보(2026-08-22) - 카메라 접근 중엔 300~500m에서 한 번, 100m 이내에서
         // 또 한 번(8초 쿨다운마다 반복) 울리던 걸 "이 카메라 하나당 한 번"으로 제한.
         // 카메라가 없을 때(그냥 과속 중)는 기존처럼 8초마다 반복 경고. MapActivity와 동일 로직. #문제시 원복

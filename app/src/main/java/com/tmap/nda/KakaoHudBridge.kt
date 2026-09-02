@@ -24,7 +24,6 @@ import java.util.Locale
  * 기기가 꺼져있으면) sendManeuver 호출은 조용히 무시됨. #문제시 원복
  */
 object KakaoHudBridge {
-    private var lastDestDiagLogTime = 0L
     private var lastNavdySendTime = 0L
     private val etaFormat = SimpleDateFormat("HH:mm", Locale.KOREA)
 
@@ -61,11 +60,11 @@ object KakaoHudBridge {
         // 원인을 잡기 위해, trip.goal.name의 실제 원본값(비어있는지/뭐가 들어있는지)을
         // 15초 간격으로 남김. 이 값이 계속 비어있으면 카카오 SDK가 애초에 목적지 이름을
         // 안 채워주고 있다는 뜻이고, 가끔 채워졌다 비었다 한다면 타이밍 문제라는 뜻. #문제시 원복
+        // v: 재억 요청(2026-09-03) - 15초마다 똑같은 내용이 계속 다시 남고 있었음
+        // (실기기 로그 199줄 중 180줄이 직전 줄과 동일). 값이 실제로 바뀔 때만 남김 -
+        // "채워졌다 비었다" 하는 타이밍 문제는 오히려 더 선명하게 보임. #문제시 원복
         val rawGoalName = trip?.goal?.name
-        if (System.currentTimeMillis() - lastDestDiagLogTime > 15000L) {
-            lastDestDiagLogTime = System.currentTimeMillis()
-            NavLogger.d(context, "[목적지명진단] trip?.goal?.name=\"$rawGoalName\" (trip=${trip != null}, goal=${trip?.goal != null}) currentRoad=\"$currentRoad\"")
-        }
+        NavLogger.dIfChanged(context, "목적지명진단", "[목적지명진단] trip?.goal?.name=\"$rawGoalName\" (trip=${trip != null}, goal=${trip?.goal != null}) currentRoad=\"$currentRoad\"")
 
         val remainDist = trip?.remainDist() ?: KakaoRouteDataRepository.remainDist
         val remainTime = trip?.remainTime() ?: KakaoRouteDataRepository.remainTime

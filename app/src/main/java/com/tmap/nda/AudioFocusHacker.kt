@@ -4,6 +4,9 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.util.Log
 
+// v: 재억 요청(2026-09-03) - 가로챌 때마다 파일 로그를 남겨서 실기기 로그에 145줄이
+// 쌓여 있었음. 내용은 매번 완전히 같고("가로채서 무시함"), 이 훅이 살아있다는 것만
+// 확인되면 되는 로그라 종류별로 첫 1회만 파일에 남김(logcat에는 계속 다 나옴). #문제시 원복
 object AudioFocusHacker {
     @JvmStatic
     fun requestAudioFocus(
@@ -13,7 +16,7 @@ object AudioFocusHacker {
         durationHint: Int
     ): Int {
         Log.e("TmapVolume", "[AudioFocusHacker] requestAudioFocus(old) intercepted! NOP!")
-        NavLogger.e("[AudioFocusHacker] requestAudioFocus(old) intercepted! NOP!")
+        NavLogger.dIfChanged("focus_req_old", "[AudioFocusHacker] requestAudioFocus(old) intercepted! NOP!")
         return AudioManager.AUDIOFOCUS_REQUEST_GRANTED
     }
 
@@ -23,7 +26,7 @@ object AudioFocusHacker {
         request: AudioFocusRequest
     ): Int {
         Log.e("TmapVolume", "[AudioFocusHacker] requestAudioFocus(new) intercepted! NOP!")
-        NavLogger.e("[AudioFocusHacker] requestAudioFocus(new) intercepted! NOP!")
+        NavLogger.dIfChanged("focus_req_new", "[AudioFocusHacker] requestAudioFocus(new) intercepted! NOP!")
         return AudioManager.AUDIOFOCUS_REQUEST_GRANTED
     }
 
@@ -33,7 +36,7 @@ object AudioFocusHacker {
         l: AudioManager.OnAudioFocusChangeListener
     ): Int {
         Log.e("TmapVolume", "[AudioFocusHacker] abandonAudioFocus(old) intercepted! NOP!")
-        NavLogger.e("[AudioFocusHacker] abandonAudioFocus(old) intercepted! NOP!")
+        NavLogger.dIfChanged("focus_abandon_old", "[AudioFocusHacker] abandonAudioFocus(old) intercepted! NOP!")
         return AudioManager.AUDIOFOCUS_REQUEST_GRANTED
     }
 
@@ -43,7 +46,7 @@ object AudioFocusHacker {
         request: AudioFocusRequest
     ): Int {
         Log.e("TmapVolume", "[AudioFocusHacker] abandonAudioFocusRequest(new) intercepted! NOP!")
-        NavLogger.e("[AudioFocusHacker] abandonAudioFocusRequest(new) intercepted! NOP!")
+        NavLogger.dIfChanged("focus_abandon_new", "[AudioFocusHacker] abandonAudioFocusRequest(new) intercepted! NOP!")
         return AudioManager.AUDIOFOCUS_REQUEST_GRANTED
     }
 }

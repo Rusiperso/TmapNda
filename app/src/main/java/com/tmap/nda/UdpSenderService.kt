@@ -1524,7 +1524,10 @@ class UdpSenderService : Service() {
                             // v1.6: '크루즈 작동 중인데 OP OFF로 뜬다'는 사용자 지적 진단용 - active
                             // 필드 외에 다른 키가 있는지 원본 JSON을 그대로 로그에 남김
                             // (상태 변화 시에만, 스팸 방지). #문제시 원복
-                            NavLogger.d(this@UdpSenderService, "[OP상태? 원본] $data")
+                            // v: 재억 요청(2026-09-03) - 정체 구간에선 active가 수백 번 토글돼서
+                            // 이 원본 JSON(한 줄 400바이트)만 60KB를 차지했음. 파싱된 [OP상태]
+                            // 줄에 핵심 값은 이미 다 있으니, 원본은 1분에 한 번만 표본으로 남김. #문제시 원복
+                            NavLogger.dThrottled(this@UdpSenderService, "op_raw", 60_000L, "[OP상태? 원본] $data")
                             lastActive = active
                         }
                         // v4.5: 위 로그는 값이 "바뀔 때만" 찍혀서, active가 계속 false로
@@ -1939,7 +1942,11 @@ class UdpSenderService : Service() {
                         val summary = NDA_SEND_PORTS.indices.joinToString(", ") { i ->
                             "${NDA_SEND_PORTS[i]}(성공=${successCount[i]}/실패=${failCount[i]})"
                         }
-                        NavLogger.d(this@UdpSenderService, "[NDA] 송신 요약(최근 5초): target=$addr $summary")
+                        // v: 재억 요청(2026-09-03) - 5초마다 무조건 남겨서 실기기 로그의
+                        // 가장 큰 덩어리였음(956줄 중 623줄이 직전 줄과 완전 동일). 송신
+                        // 성공/실패 숫자가 실제로 바뀔 때만 남김 - 실패가 생기는 순간은
+                        // 값이 바뀌는 순간이라 그대로 잡힘. #문제시 원복
+                        NavLogger.dIfChanged(this@UdpSenderService, "nda_send_summary", "[NDA] 송신 요약(최근 5초): target=$addr $summary")
                         for (i in NDA_SEND_PORTS.indices) {
                             successCount[i] = 0
                             failCount[i] = 0

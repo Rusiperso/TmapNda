@@ -368,9 +368,12 @@ class MainActivity : AppCompatActivity() {
         startActivity(intent)
     }
 
+    // v: 재억 요청(2026-09-03) - 이 함수가 앱을 켤 때마다 티맵 SDK의 오디오 관련 메서드
+    // 목록(50줄 안팎)을 공용 로그 파일에도 그대로 복사하고 있었음. 이 목록은 SDK 버전이
+    // 같으면 항상 똑같은 내용이고, 아래에서 이미 별도 파일(tmap_dump.txt)로 저장하고
+    // logcat에도 남기므로 공용 로그에는 중복. 파일 로그 기록만 뺌. #문제시 원복
     private fun dumpTmapAudioSettings() {
         android.util.Log.e("TmapVolume", "dumpTmapAudioSettings started")
-        NavLogger.e(this, "dumpTmapAudioSettings started")
         val kw = listOf("mute", "volume", "sound", "audio", "tts", "speech", "voice", "guide", "guidance", "announce", "alert")
         val sb = java.lang.StringBuilder()
         sb.append("dumpTmapAudioSettings started\n")
@@ -391,7 +394,6 @@ class MainActivity : AppCompatActivity() {
                             val line = "$className method: ${m.name}(${m.parameterTypes.joinToString { it.name }}) -> ${m.returnType.name}\n"
                             sb.append(line)
                             android.util.Log.e("TmapVolume", line.trim())
-                            NavLogger.e(this, line.trim())
                         }
                     }
                 } catch (e: Throwable) {

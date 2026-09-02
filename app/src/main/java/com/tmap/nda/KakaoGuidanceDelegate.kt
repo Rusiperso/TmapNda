@@ -293,25 +293,29 @@ class KakaoGuidanceDelegate(
         // null을 반환하고 있었음(중간의 여러 return null 지점 중 어디서 막히는지 전혀
         // 안 보임). 다음 재현 때 정확히 어느 단계에서 실패하는지 잡기 위해 각 단계마다
         // 진단 로그 추가(15초 간격으로 스로틀). #문제시 원복
+        // v: 재억 요청(2026-09-03) - 이 진단 로그들이 15초마다 "똑같은 내용"을 계속
+        // 다시 남기고 있었음(실기기 로그 197줄 중 196줄이 직전 줄과 완전 동일).
+        // 상태가 실제로 바뀔 때만 남기도록 dIfChanged로 교체 - 정보량은 그대로면서
+        // 용량만 줄어듦. #문제시 원복
         val now = System.currentTimeMillis()
         val shouldLog = now - lastNextStopDiagLogTime > 15000L
         if (shouldLog) lastNextStopDiagLogTime = now
         return try {
             val trip = guidance.trip
             if (trip == null) {
-                if (shouldLog) NavLogger.d(context, "[다음정차지][진단] guidance.trip == null")
+                NavLogger.dIfChanged(context, "다음정차지진단", "[다음정차지][진단] guidance.trip == null")
                 return null
             }
             val route = guidance.routesOnGuide?.firstOrNull()
             if (route == null) {
-                if (shouldLog) NavLogger.d(context, "[다음정차지][진단] routesOnGuide 비어있음")
+                NavLogger.dIfChanged(context, "다음정차지진단", "[다음정차지][진단] routesOnGuide 비어있음")
                 return null
             }
             val poisMethod = route.javaClass.methods.firstOrNull {
                 it.name == "getLocationsOfPois" && it.parameterTypes.isEmpty()
             }
             if (poisMethod == null) {
-                if (shouldLog) NavLogger.d(context, "[다음정차지][진단] getLocationsOfPois() 메서드 자체가 없음(클래스=${route.javaClass.name})")
+                NavLogger.dIfChanged(context, "다음정차지진단", "[다음정차지][진단] getLocationsOfPois() 메서드 자체가 없음(클래스=${route.javaClass.name})")
                 return null
             }
             val poisRaw = poisMethod.invoke(route)
@@ -330,17 +334,17 @@ class KakaoGuidanceDelegate(
                 is Array<*> -> poisRaw.toList()
                 is Map<*, *> -> poisRaw.values.toList()
                 null -> {
-                    if (shouldLog) NavLogger.d(context, "[다음정차지][진단] getLocationsOfPois() 결과 null")
+                    NavLogger.dIfChanged(context, "다음정차지진단", "[다음정차지][진단] getLocationsOfPois() 결과 null")
                     null
                 }
                 else -> {
-                    if (shouldLog) NavLogger.d(context, "[다음정차지][진단] getLocationsOfPois() 반환 타입=${poisRaw.javaClass.name} (List/Array 둘 다 아님)")
+                    NavLogger.dIfChanged(context, "다음정차지진단", "[다음정차지][진단] getLocationsOfPois() 반환 타입=${poisRaw.javaClass.name} (List/Array 둘 다 아님)")
                     null
                 }
             }
             if (pois == null) return null
             if (pois.size < 3) {
-                if (shouldLog) NavLogger.d(context, "[다음정차지][진단] pois.size=${pois.size} (3 미만 - 경유지 없음으로 판단)")
+                NavLogger.dIfChanged(context, "다음정차지진단", "[다음정차지][진단] pois.size=${pois.size} (3 미만 - 경유지 없음으로 판단)")
                 return null // 출발/도착 2개뿐이면 경유지 없음 - 기존 동작 유지
             }
 
@@ -378,7 +382,7 @@ class KakaoGuidanceDelegate(
                 KakaoRouteDataRepository.passedViaCount = if (isFinal) pois.size - 2 else idx - 1
                 return Triple(name, dist - myDistFromS, isFinal)
             }
-            if (shouldLog) NavLogger.d(context, "[다음정차지][진단] 루프 끝까지 돌았는데 매칭되는 지점이 없음(전부 이미 지나쳤거나 거리 계산 실패)")
+            NavLogger.dIfChanged(context, "다음정차지진단", "[다음정차지][진단] 루프 끝까지 돌았는데 매칭되는 지점이 없음(전부 이미 지나쳤거나 거리 계산 실패)")
             null
         } catch (e: Exception) {
             NavLogger.e(context, "[다음정차지] 조사 실패(기존 동작 유지): ${e.message}")
@@ -447,7 +451,9 @@ class KakaoGuidanceDelegate(
                     // 찍혀서 로그 파일에서 가장 큰 비중(4천줄 이상)을 차지하고 있었음.
                     // 값 자체는 1초마다 봐야 할 이유가 없어서(남은 거리/시간은 서서히만
                     // 바뀜) 다른 주기성 로그들과 동일하게 10초 간격으로 줄임. #문제시 원복
-                    if (System.currentTimeMillis() - lastEtaLogTime > 10_000L) {
+                    // v: 재억 요청(2026-09-03) - 로그 더 줄이기. 남은거리/시간은 [전체상태]
+                    // 스냅샷에도 담기고 서서히만 바뀌는 값이라 10초 → 60초로 완화. #문제시 원복
+                    if (System.currentTimeMillis() - lastEtaLogTime > 60_000L) {
                         lastEtaLogTime = System.currentTimeMillis()
                         NavLogger.d(
                             context,

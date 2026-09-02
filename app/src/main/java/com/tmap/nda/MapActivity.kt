@@ -1742,7 +1742,6 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    private var lastOverSpeedDiagLogTime = 0L
     private fun checkOverSpeedWarning(speedKph: Int) {
         val pref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         if (!pref.getBoolean("over_speed_warning_enabled", true)) return
@@ -1755,10 +1754,11 @@ class MapActivity : AppCompatActivity() {
         // 넘는 순간 limit이 잠깐 옛날 값에 머무는 지연)을 확인할 방법이 없었음. 트리거
         // 여부와 무관하게 3초에 한 번씩 limit 흐름 자체를 남김 - 다음 로그에서 "65 주행
         // 당시 limit이 실제로 몇이었는지"를 직접 대조할 수 있게 함. #문제시 원복
-        if (now - lastOverSpeedDiagLogTime > 3000L) {
-            lastOverSpeedDiagLogTime = now
-            NavLogger.d(this, "[과속경고음진단] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1})")
-        }
+        // v: 재억 요청(2026-09-03) - 위 진단 목적으로 3초마다 무조건 남기던 걸, 제한속도가
+        // 실제로 바뀌는 순간만 남기도록 변경(실기기 로그 665줄/58KB 차지). 대조에 필요한
+        // 건 "limit이 언제 몇으로 바뀌었나"이고, 경고음이 실제로 난 순간은 아래
+        // flushTrace가 앞뒤 상황까지 통째로 남기므로 정보 손실 없음. #문제시 원복
+        NavLogger.dIfChanged(this, "과속경고음진단", "[과속경고음진단] limit=$limit (limit*1.1=${limit * 1.1}) 이때속도=$speedKph")
         // v: 재억 제보(2026-08-22) - 카메라 접근 중엔 300~500m에서 한 번, 100m 이내에서
         // 또 한 번(8초 쿨다운마다 반복) 울리던 걸 "이 카메라 하나당 한 번"으로 제한.
         // 카메라가 없을 때(그냥 과속 중)는 기존처럼 8초마다 반복 경고. #문제시 원복
@@ -3599,15 +3599,16 @@ class MapActivity : AppCompatActivity() {
                     // 뭐였는지 15초 간격으로 남김. 카카오 쪽 로그([차선진단][카카오])랑
                     // 시간 맞춰보면 "갱신은 됐는데 화면에 안 뜬 건지" "갱신 자체가 하필
                     // 그 순간엔 안 됐던 건지" 구분 가능. #문제시 원복
-                    if (System.currentTimeMillis() - lastLaneRenderDiagLogTime > 15000L) {
-                        lastLaneRenderDiagLogTime = System.currentTimeMillis()
-                        NavLogger.d(
-                            this@MapActivity,
-                            "[차선진단][Tmap화면렌더링] source=${LaneSignalRepository.source} " +
-                                "lanes=${LaneSignalRepository.lanes.size}개 fresh=${LaneSignalRepository.isFresh()} " +
-                                "overlayEnabled(설정)=${getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("lane_overlay_tmap_enabled", true)}"
-                        )
-                    }
+                    // v: 재억 요청(2026-09-03) - 15초마다 무조건 남기던 걸 상태가 실제로
+                    // 바뀔 때만 남기도록 변경. 여기서 보고 싶은 건 "떴다/안 떴다"가
+                    // 바뀌는 순간이라 오히려 더 보기 쉬워짐. #문제시 원복
+                    NavLogger.dIfChanged(
+                        this@MapActivity,
+                        "차선진단_렌더링",
+                        "[차선진단][Tmap화면렌더링] source=${LaneSignalRepository.source} " +
+                            "lanes=${LaneSignalRepository.lanes.size}개 fresh=${LaneSignalRepository.isFresh()} " +
+                            "overlayEnabled(설정)=${getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("lane_overlay_tmap_enabled", true)}"
+                    )
                     runOnUiThread {
                         renderLaneSignalBar(this@MapActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "tmap")
                     }
@@ -4404,8 +4405,6 @@ class MapActivity : AppCompatActivity() {
     private var aheadLaneInfoDataField: java.lang.reflect.Field? = null
     private var laneFieldLookupFailed = false
     private var aheadLaneInfoDataDumped = false
-    private var lastLaneDiagLogTime = 0L
-    private var lastLaneRenderDiagLogTime = 0L
 
     // v4.13: Tmap 자체 안내 시엔 지금까지 차선정보가 아예 안 나왔던 문제(사용자 2·3·4번) -
     // Tmap의 EDCData 번들(얕은 경로)엔 차선 필드가 없지만, getRecentRGData()로 얻는
@@ -4455,15 +4454,14 @@ class MapActivity : AppCompatActivity() {
             // 진단 로그. 10초에 한 번만 남겨서 로그 도배 방지. 카카오가 실제 길안내 중인지
             // (isKakaoRouteGuideActive)도 같이 남겨서, "차선 데이터가 안 나오는 게 목적지가
             // 없어서인지 다른 이유인지" 나중에 로그만 보고 구분 가능하게 함. #문제시 원복
-            val now = System.currentTimeMillis()
-            if (now - lastLaneDiagLogTime > 10000L) {
-                lastLaneDiagLogTime = now
-                NavLogger.d(
-                    this,
-                    "[차선진단] 티맵엔진 nLaneCount=$laneCount bLane=$laneActive " +
-                        "(카카오길안내중=$isKakaoRouteGuideActive, LaneSignalRepository.source=${LaneSignalRepository.source})"
-                )
-            }
+            // v: 재억 요청(2026-09-03) - 10초 간격 반복에서 값이 바뀔 때만 남기는 방식으로
+            // 변경(내용이 거의 항상 동일했음). #문제시 원복
+            NavLogger.dIfChanged(
+                this,
+                "차선진단_엔진",
+                "[차선진단] 티맵엔진 nLaneCount=$laneCount bLane=$laneActive " +
+                    "(카카오길안내중=$isKakaoRouteGuideActive, LaneSignalRepository.source=${LaneSignalRepository.source})"
+            )
 
             if (laneCount > 0 && laneActive) {
                 // 정확한 추천차선 판정 불가 - 우선 개수만 정직하게 표시 (전부 미추천으로)
