@@ -129,6 +129,16 @@
         android:text="Navdy 연결 (블루투스 권한 허용)"
         android:layout_marginBottom="16dp"/>
 
+    <!-- v: 재억 요청(2026-09-03) - 카카오 안내를 nMirror를 거쳐 차량 순정 계기판/HUD로
+         보내는 기능. 순정 티맵과 동시에 안내하면 서로 덮어써서 화면이 왔다갔다 할 수 있어
+         기본은 꺼두고 필요할 때만 켜도록 함. #문제시 원복 -->
+    <CheckBox
+        android:id="@+id/cbNMirrorCluster"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="차량 순정 계기판/HUD로 전송 (nMirror 필요, 실험적 기능)"
+        android:layout_marginBottom="16dp"/>
+
     <CheckBox
         android:id="@+id/cbBackgroundOverlay"
         android:layout_width="match_parent"

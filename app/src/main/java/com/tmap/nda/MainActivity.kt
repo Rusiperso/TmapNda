@@ -248,6 +248,14 @@ class MainActivity : AppCompatActivity() {
             sharedPref.edit().putBoolean("background_overlay_enabled", isChecked).apply()
         }
 
+        // v: 재억 요청(2026-09-03) - 차량 순정 계기판/HUD 전송은 순정 티맵 안내와 겹치면
+        // 서로 덮어써서 화면이 왔다갔다 할 수 있으므로 기본 꺼짐으로 두고 직접 켜게 함.
+        // #문제시 원복
+        binding.cbNMirrorCluster.isChecked = com.tmap.nda.nmirror.NMirrorSender.isEnabled(this)
+        binding.cbNMirrorCluster.setOnCheckedChangeListener { _, isChecked ->
+            com.tmap.nda.nmirror.NMirrorSender.setEnabled(this, isChecked)
+        }
+
         binding.cbAutoReport.isChecked = DiscordReporter.isEnabled(this)
         binding.cbAutoReport.setOnCheckedChangeListener { _, isChecked ->
             DiscordReporter.setEnabled(this, isChecked)

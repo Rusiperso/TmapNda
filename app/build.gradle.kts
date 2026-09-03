@@ -12,8 +12,8 @@ android {
         applicationId = "com.tmap.nda"
         minSdk = 26
         targetSdk = 36
-        versionCode = 410
-        versionName = "19.2.96"
+        versionCode = 411
+        versionName = "19.2.97"
     }
 
     signingConfigs {
@@ -40,7 +40,10 @@ android {
     }
     buildFeatures {
       compose = true
-      aidl = false
+      // v: 재억 제보(2026-09-03) - nMirror가 열어둔 길안내 창구에 붙으려면 그쪽과 같은
+      // 규격 파일(ITbtService.aidl)이 필요한데, AGP 8부터는 이 기능이 기본으로 꺼져 있어
+      // 규격 파일이 있어도 컴파일에서 무시됐다. #문제시 원복: false로 되돌리면 됨
+      aidl = true
       buildConfig = true
       shaders = false
       viewBinding = true

@@ -52,6 +52,10 @@
          우리 쪽에는 queries 블록 자체가 없었어서 동일하게 추가함. #문제시 원복 -->
     <queries>
         <package android:name="com.google.android.projection.gearhead" />
+        <!-- v: 재억 제보(2026-09-03) - 카카오 안내를 차량 순정 계기판/HUD에 띄우려면
+             nMirror가 열어둔 길안내 창구에 붙어야 하는데, Android 11+에서는 여기 적어두지
+             않으면 그 앱이 설치돼 있어도 보이지 않아 연결 자체가 안 된다. #문제시 원복 -->
+        <package android:name="com.aa.nmirror" />
     </queries>
 
     <!-- v: 재억 제보(2026-08-22) - 콤마로 경로선을 보내는 HTTP 채널(7713번 포트)이 로그상

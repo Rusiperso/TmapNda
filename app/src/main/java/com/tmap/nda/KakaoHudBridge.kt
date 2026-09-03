@@ -102,6 +102,32 @@ object KakaoHudBridge {
             nextTbtMainText = nextInstruction
         )
 
+        // v: 재억 제보(2026-09-03) - 순정 티맵으로 안내하면 차량 순정 계기판/HUD에 뜨는데
+        // 이 앱의 카카오 안내는 안 뜬다는 문제. nMirror가 순정 티맵에서 정보를 빼가는 구조라
+        // 우리 앱은 대상이 아니었는데, 같은 정보를 받는 창구가 외부에 열려 있어 직접 넣는다
+        // (자세한 근거는 NMirrorSender 주석). 보내는 간격 제한은 그쪽에서 처리한다.
+        // #문제시 원복: 이 블록만 지우면 됨
+        try {
+            com.tmap.nda.nmirror.NMirrorSender.send(
+                context = context,
+                turnDistanceMeters = turnDistance,
+                turnMainText = instruction,
+                roadName = currentRoad,
+                rgCodeName = direction?.rgCode?.name.orEmpty(),
+                directionAngle = direction?.directionAng ?: 0,
+                remainDistanceMeters = remainDist,
+                remainTimeSeconds = remainTime,
+                destinationName = trip?.goal?.name.orEmpty(),
+                hasNext = nextDirection != null,
+                nextTurnDistanceMeters = nextTurnDistance,
+                nextTurnMainText = nextInstruction,
+                nextRgCodeName = nextDirection?.rgCode?.name.orEmpty(),
+                nextDirectionAngle = nextDirection?.directionAng ?: 0
+            )
+        } catch (e: Exception) {
+            NavLogger.e(context, "[nMirror 전송] 실패: ${e.message}")
+        }
+
         // [신규] Navdy 애프터마켓 HUD/클러스터로 전송.
         // GPS 위치 갱신 콜백이 보통 초당 여러 번 오므로, 500ms 간격으로 스로틀해서
         // 블루투스 대역폭/기기 부하를 아낀다. #문제시 원복
