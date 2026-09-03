@@ -191,7 +191,17 @@ object NavdySender {
                     try { accepted?.close() } catch (_: Exception) {}
                     try { serverSocket?.close() } catch (_: Exception) {}
                     serverSocket = null
-                    closeQuietly()
+                    // v: 재억 제보(2026-09-03, 실기기 로그로 원인 확정) - 여기서 무조건 closeQuietly()를
+                    // 부르고 있었는데, 이게 "폰이 걸어서 만든 멀쩡한 연결"까지 같이 끊고 있었음.
+                    // socket/outputStream을 대기(받기) 쪽과 걸기 쪽이 같이 쓰기 때문.
+                    // 로그 증거: 10:12:22 연결 성공 -> 1초에 한 번씩 정상 전송/수신 -> 9초 뒤
+                    // 10:12:31.449에 "bt socket closed"로 급사(직전 0.06초 전 전송은 성공).
+                    // 40.098에 재연결 -> 12초 뒤 52.160에 또 같은 방식으로 급사. 그 뒤 2분 30초간
+                    // 나브디 로그가 한 줄도 안 나옴(길안내는 계속 돌아가는 중이었음) = outputStream이
+                    // null이 됐다는 뜻이고, 연결을 지우는 6곳 중 로그를 안 남기고 지울 수 있는 곳은
+                    // 여기(logIfChanged로 중복 억제됨)뿐이라 여기가 범인으로 확정됨.
+                    // 이 대기 루프가 직접 받은 연결일 때만 정리한다. #문제시 원복
+                    if (accepted != null && socket === accepted) closeQuietly()
                     try { Thread.sleep(10_000) } catch (_: InterruptedException) { break }
                 }
             }
@@ -498,6 +508,14 @@ object NavdySender {
                 val reason = "[Navdy] 받는 스레드 종료: ${e.javaClass.simpleName} ${e.message}, ${connectionAgeMs()}ms만에, 그동안 보낸 전송 성공 ${sentCountSinceConnect}회, 살아있음 신호 ${pingCountSinceConnect}회, 수신 ${receivedCountSinceConnect}회"
                 NavLogger.flushTrace("navdy", reason)
                 com.tmap.nda.DiscordReporter.reportNavdyDisconnect(reason)
+            } finally {
+                // v: 재억 제보(2026-09-03) - 폰이 걸어서(startDialing) 만든 연결은 이 스레드가
+                // 끝나도 socket/outputStream을 치워주는 곳이 아무 데도 없었음(대기 쪽으로 받은
+                // 연결만 startListening의 join() 뒤에서 정리됨). 안드로이드 BluetoothSocket은
+                // close()를 부르기 전까진 isConnected()가 계속 true를 돌려주기 때문에, 이대로
+                // 두면 20초 재연결 루프가 "아직 연결돼 있네"로 착각해서 영영 다시 안 붙음.
+                // 그 사이 새 연결이 생겼을 수도 있으므로 이 스레드가 담당한 연결일 때만 정리. #문제시 원복
+                if (socket === sock) closeQuietly()
             }
         }
         thread.isDaemon = true
