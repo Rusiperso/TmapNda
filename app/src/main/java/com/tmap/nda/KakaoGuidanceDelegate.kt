@@ -64,18 +64,16 @@ class KakaoGuidanceDelegate(
         // 시점이 바로 이때이므로, 백그라운드 15초 루프를 기다리지 않고 이 순간 바로
         // 1번 더 시도(이미 연결돼있으면 조용히 무시됨, 연결 안 돼있으면 여기서 바로 시도). #문제시 원복
         com.tmap.nda.navdy.NavdyAutoConnect.tryConnect(context)
-        // v: 재억 제보(2026-09-03) - 나브디에 연결도 되고 전송도 205회 성공하는데 화면이
-        // 계속 비어있던 원인. 정품 앱은 안내 시작 시 "안내 세션 시작"을 따로 알려주고,
-        // 그게 있어야 기기가 방향안내를 그린다(자세한 근거는 NavdySender 주석 참고). #문제시 원복
+        // 기기는 "지금 안내 중"이라는 신호를 받아야 화면을 켠다. #문제시 원복
         val destination = guidance.trip?.goal?.name.orEmpty()
             .ifBlank { KakaoRouteDataRepository.destinationName }
             .ifBlank { "목적지" }
-        com.tmap.nda.navdy.NavdySender.startNavigationSession(destination)
+        com.tmap.nda.navdy.NavdySender.setNavigating(true, destination)
     }
 
     override fun guidanceGuideEnded(guidance: KNGuidance) {
         NavLogger.d(context, "[카카오안내] 종료됨(도착) - Tmap으로 복귀")
-        com.tmap.nda.navdy.NavdySender.endNavigationSession()
+        com.tmap.nda.navdy.NavdySender.setNavigating(false)
         KakaoRouteDataRepository.reset()
         naviView?.guidanceGuideEnded(guidance)
         onGuideEnded()
@@ -133,13 +131,6 @@ class KakaoGuidanceDelegate(
                     KakaoRouteDataRepository.routeCoordinates = coords
                     KakaoRouteDataRepository.routeCoordinatesUpdatedAt = System.currentTimeMillis()
                     NavLogger.d(context, "[경로선 조사] 좌표 ${coords.size}개 추출 성공")
-                    // v: 재억 제보(2026-09-03) - 나브디는 폰이 준 방향안내를 그대로 그리는 게
-                    // 아니라 자기 지도로 직접 안내하는 기기라, 목적지 좌표를 줘야 화면이 켜짐
-                    // (자세한 근거는 NavdySender 주석 참고). 경로선의 마지막 점이 곧 목적지.
-                    // 좌표는 (경도, 위도) 순서로 저장돼 있음. #문제시 원복
-                    coords.lastOrNull()?.let { (lon, lat) ->
-                        com.tmap.nda.navdy.NavdySender.setDestinationCoordinate(lat, lon)
-                    }
                 } else {
                     NavLogger.d(context, "[경로선 조사] 후보 게터 전부 실패 - KNRoute 구조 재조사 필요")
                     dumpRouteStructureOnce(firstRoute)
@@ -818,7 +809,13 @@ class KakaoGuidanceDelegate(
                         context,
                         "[차선진단][추천여부] ${recommendedFlags.mapIndexed { i, f -> "${i + 1}번=${f.recommended}" }} " +
                             "(회전코드=$turnCodeForLane 요구비트=${requiredBit ?: "없음(getSuggest 폴백)"} " +
-                            "각도=$directionAngleForLane 다음안내까지=${KakaoRouteDataRepository.tbtDist}m)"
+                            "각도=$directionAngleForLane 다음안내까지=${KakaoRouteDataRepository.tbtDist}m " +
+                            // v: 재억 요청(2026-09-04) - 표시 시점 조건을 넣었으므로, 다음 로그에서
+                            // "이 프레임이 실제로 화면에 떴는지"를 바로 판단할 수 있게 같이 남긴다.
+                            // 화면표시=false가 대부분이면 조건이 너무 빡빡한 것. #문제시 원복
+                            "도로등급=${LaneSignalRepository.roadCategory}" +
+                            "(${if (LaneSignalRepository.isExpressway()) "고속2km" else "시내1km"}) " +
+                            "화면표시=${LaneSignalRepository.shouldShowFor(KakaoRouteDataRepository.tbtDist)})"
                     )
                     NavLogger.d(context, "[차선진단][getTurnType] ${turnTypeValues.mapIndexed { i, v -> "${i + 1}번=$v" }}")
                     // v: 재억 질문(2026-09-02, "색깔 유도선 정보가 있는지?") - getColorType 필드는
@@ -867,12 +864,12 @@ class KakaoGuidanceDelegate(
                 // 끝났는지"는 오버레이 전체를 껐다 켜는 별도 로직(NavOverlayManager의 신선도
                 // 체크, v19.2.36)이 이미 판단하고 있어서 여기선 필요 없음 - 회전 지점 도달
                 // 여부로만 판단. #문제시 원복
-                val nearOrPastManeuver = KakaoRouteDataRepository.tbtDist in 0..15
-                if (nearOrPastManeuver) {
-                    LaneSignalRepository.lanes = emptyList()
-                    LaneSignalRepository.source = ""
-                }
-                NavLogger.d(context, "[차선정보] lane=null (이 구간엔 차선 안내 데이터 없음, tbtDist=${KakaoRouteDataRepository.tbtDist}, 지워짐=$nearOrPastManeuver)")
+                // v: 재억 제보(2026-09-04) - "교차로를 지날 때까지는 떠 있어야 차로를 잘못 타서
+                // 돌아가는 일이 없다". 여기서 회전 15m 앞에 지워버리고 있었는데, 그건 정작
+                // 차로를 골라야 하는 마지막 순간에 안내가 사라진다는 뜻이었다. 이제 지우지 않고,
+                // 교차로를 지나 남은 거리가 다음 회전 거리로 늘어나면 표시 조건(시내 1km /
+                // 고속 2km)에서 자연히 빠지게 둔다. #문제시 원복
+                NavLogger.d(context, "[차선정보] lane=null (이 구간엔 차선 안내 데이터 없음, tbtDist=${KakaoRouteDataRepository.tbtDist})")
                 LaneSignalRepository.notifyChanged()
             }
         } catch (e: Exception) {

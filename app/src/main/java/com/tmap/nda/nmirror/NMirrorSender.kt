@@ -7,7 +7,6 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import com.aa.nmirror.service.ITbtService
 import com.tmap.nda.NavLogger
-import org.json.JSONObject
 
 /**
  * 카카오 길안내 정보를 nMirror에 넘겨서 차량 순정 계기판/HUD에 띄운다.
@@ -80,22 +79,7 @@ object NMirrorSender {
         }
     }
 
-    fun send(
-        context: Context,
-        turnDistanceMeters: Int,
-        turnMainText: String,
-        roadName: String,
-        rgCodeName: String,
-        directionAngle: Int,
-        remainDistanceMeters: Int,
-        remainTimeSeconds: Int,
-        destinationName: String,
-        hasNext: Boolean,
-        nextTurnDistanceMeters: Int,
-        nextTurnMainText: String,
-        nextRgCodeName: String,
-        nextDirectionAngle: Int
-    ) {
+    fun send(context: Context, snapshot: GuidanceSnapshot) {
         if (!isEnabled(context)) return
 
         val now = System.currentTimeMillis()
@@ -108,38 +92,12 @@ object NMirrorSender {
         }
 
         try {
-            val guidePoint = JSONObject()
-                .put("nTBTDist", turnDistanceMeters)
-                .put("nTBTTime", 0)
-                .put("nTBTTurnType", KakaoToTmapTurn.from(rgCodeName, directionAngle))
-                .put("szTBTMainText", turnMainText)
-                .put("szCrossName", roadName)
-                .put("szRoadName", roadName)
-
-            val rgData = JSONObject()
-                .put("nTotalDist", remainDistanceMeters)
-                .put("nTotalTime", remainTimeSeconds)
-                .put("szGoPosName", destinationName)
-                .put("stGuidePoint", guidePoint)
-
-            if (hasNext) {
-                rgData.put(
-                    "stGuidePointNext",
-                    JSONObject()
-                        .put("nTBTDist", nextTurnDistanceMeters)
-                        .put("nTBTTime", 0)
-                        .put("nTBTTurnType", KakaoToTmapTurn.from(nextRgCodeName, nextDirectionAngle))
-                        .put("szTBTMainText", nextTurnMainText)
-                        .put("szCrossName", nextTurnMainText)
-                )
-            }
-
-            target.sendTbt(rgData.toString(), null)
+            target.sendTbt(RgDataJson.build(snapshot), null)
             lastSentAtMs = now
             sentCount++
             if (!loggedFirstSend) {
                 loggedFirstSend = true
-                NavLogger.d("[nMirror] 첫 전송 성공: 도로=$roadName 회전=$rgCodeName 거리=${turnDistanceMeters}m (이후 전송은 메모리에만 기록)")
+                NavLogger.d("[nMirror] 첫 전송 성공: 도로=${snapshot.roadName} 회전=${snapshot.rgCodeName} 거리=${snapshot.turnDistanceMeters}m (이후 전송은 메모리에만 기록)")
             }
         } catch (e: Exception) {
             NavLogger.e("[nMirror] 전송 실패: ${e.javaClass.simpleName} ${e.message}")

@@ -59,6 +59,38 @@ object LaneSignalRepository {
     @Volatile var trafficLightRemainSec: Int = -1
     @Volatile var trafficLightColor: String = ""
 
+    // v: 재억 제보(2026-09-04, 실주행 로그로 원인 확정) - "차선 안내가 10번 중 3~4번은 안 뜨고,
+    // 뜨는 것도 가끔 틀리다". 로그를 보니 표시할 "시점" 판단이 아예 없었다. 차선을 화면에
+    // 올린 161번 중 111번(69%)이 다음 회전까지 1km 이상 남은 상태였고, 심하면 14.8km 밖
+    // 회전을 기준으로 차로를 추천하고 있었다. 그러니 (1) 지금 도로와 상관없는 차로를 추천해
+    // "틀린 정보"가 되고, (2) 그 먼 회전 방향(예: 우회전)에 맞는 차로가 지금 도로에 없으면
+    // 전부 추천 아님이 되어 "아무것도 안 뜬다".
+    //
+    // 재억 기준: 시내 1km / 고속도로 2km 앞부터. "고속도로는 1~2분이면 통과하는데 그때 뜨면
+    // 의미가 없다"는 지적. 그리고 교차로를 실제로 지날 때까지는 계속 떠 있어야 차로를 잘못
+    // 타지 않는다. #문제시 원복
+    private const val SHOW_DIST_NORMAL_M = 1000
+    private const val SHOW_DIST_EXPRESSWAY_M = 2000
+
+    // 티맵 엔진 rgData의 도로 등급. 0=고속도로, 1=도시고속도로(nMirror RGData 소스로 확인).
+    // -1은 아직 모름(그때는 일반도로 기준으로 본다).
+    @Volatile var roadCategory: Int = -1
+
+    fun isExpressway(): Boolean = roadCategory == 0 || roadCategory == 1
+
+    /**
+     * 지금 차선 안내를 띄워도 되는 시점인지.
+     *
+     * 교차로를 지나면 남은 거리가 다음 회전까지의 거리로 확 늘어나므로, 이 거리 조건만으로
+     * "지날 때까지 유지되고 지나면 사라지는" 동작이 자연스럽게 된다.
+     */
+    fun shouldShowFor(tbtDist: Int): Boolean {
+        // 0 이하(회전 지점에 다 왔거나 통과 중)는 계속 보여준다 - 이때 지우면 정작 차로를
+        // 골라야 하는 순간에 사라진다.
+        if (tbtDist <= 0) return true
+        return tbtDist <= if (isExpressway()) SHOW_DIST_EXPRESSWAY_M else SHOW_DIST_NORMAL_M
+    }
+
     // v4.11: 카카오 안내 콜백이 매 초마다 오는 게 아니라 상황 바뀔 때만 오는 경우가
     // 있어서, 5초로는 너무 짧아서 실제로 유효한 차선인데도 금방 사라져 보였음(사용자
     // 지적: "잠깐 나왔다 사라진다"). 15초로 늘림. #문제시 원복
@@ -114,8 +146,12 @@ fun renderLaneSignalBar(
     LaneSignalRepository.resetIfStale(maxAgeMs = 120000L)
     if (bar == null || laneBoxContainer == null || countdownText == null) return
 
-    val kakaoLane = LaneSignalRepository.kakaoLane
-    val hasLanes = kakaoLane != null || LaneSignalRepository.lanes.isNotEmpty()
+    // v: 재억 요청(2026-09-04) - 오버레이와 같은 기준으로 "띄울 시점"을 판단한다. 아직 한참
+    // 남은 회전의 차로를 미리 띄우면 지금 도로와 상관없는 안내가 된다(시내 1km / 고속 2km).
+    // #문제시 원복
+    val laneInRange = LaneSignalRepository.shouldShowFor(KakaoRouteDataRepository.tbtDist)
+    val kakaoLane = if (laneInRange) LaneSignalRepository.kakaoLane else null
+    val hasLanes = laneInRange && (kakaoLane != null || LaneSignalRepository.lanes.isNotEmpty())
     val hasCountdown = LaneSignalRepository.trafficLightRemainSec >= 0
 
     if (!hasLanes && !hasCountdown) {
@@ -154,8 +190,11 @@ fun renderLaneSignalBar(
             NavLogger.e(context, "[차선정보] KNDriveLaneView 렌더링 예외: ${e.javaClass.simpleName}: ${e.message} - 예전 방식으로 폴백")
             renderLaneBoxesFallback(context, laneBoxContainer)
         }
-    } else {
+    } else if (laneInRange) {
         renderLaneBoxesFallback(context, laneBoxContainer)
+    } else {
+        // 신호등 잔여시간만 있고 차선을 띄울 시점은 아닌 경우 - 차선 칸은 비워둔다. #문제시 원복
+        laneBoxContainer.visibility = android.view.View.GONE
     }
 
     if (hasCountdown) {

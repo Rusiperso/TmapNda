@@ -3,29 +3,22 @@ package com.tmap.nda
 import com.kakaomobility.knsdk.guidance.knguidance.KNGuidance
 import com.kakaomobility.knsdk.guidance.knguidance.locationguide.KNGuide_Location
 import com.kakaomobility.knsdk.guidance.knguidance.routeguide.KNGuide_Route
-import com.tmap.nda.navdy.KakaoToNavdyTurn
 import com.tmap.nda.navdy.NavdySender
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
- * Kakao SDK의 공식 타입을 HUD용 공통 데이터로 변환한다.
- * v2.2: androidx.car.app이 실제로 컴파일되는 게 확인돼서(v2.0 빌드 성공),
- * 그동안 보류했던 공식 API(guidance.trip, KNDirection 등) 기반 브릿지를 실제로 적용.
- * 컴파일 안 되는 API가 있으면 CI 로그로 바로 확인 가능하니 일단 시도. #문제시 원복
+ * Kakao SDK의 안내 정보를 바깥 화면(차량 계기판/HUD, 나브디)으로 내보내는 통로.
  *
- * [신규] Navdy 애프터마켓 HUD/클러스터 연동 추가.
- * androidx.car.app 경로(TmapNdaCarAppService)는 nMirror가 표준 CarAppService
- * 호스트 역할을 하지 않아 실차에서 동작하지 않는 것이 실측로그(everConnected 항상
- * false)로 확인됨. 대신 Navdy 프로토콜(블루투스, alelec 공개 재구현체 기준으로
- * 직접 재구현, gitlab.com/alelec/navdy)을 통해 Navdy 호환 애프터마켓 기기로
- * 직접 방향 안내를 전송한다. NavdySender가 연결되어 있지 않으면(페어링 전이거나
- * 기기가 꺼져있으면) sendManeuver 호출은 조용히 무시됨. #문제시 원복
+ * 안내 정보를 한 번만 만들어서 두 곳에 나눠 준다 - 둘 다 같은 형식(RGData JSON)을 받는다:
+ *  - [com.tmap.nda.nmirror.NMirrorSender] : nMirror에 넘겨 차량 순정 계기판/HUD로
+ *  - [com.tmap.nda.navdy.NavdySender]     : 나브디 HUD로 블루투스 직접 전송
+ *
+ * 각자 자기 설정 스위치가 꺼져 있거나 연결이 안 돼 있으면 호출은 조용히 무시된다.
+ *
+ * 참고: androidx.car.app 경로(TmapNdaCarAppService)는 nMirror가 표준 CarAppService
+ * 호스트 역할을 하지 않아 실차에서 동작하지 않는 것이 실측 로그(everConnected 항상
+ * false)로 확인됨. #문제시 원복
  */
 object KakaoHudBridge {
-    private var lastNavdySendTime = 0L
-    private val etaFormat = SimpleDateFormat("HH:mm", Locale.KOREA)
 
     fun publish(
         context: android.content.Context,
@@ -105,66 +98,40 @@ object KakaoHudBridge {
         // v: 재억 제보(2026-09-03) - 순정 티맵으로 안내하면 차량 순정 계기판/HUD에 뜨는데
         // 이 앱의 카카오 안내는 안 뜬다는 문제. nMirror가 순정 티맵에서 정보를 빼가는 구조라
         // 우리 앱은 대상이 아니었는데, 같은 정보를 받는 창구가 외부에 열려 있어 직접 넣는다
-        // (자세한 근거는 NMirrorSender 주석). 보내는 간격 제한은 그쪽에서 처리한다.
-        // #문제시 원복: 이 블록만 지우면 됨
+        // (자세한 근거는 NMirrorSender 주석).
+        //
+        // v: 재억 요청(2026-09-04) - 나브디도 같은 형식(RGData JSON)을 받으므로 정보를 한 번만
+        // 만들어서 두 곳에 나눠 준다. 어느 쪽으로 보낼지는 각자의 설정 스위치가 판단하고,
+        // 보내는 간격 제한도 각자가 처리한다.
+        //  - nMirror 있는 폰: nMirror가 차량 순정 계기판/HUD로 중계
+        //  - nMirror 없는 폰: NavdySender가 나브디에 블루투스로 직접 전송
+        // #문제시 원복: 아래 블록만 지우면 됨
+        val snapshot = com.tmap.nda.nmirror.GuidanceSnapshot(
+            turnDistanceMeters = turnDistance,
+            turnMainText = instruction,
+            roadName = currentRoad,
+            rgCodeName = direction?.rgCode?.name.orEmpty(),
+            directionAngle = direction?.directionAng ?: 0,
+            remainDistanceMeters = remainDist,
+            remainTimeSeconds = remainTime,
+            destinationName = trip?.goal?.name.orEmpty(),
+            hasNext = nextDirection != null,
+            nextTurnDistanceMeters = nextTurnDistance,
+            nextTurnMainText = nextInstruction,
+            nextRgCodeName = nextDirection?.rgCode?.name.orEmpty(),
+            nextDirectionAngle = nextDirection?.directionAng ?: 0
+        )
+
         try {
-            com.tmap.nda.nmirror.NMirrorSender.send(
-                context = context,
-                turnDistanceMeters = turnDistance,
-                turnMainText = instruction,
-                roadName = currentRoad,
-                rgCodeName = direction?.rgCode?.name.orEmpty(),
-                directionAngle = direction?.directionAng ?: 0,
-                remainDistanceMeters = remainDist,
-                remainTimeSeconds = remainTime,
-                destinationName = trip?.goal?.name.orEmpty(),
-                hasNext = nextDirection != null,
-                nextTurnDistanceMeters = nextTurnDistance,
-                nextTurnMainText = nextInstruction,
-                nextRgCodeName = nextDirection?.rgCode?.name.orEmpty(),
-                nextDirectionAngle = nextDirection?.directionAng ?: 0
-            )
+            com.tmap.nda.nmirror.NMirrorSender.send(context, snapshot)
         } catch (e: Exception) {
             NavLogger.e(context, "[nMirror 전송] 실패: ${e.message}")
         }
 
-        // [신규] Navdy 애프터마켓 HUD/클러스터로 전송.
-        // GPS 위치 갱신 콜백이 보통 초당 여러 번 오므로, 500ms 간격으로 스로틀해서
-        // 블루투스 대역폭/기기 부하를 아낀다. #문제시 원복
-        val now = System.currentTimeMillis()
-        if (now - lastNavdySendTime >= 500L) {
-            lastNavdySendTime = now
-            try {
-                val turn = KakaoToNavdyTurn.from(
-                    direction?.rgCode?.name.orEmpty(),
-                    direction?.directionAng ?: 0
-                )
-                val etaText = if (remainTime > 0) {
-                    etaFormat.format(Date(System.currentTimeMillis() + remainTime * 1000L))
-                } else ""
-                val speedText = runCatching {
-                    val speedMps = currentLocation?.let { loc ->
-                        loc.javaClass.methods.firstOrNull { it.name == "getSpeed" }
-                            ?.invoke(loc) as? Number
-                    }?.toDouble() ?: 0.0
-                    "${(speedMps * 3.6).toInt()}km/h"
-                }.getOrDefault("")
-
-                NavdySender.sendManeuver(
-                    currentRoad = currentRoad,
-                    turn = turn,
-                    distanceToTurn = if (turnDistance >= 1000) {
-                        String.format(java.util.Locale.KOREA, "%.1fkm", turnDistance / 1000.0)
-                    } else {
-                        "${turnDistance}m"
-                    },
-                    pendingStreet = instruction,
-                    eta = etaText,
-                    speed = speedText
-                )
-            } catch (e: Exception) {
-                NavLogger.e(context, "[Navdy 전송] 실패: ${e.message}")
-            }
+        try {
+            NavdySender.sendGuidance(snapshot)
+        } catch (e: Exception) {
+            NavLogger.e(context, "[Navdy 전송] 실패: ${e.message}")
         }
     }
 }

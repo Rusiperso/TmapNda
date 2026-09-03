@@ -122,11 +122,14 @@
         android:text="항상 허용 (백그라운드 동작 허용)"
         android:layout_marginBottom="16dp"/>
 
+    <!-- v: 재억 요청(2026-09-04) - nMirror에도 나브디로 안내를 보내는 기능이 있어서, 양쪽을
+         같이 켜면 같은 기기에 블루투스 연결이 두 개가 돼 서로 끊는다. 어느 쪽 하나만
+         켜야 한다는 것을 체크박스에서 바로 알 수 있게 문구에 적어둠. #문제시 원복 -->
     <CheckBox
         android:id="@+id/cbNavdyConnect"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Navdy 연결 (블루투스 권한 허용)"
+        android:text="Navdy HUD 직접 연결 (블루투스 권한 허용)\n※ nMirror에서 &apos;TBT를 Navdy로 보냅니다&apos;를 켰다면 이건 끄세요 (같이 켜면 서로 끊깁니다)"
         android:layout_marginBottom="16dp"/>
 
     <!-- v: 재억 요청(2026-09-03) - 카카오 안내를 nMirror를 거쳐 차량 순정 계기판/HUD로
@@ -143,7 +146,7 @@
         android:id="@+id/cbBackgroundOverlay"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="다른 앱 위에 표시 (백그라운드 방향 안내, 실험적 기능)"
+        android:text="다른 앱 위에 표시 (백그라운드 방향 안내)"
         android:layout_marginBottom="16dp"/>
 
     <!-- v: 재억 요청(2026-09-02) - 크래시/나브디 연결끊김을 사람이 안 눌러도 자동으로

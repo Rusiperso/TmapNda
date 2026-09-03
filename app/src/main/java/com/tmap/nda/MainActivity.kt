@@ -228,10 +228,17 @@ class MainActivity : AppCompatActivity() {
         // 팝업이 뜨게 함. 초기값 세팅(바로 위 줄)은 리스너를 달기 전에 끝나므로
         // 앱 켤 때 저장된 값을 되살리는 것만으로는 팝업이 뜨지 않음. #문제시 원복
         binding.cbNavdyConnect.setOnCheckedChangeListener { _, isChecked ->
+            // v: 재억 제보(2026-09-04) - 설정을 먼저 저장해야 함. tryConnect()가 이 값을
+            // 보고 연결 여부를 정하기 때문에, 저장 전에 연결을 시도하면 방금 켠 체크가
+            // 반영되지 않아 그냥 리턴돼버린다. #문제시 원복
+            sharedPref.edit().putBoolean("REQ_NAVDY", isChecked).apply()
             if (isChecked) {
                 tryConnectNavdyWithPermission(fromUserToggle = true)
+            } else {
+                // 껐으면 실제로 끊어야 한다. nMirror에도 나브디로 보내는 기능이 있어서,
+                // 둘 다 붙어 있으면 같은 기기에 연결이 두 개라 서로 끊는다. #문제시 원복
+                com.tmap.nda.navdy.NavdySender.stop()
             }
-            sharedPref.edit().putBoolean("REQ_NAVDY", isChecked).apply()
         }
 
         // v: 재억 요청(2026-08-27) - "다른 앱 위에 표시"는 Navdy 블루투스 권한과 마찬가지로

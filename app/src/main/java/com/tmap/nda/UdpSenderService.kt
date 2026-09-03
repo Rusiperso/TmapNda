@@ -2276,6 +2276,7 @@ class UdpSenderService : Service() {
     private var getInstanceMethod: java.lang.reflect.Method? = null
     private var getRecentRGDataMethod: java.lang.reflect.Method? = null
     private var nRoadLimitSpeedField: java.lang.reflect.Field? = null
+    private var roadCategoryField: java.lang.reflect.Field? = null
     private var rgDataDumped = false
 
     private fun getRoadLimitSpeedFromEngine(): Int {
@@ -2326,6 +2327,18 @@ class UdpSenderService : Service() {
                     }
                 }
                 if (rgData != null) {
+                    // v: 재억 요청(2026-09-04) - 차선 안내를 "고속도로면 2km, 시내면 1km 앞부터"
+                    // 띄우려면 지금 달리는 도로의 등급을 알아야 한다. 티맵 엔진이 이미 주고 있고
+                    // (진단 로그에만 쓰고 버리던 값) 카카오 안내 중에도 계속 채워지는 것을 실주행
+                    // 로그로 확인함. 여기가 콤마 전송마다 불리는 자리라 같이 읽어 보관한다. #문제시 원복
+                    try {
+                        if (roadCategoryField == null) {
+                            roadCategoryField = rgData.javaClass.getField("roadcate")
+                        }
+                        LaneSignalRepository.roadCategory = roadCategoryField?.getInt(rgData) ?: -1
+                    } catch (e: Exception) {
+                        // 이 필드가 없는 SDK 버전이면 일반도로 기준으로 동작하게 둔다
+                    }
                     if (nRoadLimitSpeedField == null) {
                         nRoadLimitSpeedField = rgData.javaClass.getField("nRoadLimitSpeed")
                     }

@@ -28,6 +28,16 @@ object NavdyAutoConnect {
     // 백그라운드 재연결 루프에서도 주기적으로 호출할 수 있도록 Context로 일반화. #문제시 원복
     fun tryConnect(context: Context) {
         try {
+            // v: 재억 제보(2026-09-04) - 초기 화면의 "Navdy 연결" 체크박스를 꺼도 실제로는
+            // 꺼지지 않고 있었음. 이 함수를 부르는 곳 세 군데(앱 시작 / 안내 시작 /
+            // UdpSenderService의 15초 루프)가 전부 그 설정을 안 보고 무조건 불렀기 때문.
+            // nMirror에도 나브디로 보내는 기능이 있어서, 둘 다 켜지면 같은 기기에 블루투스
+            // 연결을 두 개 여는 셈이라 서로 끊는다(같은 기기에 두 번째 연결을 여는 시도
+            // 자체가 기존 연결을 끊는 것이 v19.2.94 로그로 확인됨). 그래서 이 스위치가
+            // 실제로 꺼져야 한다. #문제시 원복
+            val enabled = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .getBoolean("REQ_NAVDY", false)
+            if (!enabled) return
             // v: 재억 요청(2026-08-28) - "성공했으면 그걸로 끝, 끊겼을 때 왜만 남기면 된다"는
             // 지적. 연결 성공 로그는 NavdySender.connect()가 성공 시점에 이미 1번 남기므로,
             // 여기선 계속 조용히 넘어가기만 하면 됨(연결 유지 중이라고 계속 남기지 않음). #문제시 원복
@@ -55,27 +65,19 @@ object NavdyAutoConnect {
                 NavLogger.d(context, "[Navdy] 블루투스 꺼져있음 - 자동연결 건너뜀")
                 return
             }
-            // v: 재억 제보(2026-09-02, 원인 확정) - 여기서 폰이 나브디한테 "연결을 걸던" 게
-            // 방향이 반대였음(자세한 내용은 NavdySender.startListening 주석 참고). 이제
-            // 폰은 대기만 하고, 나브디가 걸어오면 붙음. 대기는 한 번만 시작하면 되고
-            // 두 번째부터는 내부에서 그냥 무시되므로, 15초 루프에서 계속 불려도 안전함.
-            // 페어링 여부 확인은 그대로 두되, 없으면 안내 로그만 남김(대기 자체는 시작). #문제시 원복
+            // 실제 연결은 NavdySender가 자기 스레드에서 10초 간격으로 담당한다. 여기서는
+            // 시작만 시키면 되고, 이미 시작돼 있으면 내부에서 무시되므로 계속 불려도 안전함. #문제시 원복
             val bonded = adapter.bondedDevices
             val navdyDevice = bonded?.firstOrNull { device ->
                 val name = device.name ?: ""
                 name.contains("Navdy", ignoreCase = true)
             }
             if (navdyDevice == null) {
-                NavLogger.d(context, "[Navdy] 페어링된 Navdy 기기 없음 (블루투스 설정에서 먼저 페어링 필요) - 그래도 대기는 시작함")
+                NavLogger.d(context, "[Navdy] 페어링된 Navdy 기기 없음 (블루투스 설정에서 먼저 페어링 필요)")
             } else if (!navdyServiceDumpDone) {
-                // v: 재억 제보(2026-09-02, "나브디 화면 반응 없음") - v19.2.77~79로 폰이
-                // 대기하는 것까지는 로그로 확인됐는데(대기 소켓 열림 + 프록시 창구 열림)
-                // 기기가 70초 넘게 접속해오지 않음. 더 이상 추측으로 코드를 바꾸는 건
-                // 소득이 없어서, 나브디 기기가 실제로 어떤 통신 창구를 열어두고 있는지를
-                // 한 번만 기록으로 남김. 이 목록에 우리가 아는 UUID(1992B7D7/D72BC85F)가
-                // 있으면 "기기도 받는 쪽 창구를 갖고 있다"는 뜻이라 폰에서 거는 방식이
-                // 다시 후보가 되고, 아무것도 없으면 기기가 먼저 걸어오기만 기다리는
-                // 구조가 맞다는 뜻이라 다음에 볼 곳이 갈림. #문제시 원복
+                // 기기가 어떤 통신 창구를 열어뒀는지 앱 실행당 한 번만 기록한다. 우리가 거는
+                // 503b9411-… 이 목록에 없으면 그 기기는 다른 규격을 쓴다는 뜻이라, 안 붙을 때
+                // 여기부터 보면 된다(재억 기기는 이 목록에 503b9411이 있는 것을 확인함). #문제시 원복
                 navdyServiceDumpDone = true
                 try {
                     val uuids = navdyDevice.uuids
@@ -89,7 +91,7 @@ object NavdyAutoConnect {
                     NavLogger.e(context, "[Navdy][기기창구조사] 실패: ${e.message}")
                 }
             }
-            NavdySender.startListening(context)
+            NavdySender.start(context)
         } catch (e: Exception) {
             NavLogger.e(context, "[Navdy] 자동연결 시도 실패: ${e.message}")
         }

@@ -301,7 +301,11 @@ object NavOverlayManager {
     private fun applyRecommendedLaneTextFallback() {
         val recommendedLaneNums = LaneSignalRepository.lanes
             .mapIndexedNotNull { idx, info -> if (info.recommended) (idx + 1).toString() else null }
-        if (LaneSignalRepository.isFresh() && recommendedLaneNums.isNotEmpty()) {
+        // v: 재억 요청(2026-09-04) - 아직 한참 남은 회전의 차로를 미리 띄우면 지금 도로와
+        // 상관없는 차로를 가리켜 틀린 안내가 된다. 시내 1km / 고속도로 2km 안쪽부터만 띄운다
+        // (판단 근거는 LaneSignalRepository.shouldShowFor 주석). #문제시 원복
+        val inRange = LaneSignalRepository.shouldShowFor(KakaoRouteDataRepository.tbtDist)
+        if (LaneSignalRepository.isFresh() && inRange && recommendedLaneNums.isNotEmpty()) {
             primaryLaneText?.text = "${recommendedLaneNums.joinToString(", ")}차로"
             primaryLaneText?.visibility = View.VISIBLE
         } else {
