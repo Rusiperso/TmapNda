@@ -133,6 +133,33 @@ object NavdySender {
     private const val FIELD_ROUTE_REQ_REQUEST_ID = 11
     private const val FIELD_COORD_LATITUDE = 1
     private const val FIELD_COORD_LONGITUDE = 2
+
+    // v: 재억 제보(2026-09-03, v19.2.94 6분 20초 안정 연결 로그로 확정) - 연결이 6분 넘게
+    // 멀쩡히 유지되고 온보딩 질문에 전부 답했는데도, 경로 만들기 요청 5회에 응답이 0회였음
+    // (기기가 보낸 건 살아있음 신호 93회뿐). 정품 소스에서 이 요청을 실제로 만드는 곳
+    // (HUDNavigationManager.startRouteRequest, NavigationHelper가 부름)을 찾아 대조해보니
+    // 우리가 **목적지 정보를 담는 칸을 절반 넘게 비워서** 보내고 있었음. 특히 결정적인 건
+    // requestDestination(14): 같은 메시지를 받는 쪽 코드(DisplayNavigationServiceHandler)를
+    // 보면 destination_identifier로 자기 DB를 찾고, 없으면 requestDestination으로 만들고,
+    // **둘 다 없으면 "destination is null, no-op"으로 조용히 버린다.** 우리는 둘 다 안 보냈다 -
+    // 응답도 오류도 없이 무시당한 그림과 정확히 일치함. destination_identifier는 기기 DB의
+    // 번호라 우리가 지어내면 엉뚱한 곳을 찍을 수 있으므로 비워두고(그러면 그 조회를 건너뜀),
+    // requestDestination을 채워서 보낸다. #문제시 원복: 아래 추가 필드만 빼면 v19.2.94와 동일
+    private const val FIELD_ROUTE_REQ_STREET_ADDRESS = 4
+    private const val FIELD_ROUTE_REQ_GEOCODE_STREET_ADDRESS = 5
+    private const val FIELD_ROUTE_REQ_DESTINATION_TYPE = 8
+    private const val FIELD_ROUTE_REQ_DESTINATION_DISPLAY = 12
+    private const val FIELD_ROUTE_REQ_REQUEST_DESTINATION = 14
+    // Destination - required: 1 navigation_position, 3 full_address, 4 destination_title,
+    // 5 destination_subtitle, 7 favorite_type, 8 identifier (하나만 빠져도 통째로 버려짐)
+    private const val FIELD_DEST_NAVIGATION_POSITION = 1
+    private const val FIELD_DEST_DISPLAY_POSITION = 2
+    private const val FIELD_DEST_FULL_ADDRESS = 3
+    private const val FIELD_DEST_TITLE = 4
+    private const val FIELD_DEST_SUBTITLE = 5
+    private const val FIELD_DEST_FAVORITE_TYPE = 7
+    private const val FIELD_DEST_IDENTIFIER = 8
+    private const val FAVORITE_NONE = 0L
     private const val FIELD_ROUTE_RESP_RESULTS = 5
     private const val FIELD_ROUTE_RESULT_ID = 1
 
@@ -375,6 +402,12 @@ object NavdySender {
      */
     private fun startDialing(context: Context) {
         val thread = Thread {
+            // v: 재억 제보(2026-09-03, v19.2.94 실기기 로그) - 지금까지 앱이 켜지자마자 걸기를
+            // 곧바로 시작했는데, 실제 기기에서는 나브디가 1~2초 안에 먼저 걸어옴(로그상 매번
+            // 성공). 그 사이 우리 걸기는 SDP 조회로 3초까지 기다리다가 뒤늦게 connect()를
+            // 실행해서, 이미 붙어있는 멀쩡한 연결을 끊어버렸음. 먼저 15초 기다렸다가 그래도
+            // 안 붙어 있을 때만 걸어봄. #문제시 원복: 이 sleep 한 줄만 지우면 예전 동작
+            try { Thread.sleep(15_000) } catch (_: InterruptedException) { return@Thread }
             while (listening) {
                 try {
                     if (socket?.isConnected != true && !connecting) {
@@ -510,6 +543,20 @@ object NavdySender {
                 // 전에 fetchUuidsWithSdp()로 강제로 새로 조회하고, 그 결과(ACTION_UUID 브로드캐스트)를
                 // 최대 3초까지 기다렸다가 연결하도록 함. #문제시 원복
                 refreshSdpAndWait(context, device)
+                // v: 재억 제보(2026-09-03, v19.2.94 실기기 로그로 원인 확정) - "거는 중에 이미
+                // 연결됨" 방어 코드(아래 isConnected() 체크)가 있었는데도 27초~1.7초 만에 멀쩡한
+                // 연결이 끊기는 게 계속 재현됨. 로그로 확인한 순서: 나브디가 걸어와서 정상 연결되고
+                // 신분증/전화상태/음악정보까지 다 주고받던 도중, 이미 진행 중이던(그전에 시작된)
+                // 거는 시도가 refreshSdpAndWait()로 최대 3초 대기하다가 뒤늦게 connect()를
+                // 실제로 실행함 - 그 순간 "새 연결을 만들었다가 버리는" 게 아니라, 같은 기기에
+                // RFCOMM 연결을 하나 더 여는 시도 자체가 안드로이드 블루투스 스택에서 기존
+                // 연결을 끊어버림(받는 스레드가 "bt socket closed"로 즉시 사망). 즉 "이미 연결돼
+                // 있으면 새로 만든 소켓만 버린다"로는 부족하고, connect()를 시도하기 전에 이미
+                // 연결돼 있는지 다시 확인해서 아예 시도 자체를 안 해야 함. #문제시 원복
+                if (isConnected()) {
+                    NavLogger.d("[Navdy] 거는 시도 준비 중 나브디가 먼저 걸어와 이미 연결됨 - 걸기는 시도하지 않음")
+                    return@run
+                }
                 // v: 재억 제보(2026-08-28, 실기기 로그로 확인) - "IOException read failed, socket
                 // might closed or timeout, read ret: -1" 실패가 계속 남음. 표준 방식
                 // (createRfcommSocketToServiceRecord)은 연결 전에 SDP로 UUID 서비스 조회를
@@ -533,6 +580,7 @@ object NavdySender {
                 } catch (e: IOException) {
                     try { s?.close() } catch (_: Exception) {}
                     logIfChanged("dial1", "[Navdy] 표준(보안) 연결 실패(${e.message}), 비보안 연결 시도")
+                    if (isConnected()) return@run
                     // v: 재억 요청(2026-08-31, 실기기 로그 분석) - "채널 찍기 전에 표준 방식으로
                     // 더 못 해보냐"는 지적으로 나브디 공식 안드로이드 앱(디컴파일 오픈소스,
                     // gitlab.com/alelec/navdy/alelec_navdy_client, BTSocketFactory.java)을 직접
@@ -559,6 +607,10 @@ object NavdySender {
                     // 매번 "채널 2 로 연결 성공" 뒤 2~50ms 만에 상대가 끊는 게 확인됐고
                     // (전송 성공 0회), 이건 나브디 서비스가 아닌 다른 창구에 잘못 붙은
                     // 가짜 성공이었음. 정품 앱도 이런 방식은 쓰지 않음. #문제시 원복
+                    if (insecureSock == null && isConnected()) {
+                        NavLogger.d("[Navdy] 거는 시도 중 나브디가 먼저 걸어와 이미 연결됨 - 나머지 시도는 건너뜀")
+                        return@run
+                    }
                     insecureSock ?: dialAdvertisedService(device) ?: throw e
                 }
                 // v: 재억 제보(2026-09-03) - 거는 동안 나브디가 먼저 걸어와서 이미 붙어버릴
@@ -625,6 +677,11 @@ object NavdySender {
         } ?: return null
 
         for (parcel in advertised) {
+            // v: 재억 제보(2026-09-03, v19.2.94 실기기 로그) - 이 루프 도중에도 나브디가 먼저
+            // 걸어와 이미 연결될 수 있음. 이미 연결됐으면 더 이상 새 창구를 두드리지 않음 -
+            // 같은 기기에 RFCOMM 연결을 하나 더 여는 시도 자체가 기존 연결을 끊어버리는 걸
+            // 확인했기 때문(위 connectLegacy() 주석 참고). #문제시 원복
+            if (isConnected()) return null
             val uuid = parcel?.uuid ?: continue
             if (uuid == NAVDY_SERVICE_UUID || uuid == NAVDY_PROXY_TUNNEL_UUID) continue
             if (uuid.toString().endsWith("-0000-1000-8000-00805f9b34fb", ignoreCase = true)) continue
@@ -1193,13 +1250,34 @@ object NavdySender {
                 writeDoubleField(coordinate, FIELD_COORD_LATITUDE, lat)
                 writeDoubleField(coordinate, FIELD_COORD_LONGITUDE, lon)
 
+                // 목적지 정보를 통째로 담는 칸(위 상수 주석 참고) - 이게 없으면 받는 쪽이
+                // "목적지 없음"으로 보고 아무 답도 없이 버린다.
+                val latLong = ByteArrayOutputStream()
+                writeDoubleField(latLong, FIELD_COORD_LATITUDE, lat)
+                writeDoubleField(latLong, FIELD_COORD_LONGITUDE, lon)
+                val latLongBytes = latLong.toByteArray()
+
+                val destination = ByteArrayOutputStream()
+                writeEmbeddedMessage(destination, FIELD_DEST_NAVIGATION_POSITION, latLongBytes)
+                writeEmbeddedMessage(destination, FIELD_DEST_DISPLAY_POSITION, latLongBytes)
+                writeString(destination, FIELD_DEST_FULL_ADDRESS, label)
+                writeString(destination, FIELD_DEST_TITLE, label)
+                writeString(destination, FIELD_DEST_SUBTITLE, "")
+                writeVarintField(destination, FIELD_DEST_FAVORITE_TYPE, FAVORITE_NONE)
+                writeString(destination, FIELD_DEST_IDENTIFIER, "tmapnda")
+
                 val body = ByteArrayOutputStream()
                 writeEmbeddedMessage(body, FIELD_ROUTE_REQ_DESTINATION, coordinate.toByteArray())
                 writeString(body, FIELD_ROUTE_REQ_LABEL, label)
+                writeString(body, FIELD_ROUTE_REQ_STREET_ADDRESS, label)
+                writeVarintField(body, FIELD_ROUTE_REQ_GEOCODE_STREET_ADDRESS, 0L) // 좌표가 있으니 주소 변환 불필요
                 writeVarintField(body, FIELD_ROUTE_REQ_AUTO_NAVIGATE, 1L)  // 경로가 만들어지면 바로 안내 시작
+                writeVarintField(body, FIELD_ROUTE_REQ_DESTINATION_TYPE, FAVORITE_NONE)
                 writeVarintField(body, FIELD_ROUTE_REQ_ORIGIN_DISPLAY, 0L) // 폰에서 시작한 요청
                 writeVarintField(body, FIELD_ROUTE_REQ_CANCEL_CURRENT, 1L) // 기존 안내는 취소
                 writeString(body, FIELD_ROUTE_REQ_REQUEST_ID, UUID.randomUUID().toString())
+                writeEmbeddedMessage(body, FIELD_ROUTE_REQ_DESTINATION_DISPLAY, coordinate.toByteArray())
+                writeEmbeddedMessage(body, FIELD_ROUTE_REQ_REQUEST_DESTINATION, destination.toByteArray())
 
                 val out = ByteArrayOutputStream()
                 writeVarintField(out, NAVDY_EVENT_TAG_TYPE, MSG_TYPE_NAVIGATION_ROUTE_REQUEST.toLong())
