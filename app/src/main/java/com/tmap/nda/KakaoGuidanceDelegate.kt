@@ -133,6 +133,13 @@ class KakaoGuidanceDelegate(
                     KakaoRouteDataRepository.routeCoordinates = coords
                     KakaoRouteDataRepository.routeCoordinatesUpdatedAt = System.currentTimeMillis()
                     NavLogger.d(context, "[경로선 조사] 좌표 ${coords.size}개 추출 성공")
+                    // v: 재억 제보(2026-09-03) - 나브디는 폰이 준 방향안내를 그대로 그리는 게
+                    // 아니라 자기 지도로 직접 안내하는 기기라, 목적지 좌표를 줘야 화면이 켜짐
+                    // (자세한 근거는 NavdySender 주석 참고). 경로선의 마지막 점이 곧 목적지.
+                    // 좌표는 (경도, 위도) 순서로 저장돼 있음. #문제시 원복
+                    coords.lastOrNull()?.let { (lon, lat) ->
+                        com.tmap.nda.navdy.NavdySender.setDestinationCoordinate(lat, lon)
+                    }
                 } else {
                     NavLogger.d(context, "[경로선 조사] 후보 게터 전부 실패 - KNRoute 구조 재조사 필요")
                     dumpRouteStructureOnce(firstRoute)

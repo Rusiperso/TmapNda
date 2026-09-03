@@ -215,6 +215,7 @@ class MapActivity : AppCompatActivity() {
 
         binding = ActivityMapBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        inflatedOrientation = resources.configuration.orientation
 
         // v2.6: 좌측 세로 패널 -> 상단 가로 바로 구조를 바꾸면서, 예전 HudScale(패널 "폭"을
         // 화면 크기에 맞춰 계산하던 로직)은 더 이상 안 맞음(이제 패널은 match_parent 폭의
@@ -3953,8 +3954,23 @@ class MapActivity : AppCompatActivity() {
     // 글자/표지판이 통째로 확대돼 겹쳐 보이던 문제. 자세한 원인은 MapSurfaceRefresher 참고.
     // 티맵 지도(tmapUILayout)와 이 화면 안에 띄우는 카카오 지도 둘 다 대상.
     // #문제시 원복: 아래 세 함수만 지우면 됨
+    // v: 재억 제보(2026-09-03, 사진) - 분할화면을 쓰고 나면 상단바의 목적지 검색칸이
+    // 사라진 채로 뜨던 문제. 이 앱은 가로용/세로용 화면 배치 파일을 따로 갖고 있는데
+    // (layout / layout-land), 어느 쪽을 쓸지는 화면을 처음 만들 때 딱 한 번 정해짐.
+    // 분할화면일 때 창이 세로로 길어지면(예: 952x1048) 세로용 배치가 선택되고, 다시
+    // 전체화면(가로)으로 돌아와도 configChanges 선언 때문에 화면을 다시 만들지 않아
+    // 세로용 배치가 그대로 남음 - 세로용 상단바에는 검색칸이 없어서 사라진 것처럼 보임.
+    // 가로/세로가 실제로 바뀐 경우에만 화면을 다시 만들어 올바른 배치를 쓰게 함(단순
+    // 크기 변화로는 다시 만들지 않으므로 콤마 연결 유지 목적의 기존 처리는 그대로). #문제시 원복
+    private var inflatedOrientation = 0
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        if (newConfig.orientation != inflatedOrientation) {
+            NavLogger.d(this, "[화면방향] 가로<->세로가 바뀌어 화면 배치를 다시 만듦")
+            recreate()
+            return
+        }
         refreshMapSurfaces()
     }
 

@@ -277,6 +277,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private fun setupContentAndStart(destName: String, destLat: Double, destLon: Double) {
         binding = ActivityKakaoNaviBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        inflatedOrientation = resources.configuration.orientation
         naviView = binding.naviView
         setupWaypointAddButton()
         setupNearbyCategoryButton()
@@ -3113,8 +3114,17 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // v: 재억 제보(2026-09-03, 사진) - 분할화면을 쓰다가 전체화면으로 돌아오면 지도 안의
     // 글자/표지판이 통째로 확대돼 겹쳐 보이던 문제. 자세한 원인은 MapSurfaceRefresher 참고.
     // #문제시 원복: 아래 두 함수만 지우면 됨
+    // 가로용/세로용 배치 파일이 따로라, 실제로 가로<->세로가 바뀐 경우에만 화면을 다시
+    // 만들어 올바른 배치를 쓰게 함(자세한 설명은 MapActivity의 같은 함수 주석 참고). #문제시 원복
+    private var inflatedOrientation = 0
+
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
+        if (newConfig.orientation != inflatedOrientation) {
+            NavLogger.d(this, "[화면방향] 가로<->세로가 바뀌어 화면 배치를 다시 만듦")
+            recreate()
+            return
+        }
         if (::naviView.isInitialized) {
             MapSurfaceRefresher.onWindowResized(this, naviView, "카카오")
         }

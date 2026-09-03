@@ -109,6 +109,33 @@ object NavdySender {
     //   deviceId 형식은 NavdyDeviceId: "BT/<대문자 주소>;N/<기기이름>"
     //   protocolVersion은 정품과 동일하게 "1.0"(Version.PROTOCOL_VERSION) 고정
     // #문제시 원복: sendDeviceInfo() 호출을 빼면 됨
+    // v: 재억 제보(2026-09-03, v19.2.91 실기기 로그로 확정) - 나브디가 연결 직후 우리에게
+    // 보낸 메시지를 해독해보니 기기신분증 / 전화상태·음악·폰상태 요청뿐이었고, 우리가 보낸
+    // 안내 세션 시작과 방향안내 1098건에 대한 답은 단 한 건도 없었음. 정품 소스를 다시 보니
+    // 순서가 통째로 달랐음 - 나브디는 "폰이 준 방향안내를 그려주는 화면"이 아니라 **자기가
+    // 지도와 경로를 갖고 직접 안내하는 기기**였음:
+    //   폰 -> NavigationRouteRequest(목적지 좌표, autoNavigate=true)
+    //   나브디 -> NavigationRouteResponse(자기가 만든 경로와 routeId)
+    //   폰 -> NavigationSessionRequest(그 routeId로 안내 시작)
+    // 우리는 첫 단계를 건너뛰고 존재하지도 않는 routeId("tmapnda")로 안내 시작을 보내고
+    // 있었으니, 기기 입장에선 모르는 경로라 아무것도 그릴 수 없었음.
+    //   MessageType.NavigationRouteRequest=9(확장태그 109), NavigationRouteResponse=10(110)
+    // #문제시 원복: setDestinationCoordinate/sendRouteRequest 호출을 빼면 됨
+    private const val MSG_TYPE_NAVIGATION_ROUTE_REQUEST = 9
+    private const val MSG_TYPE_NAVIGATION_ROUTE_RESPONSE = 10
+    private const val NAVDY_EVENT_EXT_TAG_ROUTE_REQUEST = 109
+    private const val NAVDY_EVENT_EXT_TAG_ROUTE_RESPONSE = 110
+    private const val FIELD_ROUTE_REQ_DESTINATION = 1
+    private const val FIELD_ROUTE_REQ_LABEL = 2
+    private const val FIELD_ROUTE_REQ_AUTO_NAVIGATE = 6
+    private const val FIELD_ROUTE_REQ_ORIGIN_DISPLAY = 9
+    private const val FIELD_ROUTE_REQ_CANCEL_CURRENT = 10
+    private const val FIELD_ROUTE_REQ_REQUEST_ID = 11
+    private const val FIELD_COORD_LATITUDE = 1
+    private const val FIELD_COORD_LONGITUDE = 2
+    private const val FIELD_ROUTE_RESP_RESULTS = 5
+    private const val FIELD_ROUTE_RESULT_ID = 1
+
     private const val MSG_TYPE_DEVICE_INFO = 27
     private const val NAVDY_EVENT_EXT_TAG_DEVICE_INFO = 127
     private const val FIELD_DEV_DEVICE_ID = 1
@@ -145,6 +172,11 @@ object NavdySender {
     // 11:18:13으로 1분 차이). 안내 중인 목적지를 기억해뒀다가, 어느 쪽이 나중에 오든
     // 그 시점에 세션 시작을 보내도록 함. #문제시 원복
     @Volatile private var activeSessionLabel: String? = null
+
+    // 나브디에게 경로를 만들어달라고 부탁할 때 쓸 목적지 좌표와, 나브디가 만들어준 경로의 번호
+    @Volatile private var destinationLat: Double? = null
+    @Volatile private var destinationLon: Double? = null
+    @Volatile private var activeRouteId: String? = null
 
     private val executor = Executors.newSingleThreadExecutor()
     @Volatile private var socket: BluetoothSocket? = null
@@ -570,6 +602,7 @@ object NavdySender {
             // 요약 줄에 항상 같이 나오게 함. #문제시 원복
             "connected=true 유지=${connectionAgeMs()}ms 전송=${sentCountSinceConnect}회 신호=${pingCountSinceConnect}회 " +
                 "수신=${receivedCountSinceConnect}회 신분증=${deviceInfoSentCount}회 " +
+                "경로요청=${routeRequestSentCount}회(경로번호=${activeRouteId ?: "없음"}) " +
                 "세션시작=${sessionRequestSentCount}회(목적지=${activeSessionLabel ?: "없음"}) " +
                 "받은종류[${receivedSummary()}]"
         } else {
@@ -621,7 +654,9 @@ object NavdySender {
                     val payload = ByteArray(size)
                     if (!readFully(input, payload)) break
                     receivedCountSinceConnect++
-                    noteReceivedEvent(extractEventType(payload), size)
+                    val type = extractEventType(payload)
+                    noteReceivedEvent(type, size)
+                    if (type == MSG_TYPE_NAVIGATION_ROUTE_RESPONSE) handleRouteResponse(payload)
                 }
             } catch (e: Exception) {
                 // v: 재억 제보(2026-09-02) - "받는 쪽도 로그가 남아야 왜 끊기는지 알지"라는
@@ -655,6 +690,7 @@ object NavdySender {
     private val receivedTypeCounts = java.util.concurrent.ConcurrentHashMap<Int, Int>()
     @Volatile private var deviceInfoSentCount = 0
     @Volatile private var sessionRequestSentCount = 0
+    @Volatile private var routeRequestSentCount = 0
 
     private fun resetPerConnectionCounters() {
         sentCountSinceConnect = 0
@@ -662,6 +698,9 @@ object NavdySender {
         receivedCountSinceConnect = 0
         deviceInfoSentCount = 0
         sessionRequestSentCount = 0
+        routeRequestSentCount = 0
+        // 경로 번호는 기기가 이번 연결에서 새로 만들어주는 값이라 연결이 바뀌면 버림
+        activeRouteId = null
         receivedTypeCounts.clear()
     }
 
@@ -950,7 +989,13 @@ object NavdySender {
     private fun onConnectedHandshake() {
         sendDeviceInfo()
         val label = activeSessionLabel ?: return
-        sendNavigationSessionRequest(NAV_SESSION_STARTED, label)
+        // 안내 중에 뒤늦게 붙은 경우 - 목적지를 알고 있으면 경로부터 만들어달라고 부탁하고,
+        // 좌표를 아직 모르면 예전처럼 세션 시작만 보냄. #문제시 원복
+        if (destinationLat != null && destinationLon != null) {
+            sendRouteRequest()
+        } else {
+            sendNavigationSessionRequest(NAV_SESSION_STARTED, label)
+        }
     }
 
     private fun sendDeviceInfo() {
@@ -1015,11 +1060,72 @@ object NavdySender {
         sendNavigationSessionRequest(NAV_SESSION_STARTED, destinationLabel)
     }
 
+    /**
+     * 카카오가 경로를 확정하면 목적지 좌표를 넘겨받아 나브디에게 "이 목적지로 경로를 만들어
+     * 안내를 시작하라"고 부탁함. 나브디는 자기 지도로 경로를 만들어 화면에 그린다. #문제시 원복
+     */
+    fun setDestinationCoordinate(latitude: Double, longitude: Double) {
+        destinationLat = latitude
+        destinationLon = longitude
+        sendRouteRequest()
+    }
+
+    private fun sendRouteRequest() {
+        val stream = outputStream ?: return
+        val lat = destinationLat ?: return
+        val lon = destinationLon ?: return
+        val label = activeSessionLabel ?: "목적지"
+        executor.execute {
+            try {
+                val coordinate = ByteArrayOutputStream()
+                writeDoubleField(coordinate, FIELD_COORD_LATITUDE, lat)
+                writeDoubleField(coordinate, FIELD_COORD_LONGITUDE, lon)
+
+                val body = ByteArrayOutputStream()
+                writeEmbeddedMessage(body, FIELD_ROUTE_REQ_DESTINATION, coordinate.toByteArray())
+                writeString(body, FIELD_ROUTE_REQ_LABEL, label)
+                writeVarintField(body, FIELD_ROUTE_REQ_AUTO_NAVIGATE, 1L)  // 경로가 만들어지면 바로 안내 시작
+                writeVarintField(body, FIELD_ROUTE_REQ_ORIGIN_DISPLAY, 0L) // 폰에서 시작한 요청
+                writeVarintField(body, FIELD_ROUTE_REQ_CANCEL_CURRENT, 1L) // 기존 안내는 취소
+                writeString(body, FIELD_ROUTE_REQ_REQUEST_ID, UUID.randomUUID().toString())
+
+                val out = ByteArrayOutputStream()
+                writeVarintField(out, NAVDY_EVENT_TAG_TYPE, MSG_TYPE_NAVIGATION_ROUTE_REQUEST.toLong())
+                writeEmbeddedMessage(out, NAVDY_EVENT_EXT_TAG_ROUTE_REQUEST, body.toByteArray())
+                val eventBytes = out.toByteArray()
+                writeFramed(stream, eventBytes)
+                lastSentAtMs = System.currentTimeMillis()
+                routeRequestSentCount++
+                NavLogger.d("[Navdy] 경로 만들기 요청 전송: 목적지=$label ($lat, $lon) (${eventBytes.size}B)")
+            } catch (e: Exception) {
+                NavLogger.e("[Navdy] 경로 만들기 요청 실패: ${e.javaClass.simpleName} ${e.message}")
+                closeQuietly()
+            }
+        }
+    }
+
+    /** 나브디가 "경로 다 만들었다"고 답하면 그 경로 번호로 안내 세션을 연다. */
+    private fun handleRouteResponse(payload: ByteArray) {
+        val body = findMessageField(payload, NAVDY_EVENT_EXT_TAG_ROUTE_RESPONSE)
+        val result = body?.let { findMessageField(it, FIELD_ROUTE_RESP_RESULTS) }
+        val routeId = result?.let { findMessageField(it, FIELD_ROUTE_RESULT_ID) }?.toString(Charsets.UTF_8)
+        if (routeId.isNullOrBlank()) {
+            NavLogger.e("[Navdy] 나브디가 경로 응답을 보냈지만 경로 번호를 못 찾음(경로 만들기 실패일 수 있음)")
+            return
+        }
+        activeRouteId = routeId
+        NavLogger.d("[Navdy] 나브디가 경로를 만들었음(번호=$routeId) - 이 경로로 안내 세션 시작")
+        sendNavigationSessionRequest(NAV_SESSION_STARTED, activeSessionLabel ?: "목적지")
+    }
+
     /** 카카오 길안내가 끝날 때 호출. */
     fun endNavigationSession() {
         val label = activeSessionLabel ?: return
         activeSessionLabel = null
         sendNavigationSessionRequest(NAV_SESSION_STOPPED, label)
+        destinationLat = null
+        destinationLon = null
+        activeRouteId = null
     }
 
     private fun sendNavigationSessionRequest(state: Int, label: String) {
@@ -1038,7 +1144,9 @@ object NavdySender {
         val body = ByteArrayOutputStream()
         writeVarintField(body, FIELD_SESSION_NEW_STATE, state.toLong())
         writeString(body, FIELD_SESSION_LABEL, label)
-        writeString(body, FIELD_SESSION_ROUTE_ID, "tmapnda")
+        // 나브디가 만들어준 경로 번호를 그대로 돌려줘야 기기가 그 경로로 안내를 켬. 아직 못
+        // 받았으면 빈 값으로 보냄(예전처럼 우리가 지어낸 번호를 보내면 기기가 모르는 경로임)
+        writeString(body, FIELD_SESSION_ROUTE_ID, activeRouteId ?: "")
         writeVarintField(body, FIELD_SESSION_SIMULATION_SPEED, 0L)
         writeVarintField(body, FIELD_SESSION_ORIGIN_DISPLAY, 0L) // false = 폰에서 시작
         val out = ByteArrayOutputStream()
@@ -1113,6 +1221,51 @@ object NavdySender {
         writeVarint(out, ((tag.toLong() shl 3) or 2)) // wiretype 2 = length-delimited
         writeVarint(out, bytes.size.toLong())
         out.write(bytes)
+    }
+
+    /** proto2 double 필드(wiretype 1 = 8바이트 리틀엔디안) */
+    private fun writeDoubleField(out: ByteArrayOutputStream, tag: Int, value: Double) {
+        writeVarint(out, ((tag.toLong() shl 3) or 1))
+        var bits = java.lang.Double.doubleToLongBits(value)
+        repeat(8) {
+            out.write((bits and 0xFF).toInt())
+            bits = bits ushr 8
+        }
+    }
+
+    /** 받은 내용에서 지정한 번호의 "묶음 필드"(문자열/내부 메시지)만 꺼냄. 없으면 null. */
+    private fun findMessageField(bytes: ByteArray, tag: Int): ByteArray? {
+        var i = 0
+        fun varint(): Long? {
+            var value = 0L
+            var shift = 0
+            while (i < bytes.size) {
+                val b = bytes[i].toInt() and 0xFF
+                i++
+                value = value or ((b and 0x7F).toLong() shl shift)
+                if (b < 0x80) return value
+                shift += 7
+                if (shift > 63) return null
+            }
+            return null
+        }
+        while (i < bytes.size) {
+            val key = varint() ?: return null
+            val field = (key ushr 3).toInt()
+            when ((key and 7L).toInt()) {
+                0 -> varint() ?: return null
+                1 -> i += 8
+                5 -> i += 4
+                2 -> {
+                    val length = (varint() ?: return null).toInt()
+                    if (length < 0 || i + length > bytes.size) return null
+                    if (field == tag) return bytes.copyOfRange(i, i + length)
+                    i += length
+                }
+                else -> return null
+            }
+        }
+        return null
     }
 
     private fun writeEmbeddedMessage(out: ByteArrayOutputStream, tag: Int, bytes: ByteArray) {
