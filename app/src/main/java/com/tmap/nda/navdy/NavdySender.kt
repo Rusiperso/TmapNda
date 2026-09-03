@@ -454,6 +454,7 @@ object NavdySender {
                     logIfChanged("proxy", "[Navdy] 프록시 대기 창구도 열림(정품 앱과 동일하게 2개 운영)")
                     val sock = server.accept()
                     NavLogger.d("[Navdy] 프록시 창구로 연결이 들어옴 - 나브디가 이쪽을 쓰는 것으로 보임(기록만 하고 닫음)")
+                    logProxyFirstBytes(sock)
                     try { sock.close() } catch (_: Exception) {}
                     try { server.close() } catch (_: Exception) {}
                     proxyServerSocket = null
@@ -470,6 +471,54 @@ object NavdySender {
         thread.isDaemon = true
         thread.name = "NavdyProxyAcceptor"
         thread.start()
+    }
+
+    /**
+     * v: 재억 제보(2026-09-03, v19.2.95 로그) - 연결이 5분간 안 끊기고 목적지 정보를 다 채워
+     * 보내도 기기는 살아있음 신호만 보냈음(경로 응답 0). 그래서 정품 소스에서 "프록시 창구"의
+     * 정체를 확인해보니, 이건 부가 기능이 아니라 **기기에 인터넷을 빌려주는 통로**였다 -
+     * ProxyThread가 네이티브 라이브러리(libproxy.so)를 띄우고, 그 안에는 nghttp2/libevent와
+     * "http2_proxy", "PRI * HTTP/2.0"(HTTP/2 시작 인사), "Processing CONNECT by connecting to
+     * %s for stream %d" 같은 문구가 들어 있다. 즉 기기가 이 통로로 HTTP/2 CONNECT를 걸어
+     * 폰의 인터넷을 통해 바깥과 통신한다. 나브디는 자기 지도/경로를 온라인으로 만들므로,
+     * 이 통로가 막혀 있으면 경로 요청을 받아도 만들 수가 없다 - 응답이 0인 것과 맞아떨어진다.
+     *
+     * 본격적으로 중계기를 만들기 전에, 기기가 정말 HTTP/2로 말을 거는지부터 확인한다.
+     * 앞부분 몇 바이트만 읽어 기록하고 닫는다("PRI * HTTP/2.0"이 보이면 확정).
+     * 블루투스 소켓은 읽기 제한시간을 걸 수 없어서, 2초 뒤 소켓을 닫아 읽기를 깨운다.
+     * #문제시 원복: 이 함수 호출 한 줄만 지우면 v19.2.95와 동일
+     */
+    private fun logProxyFirstBytes(sock: BluetoothSocket) {
+        val closer = Thread {
+            try { Thread.sleep(2_000) } catch (_: InterruptedException) { return@Thread }
+            try { sock.close() } catch (_: Exception) {}
+        }
+        closer.isDaemon = true
+        closer.start()
+        val buffer = ByteArray(64)
+        var read = 0
+        try {
+            val input = sock.inputStream
+            while (read < buffer.size) {
+                val n = input.read(buffer, read, buffer.size - read)
+                if (n <= 0) break
+                read += n
+            }
+        } catch (_: Exception) {
+        } finally {
+            closer.interrupt()
+        }
+        if (read <= 0) {
+            NavLogger.d("[Navdy][프록시조사] 기기가 통로만 열고 아무것도 보내지 않음")
+            return
+        }
+        val hex = buffer.take(read).joinToString(" ") { "%02x".format(it) }
+        val text = buffer.take(read).map { b ->
+            val c = b.toInt() and 0xFF
+            if (c in 0x20..0x7E) c.toChar() else '.'
+        }.joinToString("")
+        NavLogger.e("[Navdy][프록시조사] 기기가 보낸 첫 ${read}바이트: \"$text\"")
+        NavLogger.e("[Navdy][프록시조사] 16진수: $hex")
     }
 
     fun stopListening() {
