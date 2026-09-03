@@ -383,7 +383,14 @@ object NavdySender {
     private fun connectLegacy(context: Context, device: BluetoothDevice) {
         if (connecting || socket?.isConnected == true) return
         connecting = true
-        executor.execute {
+        // v: 재억 제보(2026-09-03, v19.2.89 실기기 로그로 원인 확정) - 거는 작업을 전송용
+        // executor(단일 스레드)에 올리고 있었음. 블루투스 connect()는 실패까지 1~2초를
+        // 통째로 붙잡기 때문에, 그 사이 큐에 들어온 전송이 전부 밀렸음. 실제 로그에서
+        // 11:45:10.714에 연결되며 신분증 전송을 큐에 넣었는데 실행은 11:45:12.117 —
+        // 1.4초 뒤였고, 그때는 이미 소켓이 닫혀서 "길이헤더 전송 중 끊김"으로 실패했음.
+        // 거는 건 어차피 전용 다이얼 스레드에서 부르므로 여기서 그냥 그 스레드로 실행함
+        // (executor는 전송 전용으로 비워둠). #문제시 원복: run { → executor.execute {
+        run {
             try {
                 // v: 재억 제보(2026-08-27, 실기기 로그로 확인) - 안드로이드 12+에서
                 // cancelDiscovery()는 BLUETOOTH_SCAN 권한이 없으면 SecurityException을 던짐
@@ -461,6 +468,14 @@ object NavdySender {
                     // 가짜 성공이었음. 정품 앱도 이런 방식은 쓰지 않음. #문제시 원복
                     insecureSock ?: throw e
                 }
+                // v: 재억 제보(2026-09-03) - 거는 동안 나브디가 먼저 걸어와서 이미 붙어버릴
+                // 수 있음(실기기에서 1.3초 사이에 실제로 발생). 그때 방금 만든 연결로 덮어쓰면
+                // 멀쩡히 쓰던 연결을 잃어버리므로, 이미 붙어있으면 이번 것은 버린다. #문제시 원복
+                if (isConnected()) {
+                    try { sock.close() } catch (_: Exception) {}
+                    NavLogger.d("[Navdy] 거는 중에 나브디가 먼저 걸어와 이미 연결됨 - 방금 만든 연결은 정리")
+                    return@run
+                }
                 socket = sock
                 outputStream = sock.outputStream
                 // v: 재억 제보(2026-09-02) - 순정 티맵은 같은 나브디 기기에 문제없이 붙는데
@@ -484,7 +499,14 @@ object NavdySender {
                 // 안 남아서 원인 파악이 안 됐음. 기존엔 android.util.Log만 써서 logcat에만 남고
                 // 앱이 공유하는 로그 파일(NavLogger)에는 기록이 안 됐던 게 원인. #문제시 원복
                 logIfChanged("dial3", "[Navdy] 연결 실패: ${e.javaClass.simpleName} ${e.message}", isError = true)
-                closeQuietly()
+                // v: 재억 제보(2026-09-03, v19.2.89 실기기 로그로 원인 확정) - v19.2.88에서
+                // 대기(받기) 쪽이 남의 연결을 끊던 버그를 고쳤는데, **거는 쪽에 똑같은 버그가
+                // 그대로 남아 있었음.** 로그: 11:45:10.714에 나브디가 걸어와서 정상 연결됐고
+                // 수신 4회·핑 1회까지 잘 돌던 중, 11:45:12.09에 이쪽 거는 시도가 실패하면서
+                // 여기 closeQuietly()가 그 멀쩡한 연결을 끊어버렸음(1385ms만에 사망, 전송 0회).
+                // 이 시도는 실패했으므로 socket을 만든 적이 없다 - 남의 연결은 건드리지 않는다.
+                // #문제시 원복
+                if (!isConnected()) closeQuietly()
             } finally {
                 connecting = false
             }
