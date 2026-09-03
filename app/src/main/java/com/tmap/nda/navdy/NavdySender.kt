@@ -136,6 +136,26 @@ object NavdySender {
     private const val FIELD_ROUTE_RESP_RESULTS = 5
     private const val FIELD_ROUTE_RESULT_ID = 1
 
+    // v: 재억 제보(2026-09-03, v19.2.92 로그) - 경로 만들기 요청을 4번 보냈는데 나브디는
+    // 답이 없었음(살아있음 신호만 옴). 로그를 보면 나브디는 붙자마자 자기 신분증과 함께
+    // **질문 5개**(전화상태·지금재생중·폰상태·음악정보·음악기능)를 던지는데, 우리는 그 중
+    // 어느 것에도 답한 적이 없음. 정품 앱은 전부 답한다(TelephonyServiceHandler,
+    // MusicServiceHandler). 기기가 "폰 준비 완료"로 보기 전까진 나머지를 무시하는 것일 수
+    // 있어, 정품과 같은 답장을 보내도록 함. 확장 태그는 메시지 번호+100 규칙(정품 소스에서
+    // 8개 표본으로 확인). #문제시 원복: answerDisplayRequest() 호출을 빼면 됨
+    private const val MSG_TYPE_MUSIC_TRACK_INFO_REQUEST = 43
+    private const val MSG_TYPE_MUSIC_TRACK_INFO = 44
+    private const val MSG_TYPE_PHONE_STATUS_REQUEST = 72
+    private const val MSG_TYPE_PHONE_STATUS_RESPONSE = 73
+    private const val MSG_TYPE_PHONE_EVENT = 28
+    private const val MSG_TYPE_CALL_STATE_UPDATE_REQUEST = 104
+    private const val MSG_TYPE_NOW_PLAYING_UPDATE_REQUEST = 108
+    private const val MSG_TYPE_MUSIC_CAPABILITIES_REQUEST = 121
+    private const val MSG_TYPE_MUSIC_CAPABILITIES_RESPONSE = 122
+    private const val MSG_TYPE_GET_NAVIGATION_SESSION_STATE = 55
+    private const val REQUEST_SUCCESS = 1
+    private const val PHONE_IDLE = 1
+
     private const val MSG_TYPE_DEVICE_INFO = 27
     private const val NAVDY_EVENT_EXT_TAG_DEVICE_INFO = 127
     private const val FIELD_DEV_DEVICE_ID = 1
@@ -656,7 +676,11 @@ object NavdySender {
                     receivedCountSinceConnect++
                     val type = extractEventType(payload)
                     noteReceivedEvent(type, size)
-                    if (type == MSG_TYPE_NAVIGATION_ROUTE_RESPONSE) handleRouteResponse(payload)
+                    when (type) {
+                        MSG_TYPE_NAVIGATION_ROUTE_RESPONSE -> handleRouteResponse(payload)
+                        MSG_TYPE_DEVICE_INFO -> logDisplayDeviceInfo(payload)
+                        else -> if (type != null) answerDisplayRequest(type)
+                    }
                 }
             } catch (e: Exception) {
                 // v: 재억 제보(2026-09-02) - "받는 쪽도 로그가 남아야 왜 끊기는지 알지"라는
@@ -714,6 +738,12 @@ object NavdySender {
         12 to "안내세션응답(NavigationSessionResponse)",
         13 to "안내세션상태(NavigationSessionStatusEvent)",
         14 to "화면닫기(DismissScreen)",
+        28 to "전화상태(PhoneEvent)",
+        43 to "음악정보요청(MusicTrackInfoRequest)",
+        72 to "폰상태요청(PhoneStatusRequest)",
+        104 to "전화상태요청(CallStateUpdateRequest)",
+        108 to "지금재생중요청(NowPlayingUpdateRequest)",
+        121 to "음악기능요청(MusicCapabilitiesRequest)",
         15 to "화면열기(ShowScreen)",
         22 to "연결상태변경(ConnectionStateChange)",
         27 to "기기신분증(DeviceInfo)",
@@ -988,6 +1018,12 @@ object NavdySender {
      */
     private fun onConnectedHandshake() {
         sendDeviceInfo()
+        // v: 재억 제보(2026-09-03) - 기기가 우리 말을 애초에 알아듣기는 하는지 판정하기 위한
+        // 확인용 질문. 정품 앱도 쓰는 "지금 안내 상태가 뭐냐"(GetNavigationSessionState, 55)로,
+        // 받으면 기기가 안내세션상태(13)로 답하게 돼 있음. 답이 오면 우리 메시지는 정상적으로
+        // 해석되고 있다는 뜻이고(=문제는 내용), 이것마저 무응답이면 기기가 우리 메시지를
+        // 통째로 안 읽고 있다는 뜻이라 다음 조사 방향이 완전히 갈림. #문제시 원복
+        sendSimpleEvent(MSG_TYPE_GET_NAVIGATION_SESSION_STATE, "안내상태 물어보기(응답 확인용)", ByteArray(0))
         val label = activeSessionLabel ?: return
         // 안내 중에 뒤늦게 붙은 경우 - 목적지를 알고 있으면 경로부터 만들어달라고 부탁하고,
         // 좌표를 아직 모르면 예전처럼 세션 시작만 보냄. #문제시 원복
@@ -1102,6 +1138,70 @@ object NavdySender {
                 closeQuietly()
             }
         }
+    }
+
+    /**
+     * 나브디가 붙자마자 던지는 질문들에 정품 앱과 같은 답장을 보냄. 음악/전화는 이 앱이
+     * 제공하지 않으므로 "없음/조용함"에 해당하는 빈 답을 보냄 - 중요한 건 답이 온다는 사실
+     * 자체(기기가 폰을 준비 완료로 보게 하는 것)임. #문제시 원복
+     */
+    private fun answerDisplayRequest(type: Int) {
+        when (type) {
+            MSG_TYPE_PHONE_STATUS_REQUEST -> {
+                val body = ByteArrayOutputStream()
+                writeVarintField(body, 1, REQUEST_SUCCESS.toLong())
+                writeEmbeddedMessage(body, 2, phoneEventIdleBody())
+                sendSimpleEvent(MSG_TYPE_PHONE_STATUS_RESPONSE, "폰상태 답장", body.toByteArray())
+            }
+            MSG_TYPE_CALL_STATE_UPDATE_REQUEST ->
+                sendSimpleEvent(MSG_TYPE_PHONE_EVENT, "전화상태 답장(통화 없음)", phoneEventIdleBody())
+            MSG_TYPE_MUSIC_TRACK_INFO_REQUEST, MSG_TYPE_NOW_PLAYING_UPDATE_REQUEST ->
+                sendSimpleEvent(MSG_TYPE_MUSIC_TRACK_INFO, "음악정보 답장(재생 중 없음)", ByteArray(0))
+            MSG_TYPE_MUSIC_CAPABILITIES_REQUEST ->
+                sendSimpleEvent(MSG_TYPE_MUSIC_CAPABILITIES_RESPONSE, "음악기능 답장(지원 없음)", ByteArray(0))
+        }
+    }
+
+    private fun phoneEventIdleBody(): ByteArray {
+        val out = ByteArrayOutputStream()
+        writeVarintField(out, 1, PHONE_IDLE.toLong())
+        return out.toByteArray()
+    }
+
+    /** 메시지 번호 + 확장 태그(번호+100) 규칙으로 간단한 이벤트 하나를 보냄. */
+    private fun sendSimpleEvent(msgType: Int, label: String, body: ByteArray) {
+        val stream = outputStream ?: return
+        executor.execute {
+            try {
+                val out = ByteArrayOutputStream()
+                writeVarintField(out, NAVDY_EVENT_TAG_TYPE, msgType.toLong())
+                writeEmbeddedMessage(out, msgType + 100, body)
+                val eventBytes = out.toByteArray()
+                writeFramed(stream, eventBytes)
+                lastSentAtMs = System.currentTimeMillis()
+                NavLogger.d("[Navdy] $label 전송 (${eventBytes.size}B)")
+            } catch (e: Exception) {
+                NavLogger.e("[Navdy] $label 전송 실패: ${e.javaClass.simpleName} ${e.message}")
+                closeQuietly()
+            }
+        }
+    }
+
+    /**
+     * 나브디가 보낸 자기 신분증 내용을 한 번만 풀어서 남김. 특히 통신 규격 버전이 우리가
+     * 쓰는 "1.0"과 다르면, 기기가 우리 메시지를 통째로 무시하는 이유가 될 수 있음. #문제시 원복
+     */
+    @Volatile private var displayDeviceInfoLogged = false
+    private fun logDisplayDeviceInfo(payload: ByteArray) {
+        if (displayDeviceInfoLogged) return
+        displayDeviceInfoLogged = true
+        val body = findMessageField(payload, NAVDY_EVENT_EXT_TAG_DEVICE_INFO) ?: return
+        fun text(tag: Int) = findMessageField(body, tag)?.toString(Charsets.UTF_8) ?: "-"
+        NavLogger.d(
+            "[Navdy] 나브디 기기 신분증: id=${text(FIELD_DEV_DEVICE_ID)} 앱버전=${text(FIELD_DEV_CLIENT_VERSION)} " +
+                "규격버전=${text(FIELD_DEV_PROTOCOL_VERSION)} 이름=${text(FIELD_DEV_DEVICE_NAME)} " +
+                "시스템=${text(FIELD_DEV_SYSTEM_VERSION)} 모델=${text(FIELD_DEV_MODEL)}"
+        )
     }
 
     /** 나브디가 "경로 다 만들었다"고 답하면 그 경로 번호로 안내 세션을 연다. */
