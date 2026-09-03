@@ -139,7 +139,7 @@
         android:id="@+id/cbNMirrorCluster"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="차량 순정 계기판/HUD로 전송 (nMirror 필요, 실험적 기능)"
+        android:text="nMirror로 안내 전달 (차량 순정 계기판·HUD·나브디, 실험적 기능)"
         android:layout_marginBottom="16dp"/>
 
     <CheckBox
