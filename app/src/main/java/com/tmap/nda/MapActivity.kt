@@ -3949,6 +3949,26 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
+    // v: 재억 제보(2026-09-03, 사진) - 분할화면을 쓰다가 전체화면으로 돌아오면 지도 안의
+    // 글자/표지판이 통째로 확대돼 겹쳐 보이던 문제. 자세한 원인은 MapSurfaceRefresher 참고.
+    // 티맵 지도(tmapUILayout)와 이 화면 안에 띄우는 카카오 지도 둘 다 대상.
+    // #문제시 원복: 아래 세 함수만 지우면 됨
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        refreshMapSurfaces()
+    }
+
+    override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
+        super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
+        NavLogger.d(this, "[MapActivity lifecycle] 분할화면 ${if (isInMultiWindowMode) "진입" else "해제"}")
+        refreshMapSurfaces()
+    }
+
+    private fun refreshMapSurfaces() {
+        MapSurfaceRefresher.onWindowResized(this, binding.tmapUILayout, "티맵")
+        MapSurfaceRefresher.onWindowResized(this, kakaoNaviView, "카카오")
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         // v4.24: 이 로그가 그동안 없어서 "MapActivity가 백그라운드에서 OS에 의해

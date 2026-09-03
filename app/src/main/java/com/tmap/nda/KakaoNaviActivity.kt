@@ -3110,6 +3110,24 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // 3곳에만 남기고 포커스 전환 때는 생략. #문제시 원복
     }
 
+    // v: 재억 제보(2026-09-03, 사진) - 분할화면을 쓰다가 전체화면으로 돌아오면 지도 안의
+    // 글자/표지판이 통째로 확대돼 겹쳐 보이던 문제. 자세한 원인은 MapSurfaceRefresher 참고.
+    // #문제시 원복: 아래 두 함수만 지우면 됨
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (::naviView.isInitialized) {
+            MapSurfaceRefresher.onWindowResized(this, naviView, "카카오")
+        }
+    }
+
+    override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
+        NavLogger.d(this, "[lifecycle] 분할화면 ${if (isInMultiWindowMode) "진입" else "해제"}")
+        if (::naviView.isInitialized) {
+            MapSurfaceRefresher.onWindowResized(this, naviView, "카카오")
+        }
+    }
+
     override fun onBackPressed() {
         finishGuidance()
     }

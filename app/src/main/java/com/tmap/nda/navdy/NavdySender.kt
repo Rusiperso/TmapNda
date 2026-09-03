@@ -125,6 +125,19 @@ object NavdySender {
     private const val NAVDY_PROTOCOL_VERSION = "1.0"
     private const val PLATFORM_ANDROID = 2
 
+    // v: 재억 제보(2026-09-03, 실기기 로그) - 연결 9분 30초 유지, 전송 490회/수신 263회로
+    // 통신은 완벽한데 나브디 화면은 계속 비어있음. 정품 소스(alelec_navdy_client)를 다시
+    // 대조해보니 우리가 보내는 형식(방향안내/신분증/세션시작/프레임 헤더)은 전부 규격과
+    // 일치했음. 다만 정품이 보내는 신분증에는 "이 폰이 뭘 할 수 있는지"(Capabilities, tag16)와
+    // 커널 버전(tag9)이 더 들어있어서 동일하게 맞춤. #문제시 원복
+    private const val FIELD_DEV_KERNEL_VERSION = 9
+    private const val FIELD_DEV_CAPABILITIES = 16
+    private const val FIELD_CAP_PLACE_TYPE_SEARCH = 2
+    private const val FIELD_CAP_VOICE_SEARCH = 3
+    private const val FIELD_CAP_NAV_COORDS_LOOKUP = 5
+    private const val FIELD_CAP_CANNED_RESPONSE_TO_SMS = 9
+    private const val FIELD_CAP_SUPPORTS_PLAY_AUDIO = 12
+
     // DeviceInfo를 만들려면 기기 이름/주소가 필요해서 연결 시점에 쓸 Context를 보관. #문제시 원복
     @Volatile private var appContext: Context? = null
 
@@ -228,9 +241,7 @@ object NavdySender {
                     socket = accepted
                     outputStream = accepted.outputStream
                     connectedAtMs = System.currentTimeMillis()
-                    sentCountSinceConnect = 0
-                    pingCountSinceConnect = 0
-                    receivedCountSinceConnect = 0
+                    resetPerConnectionCounters()
                     val remoteName = try { accepted.remoteDevice?.name } catch (e: SecurityException) { null }
                     NavLogger.d("[Navdy] 연결됨(나브디가 걸어옴): ${remoteName ?: "이름 확인 불가"}")
 
@@ -489,9 +500,7 @@ object NavdySender {
                 startReaderThread(sock)
                 startPingThread()   // 4초마다 살아있음 신호(정품 앱과 동일) #문제시 원복
                 connectedAtMs = System.currentTimeMillis()
-                sentCountSinceConnect = 0
-                pingCountSinceConnect = 0
-                receivedCountSinceConnect = 0
+                resetPerConnectionCounters()
                 NavLogger.d("[Navdy] 연결 성공: ${device.name}")
                 onConnectedHandshake()
             } catch (e: Exception) {
@@ -556,7 +565,13 @@ object NavdySender {
     fun statusForLog(): String {
         val connected = isConnected()
         return if (connected) {
-            "connected=true 유지=${connectionAgeMs()}ms 전송=${sentCountSinceConnect}회 신호=${pingCountSinceConnect}회 수신=${receivedCountSinceConnect}회"
+            // v: 재억 제보(2026-09-03) - 로그 파일이 10분치만 남다 보니, 연결 직후에만 찍히는
+            // "신분증 전송/세션 시작" 로그가 스크롤돼 사라져서 정작 필요할 때 확인이 안 됐음.
+            // 요약 줄에 항상 같이 나오게 함. #문제시 원복
+            "connected=true 유지=${connectionAgeMs()}ms 전송=${sentCountSinceConnect}회 신호=${pingCountSinceConnect}회 " +
+                "수신=${receivedCountSinceConnect}회 신분증=${deviceInfoSentCount}회 " +
+                "세션시작=${sessionRequestSentCount}회(목적지=${activeSessionLabel ?: "없음"}) " +
+                "받은종류[${receivedSummary()}]"
         } else {
             "connected=false 대기중=${listening}"
         }
@@ -575,24 +590,38 @@ object NavdySender {
         val thread = Thread {
             NavLogger.d("[Navdy] 받는 스레드 시작")
             try {
-                val input: InputStream = sock.inputStream
-                val buffer = ByteArray(1024)
+                // v: 재억 제보(2026-09-03, 실기기 로그) - 지금까지 받은 내용을 그냥 버리고
+                // 있었는데, 나브디가 "왜 화면에 안 그리는지"를 알려주는 답장이 바로 이 안에
+                // 들어있음. 정품과 같은 형식([0x0D][길이 4바이트][내용])으로 잘라서, 내용
+                // 앞부분의 메시지 종류 번호만 뽑아 어떤 종류를 몇 번 받았는지 기록함.
+                // 종류별로 처음 한 번만 로그에 남기고(로그 폭증 방지), 누적 개수는 [전체상태]
+                // 줄에 매번 같이 나옴. #문제시 원복
+                val input: InputStream = java.io.BufferedInputStream(sock.inputStream)
+                val sizeHeader = ByteArray(4)
                 while (true) {
-                    val n = input.read(buffer)
-                    if (n == -1) {
+                    val tagByte = input.read()
+                    if (tagByte == -1) {
                         NavLogger.d("[Navdy] 받는 쪽 스트림이 상대방에 의해 정상 종료됨(EOF), ${connectionAgeMs()}ms만에, 그동안 보낸 전송 성공 ${sentCountSinceConnect}회, 살아있음 신호 ${pingCountSinceConnect}회, 수신 ${receivedCountSinceConnect}회")
                         break
                     }
-                    // v: 재억 요청(2026-09-02) - 나브디가 4초마다 보내는 신호를 매번 남기면
-                    // 로그가 계속 쌓임. 처음 받은 것만 남기고, 총 몇 번 받았는지는 끊길 때
-                    // 한 줄로 남김. #문제시 원복
-                    receivedCountSinceConnect++
-                    if (receivedCountSinceConnect == 1) {
-                        NavLogger.d("[Navdy] 나브디에서 데이터 받기 시작(${n}바이트) - 이후 수신은 메모리에만 기록")
-                    } else {
-                        // 평소엔 파일에 안 남기고 메모리에만. 끊길 때 한꺼번에 나옴. #문제시 원복
-                        NavLogger.trace("navdy", "수신 ${n}바이트")
+                    if (tagByte != FRAME_TAG_BYTE) {
+                        // 예상과 다른 바이트 - 흘려보내고 다음 프레임 시작을 다시 찾음
+                        noteReceivedEvent(null, 0)
+                        continue
                     }
+                    if (!readFully(input, sizeHeader)) break
+                    val size = (sizeHeader[0].toInt() and 0xFF) or
+                        ((sizeHeader[1].toInt() and 0xFF) shl 8) or
+                        ((sizeHeader[2].toInt() and 0xFF) shl 16) or
+                        ((sizeHeader[3].toInt() and 0xFF) shl 24)
+                    if (size < 0 || size > MAX_FRAME_SIZE) {
+                        noteReceivedEvent(null, size)
+                        continue
+                    }
+                    val payload = ByteArray(size)
+                    if (!readFully(input, payload)) break
+                    receivedCountSinceConnect++
+                    noteReceivedEvent(extractEventType(payload), size)
                 }
             } catch (e: Exception) {
                 // v: 재억 제보(2026-09-02) - "받는 쪽도 로그가 남아야 왜 끊기는지 알지"라는
@@ -617,6 +646,111 @@ object NavdySender {
         thread.name = "NavdyReader"
         readerThread = thread
         thread.start()
+    }
+
+    // 정품과 동일한 프레임 머리표: tag1 + FIXED32(0x0D) 뒤에 길이 4바이트(리틀엔디안)
+    private const val FRAME_TAG_BYTE = 0x0D
+    private const val MAX_FRAME_SIZE = 1 shl 20
+
+    private val receivedTypeCounts = java.util.concurrent.ConcurrentHashMap<Int, Int>()
+    @Volatile private var deviceInfoSentCount = 0
+    @Volatile private var sessionRequestSentCount = 0
+
+    private fun resetPerConnectionCounters() {
+        sentCountSinceConnect = 0
+        pingCountSinceConnect = 0
+        receivedCountSinceConnect = 0
+        deviceInfoSentCount = 0
+        sessionRequestSentCount = 0
+        receivedTypeCounts.clear()
+    }
+
+    // 나브디가 보낼 수 있는 메시지 종류(정품 소스 NavdyEvent.MessageType 그대로). 로그를
+    // 사람이 읽을 수 있게 이름을 붙여줌 - 목록에 없는 번호는 번호 그대로 남김. #문제시 원복
+    private val MESSAGE_TYPE_NAMES = mapOf(
+        8 to "방향안내(NavigationManeuverEvent)",
+        9 to "경로요청(NavigationRouteRequest)",
+        10 to "경로응답(NavigationRouteResponse)",
+        11 to "안내세션요청(NavigationSessionRequest)",
+        12 to "안내세션응답(NavigationSessionResponse)",
+        13 to "안내세션상태(NavigationSessionStatusEvent)",
+        14 to "화면닫기(DismissScreen)",
+        15 to "화면열기(ShowScreen)",
+        22 to "연결상태변경(ConnectionStateChange)",
+        27 to "기기신분증(DeviceInfo)",
+        40 to "살아있음신호(Ping)",
+        53 to "연결끊기요청(DisconnectRequest)",
+        55 to "안내상태물음(GetNavigationSessionState)",
+        56 to "경로상세요청(RouteManeuverRequest)",
+        70 to "연결요청(ConnectionRequest)",
+        71 to "연결상태(ConnectionStatus)",
+        88 to "경로상태(NavigationRouteStatus)",
+        110 to "네트워크준비됨(NetworkLinkReady)"
+    )
+
+    private fun typeName(type: Int?): String = when {
+        type == null -> "형식모름"
+        else -> MESSAGE_TYPE_NAMES[type] ?: "알수없음(번호=$type)"
+    }
+
+    private fun noteReceivedEvent(type: Int?, size: Int) {
+        val key = type ?: -1
+        val count = (receivedTypeCounts[key] ?: 0) + 1
+        receivedTypeCounts[key] = count
+        if (count == 1) {
+            NavLogger.d("[Navdy] 나브디가 보낸 메시지 처음 받음: ${typeName(type)} (${size}바이트)")
+        } else {
+            NavLogger.trace("navdy", "수신 ${typeName(type)} ${size}B")
+        }
+    }
+
+    private fun receivedSummary(): String =
+        receivedTypeCounts.entries
+            .sortedByDescending { it.value }
+            .joinToString(", ") { "${typeName(if (it.key == -1) null else it.key)}=${it.value}회" }
+            .ifEmpty { "없음" }
+
+    private fun readFully(input: InputStream, buffer: ByteArray): Boolean {
+        var offset = 0
+        while (offset < buffer.size) {
+            val n = input.read(buffer, offset, buffer.size - offset)
+            if (n == -1) return false
+            offset += n
+        }
+        return true
+    }
+
+    /** 받은 내용 앞부분을 훑어 NavdyEvent의 종류 필드(tag2)만 뽑아냄. 못 찾으면 null. */
+    private fun extractEventType(payload: ByteArray): Int? {
+        var i = 0
+        fun varint(): Long? {
+            var value = 0L
+            var shift = 0
+            while (i < payload.size) {
+                val b = payload[i].toInt() and 0xFF
+                i++
+                value = value or ((b and 0x7F).toLong() shl shift)
+                if (b < 0x80) return value
+                shift += 7
+                if (shift > 63) return null
+            }
+            return null
+        }
+        while (i < payload.size) {
+            val key = varint() ?: return null
+            val field = (key ushr 3).toInt()
+            when ((key and 7L).toInt()) {
+                0 -> {
+                    val value = varint() ?: return null
+                    if (field == NAVDY_EVENT_TAG_TYPE) return value.toInt()
+                }
+                1 -> i += 8
+                5 -> i += 4
+                2 -> i += (varint() ?: return null).toInt()
+                else -> return null
+            }
+        }
+        return null
     }
 
     private fun closeQuietly() {
@@ -670,6 +804,14 @@ object NavdySender {
                 val now = System.currentTimeMillis()
                 if (now - lastWriteTime < MIN_WRITE_INTERVAL_MS) return@execute
                 lastWriteTime = now
+                // v: 재억 제보(2026-09-03) - 안내 세션 시작은 카카오의 "안내 시작됨" 알림이
+                // 올 때만 보내는데, 안내가 이미 돌아가는 중에 앱이 다시 켜지거나 나브디가
+                // 나중에 붙으면 그 알림을 못 받는 구간이 생김. 그러면 기기 입장에선 세션이
+                // 없는 채로 방향안내만 들어와서 화면이 계속 비어있음. 방향안내를 보내는데
+                // 세션 시작을 이 연결에서 한 번도 안 보냈으면 여기서 먼저 보냄. #문제시 원복
+                if (sessionRequestSentCount == 0) {
+                    writeNavigationSessionRequest(stream, NAV_SESSION_STARTED, activeSessionLabel ?: "목적지")
+                }
                 val maneuverBytes = buildNavigationManeuverEvent(
                     currentRoad, turn.protoValue, distanceToTurn, pendingStreet, eta, speed
                 )
@@ -835,9 +977,11 @@ object NavdySender {
                 writeString(body, FIELD_DEV_MODEL, Build.MODEL ?: "")
                 writeString(body, FIELD_DEV_DEVICE_UUID, "UUID") // 정품도 이 문자열 그대로 보냄
                 writeVarintField(body, FIELD_DEV_SYSTEM_API_LEVEL, Build.VERSION.SDK_INT.toLong())
+                writeString(body, FIELD_DEV_KERNEL_VERSION, System.getProperty("os.version") ?: "")
                 writeVarintField(body, FIELD_DEV_PLATFORM, PLATFORM_ANDROID.toLong())
                 writeString(body, FIELD_DEV_BUILD_TYPE, Build.TYPE ?: "")
                 writeString(body, FIELD_DEV_DEVICE_MAKE, Build.MANUFACTURER ?: "")
+                writeEmbeddedMessage(body, FIELD_DEV_CAPABILITIES, buildCapabilities())
 
                 val out = ByteArrayOutputStream()
                 writeVarintField(out, NAVDY_EVENT_TAG_TYPE, MSG_TYPE_DEVICE_INFO.toLong())
@@ -845,12 +989,24 @@ object NavdySender {
                 val eventBytes = out.toByteArray()
                 writeFramed(stream, eventBytes)
                 lastSentAtMs = System.currentTimeMillis()
+                deviceInfoSentCount++
                 NavLogger.d("[Navdy] 폰 신분증(DeviceInfo) 전송: id=$deviceId 버전=$clientVersion (${eventBytes.size}B)")
             } catch (e: Exception) {
                 NavLogger.e("[Navdy] 폰 신분증 전송 실패: ${e.javaClass.simpleName} ${e.message}")
                 closeQuietly()
             }
         }
+    }
+
+    /** 정품 앱이 신분증에 같이 실어 보내는 "이 폰이 할 수 있는 것" 목록(전부 true). */
+    private fun buildCapabilities(): ByteArray {
+        val out = ByteArrayOutputStream()
+        writeVarintField(out, FIELD_CAP_PLACE_TYPE_SEARCH, 1L)
+        writeVarintField(out, FIELD_CAP_VOICE_SEARCH, 1L)
+        writeVarintField(out, FIELD_CAP_NAV_COORDS_LOOKUP, 1L)
+        writeVarintField(out, FIELD_CAP_CANNED_RESPONSE_TO_SMS, 1L)
+        writeVarintField(out, FIELD_CAP_SUPPORTS_PLAY_AUDIO, 1L)
+        return out.toByteArray()
     }
 
     /** 카카오 길안내가 시작될 때 호출. 아직 연결 전이면 붙는 시점에 자동으로 보냄. */
@@ -870,25 +1026,30 @@ object NavdySender {
         val stream = outputStream ?: return
         executor.execute {
             try {
-                val body = ByteArrayOutputStream()
-                writeVarintField(body, FIELD_SESSION_NEW_STATE, state.toLong())
-                writeString(body, FIELD_SESSION_LABEL, label)
-                writeString(body, FIELD_SESSION_ROUTE_ID, "tmapnda")
-                writeVarintField(body, FIELD_SESSION_SIMULATION_SPEED, 0L)
-                writeVarintField(body, FIELD_SESSION_ORIGIN_DISPLAY, 0L) // false = 폰에서 시작
-                val out = ByteArrayOutputStream()
-                writeVarintField(out, NAVDY_EVENT_TAG_TYPE, MSG_TYPE_NAVIGATION_SESSION_REQUEST.toLong())
-                writeEmbeddedMessage(out, NAVDY_EVENT_EXT_TAG_NAVIGATION_SESSION_REQUEST, body.toByteArray())
-                val eventBytes = out.toByteArray()
-                writeFramed(stream, eventBytes)
-                lastSentAtMs = System.currentTimeMillis()
-                val stateName = if (state == NAV_SESSION_STARTED) "시작" else "종료"
-                NavLogger.d("[Navdy] 안내 세션 $stateName 전송: 목적지=$label (${eventBytes.size}B)")
+                writeNavigationSessionRequest(stream, state, label)
             } catch (e: Exception) {
                 NavLogger.e("[Navdy] 안내 세션 전송 실패: ${e.javaClass.simpleName} ${e.message}")
                 closeQuietly()
             }
         }
+    }
+
+    private fun writeNavigationSessionRequest(stream: OutputStream, state: Int, label: String) {
+        val body = ByteArrayOutputStream()
+        writeVarintField(body, FIELD_SESSION_NEW_STATE, state.toLong())
+        writeString(body, FIELD_SESSION_LABEL, label)
+        writeString(body, FIELD_SESSION_ROUTE_ID, "tmapnda")
+        writeVarintField(body, FIELD_SESSION_SIMULATION_SPEED, 0L)
+        writeVarintField(body, FIELD_SESSION_ORIGIN_DISPLAY, 0L) // false = 폰에서 시작
+        val out = ByteArrayOutputStream()
+        writeVarintField(out, NAVDY_EVENT_TAG_TYPE, MSG_TYPE_NAVIGATION_SESSION_REQUEST.toLong())
+        writeEmbeddedMessage(out, NAVDY_EVENT_EXT_TAG_NAVIGATION_SESSION_REQUEST, body.toByteArray())
+        val eventBytes = out.toByteArray()
+        writeFramed(stream, eventBytes)
+        lastSentAtMs = System.currentTimeMillis()
+        sessionRequestSentCount++
+        val stateName = if (state == NAV_SESSION_STARTED) "시작" else "종료"
+        NavLogger.d("[Navdy] 안내 세션 $stateName 전송: 목적지=$label (${eventBytes.size}B)")
     }
 
     private fun buildNavdyEvent(maneuverEventBytes: ByteArray): ByteArray {
