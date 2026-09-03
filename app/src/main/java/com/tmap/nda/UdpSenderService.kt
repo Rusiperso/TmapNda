@@ -425,6 +425,21 @@ class UdpSenderService : Service() {
         }
     }
 
+    /**
+     * 콤마(carrot_serv.py)가 "카메라"로 보고 거리에 맞춰 스스로 감속해주는 종류 번호.
+     * 이 목록에 없는 종류(스쿨존 20, 사고다발 29, 보행자사고다발 46 등)는 카메라 정보를
+     * 아무리 보내도 콤마가 무시하므로, 감속시키려면 도로제한속도를 낮추는 수밖에 없다.
+     * carrot_serv.py 644줄의 조건과 같은 목록. #문제시 원복
+     */
+    private val CARROT_HANDLES_CAMERA_TYPES = setOf(0, 1, 2, 3, 4, 7, 8, 75, 76)
+
+    /**
+     * 콤마가 모르는 종류를 도로제한속도로 대신 감속시킬 때, 이 거리 안에 들어왔을 때만 적용.
+     * 카카오는 카메라를 1km 넘게 앞에서부터 알려주기도 하는데 그때부터 속도를 낮춰버리면
+     * 한참을 느리게 가게 되므로, 콤마가 카메라 감속을 시작하는 구간과 비슷하게 잡음. #문제시 원복
+     */
+    private val CAMERA_ROAD_LIMIT_APPLY_DIST_M = 400
+
     /** 지금 이 순간 카카오도 경로 위에서 안전이벤트(카메라/방지턱 등)를 잡고 있는지. #문제시 원복 */
     private fun kakaoConfirmsSafetyEventNow(): Boolean {
         val kr = KakaoRouteDataRepository
@@ -437,6 +452,15 @@ class UdpSenderService : Service() {
     private var sdiType = 0
     private var sdiSpeedLimit = 0
     private var sdiDistance = 0
+    // v: 재억 제보(2026-09-03) - 콤마로 실제 나간 회전 정보와, 콤마가 되받아 알려주는
+    // "내가 지금 인식하고 있는 카메라/회전까지 거리"를 나란히 남기기 위한 값. 이 둘을
+    // 한 줄에서 대조하면 앱 문제인지 콤마 문제인지 한 번의 주행으로 갈린다. #문제시 원복
+    private var sentTbtDist = 0
+    private var sentTbtTurnType = -1
+    @Volatile private var opEchoSdiDist = -1
+    @Volatile private var opEchoTbtDist = -1
+    @Volatile private var opPacketCount = 0
+    private var opRateWindowStart = System.currentTimeMillis()
     private var sdiBlockType = 0
     private var sdiBlockSpeed = 0
     private var sdiBlockDist = 0
@@ -586,6 +610,16 @@ class UdpSenderService : Service() {
         }
     }
 
+    /** 직전 스냅샷 이후 콤마에게서 받은 패킷 수를 초당 개수로 환산하고 창을 새로 연다. */
+    private fun opPacketRatePerSec(): Double {
+        val now = System.currentTimeMillis()
+        val elapsedSec = ((now - opRateWindowStart) / 1000.0).coerceAtLeast(0.001)
+        val rate = opPacketCount / elapsedSec
+        opPacketCount = 0
+        opRateWindowStart = now
+        return rate
+    }
+
     private fun logFullStateSnapshot() {
         val ctx = this
         val opState = OpenpilotStateRepository.state.value
@@ -610,7 +644,13 @@ class UdpSenderService : Service() {
                 "연결(ip=${opState?.ip ?: "-"}, active=${opState?.active}, displayActive=${opState?.displayActive}, " +
                 "flickering=${opState?.isFlickering}, 마지막수신=${opState?.lastUpdateTime?.let { System.currentTimeMillis() - it }}ms전) " +
                 "도로제한(camera=$roadLimitSpeed, general=$generalRoadLimitSpeed) " +
-                "SDI(type=$sdiType, limit=$sdiSpeedLimit, dist=$sdiDistance) " +
+                "콤마로보낸값(nSdiType=$sdiType, nSdiSpeedLimit=$sdiSpeedLimit, nSdiDist=$sdiDistance, " +
+                "nTBTDist=$sentTbtDist, nTBTTurnType=$sentTbtTurnType) " +
+                // 콤마가 되받아 알려주는 "내가 지금 인식 중인 거리". 우리가 보낸 값은 있는데
+                // 이쪽이 0이면 콤마가 안 받아들인 것(콤마 설정 AutoNaviSpeedCtrlMode가 0이면
+                // 카메라 감속 자체가 꺼져 있어 항상 0). 둘 다 0이면 우리가 안 보낸 것. #문제시 원복
+                "콤마가받은값(sdi_dist=$opEchoSdiDist, tbt_dist=$opEchoTbtDist) " +
+                "콤마수신속도(초당 ${"%.1f".format(opPacketRatePerSec())}개 - 20개면 콤마가 우리 패킷을 받는 중, 1개면 못 받는 중) " +
                 "차선(source=${LaneSignalRepository.source}, 개수=${LaneSignalRepository.lanes.size}, fresh=${LaneSignalRepository.isFresh()}) " +
                 "볼륨(저장%=$volumePercent, STREAM_MUSIC=$musicVol/$musicMax) " +
                 "HUD(everConnected=${com.tmap.nda.hud.TmapNdaCarAppService.everConnected} - AndroidAuto Cluster용, 이 구조에선 항상 false가 정상) " +
@@ -1378,6 +1418,54 @@ class UdpSenderService : Service() {
                         json.put("nSdiSpeedLimit", 0)
                     }
 
+                    // v: 재억 제보(2026-09-03, "경로 우선(옆도로 속도 잡음) 수정하고 나서 카메라
+                    // 감속이 안 된다") - v19.2.74에서 "티맵 카메라 제한속도가 도로제한속도를
+                    // 끌어내리는 통로"를 막으면서 "카메라 정보 자체는 그대로 나가니 콤마가
+                    // 알아서 감속한다"고 적어뒀는데, 그 전제가 틀렸음. 콤마(carrot_serv.py 644줄)는
+                    // nSdiType이 CARROT_HANDLES_CAMERA_TYPES에 있을 때만 카메라로 보고 감속하고,
+                    // 그 밖의 종류는 통째로 버린다. 그런 종류에게는 도로제한속도가 유일한 감속
+                    // 통로였는데 그게 막히면서 감속이 아예 사라졌음.
+                    //
+                    // 여기서 한 번에 처리하는 이유: 티맵이 잡은 것뿐 아니라 카카오가 잡은 것도
+                    // 똑같이 버려진다(카카오 코드 매핑이 만들어내는 20 어린이보호구역, 6 신호단속,
+                    // 19 철길, 29 사고다발, 30 급커브 등은 전부 목록 밖). 위쪽 티맵 분기만 고치면
+                    // 절반만 고치는 셈이라, 페이로드가 최종 확정된 이 지점에서 출처와 무관하게
+                    // 한 번만 판단한다.
+                    //
+                    // 규칙: 콤마가 버리는 종류 + 제한속도가 있고 + 지금 도로제한보다 낮고 +
+                    // 실제로 가까울 때만 도로제한속도를 그 값으로 낮춘다. 멀리 있는 이벤트로
+                    // 미리 느려지지 않게 거리 제한을 두고, "낮추기"만 하므로 이 규칙 때문에
+                    // 속도가 올라가는 일은 없다. 콤마가 처리해주는 종류는 손대지 않으므로
+                    // 옆도로 급감속 방어(v19.2.74)는 그대로 살아있다. #문제시 원복
+                    val outgoingSdiType = json.optInt("nSdiType", 0)
+                    val outgoingSdiLimit = json.optInt("nSdiSpeedLimit", 0)
+                    val outgoingSdiDist = json.optInt("nSdiDist", 0)
+                    val outgoingRoadLimit = json.optInt("nRoadLimitSpeed", 0)
+                    if (outgoingSdiType !in CARROT_HANDLES_CAMERA_TYPES &&
+                        outgoingSdiLimit >= 30 &&
+                        outgoingSdiDist in 1..CAMERA_ROAD_LIMIT_APPLY_DIST_M &&
+                        outgoingRoadLimit > outgoingSdiLimit
+                    ) {
+                        json.put("nRoadLimitSpeed", outgoingSdiLimit)
+                        NavLogger.dIfChanged(
+                            this@UdpSenderService,
+                            "carrot_unknown_sdi",
+                            "[안전정보] 콤마가 모르는 종류(nSdiType=$outgoingSdiType)라 카메라 감속을 못 함 - " +
+                                "도로제한속도를 ${outgoingRoadLimit}->${outgoingSdiLimit}으로 낮춰서 대신 감속시킴 (남은거리=${outgoingSdiDist}m)"
+                        )
+                    }
+
+                    // v: 재억 제보(2026-09-03, "카카오 안내 중 카메라 감속 안 함") - 지금까지
+                    // [전체상태]의 SDI(...)는 값이 한 번도 채워지지 않는 죽은 변수를 찍고 있어서
+                    // 항상 0이었고, 콤마로 실제로 내보내는 값은 로그 어디에도 안 남았음. 그래서
+                    // "우리가 0을 보냈나 / 콤마가 안 읽었나"를 가릴 수가 없었음. 페이로드가
+                    // 최종 확정되는 이 지점에서 실제 전송값을 그대로 담아둠. #문제시 원복
+                    sdiType = json.optInt("nSdiType", 0)
+                    sdiSpeedLimit = json.optInt("nSdiSpeedLimit", 0)
+                    sdiDistance = json.optInt("nSdiDist", 0)
+                    sentTbtDist = json.optInt("nTBTDist", 0)
+                    sentTbtTurnType = json.optInt("nTBTTurnType", -1)
+
                     latestPayload = json.toString()
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -1489,6 +1577,12 @@ class UdpSenderService : Service() {
                         continue
                     }
                     val data = String(packet.data, 0, packet.length, Charsets.UTF_8)
+                    // v: 재억 제보(2026-09-03) - 콤마(carrot_man.broadcast_version_info)는 폰에서
+                    // 패킷을 한 번이라도 받으면 그때부터 폰 주소로 **초당 20개**를 직접 쏘고,
+                    // 못 받는 동안에는 브로드캐스트로 **초당 1개**만 뿌리게 돼 있음. 즉 이 숫자
+                    // 하나로 "콤마가 우리 패킷을 받고 있는가"가 그대로 판정됨 - 카메라 감속이
+                    // 안 되는 이유를 앱/콤마 중 어느 쪽으로 좁힐지 이걸로 갈린다. #문제시 원복
+                    opPacketCount++
                     try {
                         val json = JSONObject(data)
                         val carrot2 = json.optString("Carrot2", "-")
@@ -1519,6 +1613,14 @@ class UdpSenderService : Service() {
                             val trafficState = json.optInt("trafficState", 0)
                             val xState = json.optInt("xState", 0)
                             val active = json.optBoolean("active", false)
+
+                        // v: 재억 제보(2026-09-03) - 콤마가 매 패킷에 자기가 인식 중인 카메라까지
+                        // 거리(sdi_dist)와 회전까지 거리(tbt_dist)를 실어 보내주고 있었는데,
+                        // 이 값이 담긴 원본 JSON은 1분에 한 번 표본으로만 남고 있어서 22분 주행
+                        // 로그에 표본이 12개뿐이었음. 값만 따로 뽑아 [전체상태]에서 우리가 보낸
+                        // 값과 나란히 보이게 함. #문제시 원복
+                        if (json.has("sdi_dist")) opEchoSdiDist = json.optInt("sdi_dist", -1)
+                        if (json.has("tbt_dist")) opEchoTbtDist = json.optDouble("tbt_dist", -1.0).toInt()
 
                         if (lastActive != active) {
                             NavLogger.d(this@UdpSenderService, "openpilot 연결 상태 변경: active=$active, ip=${packet.address?.hostAddress}, carrot2=$carrot2")

@@ -156,6 +156,36 @@ object NavdySender {
     private const val REQUEST_SUCCESS = 1
     private const val PHONE_IDLE = 1
 
+    // v: 재억 제보(2026-09-03, v19.2.93 로그로 원인 확정) - 기기가 붙자마자 물어보는 건
+    // 5개가 아니라 **13개**였고, 우리는 5개만 답하고 있었다. 나머지 8개(운전자설정 50 /
+    // 길안내설정 58 / 즐겨찾는연락처 64 / 즐겨찾는목적지 66 / 추천목적지 68 / 입력설정 75 /
+    // 알림설정 90 / 상용구 135)는 무응답. 기기 입장에선 "설치가 안 끝난 앱"이라, 22분간
+    // 경로 요청 19번·상태 질문 1번에 답이 0건이던 것과 아귀가 맞는다. 특히 58은 길안내를
+    // 어떻게 할지 묻는 것이라 이게 빠지면 안내 요청을 무시할 이유가 된다.
+    //
+    // 답장 번호는 전부 "요청 번호 + 1"이고, 8개 중 7개는 본문 형식까지 똑같다(정품 소스
+    // NavigationPreferencesUpdate.java 등에서 확인):
+    //   tag1 status(필수, ENUM) / tag2 statusDetail(선택) / tag3 serial_number(필수, INT64)
+    //   / tag4 목록·설정(선택)
+    // 우리는 줄 정보가 없으므로 tag4는 생략하고 "성공 + 받은 일련번호 그대로"만 돌려준다.
+    // 필수 두 개를 빠뜨리면 proto2 규칙상 메시지가 통째로 버려지므로(폰 신분증 때와 같은
+    // 함정) 반드시 같이 넣어야 한다. #문제시 원복: 이 표를 비우면 v19.2.93과 동일해짐
+    private val SERIAL_ECHO_ANSWERS: Map<Int, Pair<Int, String>> = mapOf(
+        50 to (51 to "운전자설정"),
+        58 to (59 to "길안내설정"),
+        66 to (67 to "즐겨찾는목적지"),
+        68 to (69 to "추천목적지"),
+        75 to (76 to "입력설정"),
+        90 to (91 to "알림설정"),
+        135 to (136 to "상용구")
+    )
+    // 즐겨찾는연락처만 형식이 다름 - 일련번호 없이 status(tag1)만 필수. #문제시 원복
+    private const val MSG_TYPE_FAVORITE_CONTACTS_REQUEST = 64
+    private const val MSG_TYPE_FAVORITE_CONTACTS_RESPONSE = 65
+    private const val FIELD_ANSWER_STATUS = 1
+    private const val FIELD_ANSWER_SERIAL = 3
+    private const val FIELD_REQUEST_SERIAL = 1
+
     private const val MSG_TYPE_DEVICE_INFO = 27
     private const val NAVDY_EVENT_EXT_TAG_DEVICE_INFO = 127
     private const val FIELD_DEV_DEVICE_ID = 1
@@ -529,7 +559,7 @@ object NavdySender {
                     // 매번 "채널 2 로 연결 성공" 뒤 2~50ms 만에 상대가 끊는 게 확인됐고
                     // (전송 성공 0회), 이건 나브디 서비스가 아닌 다른 창구에 잘못 붙은
                     // 가짜 성공이었음. 정품 앱도 이런 방식은 쓰지 않음. #문제시 원복
-                    insecureSock ?: throw e
+                    insecureSock ?: dialAdvertisedService(device) ?: throw e
                 }
                 // v: 재억 제보(2026-09-03) - 거는 동안 나브디가 먼저 걸어와서 이미 붙어버릴
                 // 수 있음(실기기에서 1.3초 사이에 실제로 발생). 그때 방금 만든 연결로 덮어쓰면
@@ -572,6 +602,44 @@ object NavdySender {
                 connecting = false
             }
         }
+    }
+
+    /**
+     * v: 재억 제보(2026-09-03, v19.2.93 로그) - 걸기가 매번 "read failed"로 실패하던 진짜 이유.
+     * `[Navdy][기기창구조사]` 로그를 보면 Navdy Display (0925)가 실제로 열어둔 창구는
+     * 표준 SPP(00001101-...)와 503b9411-7894-43fa-bc9d-ec62fe9c9d32 딱 둘뿐인데, 우리는 정품
+     * 소스에 적힌 1992B7D7-...로만 걸고 있었음 - 기기에 없는 문을 계속 두드린 셈이라 붙는
+     * 경우는 기기가 우리 대기 창구로 걸어올 때뿐이었다. 정품 UUID가 실패하면 기기가 지금
+     * 실제로 열어뒀다고 알려주는 창구로 마지막에 한 번 더 시도한다.
+     *
+     * 표준 블루투스 프로필(0000xxxx-0000-1000-8000-00805F9B34FB 꼴, SPP 등)은 제외한다 -
+     * 예전 "채널 1~5 억지 찍기"처럼 나브디와 무관한 창구에 붙어 가짜 성공을 만들고 첫 전송에서
+     * 끊기는 일을 다시 만들지 않기 위해서다. #문제시 원복: 이 함수 호출을 빼면 v19.2.93과 동일
+     */
+    private fun dialAdvertisedService(device: BluetoothDevice): BluetoothSocket? {
+        val advertised = try {
+            device.uuids
+        } catch (e: SecurityException) {
+            NavLogger.d("[Navdy] 기기 창구 목록 조회 권한 없음 - 추가 시도 건너뜀")
+            null
+        } ?: return null
+
+        for (parcel in advertised) {
+            val uuid = parcel?.uuid ?: continue
+            if (uuid == NAVDY_SERVICE_UUID || uuid == NAVDY_PROXY_TUNNEL_UUID) continue
+            if (uuid.toString().endsWith("-0000-1000-8000-00805f9b34fb", ignoreCase = true)) continue
+            var s: BluetoothSocket? = null
+            try {
+                s = device.createRfcommSocketToServiceRecord(uuid)
+                s.connect()
+                NavLogger.d("[Navdy] 기기가 열어둔 창구($uuid)로 연결 성공")
+                return s
+            } catch (e: IOException) {
+                try { s?.close() } catch (_: Exception) {}
+                logIfChanged("dial_$uuid", "[Navdy] 기기 창구($uuid) 연결도 실패(${e.message})")
+            }
+        }
+        return null
     }
 
     // v: 재억 제보(2026-08-31, 로그 재분석) - fetchUuidsWithSdp()는 비동기라 호출만 하고 바로
@@ -679,7 +747,7 @@ object NavdySender {
                     when (type) {
                         MSG_TYPE_NAVIGATION_ROUTE_RESPONSE -> handleRouteResponse(payload)
                         MSG_TYPE_DEVICE_INFO -> logDisplayDeviceInfo(payload)
-                        else -> if (type != null) answerDisplayRequest(type)
+                        else -> if (type != null) answerDisplayRequest(type, payload)
                     }
                 }
             } catch (e: Exception) {
@@ -740,6 +808,14 @@ object NavdySender {
         14 to "화면닫기(DismissScreen)",
         28 to "전화상태(PhoneEvent)",
         43 to "음악정보요청(MusicTrackInfoRequest)",
+        50 to "운전자설정요청(DriverProfilePreferencesRequest)",
+        58 to "길안내설정요청(NavigationPreferencesRequest)",
+        64 to "즐겨찾는연락처요청(FavoriteContactsRequest)",
+        66 to "즐겨찾는목적지요청(FavoriteDestinationsRequest)",
+        68 to "추천목적지요청(RecommendedDestinationsRequest)",
+        75 to "입력설정요청(InputPreferencesRequest)",
+        90 to "알림설정요청(NotificationPreferencesRequest)",
+        135 to "상용구요청(CannedMessagesRequest)",
         72 to "폰상태요청(PhoneStatusRequest)",
         104 to "전화상태요청(CallStateUpdateRequest)",
         108 to "지금재생중요청(NowPlayingUpdateRequest)",
@@ -1145,8 +1221,24 @@ object NavdySender {
      * 제공하지 않으므로 "없음/조용함"에 해당하는 빈 답을 보냄 - 중요한 건 답이 온다는 사실
      * 자체(기기가 폰을 준비 완료로 보게 하는 것)임. #문제시 원복
      */
-    private fun answerDisplayRequest(type: Int) {
+    private fun answerDisplayRequest(type: Int, payload: ByteArray) {
+        // 형식이 같은 설정/목록 질문 7가지는 표 하나로 처리. 기기가 물어볼 때 붙여 보낸
+        // 일련번호를 그대로 되돌려줘야 자기 질문에 대한 답으로 짝지어진다. #문제시 원복
+        SERIAL_ECHO_ANSWERS[type]?.let { (responseType, name) ->
+            val requestBody = findMessageField(payload, type + 100)
+            val serial = requestBody?.let { findVarintField(it, FIELD_REQUEST_SERIAL) } ?: 0L
+            val body = ByteArrayOutputStream()
+            writeVarintField(body, FIELD_ANSWER_STATUS, REQUEST_SUCCESS.toLong())
+            writeVarintField(body, FIELD_ANSWER_SERIAL, serial)
+            sendSimpleEvent(responseType, "$name 답장(가진 정보 없음, 일련번호=$serial)", body.toByteArray())
+            return
+        }
         when (type) {
+            MSG_TYPE_FAVORITE_CONTACTS_REQUEST -> {
+                val body = ByteArrayOutputStream()
+                writeVarintField(body, FIELD_ANSWER_STATUS, REQUEST_SUCCESS.toLong())
+                sendSimpleEvent(MSG_TYPE_FAVORITE_CONTACTS_RESPONSE, "즐겨찾는연락처 답장(없음)", body.toByteArray())
+            }
             MSG_TYPE_PHONE_STATUS_REQUEST -> {
                 val body = ByteArrayOutputStream()
                 writeVarintField(body, 1, REQUEST_SUCCESS.toLong())
@@ -1331,6 +1423,39 @@ object NavdySender {
             out.write((bits and 0xFF).toInt())
             bits = bits ushr 8
         }
+    }
+
+    /** 받은 내용에서 지정한 번호의 "숫자 필드"만 꺼냄. 없으면 null. */
+    private fun findVarintField(bytes: ByteArray, tag: Int): Long? {
+        var i = 0
+        fun varint(): Long? {
+            var value = 0L
+            var shift = 0
+            while (i < bytes.size) {
+                val b = bytes[i].toInt() and 0xFF
+                i++
+                value = value or ((b and 0x7F).toLong() shl shift)
+                if (b < 0x80) return value
+                shift += 7
+                if (shift > 63) return null
+            }
+            return null
+        }
+        while (i < bytes.size) {
+            val key = varint() ?: return null
+            val field = (key ushr 3).toInt()
+            when ((key and 7L).toInt()) {
+                0 -> {
+                    val value = varint() ?: return null
+                    if (field == tag) return value
+                }
+                1 -> i += 8
+                5 -> i += 4
+                2 -> i += (varint() ?: return null).toInt()
+                else -> return null
+            }
+        }
+        return null
     }
 
     /** 받은 내용에서 지정한 번호의 "묶음 필드"(문자열/내부 메시지)만 꺼냄. 없으면 null. */
