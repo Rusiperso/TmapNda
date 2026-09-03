@@ -64,10 +64,18 @@ class KakaoGuidanceDelegate(
         // 시점이 바로 이때이므로, 백그라운드 15초 루프를 기다리지 않고 이 순간 바로
         // 1번 더 시도(이미 연결돼있으면 조용히 무시됨, 연결 안 돼있으면 여기서 바로 시도). #문제시 원복
         com.tmap.nda.navdy.NavdyAutoConnect.tryConnect(context)
+        // v: 재억 제보(2026-09-03) - 나브디에 연결도 되고 전송도 205회 성공하는데 화면이
+        // 계속 비어있던 원인. 정품 앱은 안내 시작 시 "안내 세션 시작"을 따로 알려주고,
+        // 그게 있어야 기기가 방향안내를 그린다(자세한 근거는 NavdySender 주석 참고). #문제시 원복
+        val destination = guidance.trip?.goal?.name.orEmpty()
+            .ifBlank { KakaoRouteDataRepository.destinationName }
+            .ifBlank { "목적지" }
+        com.tmap.nda.navdy.NavdySender.startNavigationSession(destination)
     }
 
     override fun guidanceGuideEnded(guidance: KNGuidance) {
         NavLogger.d(context, "[카카오안내] 종료됨(도착) - Tmap으로 복귀")
+        com.tmap.nda.navdy.NavdySender.endNavigationSession()
         KakaoRouteDataRepository.reset()
         naviView?.guidanceGuideEnded(guidance)
         onGuideEnded()

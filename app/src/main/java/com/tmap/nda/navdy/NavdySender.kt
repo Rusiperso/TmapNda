@@ -75,6 +75,63 @@ object NavdySender {
     // alelec_navdy_client, NavigationSessionState.java)로 원본 enum 값을 직접 확인함. 안내 중에는
     // 항상 NAV_SESSION_STARTED(4)를 보내면 됨. #문제시 원복
     private const val NAV_SESSION_STARTED = 4
+    private const val NAV_SESSION_STOPPED = 3
+
+    // v: 재억 제보(2026-09-03, 실기기 로그로 원인 확정) - "연결은 되는데 나브디 화면에 아무것도
+    // 안 뜬다". 11:17:09 연결 후 4분27초 동안 전송 205회/수신 122회로 통신은 완벽했는데 화면은
+    // 계속 비어있었음. 정품 앱 소스를 대조해보니 **안내를 시작할 때 보내는 별도의 메시지가
+    // 통째로 빠져 있었음**: NavigationHelper.sendStateChangeRequest()가
+    //   NavigationSessionRequest(newState, 목적지명, routeId, simulationSpeed, originDisplay)
+    // 를 먼저 보내서 기기에 "지금부터 안내 세션 시작"을 알린다. 이 신호 없이 방향안내
+    // (NavigationManeuverEvent)만 보내면 기기는 세션이 없는 상태라 그리지 않는다.
+    // NavigationManeuverEvent 안의 navigationState 필드는 세션을 여는 용도가 아니라 현재
+    // 상태를 덧붙이는 용도였음(그래서 그것만으론 화면이 안 켜졌던 것).
+    //   MessageType.NavigationSessionRequest = 11, Ext_NavdyEvent.navigationSessionRequest = 111
+    //   필드: tag1 newState(ENUM, required), tag2 label(목적지명), tag3 routeId,
+    //         tag4 simulationSpeed(UINT32), tag5 originDisplay(BOOL, 폰에서 시작했으면 false)
+    // #문제시 원복: startNavigationSession/endNavigationSession 호출을 빼면 됨
+    private const val MSG_TYPE_NAVIGATION_SESSION_REQUEST = 11
+    private const val NAVDY_EVENT_EXT_TAG_NAVIGATION_SESSION_REQUEST = 111
+    private const val FIELD_SESSION_NEW_STATE = 1
+    private const val FIELD_SESSION_LABEL = 2
+    private const val FIELD_SESSION_ROUTE_ID = 3
+    private const val FIELD_SESSION_SIMULATION_SPEED = 4
+    private const val FIELD_SESSION_ORIGIN_DISPLAY = 5
+
+    // v: 재억 제보(2026-09-03, 나브디 화면 사진) - 기기 화면에 "App Disconnected / The Navdy app
+    // is not running on your phone / Launch"가 떠 있었음. 블루투스로 붙어서 272회를 보내도
+    // 기기는 우리를 "나브디 앱"으로 인정하지 않고 있었다는 뜻. 정품 앱을 보니 붙자마자
+    // AppInstance.sendPhoneInfo()가 **DeviceInfo(폰 신분증)** 를 보내고, 기기는 그걸 받아야
+    // 앱이 돌고 있다고 판단함. 우리는 이걸 아예 안 보내고 있었음.
+    //   MessageType.DeviceInfo = 27, Ext_NavdyEvent.deviceInfo = 127
+    //   required(1~7): deviceId, clientVersion, protocolVersion, deviceName, systemVersion,
+    //                  model, deviceUuid  ← proto2 required라 하나만 빠져도 통째로 버려짐
+    //   deviceId 형식은 NavdyDeviceId: "BT/<대문자 주소>;N/<기기이름>"
+    //   protocolVersion은 정품과 동일하게 "1.0"(Version.PROTOCOL_VERSION) 고정
+    // #문제시 원복: sendDeviceInfo() 호출을 빼면 됨
+    private const val MSG_TYPE_DEVICE_INFO = 27
+    private const val NAVDY_EVENT_EXT_TAG_DEVICE_INFO = 127
+    private const val FIELD_DEV_DEVICE_ID = 1
+    private const val FIELD_DEV_CLIENT_VERSION = 2
+    private const val FIELD_DEV_PROTOCOL_VERSION = 3
+    private const val FIELD_DEV_DEVICE_NAME = 4
+    private const val FIELD_DEV_SYSTEM_VERSION = 5
+    private const val FIELD_DEV_MODEL = 6
+    private const val FIELD_DEV_DEVICE_UUID = 7
+    private const val FIELD_DEV_SYSTEM_API_LEVEL = 8
+    private const val FIELD_DEV_PLATFORM = 10
+    private const val FIELD_DEV_BUILD_TYPE = 11
+    private const val FIELD_DEV_DEVICE_MAKE = 12
+    private const val NAVDY_PROTOCOL_VERSION = "1.0"
+    private const val PLATFORM_ANDROID = 2
+
+    // DeviceInfo를 만들려면 기기 이름/주소가 필요해서 연결 시점에 쓸 Context를 보관. #문제시 원복
+    @Volatile private var appContext: Context? = null
+
+    // 연결과 안내 시작은 순서가 뒤바뀔 수 있음(실제 로그에서 연결 11:17:09 → 안내 시작
+    // 11:18:13으로 1분 차이). 안내 중인 목적지를 기억해뒀다가, 어느 쪽이 나중에 오든
+    // 그 시점에 세션 시작을 보내도록 함. #문제시 원복
+    @Volatile private var activeSessionLabel: String? = null
 
     private val executor = Executors.newSingleThreadExecutor()
     @Volatile private var socket: BluetoothSocket? = null
@@ -138,6 +195,7 @@ object NavdySender {
     @Volatile private var listening = false
 
     fun startListening(context: Context) {
+        appContext = context.applicationContext
         if (listening) return
         listening = true
         val thread = Thread {
@@ -180,6 +238,7 @@ object NavdySender {
                     // 끊기면 다시 위로 올라가 새 대기 소켓을 염. #문제시 원복
                     startReaderThread(accepted)
                     startPingThread()   // 4초마다 살아있음 신호(정품 앱과 동일) #문제시 원복
+                    onConnectedHandshake()
                     readerThread?.join()
                     NavLogger.d("[Navdy] 연결 종료됨 - 다시 대기 상태로 돌아감")
                     closeQuietly()
@@ -419,6 +478,7 @@ object NavdySender {
                 pingCountSinceConnect = 0
                 receivedCountSinceConnect = 0
                 NavLogger.d("[Navdy] 연결 성공: ${device.name}")
+                onConnectedHandshake()
             } catch (e: Exception) {
                 // v: 재억 제보(2026-08-27) - 로그 파일에는 "연결 시도"만 계속 남고 성공/실패 여부가
                 // 안 남아서 원인 파악이 안 됐음. 기존엔 android.util.Log만 써서 logcat에만 남고
@@ -466,6 +526,19 @@ object NavdySender {
 
     private fun connectionAgeMs(): Long =
         if (connectedAtMs == 0L) 0L else System.currentTimeMillis() - connectedAtMs
+
+    // v: 재억 제보(2026-09-03) - [전체상태] 요약 로그에 나브디 연결 상태가 아예
+    // 빠져있어서, 로그만 보고는 지금 연결돼있는지 끊겨있는지 알 수 없었음. 연결/끊김
+    // "사건"만 로그에 남고 4초 신호는 메모리에만 기록되다 보니, 연결이 조용히 죽어있어도
+    // 로그가 비어있는 것처럼 보임. 요약 로그에 매번 찍을 수 있게 한 줄로 정리. #문제시 원복
+    fun statusForLog(): String {
+        val connected = isConnected()
+        return if (connected) {
+            "connected=true 유지=${connectionAgeMs()}ms 전송=${sentCountSinceConnect}회 신호=${pingCountSinceConnect}회 수신=${receivedCountSinceConnect}회"
+        } else {
+            "connected=false 대기중=${listening}"
+        }
+    }
 
     fun disconnect() {
         executor.execute { closeQuietly() }
@@ -703,6 +776,97 @@ object NavdySender {
         thread.name = "NavdyPing"
         pingThread = thread
         thread.start()
+    }
+
+    /**
+     * 붙자마자 해야 하는 인사 절차. 정품 앱 순서 그대로 — 먼저 폰 신분증(DeviceInfo)을
+     * 보내 "나브디 앱이 돌고 있다"를 알리고, 안내 중이면 안내 세션도 이어서 연다.
+     * executor가 단일 스레드라 이 순서대로 나간다. #문제시 원복
+     */
+    private fun onConnectedHandshake() {
+        sendDeviceInfo()
+        val label = activeSessionLabel ?: return
+        sendNavigationSessionRequest(NAV_SESSION_STARTED, label)
+    }
+
+    private fun sendDeviceInfo() {
+        val stream = outputStream ?: return
+        val ctx = appContext
+        executor.execute {
+            try {
+                val adapter = try { BluetoothAdapter.getDefaultAdapter() } catch (e: Exception) { null }
+                val phoneName = (try { adapter?.name } catch (e: SecurityException) { null })
+                    ?: Build.MODEL
+                val address = (try { adapter?.address } catch (e: SecurityException) { null })
+                    ?: "00:00:00:00:00:00"
+                val deviceId = "BT/${address.uppercase(java.util.Locale.US)};N/$phoneName"
+                val clientVersion = try {
+                    ctx?.packageManager?.getPackageInfo(ctx.packageName, 0)?.versionName
+                } catch (e: Exception) { null } ?: "1.0"
+
+                val body = ByteArrayOutputStream()
+                writeString(body, FIELD_DEV_DEVICE_ID, deviceId)
+                writeString(body, FIELD_DEV_CLIENT_VERSION, clientVersion)
+                writeString(body, FIELD_DEV_PROTOCOL_VERSION, NAVDY_PROTOCOL_VERSION)
+                writeString(body, FIELD_DEV_DEVICE_NAME, phoneName)
+                writeString(body, FIELD_DEV_SYSTEM_VERSION, Build.VERSION.RELEASE ?: "")
+                writeString(body, FIELD_DEV_MODEL, Build.MODEL ?: "")
+                writeString(body, FIELD_DEV_DEVICE_UUID, "UUID") // 정품도 이 문자열 그대로 보냄
+                writeVarintField(body, FIELD_DEV_SYSTEM_API_LEVEL, Build.VERSION.SDK_INT.toLong())
+                writeVarintField(body, FIELD_DEV_PLATFORM, PLATFORM_ANDROID.toLong())
+                writeString(body, FIELD_DEV_BUILD_TYPE, Build.TYPE ?: "")
+                writeString(body, FIELD_DEV_DEVICE_MAKE, Build.MANUFACTURER ?: "")
+
+                val out = ByteArrayOutputStream()
+                writeVarintField(out, NAVDY_EVENT_TAG_TYPE, MSG_TYPE_DEVICE_INFO.toLong())
+                writeEmbeddedMessage(out, NAVDY_EVENT_EXT_TAG_DEVICE_INFO, body.toByteArray())
+                val eventBytes = out.toByteArray()
+                writeFramed(stream, eventBytes)
+                lastSentAtMs = System.currentTimeMillis()
+                NavLogger.d("[Navdy] 폰 신분증(DeviceInfo) 전송: id=$deviceId 버전=$clientVersion (${eventBytes.size}B)")
+            } catch (e: Exception) {
+                NavLogger.e("[Navdy] 폰 신분증 전송 실패: ${e.javaClass.simpleName} ${e.message}")
+                closeQuietly()
+            }
+        }
+    }
+
+    /** 카카오 길안내가 시작될 때 호출. 아직 연결 전이면 붙는 시점에 자동으로 보냄. */
+    fun startNavigationSession(destinationLabel: String) {
+        activeSessionLabel = destinationLabel
+        sendNavigationSessionRequest(NAV_SESSION_STARTED, destinationLabel)
+    }
+
+    /** 카카오 길안내가 끝날 때 호출. */
+    fun endNavigationSession() {
+        val label = activeSessionLabel ?: return
+        activeSessionLabel = null
+        sendNavigationSessionRequest(NAV_SESSION_STOPPED, label)
+    }
+
+    private fun sendNavigationSessionRequest(state: Int, label: String) {
+        val stream = outputStream ?: return
+        executor.execute {
+            try {
+                val body = ByteArrayOutputStream()
+                writeVarintField(body, FIELD_SESSION_NEW_STATE, state.toLong())
+                writeString(body, FIELD_SESSION_LABEL, label)
+                writeString(body, FIELD_SESSION_ROUTE_ID, "tmapnda")
+                writeVarintField(body, FIELD_SESSION_SIMULATION_SPEED, 0L)
+                writeVarintField(body, FIELD_SESSION_ORIGIN_DISPLAY, 0L) // false = 폰에서 시작
+                val out = ByteArrayOutputStream()
+                writeVarintField(out, NAVDY_EVENT_TAG_TYPE, MSG_TYPE_NAVIGATION_SESSION_REQUEST.toLong())
+                writeEmbeddedMessage(out, NAVDY_EVENT_EXT_TAG_NAVIGATION_SESSION_REQUEST, body.toByteArray())
+                val eventBytes = out.toByteArray()
+                writeFramed(stream, eventBytes)
+                lastSentAtMs = System.currentTimeMillis()
+                val stateName = if (state == NAV_SESSION_STARTED) "시작" else "종료"
+                NavLogger.d("[Navdy] 안내 세션 $stateName 전송: 목적지=$label (${eventBytes.size}B)")
+            } catch (e: Exception) {
+                NavLogger.e("[Navdy] 안내 세션 전송 실패: ${e.javaClass.simpleName} ${e.message}")
+                closeQuietly()
+            }
+        }
     }
 
     private fun buildNavdyEvent(maneuverEventBytes: ByteArray): ByteArray {
