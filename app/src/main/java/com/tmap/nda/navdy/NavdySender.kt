@@ -101,8 +101,12 @@ object NavdySender {
             NavLogger.d("[Navdy] 연결 담당 시작 (nMirror와 같은 방식으로 폰이 거는 쪽)")
             while (running) {
                 try {
-                    if (!isConnected()) connectOnce()
-                    else sendPing()
+                    if (!isConnected()) {
+                        connectOnce()
+                    } else {
+                        sendPing()
+                        sendRouteCoordsIfChanged()
+                    }
                     Thread.sleep(PING_INTERVAL_MS)
                 } catch (e: InterruptedException) {
                     return@Thread
@@ -182,6 +186,42 @@ object NavdySender {
         else -> "알수없음(번호=$type)"
     }
 
+    /**
+     * v: 재억 제보(2026-09-04, 다른 사용자 실기기) - "직접 연결만 켜면 연결이 안 되는데,
+     * nMirror로는 된다". nMirror를 디컴파일해 확인하니 찾는 방법이 완전히 달랐다:
+     * nMirror는 페어링 목록을 아예 안 보고, 설정에 저장해둔 주소로
+     * `adapter.getRemoteDevice(주소)`를 바로 부른다. 우리는 "페어링 목록에 있고 + 이름에
+     * navdy/hud가 들어갈 것"을 둘 다 요구했는데, 이름은 폰이 아직 못 읽어와 null인 경우가
+     * 흔하고 페어링이 안 돼 있어도 연결 자체는 가능하다. 그래서 시도조차 못 하고 있었다.
+     *
+     * 한 번 붙은 기기의 주소를 기억해뒀다가 다음부터는 그 주소로 바로 연결한다(nMirror와
+     * 동일). 기억된 게 없을 때만 예전처럼 이름으로 찾는다. #문제시 원복
+     */
+    private const val PREF_LAST_ADDRESS = "navdy_last_address"
+
+    private fun savedAddress(): String? =
+        appContext?.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            ?.getString(PREF_LAST_ADDRESS, null)
+
+    private fun rememberAddress(address: String) {
+        appContext?.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            ?.edit()?.putString(PREF_LAST_ADDRESS, address)?.apply()
+    }
+
+    private fun findNavdyDevice(adapter: BluetoothAdapter): BluetoothDevice? {
+        savedAddress()?.let { addr ->
+            runCatching { adapter.getRemoteDevice(addr) }.getOrNull()?.let { return it }
+        }
+        return try {
+            adapter.bondedDevices?.firstOrNull { d ->
+                val name = (try { d.name } catch (e: SecurityException) { null } ?: "").lowercase()
+                name.contains("navdy") || name.contains("hud")
+            }
+        } catch (e: SecurityException) {
+            null
+        }
+    }
+
     private fun connectOnce() {
         if (connecting) return
         connecting = true
@@ -191,12 +231,20 @@ object NavdySender {
                 logIfChanged("bt", "[Navdy] 블루투스 꺼져있음 - 10초 뒤 다시 시도")
                 return
             }
-            val device = adapter.bondedDevices?.firstOrNull { d ->
-                val n = (try { d.name } catch (e: SecurityException) { null } ?: "").lowercase()
-                n.contains("navdy") || n.contains("hud")
-            }
+            val device = findNavdyDevice(adapter)
             if (device == null) {
-                logIfChanged("pair", "[Navdy] 페어링된 나브디 기기 없음 - 블루투스 설정에서 먼저 페어링 필요")
+                // 왜 못 찾았는지 알 수 있게 폰에 등록된 기기 목록을 한 번만 남긴다.
+                val bonded = try {
+                    adapter.bondedDevices?.joinToString(", ") { d ->
+                        "${(try { d.name } catch (e: SecurityException) { null }) ?: "이름없음"}(${d.address})"
+                    } ?: "목록 못 읽음"
+                } catch (e: SecurityException) {
+                    "권한 없어 목록 못 읽음"
+                }
+                logIfChanged(
+                    "pair",
+                    "[Navdy] 나브디로 보이는 기기를 못 찾음 - 폰에 등록된 블루투스 기기: [$bonded]"
+                )
                 return
             }
             try { adapter.cancelDiscovery() } catch (_: SecurityException) {}
@@ -222,7 +270,9 @@ object NavdySender {
             receivedTypes.clear()
             lastLogged.remove("dial")
             lastLogged.remove("dial2")
-            NavLogger.d("[Navdy] 연결됨: ${try { device.name } catch (e: SecurityException) { "이름 확인 불가" }}")
+            lastLogged.remove("pair")
+            rememberAddress(device.address)
+            NavLogger.d("[Navdy] 연결됨: ${try { device.name } catch (e: SecurityException) { "이름 확인 불가" }} (${device.address})")
 
             startReader(sock)
             greet()
@@ -248,8 +298,13 @@ object NavdySender {
                 writeFrame(stream, TYPE_CONTROL_JSON, time.toString().toByteArray(Charsets.UTF_8))
 
                 writeFrame(stream, TYPE_NAVI_PLAYING, byteArrayOf(if (navigating) 1 else 0))
-                writeFrame(stream, TYPE_ROUTE_COORDS, routeCoordsPayload())
-                NavLogger.d("[Navdy] 인사 보냄(시각 동기화 + 안내상태) - 이제 길안내를 보낼 수 있음")
+                val payload = routeCoordsPayload()
+                writeFrame(stream, TYPE_ROUTE_COORDS, payload)
+                lastRouteSentAtMs = com.tmap.nda.KakaoRouteDataRepository.routeCoordinatesUpdatedAt
+                NavLogger.d(
+                    "[Navdy] 인사 보냄(시각 동기화 + 안내상태 + 경로 좌표 ${payload.size / 8}개 지점)" +
+                        " - 이제 길안내를 보낼 수 있음"
+                )
             } catch (e: Exception) {
                 NavLogger.e("[Navdy] 인사 실패: ${e.javaClass.simpleName} ${e.message}")
                 closeQuietly()
@@ -281,18 +336,32 @@ object NavdySender {
         return buffer.array()
     }
 
+    // v: 재억 제보(2026-09-04, v19.3.1 실기기 로그) - 안내가 먼저 시작되고 나브디가 나중에
+    // 붙는 순서(고속도로 주행 중 연결 등)에서는 setNavigating 시점에 아직 연결이 없어
+    // 경로 좌표를 보낼 기회를 놓치고, 그 뒤로 다시 보내는 곳이 없었다. 연결 담당 루프가
+    // 10초마다 경로가 바뀌었는지 확인해 보내도록 해서 스스로 따라잡게 한다. #문제시 원복
+    @Volatile private var lastRouteSentAtMs = 0L
+
     private fun sendRouteCoords() {
         val stream = output ?: return
         executor.execute {
             try {
                 val payload = routeCoordsPayload()
                 writeFrame(stream, TYPE_ROUTE_COORDS, payload)
+                lastRouteSentAtMs = com.tmap.nda.KakaoRouteDataRepository.routeCoordinatesUpdatedAt
                 NavLogger.d("[Navdy] 경로 좌표 전송: ${payload.size / 8}개 지점 (${payload.size}B)")
             } catch (e: Exception) {
                 NavLogger.e("[Navdy] 경로 좌표 전송 실패: ${e.message}")
                 closeQuietly()
             }
         }
+    }
+
+    private fun sendRouteCoordsIfChanged() {
+        val updatedAt = com.tmap.nda.KakaoRouteDataRepository.routeCoordinatesUpdatedAt
+        if (updatedAt == 0L || updatedAt == lastRouteSentAtMs) return
+        if (com.tmap.nda.KakaoRouteDataRepository.routeCoordinates.isEmpty()) return
+        sendRouteCoords()
     }
 
     private fun sendNaviPlaying() {

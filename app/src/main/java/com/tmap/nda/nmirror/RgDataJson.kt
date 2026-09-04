@@ -66,6 +66,20 @@ object RgDataJson {
         rgData.put("nGoPosTime", s.remainTimeSeconds)
         rgData.put("eRgStatus", 1)
 
+        // v: 재억 제보(2026-09-04) - 나브디에 경로 좌표를 보내도 가운데 지도가 안 그려지던 문제.
+        // 길 모양(좌표)만 주고 "차가 그 경로 어디에 있는지"를 안 줘서, 받는 쪽이 어디를 중심으로
+        // 어느 방향으로 그릴지 정할 수가 없었다. nMirror가 순정 티맵에서 빼가는 RGData에는
+        // 이 값들이 들어 있다. 못 읽으면 아예 안 넣어 예전과 같게 둔다. #문제시 원복
+        TmapPositionSource.current()?.let { pos ->
+            rgData.put("vpPosPointLat", pos.latitude)
+            rgData.put("vpPosPointLon", pos.longitude)
+            rgData.put("nPosAngle", pos.angle)
+            rgData.put("nPosSpeed", pos.speed)
+            if (pos.remainedLengthToEnd > 0) {
+                rgData.put("remainedLengthToEnd", pos.remainedLengthToEnd)
+            }
+        }
+
         return rgData.toString()
     }
 }

@@ -155,7 +155,16 @@ object NMirrorSender {
         }
     }
 
-    fun statusForLog(): String =
-        (if (service != null) "nMirror=연결됨 전송=${sentCount}회" else "nMirror=끊김") +
-            " 우선순위(${TmapGuidanceWatch.statusForLog()})"
+    fun statusForLog(): String {
+        val position = TmapPositionSource.current()
+        val positionText = if (position == null) {
+            "차위치=못읽음(지도 못 그림)"
+        } else {
+            "차위치=%.5f,%.5f 방향=%d 속도=%d".format(
+                position.latitude, position.longitude, position.angle, position.speed
+            )
+        }
+        return (if (service != null) "nMirror=연결됨 전송=${sentCount}회" else "nMirror=끊김") +
+            " $positionText 우선순위(${TmapGuidanceWatch.statusForLog()})"
+    }
 }
