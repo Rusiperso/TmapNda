@@ -476,9 +476,12 @@ object NavdySender {
     }
 
     /**
-     * 연결 끊김을 보고할 때 공통으로 거치는 곳. 위 nMirror 사전 차단을 통과해서 붙은
-     * 연결인데도(예: 이 판정 이후 nMirror가 방금 켜진 경우) 3초 안에 3번 연속 끊기면
-     * 참고용으로 이유에 남긴다. #문제시 원복
+     * 연결 끊김을 보고할 때 공통으로 거치는 곳. 로컬 로그는 매번 남기지만, 디스코드로
+     * 실제 전송하는 건 "진짜 문제로 볼 수 있는 경우"로 좁힌다:
+     *   - 이미 실제로 안내를 보내던 연결이 끊긴 경우(sentCount > 0) - 쓰고 있다가 끊겼으니 진짜 문제
+     *   - 3초 안에 3번 연속으로 빨리 끊긴 경우 - 반복되는 진짜 문제
+     * 그냥 붙자마자 한두 번 끊긴 것(흔한 블루투스 핸드셰이크 실패, 대부분 다음 재시도에서
+     * 알아서 회복됨)까지 매번 디스코드로 보내던 걸 재억 요청(2026-09-04)으로 좁힘. #문제시 원복
      */
     private fun reportDisconnect(reason: String) {
         val durationMs = connectionAgeMs()
@@ -490,7 +493,11 @@ object NavdySender {
             reason
         }
         NavLogger.flushTrace("navdy", finalReason)
-        com.tmap.nda.DiscordReporter.reportNavdyDisconnect(finalReason)
+
+        val looksLikeRealProblem = sentCount > 0 || quickDisconnectStreak >= QUICK_DISCONNECT_STREAK_THRESHOLD
+        if (looksLikeRealProblem) {
+            com.tmap.nda.DiscordReporter.reportNavdyDisconnect(finalReason)
+        }
     }
 
     private fun isNMirrorInstalled(context: Context): Boolean = try {
