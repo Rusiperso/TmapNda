@@ -2401,9 +2401,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             KNRoutePriority.KNRoutePriority_Recommand
         )
         val optionAvoidOptions = listOf(0, 0, KNRouteAvoidOption.KNRouteAvoidOption_Fare.value)
+        // v: 재억 재제보(2026-09-05, 실기기 사진으로 확인) - "경유지 추가할 때 추천/고속/
+        // 무료 목록이 안 보이고 취소 버튼만 덩그러니 뜬다"의 진짜 원인. 안드로이드
+        // AlertDialog는 setMessage()와 setItems()를 동시에 지원하지 않음 - 메시지가
+        // 설정돼 있으면 목록 영역이 아예 안 그려짐. 그래서 제목/메시지/취소만 보였던 것.
+        // 안내 문구를 제목에 합치고 setItems만 남겨서 목록이 실제로 표시되게 함. #문제시 원복
         android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("'${picked.name}' 경유지로 추가")
-            .setMessage("어떤 방식으로 갈까요? (경로 전체에 적용됩니다)")
+            .setTitle("'${picked.name}' 경유지로 추가\n어떤 방식으로 갈까요? (경로 전체에 적용됩니다)")
             .setItems(optionLabels) { _, which ->
                 applyRouteOption(optionPriorities[which], optionAvoidOptions[which])
                 NavLogger.d(this, "[경유지추가] 경로 방식 선택: ${optionLabels[which]}")
@@ -2461,6 +2465,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // v13.6: MapActivity와 동일 - 무료도로 우선이 추천 경로랑 거리가 똑같으면 톨게이트가
     // 아예 없는 구간으로 보고 안 물어보고 바로 감(재억 요청). #문제시 원복
     private fun showRoutePriorityDialog(picked: HistoryEntry, saveToSlot: String? = null) {
+        // v: (2026-09-05) 경유지 추가 모드면 이 선택창을 띄우지 않고 바로
+        // addWaypointToActiveGuidance로 넘김 - 그쪽이 자체적으로 경로 방식을 물어보므로
+        // 여기서도 물으면 두 번 묻게 됨. #문제시 원복
+        if (pendingWaypointAddition && saveToSlot == null) {
+            pendingWaypointAddition = false
+            addWaypointToActiveGuidance(picked)
+            return
+        }
         // v14.2: MapActivity와 동일 - 배경 계산 그만두기(재억 아이디어). #문제시 원복
         etaQueueGeneration++
         val optionLabels = listOf("추천 경로", "고속도로 우선", "무료도로 우선")
@@ -2490,17 +2502,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 return
             }
             applyRouteOption(optionPriorities[index], optionAvoidOptions[index])
-            // v: 재억 지적(2026-08-31, "A는 고속으로 가는 중에 경유지 B는 무료도로로
-            // 가고 싶어서 골라야 하는데 이게 안 되면 의미가 없다") - 이 선택창에서 고른
-            // 방식이 지금까지는 무조건 "그 지점을 새 목적지로 변경"으로 이어져서, 경유지로
-            // 추가하려 했는데 원래 목적지(A)가 사라지고 B가 새 목적지가 돼버렸음.
-            // 경유지 추가 모드로 들어온 경우엔 고른 이동방식을 적용한 뒤 경유지 추가로
-            // 이어지게 함(원래 목적지 유지). #문제시 원복
-            if (pendingWaypointAddition) {
-                pendingWaypointAddition = false
-                addWaypointToActiveGuidance(picked)
-                return
-            }
             KakaoRouteDataRepository.reset()
             resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
         }
@@ -3126,16 +3127,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // v: 재억 제보(2026-09-02) - 티맵 화면에서 즐겨찾기를 눌러 "경유지 추가"를 고른 경우,
         // 그쪽엔 경로를 다시 짜는 코드가 없어서 요청만 남기고 화면을 닫음. 이 화면이 다시
         // 올라오는 지금 그걸 집어서 실제 경유지 추가를 수행. #문제시 원복
-        // v: 재억 재제보(2026-09-05, 실기기 로그로 확인) - "경유지 추가할 때 추천/고속/무료
-        // 목록이 안 뜨고 취소 버튼만 있다"의 진짜 원인이 여기였음. 이 경로(티맵 화면에서
-        // 넘어온 요청)만 선택창을 아예 안 거치고 곧바로 경유지를 추가해버려서, 이미 추가가
-        // 끝난 뒤에 선택 다이얼로그가 빈 껍데기로 뜨고 있었음(로그: guideNewDestinations가
-        // 다이얼로그보다 먼저 실행됨). 다른 경로들처럼 선택창을 먼저 거치도록 수정 -
-        // showRoutePriorityDialog가 pendingWaypointAddition을 보고 경유지 추가로 이어줌. #문제시 원복
+        // v: (2026-09-05) v19.3.11에서 여기에 showRoutePriorityDialog를 한 번 더 띄우도록
+        // 했었는데, addWaypointToActiveGuidance가 이미 자체적으로 경로 방식을 물어보므로
+        // 중복이라 되돌림. 목록이 안 보이던 진짜 원인은 그쪽의 setMessage+setItems
+        // 동시 사용 문제였음. #문제시 원복
         PendingWaypointRequest.take()?.let { pending ->
-            NavLogger.d(this, "[경유지추가] 티맵 화면에서 넘어온 요청 처리(경로선택창 먼저): ${pending.name}")
-            pendingWaypointAddition = true
-            showRoutePriorityDialog(pending)
+            NavLogger.d(this, "[경유지추가] 티맵 화면에서 넘어온 요청 처리: ${pending.name}")
+            addWaypointToActiveGuidance(pending)
         }
         // v: 재억 제보(2026-08-26) - "lateinit property binding has not been initialized"
         // 크래시 발생. KNSDK 초기화(비동기)가 끝나서 setupContentAndStart()가 binding을
