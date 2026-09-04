@@ -201,12 +201,41 @@ object DiscordReporter {
         )
     }
 
-    /** Context 없이도 호출 가능(블루투스 스레드 등) - NavLogger.appContext를 재사용. */
+    /**
+     * Context 없이도 호출 가능(블루투스 스레드 등) - NavLogger.appContext를 재사용.
+     *
+     * v: 재억 요청(2026-09-04) - 나브디 끊김 보고가 올 때마다 매번 로그를 뒤져서 "이 사람이
+     * 나브디 직접연결과 nMirror를 같이 켜둔 건지"를 손으로 확인해야 했음(실제로 그 조합이
+     * 원인인 제보가 반복됨). 그 두 가지 설정 상태와 판정을 보고서에 바로 적어서, 채널에서
+     * 한 줄만 보고 바로 구분할 수 있게 함. #문제시 원복
+     */
     fun reportNavdyDisconnect(reason: String) {
         val context = NavLogger.appContext ?: return
+        val pref = prefs(context)
+        val directConnectOn = pref.getBoolean("REQ_NAVDY", false)
+        val nMirrorInstalled = com.tmap.nda.nmirror.NMirrorSender.isInstalled(context)
+        val nMirrorRelayOn = com.tmap.nda.nmirror.NMirrorSender.isEnabled(context)
+
+        val nMirrorState = when {
+            !nMirrorInstalled -> "설치 안 됨"
+            nMirrorRelayOn -> "설치됨 + 안내전달 켜짐"
+            else -> "설치됨 (안내전달 꺼짐)"
+        }
+        // 나브디는 한 번에 앱 하나만 붙을 수 있어서, 이 둘이 같이 켜져 있으면 자리 경합이 확정임
+        val verdict = if (directConnectOn && nMirrorInstalled) {
+            "⚠️ 나브디 직접연결 + nMirror 동시 사용 - 서로 자리를 뺏는 상태(도움말대로 둘 중 하나만 켜야 함)"
+        } else {
+            "직접연결과 nMirror가 겹치지는 않음 - 다른 원인"
+        }
+
         send(
             context, throttleKey = "navdy_disconnect", title = "나브디 연결 끊김", color = COLOR_DISCONNECT,
-            extraFields = listOf("사유" to reason.take(300))
+            extraFields = listOf(
+                "사유" to reason.take(300),
+                "나브디 직접연결" to if (directConnectOn) "켜짐" else "꺼짐",
+                "nMirror" to nMirrorState,
+                "판정" to verdict
+            )
         )
     }
 
