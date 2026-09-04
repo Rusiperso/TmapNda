@@ -3126,9 +3126,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // v: 재억 제보(2026-09-02) - 티맵 화면에서 즐겨찾기를 눌러 "경유지 추가"를 고른 경우,
         // 그쪽엔 경로를 다시 짜는 코드가 없어서 요청만 남기고 화면을 닫음. 이 화면이 다시
         // 올라오는 지금 그걸 집어서 실제 경유지 추가를 수행. #문제시 원복
+        // v: 재억 재제보(2026-09-05, 실기기 로그로 확인) - "경유지 추가할 때 추천/고속/무료
+        // 목록이 안 뜨고 취소 버튼만 있다"의 진짜 원인이 여기였음. 이 경로(티맵 화면에서
+        // 넘어온 요청)만 선택창을 아예 안 거치고 곧바로 경유지를 추가해버려서, 이미 추가가
+        // 끝난 뒤에 선택 다이얼로그가 빈 껍데기로 뜨고 있었음(로그: guideNewDestinations가
+        // 다이얼로그보다 먼저 실행됨). 다른 경로들처럼 선택창을 먼저 거치도록 수정 -
+        // showRoutePriorityDialog가 pendingWaypointAddition을 보고 경유지 추가로 이어줌. #문제시 원복
         PendingWaypointRequest.take()?.let { pending ->
-            NavLogger.d(this, "[경유지추가] 티맵 화면에서 넘어온 요청 처리: ${pending.name}")
-            addWaypointToActiveGuidance(pending)
+            NavLogger.d(this, "[경유지추가] 티맵 화면에서 넘어온 요청 처리(경로선택창 먼저): ${pending.name}")
+            pendingWaypointAddition = true
+            showRoutePriorityDialog(pending)
         }
         // v: 재억 제보(2026-08-26) - "lateinit property binding has not been initialized"
         // 크래시 발생. KNSDK 초기화(비동기)가 끝나서 setupContentAndStart()가 binding을
