@@ -3490,8 +3490,20 @@ class MapActivity : AppCompatActivity() {
         // 있었음. SDK 초기화 콜백이 짧은 시간 안에 두 번 걸리는 경우(드묾) 등으로 이
         // 함수가 두 번 불리면, 두 번째 add() 시도에서 "이미 추가돼있다"는 예외로 죽음.
         // 이미 추가돼 있으면 다시 추가하지 않고 조용히 넘어가도록 함. #문제시 원복
+        // v: 재억 제보(2026-09-04) - "분할화면 쓰면 상단패널이 눌러도 반응이 없다".
+        // 화면이 다시 만들어질 때(회전/분할화면) 안드로이드가 NavigationFragment를 자동으로
+        // 되살려주는데, 위 조건에 걸려 여기서 통째로 return 해버리는 바람에 아래에 있는
+        // setupDestinationSearchUi()가 안 불렸음 - 상단바의 ≡/검색/최근검색/집/회사/로그전송
+        // 버튼 클릭 리스너를 전부 여기서 달기 때문에, 패널은 보이는데 눌러도 아무 일이
+        // 안 일어났던 것(로그상 화면 재생성 이후로 "[더보기메뉴] 버튼 클릭됨"이 한 번도
+        // 안 찍힘). 프래그먼트 추가만 건너뛰고 화면 배선은 다시 연결함. #문제시 원복
         if (supportFragmentManager.findFragmentById(R.id.tmapUILayout) != null) {
-            NavLogger.d(this, "startSafeDriveMode: 화면(NavigationFragment)이 이미 추가돼있어 다시 추가하지 않음")
+            NavLogger.d(this, "startSafeDriveMode: 화면(NavigationFragment)이 이미 추가돼있어 다시 추가하지 않음 - 상단바 배선만 다시 연결")
+            setupDestinationSearchUi()
+            updateRecentSearchPanel()
+            applyTmapSatelliteViewSetting()
+            applyTmapTrafficInfoSetting()
+            handleVoiceCommandIntent(intent)
             return
         }
         navigationFragment = getFragment() as NavigationFragment
@@ -3984,9 +3996,15 @@ class MapActivity : AppCompatActivity() {
     // 크기 변화로는 다시 만들지 않으므로 콤마 연결 유지 목적의 기존 처리는 그대로). #문제시 원복
     private var inflatedOrientation = 0
 
+    // v: 재억 제보(2026-09-04) - 분할화면에 들어갈 때마다 화면을 통째로 다시 만드느라
+    // 안내가 재시작되고 상단바 버튼도 먹통이 되던 문제. 분할화면일 때는 창이 세로로
+    // 길어져도 배치를 갈아엎지 않고 지금 배치를 그대로 씀 - 그러면 전체화면으로 돌아와도
+    // 원래 가로 배치 그대로라서 애초에 다시 만들 일이 없어짐(v19.2.92에서 이 재생성을
+    // 넣은 이유였던 "세로 배치가 남는 문제"도 같이 사라짐). 진짜 기기 회전(전체화면)일
+    // 때만 다시 만듦. #문제시 원복
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        if (newConfig.orientation != inflatedOrientation) {
+        if (newConfig.orientation != inflatedOrientation && !isInMultiWindowMode) {
             NavLogger.d(this, "[화면방향] 가로<->세로가 바뀌어 화면 배치를 다시 만듦")
             recreate()
             return

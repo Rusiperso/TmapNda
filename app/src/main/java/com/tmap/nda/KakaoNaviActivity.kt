@@ -1568,12 +1568,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         if (existing.routePriorityName == null) {
             showRoutePriorityDialog(existing)
         } else {
-            activeRoutePriority = try {
+            val saved = try {
                 KNRoutePriority.valueOf(existing.routePriorityName)
             } catch (e: Exception) {
                 KNRoutePriority.KNRoutePriority_Recommand
             }
-            activeRouteAvoidOption = existing.routeAvoidOption
+            applyRouteOption(saved, existing.routeAvoidOption)
             KakaoRouteDataRepository.reset()
             activeWaypoints.clear()
             resolveCurrentPositionThenRequestRoute(existing.name, existing.lat, existing.lon, finishOnFailure = false)
@@ -2079,6 +2079,19 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 시점(guideNewDestinations)까지 들고 있기 위한 클래스 필드. #문제시 원복
     private var activeRoutePriority: KNRoutePriority = KNRoutePriority.KNRoutePriority_Recommand
     private var activeRouteAvoidOption: Int = 0
+
+    // v: 재억 제보(2026-09-04) - "무료도로로 가던 안내가 추천 경로로 바뀐다". 지금 고른
+    // 경로 방식은 위 두 변수에만 들고 있었는데, 이 값은 화면이 다시 만들어지면 같이
+    // 사라짐. 그리고 onCreate는 매번 "이 화면을 처음 열 때 넘겨받은 값"(인텐트)에서
+    // 경로 방식을 다시 읽기 때문에, 안내 도중에 무료도로로 바꿔놨어도 화면이 다시
+    // 만들어지는 순간 처음 값(보통 추천)으로 되돌아갔음. 방식을 바꿀 때마다 인텐트에도
+    // 같이 적어둬서, 화면이 다시 만들어져도 고른 방식 그대로 이어가게 함. #문제시 원복
+    private fun applyRouteOption(priority: KNRoutePriority, avoidOption: Int) {
+        activeRoutePriority = priority
+        activeRouteAvoidOption = avoidOption
+        intent.putExtra("route_priority_name", priority.name)
+        intent.putExtra("route_avoid_option", avoidOption)
+    }
     // v: 재억 요청(2026-08-22) - 안내 중 경유지 추가 기능. 현재 목적지 좌표/이름을
     // guideNewDestinations() 호출 시 그대로 재사용해야 해서 클래스 필드로 보관. #문제시 원복
     private var currentDestName: String = ""
@@ -2332,8 +2345,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             .setTitle("'${picked.name}' 경유지로 추가")
             .setMessage("어떤 방식으로 갈까요? (경로 전체에 적용됩니다)")
             .setItems(optionLabels) { _, which ->
-                activeRoutePriority = optionPriorities[which]
-                activeRouteAvoidOption = optionAvoidOptions[which]
+                applyRouteOption(optionPriorities[which], optionAvoidOptions[which])
                 NavLogger.d(this, "[경유지추가] 경로 방식 선택: ${optionLabels[which]}")
                 rebuildRouteWithWaypoints(activeWaypoints + picked, "경유지추가", addedName = picked.name)
             }
@@ -2417,8 +2429,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 Toast.makeText(this, "${picked.name}의 이동방식을 \"${optionLabels[index]}\"로 저장했어요.", Toast.LENGTH_SHORT).show()
                 return
             }
-            activeRoutePriority = optionPriorities[index]
-            activeRouteAvoidOption = optionAvoidOptions[index]
+            applyRouteOption(optionPriorities[index], optionAvoidOptions[index])
             KakaoRouteDataRepository.reset()
             resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
         }
@@ -3118,9 +3129,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 만들어 올바른 배치를 쓰게 함(자세한 설명은 MapActivity의 같은 함수 주석 참고). #문제시 원복
     private var inflatedOrientation = 0
 
+    // v: 재억 제보(2026-09-04) - 안내 중에 분할화면으로 바꾸면 이 재생성 때문에 경로를
+    // 처음부터 새로 요청해서, 무료도로로 가던 안내가 추천 경로로 바뀌어버렸음(경유지도
+    // 같이 날아감). 분할화면일 때는 배치를 다시 만들지 않음 - 자세한 설명은 MapActivity의
+    // 같은 함수 주석 참고. #문제시 원복
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
-        if (newConfig.orientation != inflatedOrientation) {
+        if (newConfig.orientation != inflatedOrientation && !isInMultiWindowMode) {
             NavLogger.d(this, "[화면방향] 가로<->세로가 바뀌어 화면 배치를 다시 만듦")
             recreate()
             return
