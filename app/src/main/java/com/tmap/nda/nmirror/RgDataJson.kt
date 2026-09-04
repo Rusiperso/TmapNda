@@ -1,5 +1,7 @@
 package com.tmap.nda.nmirror
 
+import com.tmap.nda.KakaoRouteDataRepository
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -8,6 +10,9 @@ import org.json.JSONObject
 data class GuidanceSnapshot(
     val turnDistanceMeters: Int,
     val turnMainText: String,
+    // 안내지점 자체의 이름("대동TG", "서면교차로" 등). 티맵은 이걸 szCrossName에 넣는데
+    // 우리는 그 칸에 현재 도로명을 넣고 있어서 나브디에 시설 이름이 안 떴다. #문제시 원복
+    val turnNodeName: String,
     val roadName: String,
     val rgCodeName: String,
     val directionAngle: Int,
@@ -17,8 +22,11 @@ data class GuidanceSnapshot(
     val hasNext: Boolean,
     val nextTurnDistanceMeters: Int,
     val nextTurnMainText: String,
+    val nextTurnNodeName: String,
     val nextRgCodeName: String,
-    val nextDirectionAngle: Int
+    val nextDirectionAngle: Int,
+    // 앞으로 지날 고속도로 시설 목록(JSON 배열 문자열). 없으면 null - [TbtListJson] 참고.
+    val highwayListJson: String?
 )
 
 /**
@@ -38,13 +46,14 @@ object RgDataJson {
             .put("nTBTTime", 0)
             .put("nTBTTurnType", KakaoToTmapTurn.from(s.rgCodeName, s.directionAngle))
             .put("szTBTMainText", s.turnMainText)
-            .put("szCrossName", s.roadName)
+            .put("szCrossName", s.turnNodeName.ifBlank { s.roadName })
             .put("szRoadName", s.roadName)
 
         val rgData = JSONObject()
             .put("nTotalDist", s.remainDistanceMeters)
             .put("nTotalTime", s.remainTimeSeconds)
             .put("szGoPosName", s.destinationName)
+            .put("szPosRoadName", s.roadName)
             .put("stGuidePoint", guidePoint)
 
         if (s.hasNext) {
@@ -55,7 +64,7 @@ object RgDataJson {
                     .put("nTBTTime", 0)
                     .put("nTBTTurnType", KakaoToTmapTurn.from(s.nextRgCodeName, s.nextDirectionAngle))
                     .put("szTBTMainText", s.nextTurnMainText)
-                    .put("szCrossName", s.nextTurnMainText)
+                    .put("szCrossName", s.nextTurnNodeName.ifBlank { s.nextTurnMainText })
             )
         }
 
@@ -78,6 +87,27 @@ object RgDataJson {
             if (pos.remainedLengthToEnd > 0) {
                 rgData.put("remainedLengthToEnd", pos.remainedLengthToEnd)
             }
+            // v: 재억 제보(2026-09-04, 나브디 사진 비교) - 순정 티맵으로 보낼 때는 나브디에
+            // 제한속도가 뜨는데(고속도로 100) 우리 앱으로 보낼 때만 안 떴다. 기기는 그릴 줄
+            // 아는데 우리가 이 칸을 아예 안 채우고 있었을 뿐. #문제시 원복
+            if (pos.roadLimitSpeedRaw > 0) {
+                rgData.put("nRoadLimitSpeed", pos.roadLimitSpeedRaw)
+            }
+        }
+
+        // v: 재억 제보(2026-09-04) - 나브디 화면에 카메라/방지턱 알림이 전혀 안 뜨던 문제.
+        // openpilot에는 [UdpSenderService]가 KakaoRouteDataRepository.safetyType 등을 UDP로
+        // 따로 보내고 있었는데, 나브디/nMirror로 가는 이 JSON에는 sdiInfo가 아예 없었다 -
+        // 나브디가 화면에 그릴 이벤트 자체를 못 받고 있었던 것. 실기기 rgData 원본 덤프
+        // (`rgData.sdiInfo[0].nSdiType` 등)에서 확인한 것과 같은 필드명으로 채워준다. #문제시 원복
+        if (KakaoRouteDataRepository.safetyType >= 0 && KakaoRouteDataRepository.safetyDist > 0) {
+            val sdiInfo = JSONObject()
+                .put("nSdiType", KakaoRouteDataRepository.safetyType)
+                .put("nSdiSpeedLimit", KakaoRouteDataRepository.safetySpeedLimit)
+                .put("nSdiDist", KakaoRouteDataRepository.safetyDist)
+                .put("bSdiTarget", true)
+            rgData.put("sdiCount", 1)
+            rgData.put("sdiInfo", JSONArray().put(sdiInfo))
         }
 
         return rgData.toString()

@@ -96,7 +96,7 @@ object NMirrorSender {
         }
 
         try {
-            target.sendTbt(RgDataJson.build(snapshot), null)
+            target.sendTbt(RgDataJson.build(snapshot), snapshot.highwayListJson)
             lastSentAtMs = now
             sentCount++
             sendRouteCoordsIfChanged(target)

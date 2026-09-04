@@ -140,14 +140,20 @@ object NavdySender {
         lastSentAtMs = now
         executor.execute {
             try {
-                // nMirror가 만들어 보내는 것과 같은 형태. tbtListInfos(차선/경로 목록)는
-                // 우리가 가진 정보가 없어 null로 둔다 - 받는 쪽이 null을 허용한다. #문제시 원복
+                // nMirror가 만들어 보내는 것과 같은 형태. tbtListInfos는 앞으로 지날
+                // 고속도로 시설(톨게이트/휴게소) 목록으로, 카카오에서 뽑아 채운다.
+                // 못 뽑으면 예전처럼 null(받는 쪽이 null을 허용). #문제시 원복
                 val body = "{\"rgData\":${RgDataJson.build(snapshot)}, " +
-                    "\"tbtListInfos\":null,\"oilType\":0}"
+                    "\"tbtListInfos\":${snapshot.highwayListJson ?: "null"},\"oilType\":0}"
                 writeFrame(stream, TYPE_GUIDANCE, body.toByteArray(Charsets.UTF_8))
                 sentCount++
                 if (sentCount == 1) {
                     NavLogger.d("[Navdy] 첫 길안내 전송 성공: 도로=${snapshot.roadName} 거리=${snapshot.turnDistanceMeters}m (이후는 메모리에만 기록)")
+                    // v: 재억 요청(2026-09-04) - "어떤 값이 어느 칸에 들어가는지" 로그로
+                    // 확인할 수 있게, 실제로 나간 내용을 연결당 한 번만 통째로 남긴다.
+                    // 기기 화면에 안 뜨는 항목이 있을 때 이 한 줄만 보면 "우리가 안 보낸
+                    // 것"인지 "보냈는데 기기가 안 그린 것"인지 바로 갈린다. #문제시 원복
+                    NavLogger.d("[Navdy] 보낸 내용 전체(연결당 1회): $body")
                 } else {
                     NavLogger.trace("navdy", "전송 ${snapshot.roadName} ${snapshot.turnDistanceMeters}m")
                 }

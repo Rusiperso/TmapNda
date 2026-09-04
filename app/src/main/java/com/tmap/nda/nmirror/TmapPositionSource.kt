@@ -20,7 +20,10 @@ object TmapPositionSource {
         val longitude: Double,
         val angle: Int,
         val speed: Int,
-        val remainedLengthToEnd: Int
+        val remainedLengthToEnd: Int,
+        // 티맵 엔진이 쓰는 원본 형식 그대로(속도*10+20, 예: 1020=100km/h). 받는 쪽도 같은
+        // 형식을 기대하므로 km/h로 바꾸지 않고 그대로 넘긴다. 0 = 못 읽음.
+        val roadLimitSpeedRaw: Int
     )
 
     private var companion: Any? = null
@@ -52,7 +55,8 @@ object TmapPositionSource {
                 longitude = lon,
                 angle = intField(rgData, "nPosAngle") ?: 0,
                 speed = intField(rgData, "nPosSpeed") ?: 0,
-                remainedLengthToEnd = intField(rgData, "remainedLengthToEnd") ?: 0
+                remainedLengthToEnd = intField(rgData, "remainedLengthToEnd") ?: 0,
+                roadLimitSpeedRaw = intField(rgData, "nRoadLimitSpeed") ?: 0
             )
         } catch (e: Exception) {
             unavailable = true

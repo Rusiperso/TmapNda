@@ -109,6 +109,7 @@ object KakaoHudBridge {
         val snapshot = com.tmap.nda.nmirror.GuidanceSnapshot(
             turnDistanceMeters = turnDistance,
             turnMainText = instruction,
+            turnNodeName = direction?.nodeName.orEmpty(),
             roadName = currentRoad,
             rgCodeName = direction?.rgCode?.name.orEmpty(),
             directionAngle = direction?.directionAng ?: 0,
@@ -118,8 +119,10 @@ object KakaoHudBridge {
             hasNext = nextDirection != null,
             nextTurnDistanceMeters = nextTurnDistance,
             nextTurnMainText = nextInstruction,
+            nextTurnNodeName = nextDirection?.nodeName.orEmpty(),
             nextRgCodeName = nextDirection?.rgCode?.name.orEmpty(),
-            nextDirectionAngle = nextDirection?.directionAng ?: 0
+            nextDirectionAngle = nextDirection?.directionAng ?: 0,
+            highwayListJson = com.tmap.nda.nmirror.TbtListJson.build(routeGuide, currentLocation)
         )
 
         try {
