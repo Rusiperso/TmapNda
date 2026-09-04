@@ -202,8 +202,28 @@ class MainActivity : AppCompatActivity() {
         val savedEvChargerKey = sharedPref.getString("ev_charger_api_key", "")
         val savedTargetIp = sharedPref.getString("TARGET_IP", "255.255.255.255")
         val savedReqBackground = sharedPref.getBoolean("REQ_BACKGROUND", false)
-        val savedReqNavdy = sharedPref.getBoolean("REQ_NAVDY", false)
         val savedReqOverlay = sharedPref.getBoolean("background_overlay_enabled", false)
+
+        // v: 재억 요청(2026-09-04) - "nMirror 깔려있으면 나브디 직접연결 자동으로 끄고,
+        // 없으면 자동으로 켜줘라. 근데 사용자가 이 체크박스를 직접 만진 적이 있으면 그
+        // 뒤로는 자동으로 다시 켜지 말고 사용자가 둔 상태 그대로 둬라 - 나브디 자체가
+        // 없는 사람도 있고, 있어도 안 쓰는 사람도 있으니까." nMirror가 있으면(자리 경합
+        // 확정) 사용자가 만졌든 안 만졌든 항상 끔 - 켜봐야 NavdySender가 내부적으로
+        // 연결을 안 하니, 체크박스만 실제와 다르게 켜진 채로 헷갈리게 두지 않음. 사용자가
+        // 한 번이라도 직접 체크박스를 누르면(아래 리스너) navdy_user_managed를 true로
+        // 남겨서, 그 뒤로는 이 자동조정이 사용자가 마지막으로 둔 값을 존중하고 건드리지
+        // 않는다(단, nMirror 강제 끔은 예외). #문제시 원복
+        val userManagedNavdy = sharedPref.getBoolean("navdy_user_managed", false)
+        val nMirrorInstalled = com.tmap.nda.nmirror.NMirrorSender.isInstalled(this)
+        val savedReqNavdyRaw = sharedPref.getBoolean("REQ_NAVDY", false)
+        val savedReqNavdy = when {
+            nMirrorInstalled -> false
+            userManagedNavdy -> savedReqNavdyRaw
+            else -> true
+        }
+        if (savedReqNavdy != savedReqNavdyRaw) {
+            sharedPref.edit().putBoolean("REQ_NAVDY", savedReqNavdy).apply()
+        }
 
         binding.etAppKey.setText(savedAppKey)
         binding.etKakaoAppKey.setText(savedKakaoKey)
@@ -231,7 +251,13 @@ class MainActivity : AppCompatActivity() {
             // v: 재억 제보(2026-09-04) - 설정을 먼저 저장해야 함. tryConnect()가 이 값을
             // 보고 연결 여부를 정하기 때문에, 저장 전에 연결을 시도하면 방금 켠 체크가
             // 반영되지 않아 그냥 리턴돼버린다. #문제시 원복
-            sharedPref.edit().putBoolean("REQ_NAVDY", isChecked).apply()
+            // v: 재억 요청(2026-09-04) - 사용자가 이 체크박스를 직접 눌렀다는 걸 남겨서,
+            // 다음에 앱을 열 때 위 자동조정(nMirror 있으면 끔/없으면 켬)이 이 값을 함부로
+            // 되돌리지 않게 함(단, nMirror가 있으면 자동조정이 여전히 강제로 끔). #문제시 원복
+            sharedPref.edit()
+                .putBoolean("REQ_NAVDY", isChecked)
+                .putBoolean("navdy_user_managed", true)
+                .apply()
             if (isChecked) {
                 tryConnectNavdyWithPermission(fromUserToggle = true)
             } else {

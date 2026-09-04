@@ -32,6 +32,18 @@ object NMirrorSender {
     private const val NMIRROR_PACKAGE = "com.aa.nmirror"
     private const val NMIRROR_SERVICE = "com.aa.nmirror.service.TbtService"
 
+    // v: 재억 요청(2026-09-04) - nMirror 설치 여부를 나브디 자동 차단(NavdySender)과
+    // 초기화면 "나브디 직접연결" 체크박스 자동 on/off(MainActivity) 양쪽에서 써야 해서,
+    // 패키지명을 아는 이곳에 한 곳으로 모아둔다. #문제시 원복
+    fun isInstalled(context: Context): Boolean = try {
+        context.packageManager.getApplicationInfo(NMIRROR_PACKAGE, 0)
+        true
+    } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+        false
+    } catch (e: Exception) {
+        false
+    }
+
     // nMirror가 이 간격 안에 안내를 못 받으면 "안내 종료"로 판단하므로 그보다 짧게 보낸다.
     private const val SEND_INTERVAL_MS = 1000L
 

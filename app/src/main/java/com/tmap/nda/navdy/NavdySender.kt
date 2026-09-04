@@ -72,7 +72,6 @@ object NavdySender {
     // 로그에서 5번 연속 1~2.5초 만에 끊긴 게 이 패턴과 일치했고, 그 사람도 nMirror를
     // 쓰고 있었다고 확인됨. 매번 조사해서 알아내지 않아도 되게, 이 패턴을 코드가 스스로
     // 감지해서 로그/화면에 명확히 알려준다. #문제시 원복
-    private const val NMIRROR_PACKAGE = "com.aa.nmirror" // NMirrorSender.NMIRROR_PACKAGE와 동일
     private const val QUICK_DISCONNECT_MS = 3_000L
     private const val QUICK_DISCONNECT_STREAK_THRESHOLD = 3
     @Volatile private var quickDisconnectStreak = 0
@@ -119,7 +118,7 @@ object NavdySender {
                     // 루프에서 바로 다시 켜짐 - 매 루프(10초)마다 다시 확인하므로 계속 최신 상태를
                     // 따라감. #문제시 원복
                     if (!isConnected()) {
-                        val nMirrorPresent = appContext?.let { isNMirrorInstalled(it) } ?: false
+                        val nMirrorPresent = appContext?.let { com.tmap.nda.nmirror.NMirrorSender.isInstalled(it) } ?: false
                         if (nMirrorPresent) {
                             noteBlockedByNMirror()
                         } else {
@@ -498,15 +497,6 @@ object NavdySender {
         if (looksLikeRealProblem) {
             com.tmap.nda.DiscordReporter.reportNavdyDisconnect(finalReason)
         }
-    }
-
-    private fun isNMirrorInstalled(context: Context): Boolean = try {
-        context.packageManager.getApplicationInfo(NMIRROR_PACKAGE, 0)
-        true
-    } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
-        false
-    } catch (e: Exception) {
-        false
     }
 
     private const val CONFLICT_NOTIFICATION_CHANNEL_ID = "navdy_conflict"
