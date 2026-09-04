@@ -2490,6 +2490,17 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 return
             }
             applyRouteOption(optionPriorities[index], optionAvoidOptions[index])
+            // v: 재억 지적(2026-08-31, "A는 고속으로 가는 중에 경유지 B는 무료도로로
+            // 가고 싶어서 골라야 하는데 이게 안 되면 의미가 없다") - 이 선택창에서 고른
+            // 방식이 지금까지는 무조건 "그 지점을 새 목적지로 변경"으로 이어져서, 경유지로
+            // 추가하려 했는데 원래 목적지(A)가 사라지고 B가 새 목적지가 돼버렸음.
+            // 경유지 추가 모드로 들어온 경우엔 고른 이동방식을 적용한 뒤 경유지 추가로
+            // 이어지게 함(원래 목적지 유지). #문제시 원복
+            if (pendingWaypointAddition) {
+                pendingWaypointAddition = false
+                addWaypointToActiveGuidance(picked)
+                return
+            }
             KakaoRouteDataRepository.reset()
             resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
         }
@@ -2527,6 +2538,27 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val minutesArr = arrayOfNulls<Int>(3)
         val distArr = arrayOfNulls<Int>(3)
         var receivedCount = 0
+        // v: 재억 제보(2026-08-31, 실기기로 확인 - "길안내 중 경유지 추가할 때 추천/고속/
+        // 무료 목록이 안 뜨고 취소 버튼만 덩그러니 있다") - 이 선택창은 3개 옵션의 예상
+        // 시간 계산이 전부(receivedCount==3) 끝나야만 목록을 채워 보여주는 구조였음.
+        // 이미 안내 중인 상태에서 경유지를 추가할 땐 이 계산이 실패하거나 3개를 다 못
+        // 채우는 경우가 있어서, showPickerWithResults가 아예 호출되지 않고 제목/취소만
+        // 있는 빈 껍데기가 떴던 것. 재억님 지적대로 "A는 고속, 경유지 B는 무료도로"처럼
+        // 경유지마다 이동방식을 새로 고를 수 있어야 의미가 있으므로, 계산이 실패하거나
+        // 3초 안에 안 끝나도 목록은 무조건 뜨도록 안전장치 추가(예상 시간만 "계산 실패"로
+        // 표시되고 선택 자체는 정상 동작). #문제시 원복
+        var pickerShown = false
+        fun showPickerOnce() {
+            if (pickerShown) return
+            pickerShown = true
+            showPickerWithResults(minutesArr)
+        }
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (!pickerShown) {
+                NavLogger.d(this, "[경로선택] ETA 계산이 3초 안에 안 끝나 목록을 먼저 표시(받은개수=$receivedCount)")
+                showPickerOnce()
+            }
+        }, 3000L)
         // v13.6: MapActivity와 동일 - "출발-도착 연결"을 한 번만 하고 그 위에서 3개
         // 우선순위만 각각 계산(재억 지적 - 계산 느림). #문제시 원복
         KakaoSdkState.computeEtaForOptions(
@@ -2538,14 +2570,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 distArr[index] = distanceMeters
                 receivedCount++
                 if (receivedCount == 3) {
-                    // v: 재억 재지적(2026-08-29) - "왜 자꾸 팝업 없이 바로 안내를 시작하냐"는
-                    // 강한 제보로 확인. v13.6부터 있던 "무료도로 우선이 추천이랑 거리가
-                    // 거의 같으면(200m 이내, 톨게이트 없는 구간) 안 물어보고 바로 추천으로
-                    // 감" 자동 생략 로직이 원인이었음. 짧은 로컬 이동처럼 애초에 고속도로/
-                    // 톨게이트가 안 끼는 경로에서 계속 이 조건에 걸려 팝업이 생략됐음.
-                    // 예외 없이 항상 선택창을 보여달라는 요청이라 이 자동 생략을 완전히
-                    // 제거. #문제시 원복
-                    showPickerWithResults(minutesArr)
+                    showPickerOnce()
                 }
             }
         }
