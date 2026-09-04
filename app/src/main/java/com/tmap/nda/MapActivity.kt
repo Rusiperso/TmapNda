@@ -4003,15 +4003,14 @@ class MapActivity : AppCompatActivity() {
     // 크기 변화로는 다시 만들지 않으므로 콤마 연결 유지 목적의 기존 처리는 그대로). #문제시 원복
     private var inflatedOrientation = 0
 
-    // v: 재억 제보(2026-09-04) - 분할화면에 들어갈 때마다 화면을 통째로 다시 만드느라
-    // 안내가 재시작되고 상단바 버튼도 먹통이 되던 문제. 분할화면일 때는 창이 세로로
-    // 길어져도 배치를 갈아엎지 않고 지금 배치를 그대로 씀 - 그러면 전체화면으로 돌아와도
-    // 원래 가로 배치 그대로라서 애초에 다시 만들 일이 없어짐(v19.2.92에서 이 재생성을
-    // 넣은 이유였던 "세로 배치가 남는 문제"도 같이 사라짐). 진짜 기기 회전(전체화면)일
-    // 때만 다시 만듦. #문제시 원복
+    // v: 재억 제보(2026-09-04, 사진) - v19.3.4에서 "분할화면일 때는 다시 만들지 않음"으로
+    // 바꿨더니, 지도 SDK가 전체화면 때 만들어둔 큰 글씨/큰 버튼 배치를 좁은 창에서 그대로
+    // 쓰는 바람에 메뉴 항목들이 화면 밖으로 밀려 안 보였음(SDK는 화면 크기별로 다른 배치
+    // 파일과 다른 크기값을 쓰는데, 이미 만들어진 화면은 그 값이 그대로 굳어 있음).
+    // 창 모양이 실제로 바뀌면 다시 만드는 원래 방식으로 되돌림. #문제시 원복
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        if (newConfig.orientation != inflatedOrientation && !isInMultiWindowMode) {
+        if (newConfig.orientation != inflatedOrientation) {
             NavLogger.d(this, "[화면방향] 가로<->세로가 바뀌어 화면 배치를 다시 만듦")
             recreate()
             return

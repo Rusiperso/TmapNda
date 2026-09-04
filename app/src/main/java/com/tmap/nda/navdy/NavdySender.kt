@@ -66,6 +66,18 @@ object NavdySender {
     private const val MIN_SEND_INTERVAL_MS = 1_000L
     private const val MAX_FRAME_SIZE = 10 * 1024 * 1024
 
+    // v: 재억 요청(2026-09-04, 제보자 로그 분석) - 나브디는 블루투스로 한 번에 앱 하나만
+    // 붙을 수 있는데, nMirror도 우리와 똑같은 통로(503b9411)로 나브디에 붙으려고 해서
+    // 같이 켜져 있으면 서로 자리를 뺏고 뺏기며 붙자마자(몇 초 안) 계속 끊긴다. 실제 제보
+    // 로그에서 5번 연속 1~2.5초 만에 끊긴 게 이 패턴과 일치했고, 그 사람도 nMirror를
+    // 쓰고 있었다고 확인됨. 매번 조사해서 알아내지 않아도 되게, 이 패턴을 코드가 스스로
+    // 감지해서 로그/화면에 명확히 알려준다. #문제시 원복
+    private const val NMIRROR_PACKAGE = "com.aa.nmirror" // NMirrorSender.NMIRROR_PACKAGE와 동일
+    private const val QUICK_DISCONNECT_MS = 3_000L
+    private const val QUICK_DISCONNECT_STREAK_THRESHOLD = 3
+    @Volatile private var quickDisconnectStreak = 0
+    @Volatile private var warnedNMirrorConflict = false
+
     private val executor = Executors.newSingleThreadExecutor()
 
     @Volatile private var socket: BluetoothSocket? = null
@@ -101,8 +113,24 @@ object NavdySender {
             NavLogger.d("[Navdy] 연결 담당 시작 (nMirror와 같은 방식으로 폰이 거는 쪽)")
             while (running) {
                 try {
+                    // v: 재억 요청(2026-09-04) - "붙었다가 계속 끊기면 알려주기"보다, 애초에
+                    // nMirror가 깔려있으면 우리가 먼저 시도를 안 하는 게 낫다는 요청. nMirror가
+                    // 있으면 아예 connectOnce()를 안 부르고, 없어지면(제거/비활성화 등) 다음
+                    // 루프에서 바로 다시 켜짐 - 매 루프(10초)마다 다시 확인하므로 계속 최신 상태를
+                    // 따라감. #문제시 원복
                     if (!isConnected()) {
-                        connectOnce()
+                        val nMirrorPresent = appContext?.let { isNMirrorInstalled(it) } ?: false
+                        if (nMirrorPresent) {
+                            noteBlockedByNMirror()
+                        } else {
+                            logIfChanged("nmirror_clear", "[Navdy] nMirror 미설치 확인 - 직접연결 시도")
+                            if (warnedNMirrorConflict) {
+                                // 아까는 nMirror 때문에 막혀있었는데 지금은 없어짐(제거/비활성화) - 다시 켜졌다고 알림
+                                warnedNMirrorConflict = false
+                                appContext?.let { notifyNMirrorState(it, blocked = false) }
+                            }
+                            connectOnce()
+                        }
                     } else {
                         sendPing()
                         sendRouteCoordsIfChanged()
@@ -160,8 +188,7 @@ object NavdySender {
             } catch (e: Exception) {
                 val reason = "[Navdy] 전송 실패로 연결 끊김: ${e.javaClass.simpleName} ${e.message}, " +
                     "이 연결에서 성공 ${sentCount}회, 유지 ${connectionAgeMs()}ms"
-                NavLogger.flushTrace("navdy", reason)
-                com.tmap.nda.DiscordReporter.reportNavdyDisconnect(reason)
+                reportDisconnect(reason)
                 closeQuietly()
             }
         }
@@ -428,12 +455,92 @@ object NavdySender {
             } catch (e: Exception) {
                 val reason = "[Navdy] 받는 스레드 종료: ${e.javaClass.simpleName} ${e.message}, " +
                     "${connectionAgeMs()}ms만에, 전송 ${sentCount}회, 신호 ${pingCount}회, 수신 ${receivedCount}회"
-                NavLogger.flushTrace("navdy", reason)
-                com.tmap.nda.DiscordReporter.reportNavdyDisconnect(reason)
+                reportDisconnect(reason)
             } finally {
                 if (socket === sock) closeQuietly()
             }
         }, "NavdyReader").apply { isDaemon = true }.start()
+    }
+
+    /**
+     * 매 루프(10초)마다 nMirror 설치 여부를 다시 확인해서 연결 시도를 켰다 껐다 하므로,
+     * 이 함수는 "지금 막혀있다"는 걸 알리기만 한다(로그는 상태 바뀔 때만, 알림은 최초 1회).
+     * nMirror가 지워지거나 비활성화되면 다음 루프에서 자동으로 다시 연결을 시도한다. #문제시 원복
+     */
+    private fun noteBlockedByNMirror() {
+        logIfChanged("nmirror_block", "[Navdy] nMirror 설치 감지 - 나브디 직접연결 시도 안 함(자리 경합 방지)")
+        if (!warnedNMirrorConflict) {
+            warnedNMirrorConflict = true
+            appContext?.let { notifyNMirrorState(it, blocked = true) }
+        }
+    }
+
+    /**
+     * 연결 끊김을 보고할 때 공통으로 거치는 곳. 위 nMirror 사전 차단을 통과해서 붙은
+     * 연결인데도(예: 이 판정 이후 nMirror가 방금 켜진 경우) 3초 안에 3번 연속 끊기면
+     * 참고용으로 이유에 남긴다. #문제시 원복
+     */
+    private fun reportDisconnect(reason: String) {
+        val durationMs = connectionAgeMs()
+        quickDisconnectStreak = if (durationMs in 1 until QUICK_DISCONNECT_MS) quickDisconnectStreak + 1 else 0
+
+        val finalReason = if (quickDisconnectStreak >= QUICK_DISCONNECT_STREAK_THRESHOLD) {
+            "$reason | 붙자마자(${QUICK_DISCONNECT_MS / 1000}초 안) ${quickDisconnectStreak}번 연속 끊김"
+        } else {
+            reason
+        }
+        NavLogger.flushTrace("navdy", finalReason)
+        com.tmap.nda.DiscordReporter.reportNavdyDisconnect(finalReason)
+    }
+
+    private fun isNMirrorInstalled(context: Context): Boolean = try {
+        context.packageManager.getApplicationInfo(NMIRROR_PACKAGE, 0)
+        true
+    } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+        false
+    } catch (e: Exception) {
+        false
+    }
+
+    private const val CONFLICT_NOTIFICATION_CHANNEL_ID = "navdy_conflict"
+    private const val CONFLICT_NOTIFICATION_ID = 8431
+
+    /** 화면(알림)에 직접 원인을 보여준다 - 매번 로그 뒤져서 알아내지 않아도 되게. #문제시 원복 */
+    private fun notifyNMirrorState(context: Context, blocked: Boolean) {
+        try {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                nm.createNotificationChannel(
+                    android.app.NotificationChannel(
+                        CONFLICT_NOTIFICATION_CHANNEL_ID, "나브디 연결 문제 안내",
+                        android.app.NotificationManager.IMPORTANCE_HIGH
+                    )
+                )
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                return
+            }
+            val title = if (blocked) "나브디는 nMirror에서 연결하세요" else "나브디 직접 연결 켬"
+            val text = if (blocked) {
+                "나브디 직접 연결을 끄고 nMirror에서 나브디 TBT 전송 옵션을 켜세요"
+            } else {
+                "나브디 직접 연결을 켰어요"
+            }
+            val notification = androidx.core.app.NotificationCompat.Builder(context, CONFLICT_NOTIFICATION_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_sys_warning)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(text))
+                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .build()
+            androidx.core.app.NotificationManagerCompat.from(context).notify(CONFLICT_NOTIFICATION_ID, notification)
+        } catch (e: Exception) {
+            NavLogger.e("[Navdy] nMirror 상태 알림 표시 실패: ${e.message}")
+        }
     }
 
     private fun closeQuietly() {

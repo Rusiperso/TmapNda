@@ -501,7 +501,18 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         applyKakaoSdkVolume()
         naviView.post { logNaviViewDiagnostics("idle map 초기화 직후") }
 
-        resolveCurrentPositionThenRequestRoute(destName, destLat, destLon)
+        // v: 화면이 다시 만들어진 경우(분할화면 전환 등) 경유지를 넣어둔 채였다면 그 경유지를
+        // 포함해서 경로를 다시 짜야 함 - 그냥 목적지만 요청하면 경유지가 조용히 사라짐. #문제시 원복
+        restoreWaypointsFromIntent()
+        val resumedWithWaypoints = if (activeWaypoints.isNotEmpty()) {
+            NavLogger.d(this, "[경유지] 화면 재생성 - 경유지 ${activeWaypoints.size}개를 그대로 이어감")
+            rebuildRouteWithWaypoints(activeWaypoints.toList(), "경유지 유지")
+        } else {
+            false
+        }
+        if (!resumedWithWaypoints) {
+            resolveCurrentPositionThenRequestRoute(destName, destLat, destLon)
+        }
     }
 
     // v4.16: naviView.sndVolume은 float(0.0~1.0)라 VolumeHelper의 %(0~100) 값과 변환이
@@ -687,6 +698,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     }
 
     private fun resolveCurrentPositionThenRequestRoute(destName: String, destLat: Double, destLon: Double, finishOnFailure: Boolean = true) {
+        // v: 안내 중에 목적지를 바꾸면(즐겨찾기/검색으로 새 안내 시작) 여기 넘어온 값이 진짜
+        // 지금 목적지인데, 예전엔 화면을 처음 열 때 받은 목적지만 들고 있었음. 그 상태로
+        // 화면이 다시 만들어지면(분할화면 전환 등) 처음 목적지로 되돌아갔음. #문제시 원복
+        currentDestName = destName
+        currentDestLat = destLat
+        currentDestLon = destLon
+        intent.putExtra("dest_name", destName)
+        intent.putExtra("dest_lat", destLat)
+        intent.putExtra("dest_lon", destLon)
         // v: 재억 재지적(2026-08-29, 실기기 로그로 확인) - "추천/무료도로 골라도 실제
         // 경로가 안 바뀌는 것 같다"는 강한 제보로 아래 "캐시된 경로 재사용" 최적화(v13.7-2)를
         // 제거함. 이 캐시는 3가지 방식(추천/고속도로/무료도로)을 미리 계산할 때 "출발-도착
@@ -1226,12 +1246,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     if (KakaoRouteDataRepository.headingToFinalDestination) {
                         NavLogger.d(this@KakaoNaviActivity, "[경유지취소] 경유지 전부 통과 감지 - 목록 비우고 취소 버튼 자동 숨김")
                         activeWaypoints.clear()
+                        syncWaypointsToIntent()
                         binding.btnCancelWaypoint?.visibility = View.GONE
                     } else if (passed > 0) {
                         val removeCount = passed.coerceAtMost(activeWaypoints.size)
                         if (removeCount > 0) {
                             val removed = activeWaypoints.take(removeCount).joinToString { it.name }
                             repeat(removeCount) { activeWaypoints.removeAt(0) }
+                            syncWaypointsToIntent()
                             NavLogger.d(this@KakaoNaviActivity, "[경유지] 통과한 경유지 ${removeCount}개 목록에서 제거: $removed (남은 ${activeWaypoints.size}개)")
                         }
                     }
@@ -1576,6 +1598,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             applyRouteOption(saved, existing.routeAvoidOption)
             KakaoRouteDataRepository.reset()
             activeWaypoints.clear()
+            syncWaypointsToIntent()
             resolveCurrentPositionThenRequestRoute(existing.name, existing.lat, existing.lon, finishOnFailure = false)
         }
     }
@@ -2104,6 +2127,39 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 새 경유지 1개만 넘겼기 때문). 목록으로 바꿔서 추가할 때마다 기존 경유지 뒤에
     // 이어붙이고, 지나간 것만 자동으로 앞에서 지움. #문제시 원복
     private val activeWaypoints: MutableList<HistoryEntry> = mutableListOf()
+
+    // v: 경유지 목록도 화면이 다시 만들어지면 사라지던 값 - 경로 방식과 같은 방식으로
+    // 인텐트에 적어둬서(분할화면 전환 등으로) 화면이 다시 만들어져도 경유지를 그대로
+    // 이어감. 목록이 바뀌는 곳마다 이 함수를 불러줌. #문제시 원복
+    private fun syncWaypointsToIntent() {
+        val arr = org.json.JSONArray()
+        activeWaypoints.forEach {
+            arr.put(
+                org.json.JSONObject()
+                    .put("name", it.name)
+                    .put("addr", it.addr)
+                    .put("lat", it.lat)
+                    .put("lon", it.lon)
+            )
+        }
+        intent.putExtra("active_waypoints_json", arr.toString())
+    }
+
+    private fun restoreWaypointsFromIntent() {
+        val raw = intent.getStringExtra("active_waypoints_json") ?: return
+        try {
+            val arr = org.json.JSONArray(raw)
+            activeWaypoints.clear()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                activeWaypoints.add(
+                    HistoryEntry(o.optString("name"), o.optString("addr"), o.optDouble("lat"), o.optDouble("lon"))
+                )
+            }
+        } catch (e: Exception) {
+            NavLogger.e(this, "[경유지] 저장해둔 경유지 목록 읽기 실패: ${e.message}")
+        }
+    }
     private var currentDestLat: Double = Double.NaN
     private var currentDestLon: Double = Double.NaN
     // v11.3: MapActivity와 동일 - 집/회사/즐겨찾기 칸 등록용 검색을 여는 중이면 어느 칸인지 담아둠. #문제시 원복
@@ -2226,15 +2282,17 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 그래서 두 번째 경유지를 추가하면 첫 번째가 조용히 사라졌음. 이제 "지금 유지할 경유지
     // 목록 전체"를 받아서 한 번에 경로를 다시 짜는 함수 하나로 합침 - 추가는 기존 목록 +
     // 새 경유지, 취소는 뺄 것만 제외한 목록을 넘기면 됨. #문제시 원복
+    // 경로 요청을 실제로 보냈으면 true. 위치를 아직 못 잡아 시작조차 못 한 경우 false를
+    // 돌려줘서, 화면 재생성처럼 자동으로 부르는 쪽이 다른 방법으로 이어갈 수 있게 함. #문제시 원복
     private fun rebuildRouteWithWaypoints(
         waypoints: List<HistoryEntry>,
         logTag: String,
         addedName: String? = null
-    ) {
+    ): Boolean {
         if (currentDestLat.isNaN() || currentDestLon.isNaN()) {
             NavLogger.e(this, "[$logTag] 현재 목적지 정보가 없어 취소")
             Toast.makeText(this, "$logTag 실패: 목적지 정보 없음", Toast.LENGTH_SHORT).show()
-            return
+            return false
         }
         var startPoi: KNPOI? = null
         val currentGps = KNSDK.sharedGpsManager()?.recentGpsData
@@ -2255,7 +2313,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
         if (startPoi == null) {
             Toast.makeText(this, "GPS 확인 중입니다. 잠시 후 다시 시도해주세요", Toast.LENGTH_SHORT).show()
-            return
+            return false
         }
 
         val viaPois = waypoints.map { w ->
@@ -2288,6 +2346,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     NavLogger.d(this, "[$logTag] 성공 (경유지 ${waypoints.size}개)")
                     activeWaypoints.clear()
                     activeWaypoints.addAll(waypoints)
+                    syncWaypointsToIntent()
                     Toast.makeText(
                         this,
                         when {
@@ -2322,6 +2381,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 }
             }
         }
+        return true
     }
 
     // 안내 중 경유지 추가 - 기존 경유지는 그대로 두고 맨 뒤에 이어붙임. #문제시 원복
@@ -3129,13 +3189,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 만들어 올바른 배치를 쓰게 함(자세한 설명은 MapActivity의 같은 함수 주석 참고). #문제시 원복
     private var inflatedOrientation = 0
 
-    // v: 재억 제보(2026-09-04) - 안내 중에 분할화면으로 바꾸면 이 재생성 때문에 경로를
-    // 처음부터 새로 요청해서, 무료도로로 가던 안내가 추천 경로로 바뀌어버렸음(경유지도
-    // 같이 날아감). 분할화면일 때는 배치를 다시 만들지 않음 - 자세한 설명은 MapActivity의
-    // 같은 함수 주석 참고. #문제시 원복
+    // v: 재억 제보(2026-09-04, 사진) - v19.3.4에서 "분할화면일 때는 다시 만들지 않음"으로
+    // 바꿨더니, 카카오 SDK가 전체화면 때 만들어둔 큰 배치를 좁은 창에서 그대로 쓰는 바람에
+    // 설정 메뉴의 전체경로/다른경로/경로취소 줄이 화면 밖으로 밀려 아예 안 보였음.
+    // 다시 만드는 원래 방식으로 되돌리고, 대신 지금 안내 중인 목적지/경로 방식/경유지를
+    // 인텐트에 계속 적어둬서 다시 만들어도 같은 안내를 그대로 이어가게 함. #문제시 원복
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
-        if (newConfig.orientation != inflatedOrientation && !isInMultiWindowMode) {
+        if (newConfig.orientation != inflatedOrientation) {
             NavLogger.d(this, "[화면방향] 가로<->세로가 바뀌어 화면 배치를 다시 만듦")
             recreate()
             return
