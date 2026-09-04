@@ -3490,33 +3490,40 @@ class MapActivity : AppCompatActivity() {
         // 있었음. SDK 초기화 콜백이 짧은 시간 안에 두 번 걸리는 경우(드묾) 등으로 이
         // 함수가 두 번 불리면, 두 번째 add() 시도에서 "이미 추가돼있다"는 예외로 죽음.
         // 이미 추가돼 있으면 다시 추가하지 않고 조용히 넘어가도록 함. #문제시 원복
-        // v: 재억 제보(2026-09-04) - "분할화면 쓰면 상단패널이 눌러도 반응이 없다".
-        // 화면이 다시 만들어질 때(회전/분할화면) 안드로이드가 NavigationFragment를 자동으로
-        // 되살려주는데, 위 조건에 걸려 여기서 통째로 return 해버리는 바람에 아래에 있는
-        // setupDestinationSearchUi()가 안 불렸음 - 상단바의 ≡/검색/최근검색/집/회사/로그전송
-        // 버튼 클릭 리스너를 전부 여기서 달기 때문에, 패널은 보이는데 눌러도 아무 일이
-        // 안 일어났던 것(로그상 화면 재생성 이후로 "[더보기메뉴] 버튼 클릭됨"이 한 번도
-        // 안 찍힘). 프래그먼트 추가만 건너뛰고 화면 배선은 다시 연결함. #문제시 원복
-        if (supportFragmentManager.findFragmentById(R.id.tmapUILayout) != null) {
-            NavLogger.d(this, "startSafeDriveMode: 화면(NavigationFragment)이 이미 추가돼있어 다시 추가하지 않음 - 상단바 배선만 다시 연결")
-            setupDestinationSearchUi()
-            updateRecentSearchPanel()
-            applyTmapSatelliteViewSetting()
-            applyTmapTrafficInfoSetting()
-            handleVoiceCommandIntent(intent)
-            return
-        }
-        navigationFragment = getFragment() as NavigationFragment
+        // v: 재억 제보(2026-09-04) - "분할화면 쓰면 상단패널이 눌러도 반응이 없다",
+        // "분할화면<->전체화면 오가면 카메라 정보가 고정된다(초기화면 나갔다 오면 괜찮다)".
+        // 둘 다 원인이 같음 - 화면이 다시 만들어질 때(회전/분할화면) 안드로이드가
+        // NavigationFragment를 자동으로 되살려주는데, 위 조건에 걸려 여기서 통째로
+        // return 해버리는 바람에 아래 있는 것들이 전부 안 불렸음:
+        //  - setupDestinationSearchUi(): 상단바 ≡/검색/최근검색/집/회사/로그전송 버튼의
+        //    클릭 리스너를 다는 곳 -> 패널은 보이는데 눌러도 아무 일이 안 일어남
+        //  - frag.startSafeDrive(): 티맵 안전운행 모드를 켜는 곳 -> 위치/카메라/제한속도
+        //    데이터 공급 자체가 멈춰서 마지막 값이 그대로 얼어붙음
+        // 실기기 로그로 확인: 화면 재생성 뒤 "startSafeDrive() called"가 한 번도 안 찍히고,
+        // 그 사이 [전체상태]의 차위치/카메라거리가 1분 내내 같은 값으로 고정됨(속도는 47).
+        // 앱을 완전히 껐다 켠 13:57:07에야 startSafeDrive()가 다시 불리면서 값이 풀림 -
+        // 재억이 말한 "초기화면 나갔다 오면 괜찮다"가 바로 이것.
+        // 프래그먼트 추가만 건너뛰고 나머지는 전부 다시 연결함. #문제시 원복
+        val restoredFragment = supportFragmentManager.findFragmentById(R.id.tmapUILayout) as? NavigationFragment
+        if (restoredFragment != null) {
+            NavLogger.d(this, "startSafeDriveMode: 화면(NavigationFragment)이 이미 추가돼있어 다시 추가하지 않음 - 배선과 안전운행 모드는 다시 연결")
+            navigationFragment = restoredFragment
+        } else {
+            navigationFragment = getFragment() as NavigationFragment
 
-        supportFragmentManager.beginTransaction()
-            .add(R.id.tmapUILayout, navigationFragment!!)
-            .commitAllowingStateLoss()
+            supportFragmentManager.beginTransaction()
+                .add(R.id.tmapUILayout, navigationFragment!!)
+                .commitAllowingStateLoss()
+
+            // 진단용 리플렉션 전수조사라 무거움(예전에 화면 멈춤의 원인이었던 종류) -
+            // 화면이 다시 만들어질 때마다 반복할 이유가 없어 처음 붙일 때만 실행. #문제시 원복
+            dumpNavigationApiCandidates()
+            dumpTrafficApiCandidates()
+            dumpCameraAlarmApiCandidates()
+        }
 
         setupDestinationSearchUi()
         updateRecentSearchPanel()
-        dumpNavigationApiCandidates()
-        dumpTrafficApiCandidates()
-        dumpCameraAlarmApiCandidates()
         applyTmapSatelliteViewSetting()
         applyTmapTrafficInfoSetting()
 
