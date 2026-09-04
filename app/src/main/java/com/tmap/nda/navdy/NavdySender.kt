@@ -125,6 +125,8 @@ object NavdySender {
         navigating = on
         if (on) destinationName = destination
         sendNaviPlaying()
+        // 붙을 때(greet)는 아직 경로가 없을 수 있으므로, 안내가 실제로 시작된 지금 다시 보낸다.
+        if (on) sendRouteCoords()
     }
 
     fun sendGuidance(snapshot: GuidanceSnapshot) {
@@ -246,13 +248,48 @@ object NavdySender {
                 writeFrame(stream, TYPE_CONTROL_JSON, time.toString().toByteArray(Charsets.UTF_8))
 
                 writeFrame(stream, TYPE_NAVI_PLAYING, byteArrayOf(if (navigating) 1 else 0))
-
-                // 경로 좌표는 아직 안 보낸다(기기가 없어도 동작함). nMirror도 비어있을 땐
-                // 4바이트짜리 0을 보내므로 형식만 맞춰준다. #문제시 원복
-                writeFrame(stream, TYPE_ROUTE_COORDS, byteArrayOf(0, 0, 0, 0))
+                writeFrame(stream, TYPE_ROUTE_COORDS, routeCoordsPayload())
                 NavLogger.d("[Navdy] 인사 보냄(시각 동기화 + 안내상태) - 이제 길안내를 보낼 수 있음")
             } catch (e: Exception) {
                 NavLogger.e("[Navdy] 인사 실패: ${e.javaClass.simpleName} ${e.message}")
+                closeQuietly()
+            }
+        }
+    }
+
+    /**
+     * v: 재억 제보(2026-09-04) - "나브디에 표시가 뜨긴 하는데 고정되어 있다". 회전/거리는
+     * 1초마다 보내고 있었는데 **경로 좌표(20번)만 계속 빈 값(0)으로 보내고 있었다.** 기기가
+     * 자기 화면에 경로선과 현재 위치를 그리려면 이 좌표가 필요한데, 빈 값이면 그릴 게 없어
+     * 그 부분이 처음 상태 그대로 멈춰 보인다.
+     *
+     * 좌표는 이미 앱이 뽑아서 갖고 있었다(`[경로선 조사] 좌표 378개 추출 성공` - 카카오
+     * KNRoute.routePolylineWGS84()). 갖고만 있고 나브디로는 안 보내던 것을 실제로 보낸다.
+     * 형식은 nMirror와 동일하게 float(위도),float(경도) 반복. 경로가 아직 없으면 예전처럼
+     * 4바이트 0을 보낸다. #문제시 원복: routeCoordsPayload()가 항상 byteArrayOf(0,0,0,0)을
+     * 반환하게 만들면 예전 동작으로 돌아간다.
+     */
+    private fun routeCoordsPayload(): ByteArray {
+        val coords = com.tmap.nda.KakaoRouteDataRepository.routeCoordinates
+        if (coords.isEmpty()) return byteArrayOf(0, 0, 0, 0)
+        // ByteBuffer 기본이 big-endian - writeFrame의 머리말과 같은 방향이라 그대로 쓴다.
+        val buffer = java.nio.ByteBuffer.allocate(coords.size * 8)
+        for ((lon, lat) in coords) {
+            buffer.putFloat(lat.toFloat())
+            buffer.putFloat(lon.toFloat())
+        }
+        return buffer.array()
+    }
+
+    private fun sendRouteCoords() {
+        val stream = output ?: return
+        executor.execute {
+            try {
+                val payload = routeCoordsPayload()
+                writeFrame(stream, TYPE_ROUTE_COORDS, payload)
+                NavLogger.d("[Navdy] 경로 좌표 전송: ${payload.size / 8}개 지점 (${payload.size}B)")
+            } catch (e: Exception) {
+                NavLogger.e("[Navdy] 경로 좌표 전송 실패: ${e.message}")
                 closeQuietly()
             }
         }

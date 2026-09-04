@@ -660,6 +660,11 @@ class UdpSenderService : Service() {
                 "AA포그라운드(권한=${AutoWatchHelper.hasUsageAccessPermission(ctx)}, foreground=${AutoWatchHelper.isAndroidAutoForeground(ctx)}) " +
                 "구형NDA비콘(addr=${ndaRemoteAddr}, GPS=${ndaGps?.hasFix} - openpilot 포크에 따라 지원 여부가 다름, 재억 본인 차량은 미지원이 정상) " +
                 "나브디(${com.tmap.nda.navdy.NavdySender.statusForLog()}) " +
+                // v: 재억 제보(2026-09-04) - 차량 순정 계기판에 안내가 잘 뜨는데, 그게 우리가
+                // nMirror에 넣어준 것인지 nMirror가 순정 티맵에서 빼간 것인지 구분할 방법이
+                // 로그에 없었음(statusForLog는 만들어만 두고 아무도 안 부르고 있었음).
+                // 전송 횟수가 늘어나면 우리 것이 확실하다. #문제시 원복
+                "${com.tmap.nda.nmirror.NMirrorSender.statusForLog()} " +
                 "폰IP=${getLocalIpAddressesSummary()} " +
                 "배터리=${batteryPct}% 메모리여유=${memInfo.availMem / 1024 / 1024}MB/${memInfo.totalMem / 1024 / 1024}MB lowMemory=${memInfo.lowMemory} " +
                 "기기=${android.os.Build.MANUFACTURER}/${android.os.Build.MODEL} SDK=${android.os.Build.VERSION.SDK_INT}"

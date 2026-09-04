@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Base64
 import java.security.MessageDigest
 import com.kakaomobility.knsdk.KNSDK
@@ -55,6 +57,15 @@ class MapActivity : AppCompatActivity() {
     private var loggedEdcKeySetOnce = false  // 차선/신호등 진단용 전체 키 목록은 한 번만 로그
     private var tbtDistErrorLogged = false   // nTBTDist 리플렉션 실패는 최초 1회만 로깅
     private var isTmapMuted = false  // 티맵 안내음성 음소거 여부 (기본값: 소리 켜짐. 카카오는 실제 경로안내 중에만 말하므로 기본상태에선 티맵 음성이 나와야 함)
+    // v: 재억 제보(2026-09-04, 자동 워치독 로그로 확인) - Tmap 화면 -> 카카오 내비 화면
+    // 전환 순간 5초 넘게 화면이 먹통되는 문제. 원인: 화면 전환 중엔 안드로이드가 이 화면의
+    // onResume을 "잠깐 보였다가 바로 onPause"로 헛되이 부르는데(NavOverlayManager 주석 참고),
+    // 그 짧은 onResume에서도 매번 KNSDK.handleWillEnterForeground/handleDidBecomeActive()라는
+    // 무거운 카카오 SDK 호출을 실행하고 있었음 - 어차피 곧바로 사라질 화면인데도. 0.3초만
+    // 기다렸다가 그때까지 화면이 진짜로 남아있을 때만 이 호출을 하도록 지연시키고, 그 전에
+    // onPause가 오면(=화면 전환 중이었단 뜻) 예약을 취소해서 헛호출 자체를 없앰. #문제시 원복
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var pendingKnsdkForegroundCall: Runnable? = null
     // v14.2: 재억 요청 - 즐겨찾기/이력/검색결과 목록에서 배경으로 예상시간을 계산하는
     // 도중에 사용자가 항목 하나를 눌러서 안내를 시작하려 하면, 아직 시작 안 한 나머지
     // 배경 계산들은 그만두고(이미 보낸 요청까지 취소는 안 되지만 더 안 늘어나게) 방금
@@ -3887,13 +3898,18 @@ class MapActivity : AppCompatActivity() {
             NavLogger.e(this, "볼륨 리시버 등록 예외: ${e.message}")
         }
         if (knsdkInitialized) {
-            try {
-                KNSDK.handleWillEnterForeground()
-                KNSDK.handleDidBecomeActive()
-                NavLogger.d(this, "KNSDK handleWillEnterForeground/handleDidBecomeActive 호출")
-            } catch (e: Exception) {
-                NavLogger.e(this, "KNSDK 라이프사이클(resume) 전달 예외: ${e.message}")
+            pendingKnsdkForegroundCall?.let { mainHandler.removeCallbacks(it) }
+            val call = Runnable {
+                try {
+                    KNSDK.handleWillEnterForeground()
+                    KNSDK.handleDidBecomeActive()
+                    NavLogger.d(this, "KNSDK handleWillEnterForeground/handleDidBecomeActive 호출")
+                } catch (e: Exception) {
+                    NavLogger.e(this, "KNSDK 라이프사이클(resume) 전달 예외: ${e.message}")
+                }
             }
+            pendingKnsdkForegroundCall = call
+            mainHandler.postDelayed(call, 300L)
         }
         // KakaoNaviActivity에서 검색/최근목적지 탭 -> finish() 하면서 남겨둔 요청 처리. #문제시 원복
         val autoQuery = PendingMapAction.autoSearchQuery
@@ -3927,6 +3943,10 @@ class MapActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         NavLogger.d(this, "[MapActivity lifecycle] onPause (KakaoNaviActivity가 위에 뜨는 중일 수 있음 - handleWillResignActive가 이 타이밍에 KNSDK로 전달됨)")
+        // v: 위 onResume에서 0.3초 지연 예약해둔 KNSDK 활성화 호출이 아직 실행 전이면 취소.
+        // 화면 전환 중의 "잠깐 보였다가 바로 사라짐" 케이스라 실제로 필요 없었던 호출임. #문제시 원복
+        pendingKnsdkForegroundCall?.let { mainHandler.removeCallbacks(it) }
+        pendingKnsdkForegroundCall = null
         // v: 이 화면이 지금 등록된 화면이었으면 해제(카카오 화면이 자기 걸로 다시 등록할 것). #문제시 원복
         if (LaneSignalRepository.activeRenderer != null) {
             // 다른 화면이 이미 자기 걸로 덮어썼을 수도 있어 무조건 null로 밀지 않고,
