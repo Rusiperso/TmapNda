@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import com.aa.nmirror.openpilot.tt.TTUtil
 import com.aa.nmirror.service.ITbtService
 import com.tmap.nda.NavLogger
 
@@ -81,6 +82,9 @@ object NMirrorSender {
 
     fun send(context: Context, snapshot: GuidanceSnapshot) {
         if (!isEnabled(context)) return
+        // v: 재억 결정(2026-09-04) - 계기판 우선순위는 1순위 순정 티맵, 2순위 카카오(이 앱).
+        // 티맵이 안내 중이면 여기서 멈춰 자리를 비켜준다(자세한 이유는 TmapGuidanceWatch). #문제시 원복
+        if (TmapGuidanceWatch.isGuiding()) return
 
         val now = System.currentTimeMillis()
         if (now - lastSentAtMs < SEND_INTERVAL_MS) return
@@ -95,6 +99,7 @@ object NMirrorSender {
             target.sendTbt(RgDataJson.build(snapshot), null)
             lastSentAtMs = now
             sentCount++
+            sendRouteCoordsIfChanged(target)
             if (!loggedFirstSend) {
                 loggedFirstSend = true
                 NavLogger.d("[nMirror] 첫 전송 성공: 도로=${snapshot.roadName} 회전=${snapshot.rgCodeName} 거리=${snapshot.turnDistanceMeters}m (이후 전송은 메모리에만 기록)")
@@ -103,6 +108,29 @@ object NMirrorSender {
             NavLogger.e("[nMirror] 전송 실패: ${e.javaClass.simpleName} ${e.message}")
             service = null
         }
+    }
+
+    /**
+     * v: 재억 요청(2026-09-04) - 나브디에 회전 화살표·거리는 뜨는데 경로선(지도)만 안 나오던
+     * 문제. 원인은 우리가 nMirror에 TBT 글자/숫자만 넣고 **경로 좌표를 한 번도 안 넣은 것**.
+     * 순정 티맵일 때는 nMirror가 티맵 엔진에서 좌표까지 통째로 빼가므로 경로선이 그려졌다.
+     * 경로가 새로 만들어졌을 때만 보낸다(좌표가 수백 개라 매초 보낼 것이 아니다). #문제시 원복
+     */
+    private var lastRouteSentAtMs = 0L
+
+    private fun sendRouteCoordsIfChanged(target: ITbtService) {
+        val updatedAt = com.tmap.nda.KakaoRouteDataRepository.routeCoordinatesUpdatedAt
+        if (updatedAt == 0L || updatedAt == lastRouteSentAtMs) return
+        val coords = com.tmap.nda.KakaoRouteDataRepository.routeCoordinates
+        if (coords.isEmpty()) return
+        lastRouteSentAtMs = updatedAt
+        // 저장된 순서는 (경도, 위도)인데 nMirror가 기대하는 순서는 (위도, 경도)다.
+        val parcelables = ArrayList<TTUtil.Coord>(coords.size)
+        for ((lon, lat) in coords) {
+            parcelables.add(TTUtil.Coord(lat.toFloat(), lon.toFloat()))
+        }
+        target.sendRouteCoords(parcelables)
+        NavLogger.d("[nMirror] 경로 좌표 전송: ${parcelables.size}개 지점 - 나브디 경로선용")
     }
 
     private fun ensureBound(context: Context) {
@@ -128,5 +156,6 @@ object NMirrorSender {
     }
 
     fun statusForLog(): String =
-        if (service != null) "nMirror=연결됨 전송=${sentCount}회" else "nMirror=끊김"
+        (if (service != null) "nMirror=연결됨 전송=${sentCount}회" else "nMirror=끊김") +
+            " 우선순위(${TmapGuidanceWatch.statusForLog()})"
 }

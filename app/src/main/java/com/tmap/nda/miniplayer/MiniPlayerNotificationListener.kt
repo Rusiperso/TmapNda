@@ -19,7 +19,30 @@ import android.service.notification.StatusBarNotification
  * MiniPlayerManager가 MediaSession 메타데이터보다 이걸 우선 사용하도록 함. #문제시 원복
  */
 class MiniPlayerNotificationListener : NotificationListenerService() {
+
+    // v: 재억 결정(2026-09-04) - 계기판 우선순위(1순위 순정 티맵)를 위해, 이미 갖고 있는
+    // 알림 접근 권한으로 티맵 안내 여부만 같이 감지한다. 자세한 내용은 TmapGuidanceWatch. #문제시 원복
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        try {
+            com.tmap.nda.nmirror.TmapGuidanceWatch.syncFrom(activeNotifications)
+        } catch (e: Exception) {
+            // 권한이 막 붙는 중이면 실패할 수 있음 - 이후 onNotificationPosted로 맞춰짐
+        }
+    }
+
+    override fun onNotificationRemoved(sbn: StatusBarNotification) {
+        try {
+            com.tmap.nda.nmirror.TmapGuidanceWatch.onRemoved(sbn)
+        } catch (e: Exception) {
+        }
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
+        try {
+            com.tmap.nda.nmirror.TmapGuidanceWatch.onPosted(sbn)
+        } catch (e: Exception) {
+        }
         try {
             val extras = sbn.notification?.extras ?: return
             val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()

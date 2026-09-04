@@ -12,6 +12,22 @@
 // 오픈파일럿으로 그대로 흘러간다. #문제시 원복: 이 파일과 NMirrorSender만 지우면 됨
 package com.aa.nmirror.service;
 
+// v: 재억 요청(2026-09-04, "나브디에 경로선이 안 나온다") - nMirror 4.8.0을 다시 뜯어보니
+// 이 창구에 함수가 하나가 아니라 **7개**였다. AIDL은 선언 순서로 번호가 매겨지므로,
+// 3번째 자리인 경로 좌표를 쓰려면 1·2번도 자리를 채워 선언해야 한다. 원본 대조표:
+//   1 b(String,String)   TBT 정보      → 우리가 쓰던 것
+//   2 i(String)          신호등
+//   3 f(List)            경로 좌표     ← 경로선을 그리는 데이터
+//   4 h(int)             AI 상태
+//   5 j(String)          AI POI 목록
+//   6 g(byte[],long)     TBT 이미지
+//   7 c(String)          (미확인)
+// 경로 좌표를 넣으면 nMirror가 notiTmapRouteUpdated로 흘려 나브디에 20번 프레임
+// (writeShort(20) + writeInt(개수*8) + float(위도),float(경도) 반복)으로 보낸다.
+// 목록의 원소는 com.aa.nmirror.openpilot.tt.TTUtil$Coord(float 위도, float 경도)라
+// 같은 이름·같은 필드 순서의 클래스를 우리 쪽에도 둬야 한다(TTUtil.java 참고). #문제시 원복
 interface ITbtService {
     void sendTbt(String tbtInfoJson, String tbtListInfoJson);
+    void sendTrafficSignal(String trafficSignalInfoJson);
+    void sendRouteCoords(in List coords);
 }
