@@ -25,6 +25,29 @@ object NearbyCategoryPopup {
     data class CategoryItem(val label: String, val code: String)
 
     private const val PREF_LAST_CATEGORY = "nearby_category_last_selected"
+    // v: 재억 요청(2026-09-05) - "주변검색 순서를 내가 바꾸게 할 수 있나. 난 주유소가
+    // 먼저 필요하고 전기차 충전소는 아래로 빼고 싶지만, 반대인 사람도 있으니까" -
+    // 아래 CATEGORIES는 기본 순서로만 쓰고, 사용자가 바꾼 순서는 여기에 라벨 순서로
+    // 저장해서 그걸 우선 적용. #문제시 원복
+    private const val PREF_CATEGORY_ORDER = "nearby_category_order"
+
+    /** 저장된 사용자 순서를 적용한 카테고리 목록. 저장된 게 없으면 기본 순서 그대로. */
+    private fun orderedCategories(context: Context): List<CategoryItem> {
+        val saved = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .getString(PREF_CATEGORY_ORDER, null) ?: return CATEGORIES
+        val savedLabels = saved.split("\u001f").filter { it.isNotBlank() }
+        // 저장된 순서대로 먼저 담고, 저장 이후에 새로 추가된 항목은 뒤에 붙임(누락 방지)
+        val byLabel = CATEGORIES.associateBy { it.label }
+        val result = savedLabels.mapNotNull { byLabel[it] }.toMutableList()
+        CATEGORIES.forEach { if (result.none { r -> r.label == it.label }) result.add(it) }
+        return result
+    }
+
+    private fun saveCategoryOrder(context: Context, items: List<CategoryItem>) {
+        context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .edit().putString(PREF_CATEGORY_ORDER, items.joinToString("\u001f") { it.label }).apply()
+    }
+
 
     // v: 왼쪽 목록 - SearchRanking.CATEGORY_KEYWORDS 중 재억이 실제로 자주 쓸 법한 것만
     // 순서대로 고정. 순서 자체가 UI라 SearchRanking과 별도로 여기서 관리. #문제시 원복
@@ -406,13 +429,48 @@ object NearbyCategoryPopup {
 
         val lastCategoryLabel = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             .getString(PREF_LAST_CATEGORY, null)
-        val startIndex = CATEGORIES.indexOfFirst { it.label == lastCategoryLabel }.takeIf { it >= 0 } ?: 0
 
-        CATEGORIES.forEachIndexed { index, item ->
-            val row = makeRow(context, item.label, null, true, 16f) { runSearch(item) }
-            leftList.addView(row)
-            if (index == startIndex) runSearch(item) // 마지막 선택 카테고리(없으면 첫 카테고리) 기본 선택
+        // v: 재억 요청(2026-09-05) - 왼쪽 카테고리 목록을 사용자가 저장해둔 순서로 그리고,
+        // 항목을 길게 누르면 "위로/아래로"로 순서를 바꿀 수 있게 함. 바꾼 순서는 바로
+        // 저장되고 목록도 즉시 다시 그려짐. #문제시 원복
+        var currentOrder = orderedCategories(context).toMutableList()
+
+        fun renderLeftList(selectedLabel: String?) {
+            leftList.removeAllViews()
+            currentOrder.forEachIndexed { index, item ->
+                val row = makeRow(context, item.label, null, true, 16f) { runSearch(item) }
+                row.setOnLongClickListener {
+                    val moveOptions = mutableListOf<String>()
+                    if (index > 0) moveOptions.add("위로")
+                    if (index < currentOrder.size - 1) moveOptions.add("아래로")
+                    if (index > 0) moveOptions.add("맨 위로")
+                    if (index < currentOrder.size - 1) moveOptions.add("맨 아래로")
+                    if (moveOptions.isEmpty()) return@setOnLongClickListener true
+                    AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+                        .setTitle("'${item.label}' 위치 바꾸기")
+                        .setItems(moveOptions.toTypedArray()) { _, which ->
+                            val moved = currentOrder.removeAt(index)
+                            val newIndex = when (moveOptions[which]) {
+                                "위로" -> index - 1
+                                "아래로" -> index + 1
+                                "맨 위로" -> 0
+                                else -> currentOrder.size
+                            }
+                            currentOrder.add(newIndex.coerceIn(0, currentOrder.size), moved)
+                            saveCategoryOrder(context, currentOrder)
+                            renderLeftList(selectedLabel)
+                        }
+                        .setNegativeButton("취소", null)
+                        .show()
+                    true
+                }
+                leftList.addView(row)
+            }
         }
+
+        renderLeftList(lastCategoryLabel)
+        val startItem = currentOrder.firstOrNull { it.label == lastCategoryLabel } ?: currentOrder.firstOrNull()
+        startItem?.let { runSearch(it) } // 마지막 선택 카테고리(없으면 첫 카테고리) 기본 선택
 
         dialog.show()
     }
