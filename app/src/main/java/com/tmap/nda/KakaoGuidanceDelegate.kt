@@ -720,7 +720,14 @@ class KakaoGuidanceDelegate(
                         // 카카오 자체 추천(getSuggest)으로 폴백. #문제시 원복
                         turnCodeForLane == "KNRGCode_Via" || turnCodeForLane == "KNRGCode_Goal" -> null
                         turnCodeForLane == "KNRGCode_LeftTurn" || turnCodeForLane == "KNRGCode_UnprotectedLeftTurn" || turnCodeForLane == "KNRGCode_LeftOutHighway" -> 2
-                        turnCodeForLane == "KNRGCode_RightTurn" || turnCodeForLane == "KNRGCode_RightOutHighway" || turnCodeForLane == "KNRGCode_OutHighway" -> 32
+                        // v: 재억 요청(2026-09-05, 실기기 로그로 확인) - 학의JC 같은 고속도로
+                        // 진출 구간에서 차선 배지가 통째로 안 뜨던 원인. 요구비트를 우회전(32)로만
+                        // 봤는데 실제 진출 차로들의 비트는 16이었음(램프/진출 전용 비트로 보임).
+                        // 같은 순간 색깔 유도선(getColorType=2)도 정확히 그 16번 차로들만
+                        // 가리키고 있어서 확인됨. 실패 51건 중 42건이 이 경우라 32와 16을 함께
+                        // 인정하도록 수정(비트 OR = 48). #문제시 원복
+                        turnCodeForLane == "KNRGCode_RightTurn" -> 32
+                        turnCodeForLane == "KNRGCode_RightOutHighway" || turnCodeForLane == "KNRGCode_OutHighway" -> 32 or 16
                         turnCodeForLane == "KNRGCode_UTurn" -> 1
                         // v: 재억 재제보(2026-08-30, 실기기로 확인) - "700m부터 0m까지 계속
                         // 떠있어야 하는데 도중에 사라진다"의 정확한 원인을 로그로 잡음:
@@ -736,7 +743,9 @@ class KakaoGuidanceDelegate(
                         // v: 재억 재지적(2026-08-29) - 대안경로 오감지 수정됐다고 해서
                         // 좌/우측 분기도 같이 방향 매핑에 포함. #문제시 원복
                         turnCodeForLane == "KNRGCode_LeftDirection" -> 2
-                        turnCodeForLane == "KNRGCode_RightDirection" -> 32
+                        // v: (2026-09-05) 우측분기도 위 진출 계열과 동일하게 16 비트 케이스가
+                        // 로그에 16건 관측돼 함께 인정. #문제시 원복
+                        turnCodeForLane == "KNRGCode_RightDirection" -> 32 or 16
                         turnCodeForLane != null && (turnCodeForLane.startsWith("KNRGCode_RoundaboutDirection") || turnCodeForLane.startsWith("KNRGCode_RotaryDirection")) ->
                             when (com.tmap.nda.navdy.KakaoToNavdyTurn.from(turnCodeForLane, directionAngleForLane)) {
                                 com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_NE, com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_E, com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_SE -> 32

@@ -1227,7 +1227,14 @@ class UdpSenderService : Service() {
                     // 안내 데이터로 덮어씀. 어떤 openpilot fork가 이 UDP를 받든 값 자체는
                     // 항상 나가게 해두고, 실제로 화면에 그려지는지는 그 fork의 UI 코드에
                     // 달려있음(사용자 확인 예정). #문제시 원복
-                    if (KakaoRouteDataRepository.isFresh()) {
+                    // v: 재억 제보(2026-09-05, "정차 중에 콤마/차량 계기판에서 정보가 사라졌다가
+                    // 출발하면 다시 나온다") - isFresh()는 기본 5초 기준인데, 신호대기 등으로
+                    // 차가 서 있으면 카카오가 위치/거리 갱신을 멈추므로 5초 만에 false가 되어
+                    // 이 블록 전체를 건너뛰었음(= 계기판/openpilot으로 안내 정보가 안 나감).
+                    // 안내가 끝난 게 아니라 잠시 멈춘 것뿐이므로, 정차 상황을 넉넉히 견디도록
+                    // 60초 기준으로 완화. 안내가 실제로 종료되면 reset()으로 isActive가
+                    // 꺼지므로 오래 남아 있을 위험은 없음. #문제시 원복
+                    if (KakaoRouteDataRepository.isFresh(60_000L)) {
                         val kr = KakaoRouteDataRepository
                         if (kr.remainDist > 0 && kr.remainTime > 0) {
                             json.put("nGoPosDist", kr.remainDist)
