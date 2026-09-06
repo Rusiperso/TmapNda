@@ -1013,11 +1013,22 @@ class KakaoGuidanceDelegate(
                 // direction.directionAng 실측값 사용)을 재사용해서 좌/우/직진을 구분함.
                 // RightDirection/LeftDirection(v13.6에서 대안경로 합류 지점 오감속 방지로
                 // 일부러 51 고정해둔 것)은 오늘 문제와 원인이 달라서 그대로 안 건드림. #문제시 원복
+                // v: 재억 제보(2026-09-06, "카카오 로터리 모양이랑 계기판 로터리 모양이
+                // 다르다") - 지금까지는 로터리를 좌회전(12)/우회전(13)/직진(51)으로 변환해
+                // 보내서, 계기판에 로터리 모양이 아니라 그냥 화살표가 떴음. openpilot
+                // (carrot_serv.py turn_type_mapping)에 로터리 전용 코드가 각도별로
+                // 준비돼 있어(131~142, xTurnInfo=5=rotary) 그걸 그대로 쓰도록 변경.
+                // 진출 각도는 기존과 동일하게 KakaoToNavdyTurn으로 판단. #문제시 원복
                 if (name.startsWith("KNRGCode_RoundaboutDirection") || name.startsWith("KNRGCode_RotaryDirection")) {
                     return when (com.tmap.nda.navdy.KakaoToNavdyTurn.from(name, directionAngleForMapping)) {
-                        com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_NE, com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_E, com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_SE -> 13
-                        com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_S, com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_SW, com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_W -> 12
-                        else -> 51 // N, NW 근처(거의 직진)
+                        com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_NE -> 131  // 로터리 우측 완만
+                        com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_E -> 133   // 로터리 우측
+                        com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_SE -> 134  // 로터리 우측 급회전
+                        com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_S -> 138   // 로터리 좌측 급회전
+                        com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_SW -> 136  // 로터리 좌측 급회전
+                        com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_W -> 139   // 로터리 좌측
+                        com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_NW -> 140  // 로터리 좌측 완만
+                        else -> 142                                        // 로터리 직진(N 등)
                     }
                 }
                 if (System.currentTimeMillis() - lastUnmappedTurnTypeLogTime > 15000L) {
