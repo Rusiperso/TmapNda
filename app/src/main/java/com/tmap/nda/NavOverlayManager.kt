@@ -267,22 +267,17 @@ object NavOverlayManager {
         primaryIcon?.invalidate()
         primaryDistText?.text = formatDist(snapshot.tbtDist)
         primaryRoadText?.apply {
-            // v: 재억 요청(2026-09-05, "차량 계기판 정보와 오버레이 정보가 불일치 - 다음
-            // 회전 지점으로 통일") - 계기판은 다음 회전 지점의 도로명(예: "마정로")을
-            // 보여주는데 오버레이는 방면 안내(예: "홍산 방면")를 보여줘서 서로 다른 곳을
-            // 가리키는 것처럼 보였음. 도로명이 있으면 그걸 우선 쓰고, 없을 때만 기존
-            // 방면 안내로 폴백. #문제시 원복
-            val roadLabel = snapshot.roadName.takeIf { it.isNotBlank() }
-            when {
-                roadLabel != null -> {
-                    text = roadLabel
-                    visibility = View.VISIBLE
-                }
-                snapshot.tbtMainText.isNotBlank() -> {
-                    text = "${snapshot.tbtMainText} 방면"
-                    visibility = View.VISIBLE
-                }
-                else -> visibility = View.GONE
+            // v: 재억 재제보(2026-09-06, 로그로 확인) - 계기판은 "송암교차로"(다음 회전 지점),
+            // 오버레이는 "만세로"(지금 달리는 도로)를 보여줘서 여전히 달랐음. 직전 수정에서
+            // roadName을 쓰게 했는데, KakaoHudBridge가 그 필드를 currentRoad(현재 도로)로
+            // 덮어쓰고 있어서 엉뚱한 값이 들어간 것. 다음 회전 지점은 tbtMainText가 맞으므로
+            // 그걸 쓰되(로그의 road=송암교차로와 동일 소스), 계기판처럼 "방면"은 붙이지 않음.
+            // #문제시 원복
+            if (snapshot.tbtMainText.isNotBlank()) {
+                text = snapshot.tbtMainText
+                visibility = View.VISIBLE
+            } else {
+                visibility = View.GONE
             }
         }
         // v: 재억 요청(2026-08-28) - KNDriveLaneView(카카오 화살표 위젯)를 이 작은 카드
