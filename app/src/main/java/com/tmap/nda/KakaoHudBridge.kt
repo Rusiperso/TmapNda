@@ -44,9 +44,14 @@ object KakaoHudBridge {
         val currentRoad = currentLocation?.roadName.orEmpty()
             .ifBlank { KakaoRouteDataRepository.roadName }
 
+        // v: 재억 요청(2026-09-06, "계기판이랑 오버레이 이름을 맞춰달라") - 계기판은 다음
+        // 회전 지점의 교차로명(예: "경찰서앞교차로")을 보여주는데, 여기서는 방면 이름
+        // (directionNames, 예: "공주교육지원청 방면")을 먼저 쓰고 있어서 서로 다른 이름이
+        // 표시됐음. 계기판이 쓰는 것과 같은 성격인 nodeName(교차로/지점명)을 우선하고,
+        // 그게 없을 때만 방면 이름으로 폴백하도록 순서를 뒤집음. #문제시 원복
         val instruction =
-            direction?.directionNames?.firstOrNull().orEmpty()
-                .ifBlank { direction?.nodeName.orEmpty() }
+            direction?.nodeName.orEmpty()
+                .ifBlank { direction?.directionNames?.firstOrNull().orEmpty() }
                 .ifBlank { currentRoad }
 
         // v: 재억 요청(2026-08-22) - "동판교로"처럼 목적지명 대신 도로명이 뜨는 문제의 진짜
@@ -76,8 +81,8 @@ object KakaoHudBridge {
         // v: 오버레이(재억 요청, 2026-08-27) "OOO 방면" 둘째 줄용 - curDirection의
         // instruction과 완전히 동일한 방식으로 nextDirection에서도 도로/지점명 추출. #문제시 원복
         val nextInstruction =
-            nextDirection?.directionNames?.firstOrNull().orEmpty()
-                .ifBlank { nextDirection?.nodeName.orEmpty() }
+            nextDirection?.nodeName.orEmpty()
+                .ifBlank { nextDirection?.directionNames?.firstOrNull().orEmpty() }
 
         KakaoRouteDataRepository.publishGuidance(
             tbtDist = turnDistance,
