@@ -226,14 +226,34 @@ object AutoUpdater {
             destinationFile.delete()
         }
 
+        // v: 재억 제보(2026-09-06, 크래시 로그) - 업데이트 다운로드 시작 순간 앱이 강제
+        // 종료됐음: SecurityException "Unsupported path /data/local/tmp/external/..."
+        // setDestinationUri(Uri.fromFile(...))로 절대경로를 직접 지정했는데, 이 헤드유닛에서는
+        // getExternalFilesDir()가 /data/local/tmp/external/... 로 잡혀 DownloadManager가
+        // 허용하지 않는 경로가 됨. 안드로이드 권장 API(setDestinationInExternalFilesDir)로
+        // 바꾸고, 그래도 실패하는 기기를 대비해 예외를 잡아 브라우저로 폴백하도록 함
+        // (업데이트 확인 때문에 앱이 죽는 일은 없어야 함). #문제시 원복
         val request = DownloadManager.Request(Uri.parse(downloadUrl))
             .setTitle("TmapNda 업데이트 다운로드 중")
             .setDescription("버전 $version 다운로드 중입니다.")
-            .setDestinationUri(Uri.fromFile(destinationFile))
+            .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName)
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
 
         val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val downloadId = downloadManager.enqueue(request)
+        val downloadId = try {
+            downloadManager.enqueue(request)
+        } catch (e: Exception) {
+            NavLogger.e(context, "[업데이트확인] 다운로드 시작 실패(${e.message}) - 브라우저로 대체")
+            try {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            } catch (e2: Exception) {
+                NavLogger.e(context, "[업데이트확인] 브라우저 실행도 실패: ${e2.message}")
+            }
+            return
+        }
 
         val onComplete = object : BroadcastReceiver() {
             override fun onReceive(ctxt: Context, intent: Intent) {
