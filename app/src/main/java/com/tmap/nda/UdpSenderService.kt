@@ -1295,7 +1295,14 @@ class UdpSenderService : Service() {
                         // 아무것도 못 잡았을 때만 백업이었음. Tmap 대기화면(길안내 안 할 때) 동작은
                         // 이 블록 자체가 kr.isFresh() 안에서만 도니까 안 건드림. #문제시 원복
                         val tmapHasSdi = json.optInt("nSdiType", 0) != 0 || json.optInt("nSdiDist", 0) > 0
-                        val kakaoHasSdi = kr.safetyType >= 0 && kr.safetyDist > 0 && (kr.safetySpeedLimit > 0 || kr.safetyType == 22)
+                        // v: 재억 지적(2026-09-05, "방지턱 같은 걸 못 잡는 게 너무 많다") -
+                        // 로그 분석 결과 카카오가 알려주는 위험정보 중 "제한속도가 붙은 것"과
+                        // 방지턱(22)만 채택하고 나머지는 전부 버리고 있었음. 실제로 버려진 것:
+                        // 급커브(30) 16건, 보행자/교통사고다발(29) 17건, 높이제한 41건,
+                        // 휴게소(25) 7건 등. 이것들은 속도제한이 없을 뿐 엄연히 알려줘야 할
+                        // 정보라서, 종류(safetyType)와 거리가 유효하면 제한속도 유무와 무관하게
+                        // 채택하도록 완화. #문제시 원복
+                        val kakaoHasSdi = kr.safetyType > 0 && kr.safetyDist > 0
                         // v10.1: Tmap 분기(위쪽)엔 "sdiType==0인데 speedLimit/dist는 있으면 1로
                         // 강제"하는 안전장치가 있는데 여기(카카오 채택 분기)엔 없어서, 향후 또
                         // 다른 카카오 안전코드가 실수로 0에 매핑되면 여기서도 똑같이 조용히

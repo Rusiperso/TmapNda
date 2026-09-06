@@ -267,11 +267,22 @@ object NavOverlayManager {
         primaryIcon?.invalidate()
         primaryDistText?.text = formatDist(snapshot.tbtDist)
         primaryRoadText?.apply {
-            if (snapshot.tbtMainText.isNotBlank()) {
-                text = "${snapshot.tbtMainText} 방면"
-                visibility = View.VISIBLE
-            } else {
-                visibility = View.GONE
+            // v: 재억 요청(2026-09-05, "차량 계기판 정보와 오버레이 정보가 불일치 - 다음
+            // 회전 지점으로 통일") - 계기판은 다음 회전 지점의 도로명(예: "마정로")을
+            // 보여주는데 오버레이는 방면 안내(예: "홍산 방면")를 보여줘서 서로 다른 곳을
+            // 가리키는 것처럼 보였음. 도로명이 있으면 그걸 우선 쓰고, 없을 때만 기존
+            // 방면 안내로 폴백. #문제시 원복
+            val roadLabel = snapshot.roadName.takeIf { it.isNotBlank() }
+            when {
+                roadLabel != null -> {
+                    text = roadLabel
+                    visibility = View.VISIBLE
+                }
+                snapshot.tbtMainText.isNotBlank() -> {
+                    text = "${snapshot.tbtMainText} 방면"
+                    visibility = View.VISIBLE
+                }
+                else -> visibility = View.GONE
             }
         }
         // v: 재억 요청(2026-08-28) - KNDriveLaneView(카카오 화살표 위젯)를 이 작은 카드
