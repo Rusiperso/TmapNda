@@ -1269,7 +1269,16 @@ class UdpSenderService : Service() {
                         // (hud_renderer.py 쪽 작업), 상단 라벨은 더 이상 안전이벤트 종류를 안
                         // 보여줘도 됨 - 항상 목적지명 우선, 없으면 도로명, 그것도 없으면
                         // "카카오안내". #문제시 원복
-                        val kakaoPrefix = if (kr.destinationName.isNotBlank() && kr.destinationName != "목적지") {
+                        // v: 재억 재제보(2026-09-06, "계기판이랑 오버레이 이름이 또 다르다") -
+                        // 여기서는 목적지명(destinationName)을 보내고 오버레이는 다음 회전
+                        // 지점명(tbtMainText)을 그리고 있어서, 애초에 서로 다른 정보를 보여주고
+                        // 있었음(계기판 "느티나무길" vs 오버레이 "금강공원길"). openpilot이 이 값을
+                        // maneuverPrimaryText로 계기판까지 그대로 전달하므로(carrot_serv.py:1129),
+                        // 여기서도 오버레이와 같은 tbtMainText를 보내면 둘이 일치함. 다음 회전
+                        // 지점명이 비어 있을 때만 예전처럼 목적지명/도로명으로 폴백. #문제시 원복
+                        val kakaoPrefix = if (kr.tbtMainText.isNotBlank()) {
+                            kr.tbtMainText
+                        } else if (kr.destinationName.isNotBlank() && kr.destinationName != "목적지") {
                             kr.destinationName
                         } else if (kr.roadName.isNotEmpty()) {
                             kr.roadName
