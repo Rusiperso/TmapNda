@@ -1241,20 +1241,24 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // v: 재억 요청(2026-09-02) - 경유지 여러 개 지원. 전부 지난 경우(최종목적지로
                 // 향함)뿐 아니라 "앞의 몇 개만 지난" 경우도 처리해야 해서, 델리게이트가
                 // 계산해둔 passedViaCount만큼 목록 앞에서 지움. #문제시 원복
+                // v: 재억 요청(2026-09-06, 실기기 로그로 확인) - 위 headingToFinalDestination/
+                // passedViaCount는 카카오의 getLocationsOfPois()가 계속 pois.size=1을 돌려주는
+                // 버그(경유지가 실제로 있는데도 "없다"고 판단)에 의존하고 있어서 계속 안 됐음.
+                // "티맵처럼 일정 범위에 들어가면 경유지 완료 처리해달라"는 요청대로, 카카오 API에
+                // 의존하지 않고 저희가 이미 갖고 있는 경유지 좌표 + 현재 GPS 위치의 거리로 직접
+                // 판정하도록 교체(50m 이내면 통과로 간주). #문제시 원복
                 if (activeWaypoints.isNotEmpty()) {
-                    val passed = KakaoRouteDataRepository.passedViaCount
-                    if (KakaoRouteDataRepository.headingToFinalDestination) {
-                        NavLogger.d(this@KakaoNaviActivity, "[경유지취소] 경유지 전부 통과 감지 - 목록 비우고 취소 버튼 자동 숨김")
-                        activeWaypoints.clear()
-                        syncWaypointsToIntent()
-                        binding.btnCancelWaypoint?.visibility = View.GONE
-                    } else if (passed > 0) {
-                        val removeCount = passed.coerceAtMost(activeWaypoints.size)
-                        if (removeCount > 0) {
-                            val removed = activeWaypoints.take(removeCount).joinToString { it.name }
-                            repeat(removeCount) { activeWaypoints.removeAt(0) }
+                    val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
+                    if (curLat != null && curLon != null) {
+                        val next = activeWaypoints.first()
+                        val distToNext = distanceMeters(curLat, curLon, next.lat, next.lon)
+                        if (distToNext < WAYPOINT_ARRIVAL_RADIUS_M) {
+                            activeWaypoints.removeAt(0)
                             syncWaypointsToIntent()
-                            NavLogger.d(this@KakaoNaviActivity, "[경유지] 통과한 경유지 ${removeCount}개 목록에서 제거: $removed (남은 ${activeWaypoints.size}개)")
+                            NavLogger.d(this@KakaoNaviActivity, "[경유지] 거리기반 통과 감지(${distToNext.toInt()}m): '${next.name}' 목록에서 제거 (남은 ${activeWaypoints.size}개)")
+                            if (activeWaypoints.isEmpty()) {
+                                binding.btnCancelWaypoint?.visibility = View.GONE
+                            }
                         }
                     }
                 }
@@ -2120,6 +2124,22 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private var currentDestName: String = ""
     // v: 신규기능(주변검색 진행/역방향 표시) - Tmap 화면과 동일. #문제시 원복
     private var lastKnownBearing: Float? = null
+    // v: 재억 요청(2026-09-06) - 경유지 통과 판정을 카카오 API가 아닌 거리 기반으로
+    // 바꾸면서 필요해진 값. 티맵도 목적지 도착을 반경 기준으로 판단하는 것과 동일한
+    // 방식(재억님 확인). 50m로 잡음 - 너무 넓으면 아직 안 도착했는데 통과 처리될 수
+    // 있고, 너무 좁으면 GPS 오차로 안 잡힐 수 있어 절충. #문제시 원복
+    private val WAYPOINT_ARRIVAL_RADIUS_M = 50.0
+
+    private fun distanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6371000.0 // 지구 반지름(m)
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2)
+        return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    }
+
     // v: 신규기능(경유지 취소 버튼) - 경유지가 추가돼 있는지, 그 경유지 정보가 뭔지 기억.
     // 취소 버튼은 이 목록이 비어있지 않을 때만 보임.
     // v: 재억 요청(2026-09-02) - 예전엔 단일 변수(activeWaypoint)라서 경유지를 하나만
