@@ -1215,6 +1215,16 @@ class KakaoGuidanceDelegate(
                 } else null
 
                 val dist = remainDist ?: routeBasedDist ?: geoDist.takeIf { it > 0 } ?: distFromS
+                val isTrustedCandidate = remainDist != null || routeBasedDist != null
+                // v: 재억 제보(2026-09-09, "카카오 기반으로 카메라 인식하는데 옆도로를 한번씩
+                // 잡는다") - 로그로 확인: 우측분기(RightDirection)로 갈라지는 순간, 경로상
+                // 검증이 안 된(trusted=false, 순전히 직선거리geoDist로만 추정) 카메라가
+                // 채택돼 openpilot으로 그대로 나가고 있었음 - 분기 갈림길에서 아직 안 갈
+                // 옆 도로의 카메라를 직선거리만 보고 착각한 것. 지금까진 trusted 여부를
+                // 로그 표시에만 쓰고 채택 자체는 막지 않았는데, 검증 안 된 후보는 아예
+                // 후보에서 제외하도록 변경(경로 검증된 이벤트가 하나도 없으면 이번 프레임엔
+                // "카메라 없음"으로 처리 - 옆도로 오탐보다 안전). #문제시 원복
+                if (!isTrustedCandidate) return@forEach
                 if (dist in 0 until nearestDist) {
                     nearestDist = dist
                     nearest = item
