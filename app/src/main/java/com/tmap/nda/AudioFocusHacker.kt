@@ -49,6 +49,17 @@ object AudioFocusHacker {
         NavLogger.dIfChanged("focus_abandon_new", "[AudioFocusHacker] abandonAudioFocusRequest(new) intercepted! NOP!")
         return AudioManager.AUDIOFOCUS_REQUEST_GRANTED
     }
+
+    // v: 재억 요청(2026-09-09) - playSoundEffect(int)는 오디오 포커스 요청 없이 바로
+    // 소리를 내는 경로라서 위 requestAudioFocus 계열 차단으로는 안 막혔음. 실제 발생
+    // 지점은 카카오내비 SDK 쪽(KakaoNaviActivity가 화면 위에 떠 있는 동안 로그에 찍힘,
+    // 카카오 음소거 시 소리가 사라지는 것과 일치) - 티맵이 아니었음. 같은 방식으로
+    // 호출 자체를 가로채서 아무 동작도 안 하게 함. #문제시 원복
+    @JvmStatic
+    fun playSoundEffect(target: Any?, effectType: Int) {
+        Log.e("TmapVolume", "[AudioFocusHacker] playSoundEffect($effectType) intercepted! NOP!")
+        NavLogger.dIfChanged("play_sound_effect", "[AudioFocusHacker] playSoundEffect intercepted! NOP!")
+    }
 }
 
 object AudioStreamDiagnostics {

@@ -35,9 +35,15 @@ abstract class AudioFocusInterceptorFactory : AsmClassVisitorFactory<Instrumenta
     }
 
     override fun isInstrumentable(classData: ClassData): Boolean {
-        // Tmap SDK 내부 클래스들만 타겟팅 (필요시 전체로 확장 가능)
+        // Tmap SDK 내부 클래스들 + 카카오내비 SDK 내부 클래스들 타겟팅
+        // v: 재억 제보(2026-09-09) - playSoundEffect(int) "띵띵" 소리가 실제로는
+        // KakaoNaviActivity가 화면 위에 떠 있을 때 발생함이 로그로 확인됨(직전에 카카오
+        // 음소거하면 소리가 사라진다는 실사용 확인도 일치). 원래 티맵 패키지만 대상이라
+        // 카카오 SDK 내부 호출은 못 잡고 있었음 - com.kakaomobility 추가. #문제시 원복
         val name = classData.className
-        return name.startsWith("com.skt.tmap") || name.startsWith("com.tmapmobility")
+        return name.startsWith("com.skt.tmap") ||
+            name.startsWith("com.tmapmobility") ||
+            name.startsWith("com.kakaomobility")
     }
 }
 
@@ -77,6 +83,24 @@ class AudioFocusMethodVisitor(nextVisitor: MethodVisitor) : MethodVisitor(Opcode
                 )
                 return
             }
+        }
+
+        // v: 재억 요청(2026-09-09) - playSoundEffect(int)는 오디오 포커스 요청 과정을
+        // 거치지 않고 바로 소리를 내는 별도 경로라서, 위 AudioFocusHacker 차단을 그대로
+        // 뚫고 "띵띵띵띵" 소리가 났음(실제 발생 지점은 카카오내비 화면이 떠 있는 동안 -
+        // 위 isInstrumentable()에 com.kakaomobility 추가함). 오디오 포커스 요청과 무관하게
+        // 이 호출 자체를 가로채서 무시하도록 별도 규칙 추가. owner는 굳이 특정하지 않고
+        // 시그니처만 매칭 - 어차피 isInstrumentable()에서 대상 SDK 클래스만 스캔하니 안전함.
+        // #문제시 원복
+        if (opcode == Opcodes.INVOKEVIRTUAL && name == "playSoundEffect" && descriptor == "(I)V") {
+            super.visitMethodInsn(
+                Opcodes.INVOKESTATIC,
+                "com/tmap/nda/AudioFocusHacker",
+                "playSoundEffect",
+                "(Ljava/lang/Object;I)V",
+                false
+            )
+            return
         }
         super.visitMethodInsn(opcode, owner, name, descriptor, isInterface)
     }
