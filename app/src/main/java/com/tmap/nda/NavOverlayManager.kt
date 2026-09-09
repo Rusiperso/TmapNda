@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
+import android.graphics.PointF
 import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -264,6 +265,7 @@ object NavOverlayManager {
             return
         }
         primaryIcon?.kind = kindFor(snapshot.rgCodeName, snapshot.directionAngle)
+        primaryIcon?.roundaboutExitAngle = snapshot.directionAngle.toFloat()
         primaryIcon?.invalidate()
         primaryDistText?.text = formatDist(snapshot.tbtDist)
         primaryRoadText?.apply {
@@ -289,6 +291,7 @@ object NavOverlayManager {
         if (snapshot.hasNextDirection) {
             secondaryRow?.visibility = View.VISIBLE
             secondaryIcon?.kind = kindFor(snapshot.nextRgCodeName, snapshot.nextDirectionAngle)
+            secondaryIcon?.roundaboutExitAngle = snapshot.nextDirectionAngle.toFloat()
             secondaryIcon?.invalidate()
             secondaryDistText?.text = formatDist(snapshot.nextTbtDist)
             secondaryRoadText?.apply {
@@ -327,6 +330,12 @@ object NavOverlayManager {
             NavdyTurn.EASY_RIGHT, NavdyTurn.MERGE_RIGHT, NavdyTurn.EXIT_RIGHT -> TurnHookIconView.Kind.RIGHT
             NavdyTurn.UTURN_LEFT, NavdyTurn.UTURN_RIGHT -> TurnHookIconView.Kind.UTURN
             NavdyTurn.END -> TurnHookIconView.Kind.ARRIVE
+            // v: 신규기능(재억 요청, 2026-09-10) - 로터리(회전교차로)가 지금까지 그냥 직진
+            // 화살표로 나왔음(이 분기가 없어서 else로 빠짐). 티맵처럼 원 모양 + 진출 방향
+            // 화살표로 보이게 전용 아이콘 추가. #문제시 원복
+            NavdyTurn.ROUNDABOUT_N, NavdyTurn.ROUNDABOUT_NE, NavdyTurn.ROUNDABOUT_E, NavdyTurn.ROUNDABOUT_SE,
+            NavdyTurn.ROUNDABOUT_S, NavdyTurn.ROUNDABOUT_SW, NavdyTurn.ROUNDABOUT_W, NavdyTurn.ROUNDABOUT_NW ->
+                TurnHookIconView.Kind.ROUNDABOUT
             else -> TurnHookIconView.Kind.STRAIGHT
         }
     }
@@ -468,10 +477,13 @@ object NavOverlayManager {
  */
 class TurnHookIconView(context: Context) : View(context) {
 
-    enum class Kind { STRAIGHT, LEFT, RIGHT, UTURN, ARRIVE }
+    enum class Kind { STRAIGHT, LEFT, RIGHT, UTURN, ARRIVE, ROUNDABOUT }
 
     var kind: Kind = Kind.STRAIGHT
     var tint: Int = Color.WHITE
+    // ROUNDABOUT일 때만 씀. 카카오 SDK의 진출 각도 그대로(0=직진/12시, 시계방향 증가) -
+    // 나침반 방향이 아니라 "지금 가는 방향"을 12시로 두는 상대 좌표계. #문제시 원복
+    var roundaboutExitAngle: Float = 0f
 
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -502,7 +514,59 @@ class TurnHookIconView(context: Context) : View(context) {
                 canvas.restoreToCount(count)
             }
             Kind.UTURN -> drawUturn(canvas, w, h, strokeW)
+            Kind.ROUNDABOUT -> drawRoundabout(canvas, w, h, strokeW)
         }
+    }
+
+    /** angleFromTop: 0=위쪽, 시계방향 증가. 원 중심(cx,cy)에서 반지름 r 위치의 점. */
+    private fun angPoint(angleFromTop: Float, r: Float, cx: Float, cy: Float): PointF {
+        val rad = Math.toRadians((angleFromTop - 90).toDouble())
+        return PointF(cx + r * cos(rad).toFloat(), cy + r * sin(rad).toFloat())
+    }
+
+    /**
+     * 로터리(회전교차로) 아이콘. 진입은 항상 6시(아래) 고정 - 나침반 방향이 아니라
+     * "지금 가는 방향"을 12시로 두는 상대 좌표계라서, 실제로 어느 쪽에서 왔든 이 기준이
+     * 맞다(우측/좌회전 화살표도 이미 이렇게 상대 방향으로 그려져 있음). 우측통행이라
+     * 로터리는 반시계 방향으로 도므로, 진입에서 오른쪽으로 꺾이며 도는 게 맞는 방향.
+     * 출구는 원 바깥으로 뻗는 짧은 스포크 + 화살촉으로 정확한 시 방향을 표시(호의 길이만으로
+     * 표현하면 12시/1시처럼 가까운 방향끼리 구분이 잘 안 됨). #문제시 원복
+     */
+    private fun drawRoundabout(canvas: Canvas, w: Float, h: Float, strokeW: Float) {
+        val cx = w / 2f
+        val cy = h / 2f
+        val r = w * 0.26f
+        val entryAngle = 180f
+        val exitAngle = ((roundaboutExitAngle % 360) + 360) % 360
+
+        var sweep = ((entryAngle - exitAngle) % 360 + 360) % 360 // 반시계 회전각
+        if (sweep < 20f) sweep = 20f
+
+        val entryOuter = angPoint(entryAngle, r * 1.5f, cx, cy)
+        val entryPt = angPoint(entryAngle, r, cx, cy)
+        val exitPt = angPoint(exitAngle, r, cx, cy)
+        val exitOuter = angPoint(exitAngle, r * 1.55f, cx, cy)
+
+        // 로터리 테두리(연하게)
+        val ringPaint = Paint(strokePaint).apply {
+            strokeWidth = strokeW * 0.5f
+            color = Color.argb(70, Color.red(tint), Color.green(tint), Color.blue(tint))
+        }
+        canvas.drawCircle(cx, cy, r, ringPaint)
+
+        // 진입 표시(짧은 꼬리)
+        canvas.drawLine(entryOuter.x, entryOuter.y, entryPt.x, entryPt.y, strokePaint)
+
+        // 진입 -> 출구, 반시계 방향 호. Android arcTo는 0=3시 기준 시계방향(+)이라
+        // 우리 규약(0=12시)에서 -90 보정 + 반시계는 음수 sweep. #문제시 원복
+        val arcRect = RectF(cx - r, cy - r, cx + r, cy + r)
+        val arcPath = Path()
+        arcPath.arcTo(arcRect, entryAngle - 90f, -sweep, false)
+        canvas.drawPath(arcPath, strokePaint)
+
+        // 출구 스포크 + 화살촉(그 시 방향을 그대로 가리킴)
+        canvas.drawLine(exitPt.x, exitPt.y, exitOuter.x, exitOuter.y, strokePaint)
+        drawArrowHead(canvas, exitOuter.x, exitOuter.y, exitAngle, strokeW)
     }
 
     private fun drawStraight(canvas: Canvas, w: Float, h: Float, strokeW: Float) {
