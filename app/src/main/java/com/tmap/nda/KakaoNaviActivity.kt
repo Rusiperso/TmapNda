@@ -164,6 +164,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             // 남았음. 바 위치를 보고 계산하는 함수로 통일. #문제시 원복
             applyMapOffsetForBarPosition()
             applyTopPanelExpansion(binding.svSecondaryPanel, expandedHeight)
+            // v19.3.36: Tmap 화면과 동일 - 상단바가 맨 아래에 붙어있을 때 바 높이가 커지면
+            // 아래쪽(검색창/메뉴 등)이 화면 밖으로 밀려 안 보이는 문제 방지. #문제시 원복
+            val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            PanelDragHelper.reclampBottomEdgeIfNeeded(this, binding.llLeftHudPanel, "llLeftHudPanel", isLandscape)
         }
     }
 

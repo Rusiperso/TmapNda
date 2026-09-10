@@ -35,6 +35,27 @@ object PanelDragHelper {
         }
     }
 
+    // v19.3.36: 재억 제보(스크린샷) - 상단바를 화면 맨 아래에 붙여두면, 나중에 바 안의
+    // 내용(GPS 상태 글자, 검색창 등)이 늘어나 바 자체의 높이가 커질 때 아래쪽(검색창/
+    // 안내종료 버튼/≡메뉴)이 화면 밖으로 밀려나 안 보이는 문제. 원인 - 드래그를 놓는
+    // "그 순간"의 높이 기준으로만 한 번 클램프(clampAndPreventOverlap)하고 끝이라서, 그 뒤
+    // 바 높이가 바뀌어도 위치를 다시 계산하지 않았음(맨 아래 붙어있을 때만 해당 - 맨 위는
+    // 위쪽 좌표가 고정이라 아래로만 늘어나서 문제없음). 바 높이가 바뀔 때마다 호출해서,
+    // 지금 맨 아래에 붙어있는 상태라면 새 높이 기준으로 Y좌표를 다시 계산해 화면 안으로
+    // 되돌리고, 그 위치를 저장해 다음에도 유지되게 함. #문제시 원복
+    fun reclampBottomEdgeIfNeeded(context: Context, view: View, keyPrefix: String, isLandscape: Boolean) {
+        if (currentSnapEdge(view) != SnapEdge.BOTTOM) return
+        val parent = view.parent as? View ?: return
+        val insets = ViewCompat.getRootWindowInsets(view)?.getInsets(WindowInsetsCompat.Type.systemBars())
+        val minY = (insets?.top ?: 0).toFloat()
+        val correctY = (parent.height - (insets?.bottom ?: 0) - view.height).toFloat().coerceAtLeast(minY)
+        if (kotlin.math.abs(view.y - correctY) < 1f) return
+        view.y = correctY
+        val sharedPref = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        val suffix = if (isLandscape) "land" else "port"
+        sharedPref.edit().putFloat("${keyPrefix}_y_${suffix}", correctY).apply()
+    }
+
     // v19.3.28: 재억 제보 - 상단바를 맨 위/맨 아래로 끝까지 끌면 NDA 화면(=상태바/제스처
     // 영역 뺀 실제 쓰는 영역) 밖으로 넘어감. 원인 - 기존엔 parent.width/height(화면 전체
     // 물리적 크기, 상태바/네비게이션 바 영역까지 포함)만 기준으로 클램프해서, 그 시스템

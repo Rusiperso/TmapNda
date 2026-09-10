@@ -170,6 +170,11 @@ class MapActivity : AppCompatActivity() {
             // 상관없이 지도 위쪽을 무조건 바 높이만큼 밀어내서 applyMapOffsetForBarPosition이
             // 맞춰둔 여백을 곧바로 덮어썼음. 바 위치를 보고 계산하는 함수로 통일. #문제시 원복
             applyMapOffsetForBarPosition()
+            // v19.3.36: 재억 제보(스크린샷) - 상단바가 맨 아래에 붙어있는 상태에서 바 내용이
+            // 늘어나 높이가 커지면, 아래쪽(검색창/메뉴 등)이 화면 밖으로 밀려 안 보였음.
+            // 바 높이가 바뀔 때마다 맨 아래 붙은 상태인지 다시 확인해서 화면 안으로 되돌림. #문제시 원복
+            val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            PanelDragHelper.reclampBottomEdgeIfNeeded(this, binding.llLeftHudPanel, "llLeftHudPanel", isLandscape)
         }
     }
 
