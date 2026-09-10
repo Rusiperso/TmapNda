@@ -166,12 +166,16 @@
     </LinearLayout>
 
     <!-- ===== 상단 HUD 바 (예전 좌측 220dp 세로 패널을 대체) ===== -->
-    <LinearLayout
+    <!-- v19.3.28: 재억 제보 - 편집모드 "이동" 핸들이 상단바에 가려 보이고, 상단바를 옮겨도
+         핸들은 따로 안 움직임. LinearLayout(세로 나열)이라 안에 뭘 더 넣으면 아래로 쌓이기만
+         하고 겹쳐 띄울 수 없어서, FrameLayout으로 바꿔 핸들을 상단바 안쪽 오른쪽 끝에
+         겹쳐서 얹음 - 이러면 핸들이 상단바의 진짜 일부가 돼서 항상 보이고, 상단바를
+         움직이면 같이 움직임. #문제시 원복 -->
+    <FrameLayout
         android:id="@+id/llLeftHudPanel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="top"
-        android:orientation="vertical"
         android:elevation="20dp"
         android:background="#080808">
 
@@ -447,7 +451,22 @@
                 android:visibility="gone"/>
         </LinearLayout>
         </HorizontalScrollView>
-    </LinearLayout>
+
+        <!-- v19.3.28: 편집모드일 때만 보이는 드래그 핸들 - 상단바(FrameLayout)의 자식이라
+             상단바를 옮기면 자동으로 같이 움직이고, HorizontalScrollView 밖에 겹쳐 있어서
+             가로스크롤이 터치를 가로챌 일도 없음. #문제시 원복 -->
+        <Button
+            android:id="@+id/btnDragHandleTopBar"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_gravity="center_vertical|end"
+            android:layout_marginEnd="6dp"
+            android:text="이동"
+            android:textSize="11sp"
+            android:textColor="#FFFFFF"
+            android:background="@drawable/bg_miniplayer_confirm"
+            android:visibility="gone"/>
+    </FrameLayout>
 
     <!-- v3.0: 보조 패널을 llLeftHudPanel 밖으로 분리해서 지도 위에 뜨는 독립 오버레이로
          만듦 - 예전엔 llLeftHudPanel 안에 있어서 펼쳐지면 상단바 전체 높이가 커져서
@@ -733,24 +752,6 @@
         android:src="@drawable/ic_check"
         android:background="@drawable/bg_miniplayer_confirm"
         android:scaleType="center"
-        android:elevation="30dp"
-        android:visibility="gone"/>
-
-    <!-- v19.3.27: 재억 제보 - 상단바 안 가로스크롤(llTopBarRow)이 드래그 터치를 계속
-         가로채서(v19.3.26 시도로도 완전히 해결 안 됨), 스크롤뷰와 무관한 별도의 "이동" 핸들을
-         추가함. 스크롤뷰 밖의 독립된 뷰라 터치를 가로챌 대상이 없음 - 편집모드에서 이 버튼을
-         누르고 끌면 상단바 전체(llLeftHudPanel)가 그만큼 움직임. #문제시 원복 -->
-    <Button
-        android:id="@+id/btnDragHandleTopBar"
-        android:layout_width="52dp"
-        android:layout_height="52dp"
-        android:layout_gravity="top|end"
-        android:layout_marginTop="12dp"
-        android:layout_marginEnd="72dp"
-        android:text="이동"
-        android:textSize="12sp"
-        android:textColor="#FFFFFF"
-        android:background="@drawable/bg_miniplayer_confirm"
         android:elevation="30dp"
         android:visibility="gone"/>
 

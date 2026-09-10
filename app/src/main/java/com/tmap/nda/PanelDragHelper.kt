@@ -3,6 +3,8 @@ package com.tmap.nda
 import android.content.Context
 import android.view.MotionEvent
 import android.view.View
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 /**
  * 상단 HUD 바 등을 드래그로 옮기는 편집모드 로직. Tmap 화면(MapActivity)과 카카오
@@ -14,16 +16,35 @@ object PanelDragHelper {
     // 편집모드는 앱 전체에서 하나만 존재 - 화면(Activity)이 바뀌어도 같은 상태 유지
     var isEditMode = false
 
+    // v19.3.28: 재억 제보 - 상단바를 맨 위/맨 아래로 끝까지 끌면 NDA 화면(=상태바/제스처
+    // 영역 뺀 실제 쓰는 영역) 밖으로 넘어감. 원인 - 기존엔 parent.width/height(화면 전체
+    // 물리적 크기, 상태바/네비게이션 바 영역까지 포함)만 기준으로 클램프해서, 그 시스템
+    // 영역까지 파고들 수 있었음. 미니플레이어는 안 그런다길래 비교해보니 미니플레이어도
+    // 사실 같은 방식이라 원래도 잠재적으로 같은 문제가 있었을 자리 - 이번엔 시스템 바
+    // 인셋(WindowInsetsCompat)만큼 클램프 범위를 더 좁혀서 안전 영역 안에만 있게 함. #문제시 원복
     private fun clampAndPreventOverlap(v: View, targetX: Float, targetY: Float, otherViews: List<View>): Pair<Float, Float> {
         var x = targetX
         var y = targetY
 
         val parent = v.parent as? View
         if (parent != null) {
-            val maxX = (parent.width - v.width).toFloat().coerceAtLeast(0f)
-            val maxY = (parent.height - v.height).toFloat().coerceAtLeast(0f)
-            x = x.coerceIn(0f, maxX)
-            y = y.coerceIn(0f, maxY)
+            val insets = ViewCompat.getRootWindowInsets(v)
+                ?.getInsets(WindowInsetsCompat.Type.systemBars())
+            val minX = (insets?.left ?: 0).toFloat()
+            val minY = (insets?.top ?: 0).toFloat()
+            val maxX = (parent.width - (insets?.right ?: 0) - v.width).toFloat().coerceAtLeast(minX)
+            val maxY = (parent.height - (insets?.bottom ?: 0) - v.height).toFloat().coerceAtLeast(minY)
+            x = x.coerceIn(minX, maxX)
+            y = y.coerceIn(minY, maxY)
+
+            // v19.3.28: 재억 요청 - "자석처럼 상단에 착 붙는 기능". 가장자리(안전영역 기준)
+            // 근처까지 끌고 오면 몇 픽셀 오차를 무시하고 정확히 그 가장자리에 딱 붙게 함.
+            // #문제시 원복
+            val snapPx = 20f * v.resources.displayMetrics.density
+            if (x - minX < snapPx) x = minX
+            if (maxX - x < snapPx) x = maxX
+            if (y - minY < snapPx) y = minY
+            if (maxY - y < snapPx) y = maxY
         }
 
         val targetRect = android.graphics.RectF(x, y, x + v.width, y + v.height)
