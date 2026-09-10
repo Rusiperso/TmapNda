@@ -73,6 +73,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 나머지 목록 계산들을 그만두게 하는 세대 카운터(재억 아이디어). #문제시 원복
     private var etaQueueGeneration = 0
     private val originalTopMargins = mutableMapOf<Int, Int>()
+    private val originalBottomMargins = mutableMapOf<Int, Int>()
 
     // v11.8: MapActivity와 동일 - ACTION_SEND는 진짜 보내졌는지 확인할 방법이 없어서
     // 실제로 잘 보내졌어도 대부분 "취소됐다"는 문구가 뜨던 부작용이 있었음(재억 지적) -
@@ -107,6 +108,34 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         if (params.topMargin == panelHeight) return
         params.topMargin = panelHeight
         view.layoutParams = params
+    }
+
+    // v19.3.30: 재억 요청(Tmap 화면과 동일) - 상단바를 화면 아래로 내려서 확정하면 지도가
+    // 그만큼 위로 올라와서 자리를 맞바꿔야 함. 상단바가 화면 위/아래 어느 가장자리에
+    // 붙어있는지(PanelDragHelper.currentSnapEdge)에 따라 naviView 위/아래 여백을 다시 계산. #문제시 원복
+    private fun applyMapOffsetForBarPosition() {
+        val panel = binding.llLeftHudPanel ?: return
+        val panelHeight = panel.height
+        if (panelHeight <= 0) return
+        val naviViewRef = naviView
+        val params = naviViewRef.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+        val originalTop = originalTopMargins.getOrPut(naviViewRef.id) { 0 }
+        val originalBottom = originalBottomMargins.getOrPut(naviViewRef.id) { params.bottomMargin }
+        when (PanelDragHelper.currentSnapEdge(panel)) {
+            PanelDragHelper.SnapEdge.TOP -> {
+                params.topMargin = originalTop + panelHeight
+                params.bottomMargin = originalBottom
+            }
+            PanelDragHelper.SnapEdge.BOTTOM -> {
+                params.topMargin = originalTop
+                params.bottomMargin = originalBottom + panelHeight
+            }
+            PanelDragHelper.SnapEdge.OTHER -> {
+                params.topMargin = originalTop
+                params.bottomMargin = originalBottom
+            }
+        }
+        naviViewRef.layoutParams = params
     }
 
     /** 상단 HUD 자동 확장 시 카카오 지도·플로팅 UI도 같은 만큼 아래로 이동한다. */
@@ -301,20 +330,22 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // 코드라 편집모드 상태(PanelDragHelper.isEditMode)도 두 화면이 공유함. #문제시 원복
         val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         binding.llLeftHudPanel?.let { panel ->
-            PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList())
+            PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), onSettled = ::applyMapOffsetForBarPosition)
             // v19.3.26: 재억 제보 - 실제 터치는 거의 다 이 안의 가로스크롤(llTopBarRow)이
             // 가로채서 위 리스너(panel 자신)까지 안 옴. llTopBarRow에서 받은 터치로도 같은
             // panel을 움직이게 추가 연결. 자세한 이유는 PanelDragHelper.makeDraggable 주석
             // 참고. #문제시 원복
-            PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), touchSource = binding.llTopBarRow)
+            PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), touchSource = binding.llTopBarRow, onSettled = ::applyMapOffsetForBarPosition)
             // v19.3.27: 재억 제보 - 위 llTopBarRow 경유로도 여전히 안 움직여서, 스크롤뷰와
             // 아예 무관한 별도 "이동" 핸들(btnDragHandleTopBar)도 같은 panel을 움직이게 연결.
             // #문제시 원복
             binding.btnDragHandleTopBar?.let {
-                PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), touchSource = it)
+                PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), touchSource = it, onSettled = ::applyMapOffsetForBarPosition)
             }
             panel.post {
                 PanelDragHelper.restorePosition(this, panel, "llLeftHudPanel", isLandscape, emptyList())
+                // v19.3.30: 저장된 위치를 복원한 직후에도 그 위치 기준으로 지도 여백을 맞춤
+                applyMapOffsetForBarPosition()
             }
         }
 

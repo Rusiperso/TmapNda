@@ -112,6 +112,38 @@ class MapActivity : AppCompatActivity() {
         view.layoutParams = params
     }
 
+    // v19.3.30: 재억 요청 - "상단바를 아래로 내려서 확정하면 지도가 위로 올라와서 자리를
+    // 맞바꿔야 하는 거 아니냐, 안 그러면 위에 여백만 남는다". 상단바가 지금 화면 위/아래
+    // 어느 가장자리에 붙어있는지(자석 스냅과 같은 기준, PanelDragHelper.currentSnapEdge)에
+    // 따라 지도 위/아래 여백을 다시 계산 - 위에 붙어있으면 기존처럼 지도 위쪽을 밀어내고,
+    // 아래에 붙어있으면 반대로 지도 아래쪽을 그만큼 밀어내고 위쪽은 비움. 가운데 등
+    // 애매한 위치면 어느 쪽도 안 밀어냄(불투명 바가 지도 위에 그냥 떠있는 형태). #문제시 원복
+    private fun applyMapOffsetForBarPosition() {
+        val panel = binding.llLeftHudPanel ?: return
+        val panelHeight = panel.height
+        if (panelHeight <= 0) return
+        val tmapLayout = binding.tmapUILayout
+        val params = tmapLayout.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+        val originalTop = originalTopMargins.getOrPut(tmapLayout.id) { 0 }
+        val originalBottom = originalBottomMargins.getOrPut(tmapLayout.id) { 0 }
+        val safeBottom = lastAppliedBottomInset.coerceAtLeast(0)
+        when (PanelDragHelper.currentSnapEdge(panel)) {
+            PanelDragHelper.SnapEdge.TOP -> {
+                params.topMargin = originalTop + panelHeight
+                params.bottomMargin = originalBottom + safeBottom
+            }
+            PanelDragHelper.SnapEdge.BOTTOM -> {
+                params.topMargin = originalTop
+                params.bottomMargin = originalBottom + safeBottom + panelHeight
+            }
+            PanelDragHelper.SnapEdge.OTHER -> {
+                params.topMargin = originalTop
+                params.bottomMargin = originalBottom + safeBottom
+            }
+        }
+        tmapLayout.layoutParams = params
+    }
+
     private fun installTopPanelAutoOffset() {
         binding.llLeftHudPanel.addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
             val panelHeight = bottom - top
@@ -423,23 +455,25 @@ class MapActivity : AppCompatActivity() {
         // 상시로 드래그되면 실수로 밀릴 수 있어서 "UI 편집" 버튼으로 편집모드를
         // 켜야만 움직임. 앱 재시작해도 저장된 위치로 복원됨. #문제시 원복
         binding.llLeftHudPanel?.let { panel ->
-            PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList())
+            PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), onSettled = ::applyMapOffsetForBarPosition)
             // v19.3.26: 재억 제보 - 실제 터치는 거의 다 이 안의 가로스크롤(llTopBarRow)이
             // 가로채서 위 리스너(panel 자신)까지 안 옴. llTopBarRow에서 받은 터치로도 같은
             // panel을 움직이게 추가 연결. 자세한 이유는 PanelDragHelper.makeDraggable 주석
             // 참고. #문제시 원복
-            PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), touchSource = binding.llTopBarRow)
+            PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), touchSource = binding.llTopBarRow, onSettled = ::applyMapOffsetForBarPosition)
             // v19.3.27: 재억 제보 - 위 llTopBarRow 경유로도 여전히 안 움직여서, 스크롤뷰와
             // 아예 무관한 별도 "이동" 핸들(btnDragHandleTopBar)도 같은 panel을 움직이게 연결.
             // #문제시 원복
             binding.btnDragHandleTopBar?.let {
-                PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), touchSource = it)
+                PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), touchSource = it, onSettled = ::applyMapOffsetForBarPosition)
             }
             // v3.2: onCreate 시점엔 panel.width/height가 아직 0이라 clampAndPreventOverlap이
             // 저장된 위치를 무조건 (0,0)으로 눌러버리는 버그가 있었음(사용자 지적 3번: "편집으로
             // 내려도 재실행하면 다시 위로 올라감"). 레이아웃이 끝난 뒤(post)에 복원하도록 변경. #문제시 원복
             panel.post {
                 PanelDragHelper.restorePosition(this, panel, "llLeftHudPanel", isLandscape, emptyList())
+                // v19.3.30: 저장된 위치를 복원한 직후에도 그 위치 기준으로 지도 여백을 맞춤
+                applyMapOffsetForBarPosition()
             }
         }
 

@@ -16,6 +16,25 @@ object PanelDragHelper {
     // 편집모드는 앱 전체에서 하나만 존재 - 화면(Activity)이 바뀌어도 같은 상태 유지
     var isEditMode = false
 
+    // v19.3.30: 재억 요청 - "상단바를 아래로 내리면 지도가 위로 올라와서 자리를 맞바꿔야
+    // 하는 거 아니냐, 위에 여백이 남는다". 상단바가 지금 화면 상단/하단 중 어디에
+    // 붙어있는지(자석 스냅 결과와 같은 기준) 판정해서, 호출부(MapActivity/KakaoNaviActivity)가
+    // 지도 여백을 그에 맞게 다시 계산하게 함. #문제시 원복
+    enum class SnapEdge { TOP, BOTTOM, OTHER }
+
+    fun currentSnapEdge(view: View): SnapEdge {
+        val parent = view.parent as? View ?: return SnapEdge.OTHER
+        val insets = ViewCompat.getRootWindowInsets(view)?.getInsets(WindowInsetsCompat.Type.systemBars())
+        val minY = (insets?.top ?: 0).toFloat()
+        val maxY = (parent.height - (insets?.bottom ?: 0) - view.height).toFloat().coerceAtLeast(minY)
+        val snapPx = 20f * view.resources.displayMetrics.density
+        return when {
+            view.y - minY < snapPx -> SnapEdge.TOP
+            maxY - view.y < snapPx -> SnapEdge.BOTTOM
+            else -> SnapEdge.OTHER
+        }
+    }
+
     // v19.3.28: 재억 제보 - 상단바를 맨 위/맨 아래로 끝까지 끌면 NDA 화면(=상태바/제스처
     // 영역 뺀 실제 쓰는 영역) 밖으로 넘어감. 원인 - 기존엔 parent.width/height(화면 전체
     // 물리적 크기, 상태바/네비게이션 바 영역까지 포함)만 기준으로 클램프해서, 그 시스템
@@ -87,7 +106,10 @@ object PanelDragHelper {
         keyPrefix: String,
         isLandscape: Boolean,
         otherViews: List<View> = emptyList(),
-        touchSource: View = view
+        touchSource: View = view,
+        // v19.3.30: 재억 요청 - 상단바를 옮기고 손을 떼는 순간(위치가 확정되는 순간)
+        // 호출부가 반응해서 지도 여백을 다시 계산할 수 있게 하는 콜백. #문제시 원복
+        onSettled: (() -> Unit)? = null
     ) {
         var dX = 0f
         var dY = 0f
@@ -126,6 +148,7 @@ object PanelDragHelper {
                         .putFloat("${keyPrefix}_x_${suffix}", view.x)
                         .putFloat("${keyPrefix}_y_${suffix}", view.y)
                         .apply()
+                    onSettled?.invoke()
                     true
                 }
                 else -> false
