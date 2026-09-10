@@ -21,6 +21,7 @@ import androidx.core.view.WindowInsetsCompat
 import com.kakaomobility.knsdk.KNRouteAvoidOption
 import com.kakaomobility.knsdk.KNRoutePriority
 import com.kakaomobility.knsdk.KNSDK
+import com.kakaomobility.knsdk.KNSpeedOverAlertOption
 import com.kakaomobility.knsdk.common.objects.KNPOI
 import com.kakaomobility.knsdk.common.objects.KNError
 import com.kakaomobility.knsdk.ui.view.KNNaviView
@@ -54,6 +55,12 @@ import java.io.IOException
  * 실시간 GPS를 구독해서 매번 KNSDK GPS 매니저에 전달하도록 함.
  */
 class KakaoNaviActivity : AppCompatActivity(), LocationListener {
+
+    // v19.3.25: 재억 제보(폴드4 외부화면) - 카카오 SDK가 화면을 태블릿급으로 오판해 UI가
+    // 잘려 보이는 문제 대응. 자세한 이유는 CoverScreenConfigFix 주석 참고. #문제시 원복
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(CoverScreenConfigFix.wrapIfDistorted(newBase))
+    }
 
     private lateinit var binding: ActivityKakaoNaviBinding
     private lateinit var naviView: KNNaviView
@@ -279,6 +286,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         setContentView(binding.root)
         inflatedOrientation = resources.configuration.orientation
         naviView = binding.naviView
+        // v19.3.25: 재억 제보 - "제한속도 60인데 61km/h만 돼도 카메라 500m 전부터 계속
+        // 경고음이 울린다"는 건 카카오 SDK가 그 카메라 소리를 재생하는 자체 코드라 우리
+        // 쪽(AudioFocusHacker의 playSoundEffect 후킹)으론 안 잡혔던 것 - SDK 클래스를 직접
+        // 뒤져보니 KNNaviView에 공식 공개 설정 safetyCameraAlert(KNSpeedOverAlertOption)가
+        // 있었음. 기본값(KNSpeedOverDefault)이 너무 민감해서 나던 소리로 보여, 우리가 이미
+        // 쓰고 있는 "제한속도 10% 초과" 기준과 맞춰 10%로 설정. #문제시 원복
+        naviView.safetyCameraAlert = KNSpeedOverAlertOption.KNSpeedOver_10_PERCENT
         setupWaypointAddButton()
         setupNearbyCategoryButton()
 

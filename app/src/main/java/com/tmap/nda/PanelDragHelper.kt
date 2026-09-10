@@ -57,6 +57,12 @@ object PanelDragHelper {
         var dY = 0f
 
         view.setOnTouchListener { v, event ->
+            // v19.3.25: 재억 제보(카카오/티맵 둘 다 "UI 편집" 눌러도 안 움직임) 진단용 임시
+            // 로그 - 터치가 이 뷰까지 아예 도달하는지, 그 시점 isEditMode가 뭔지 확인.
+            // 원인 확인되면 지워도 됨. #문제시 원복
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                NavLogger.d(context, "[UI편집진단] $keyPrefix 터치다운 도달, isEditMode=$isEditMode")
+            }
             if (!isEditMode) return@setOnTouchListener false
 
             when (event.action) {
@@ -156,6 +162,9 @@ object PanelDragHelper {
         draggablePanel: android.view.ViewGroup? = null
     ) {
         fun setEditMode(enabled: Boolean) {
+            // v19.3.25: 위 makeDraggable 진단 로그와 짝 - 버튼이 실제로 눌렸는지, 그때
+            // isEditMode가 어느 값에서 어느 값으로 바뀌는지 확인용. #문제시 원복
+            NavLogger.d(context, "[UI편집진단] 버튼 클릭, isEditMode ${isEditMode} -> $enabled")
             isEditMode = enabled
             // 편집모드일 때 보조패널이 열려있으면 패널 전체 높이가 커져서 드래그 가능
             // 범위가 줄어드는 문제 방지 - 편집모드 켤 때도 강제로 접음

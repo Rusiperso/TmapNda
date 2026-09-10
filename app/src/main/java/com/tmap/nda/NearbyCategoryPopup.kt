@@ -63,6 +63,66 @@ object NearbyCategoryPopup {
         CategoryItem("마트", "MT1")
     )
 
+    // v19.3.25: 재억 요청 - 기존 "진행방향" 라벨은 GPS 방향과 후보지점까지 직선방향만
+    // 비교해서, 실제 도로로는 돌아가야 하는 곳도 "진행방향"으로 표시되는 문제가 있었음
+    // ("그 경로 안에서 찾고 그 범위 안에서 찾게 하면 안되나?"). 카카오 길안내 중이면
+    // 실제 경로선(KakaoRouteDataRepository.routeCoordinates - 콤마 화면 경로선 표시 기능이
+    // 이미 채워두는 값을 그대로 재사용, 경도/위도 순서)에 후보 지점을 수직으로 투영해서,
+    // 경로 위/근처(400m 이내)이면서 지금 위치보다 경로를 따라간 거리가 더 먼 경우만
+    // "경로 진행방향"으로 인정. 카카오 안내 중이 아니거나 경로가 너무 멀면(다른 도로)
+    // 기존 직선방향 비교로 자연히 폴백함(아래 directionLabel 참고). #문제시 원복
+    private data class RouteProjection(val alongDistM: Double, val perpDistM: Double)
+    private const val ROUTE_NEARBY_THRESHOLD_M = 400.0
+    // v: 재억 지적(2026-09-10) - "전기차 충전소는 주유소보다 훨씬 드물어서 400m는 너무
+    // 좁다"는 지적. 편의점/주유소 등은 흔해서 400m로도 경로 위에 계속 걸리지만, 충전소는
+    // 그보다 훨씬 띄엄띄엄 있어서 같은 기준을 쓰면 "경로 진행방향" 판정 자체가 잘 안 걸림.
+    // 충전소 표시에만 더 넉넉한 값을 씀. #문제시 원복
+    private const val EV_ROUTE_NEARBY_THRESHOLD_M = 2000.0
+
+    private fun metersPerDegLat() = 111320.0
+    private fun metersPerDegLon(atLatDeg: Double) = 111320.0 * Math.cos(Math.toRadians(atLatDeg))
+
+    /** 위경도를 원점(originLat/Lon) 기준 평면 좌표(미터)로 근사 변환 - 수 km~수십 km 범위에서 충분히 정확함. */
+    private fun toLocalMeters(lat: Double, lon: Double, originLat: Double, originLon: Double): Pair<Double, Double> {
+        val x = (lon - originLon) * metersPerDegLon(originLat)
+        val y = (lat - originLat) * metersPerDegLat()
+        return x to y
+    }
+
+    /** routeCoords: (경도,위도) 순서, 경로 시작->끝 순서 그대로. 점이 2개 미만이면 null. */
+    private fun projectOntoRoute(lat: Double, lon: Double, routeCoords: List<Pair<Double, Double>>): RouteProjection? {
+        if (routeCoords.size < 2) return null
+        val originLat = routeCoords[0].second
+        val originLon = routeCoords[0].first
+        val (px, py) = toLocalMeters(lat, lon, originLat, originLon)
+
+        var cumulative = 0.0
+        var bestPerp = Double.MAX_VALUE
+        var bestAlong = 0.0
+        var prev = toLocalMeters(routeCoords[0].second, routeCoords[0].first, originLat, originLon)
+
+        for (i in 1 until routeCoords.size) {
+            val cur = toLocalMeters(routeCoords[i].second, routeCoords[i].first, originLat, originLon)
+            val segX = cur.first - prev.first
+            val segY = cur.second - prev.second
+            val segLen = Math.hypot(segX, segY)
+            if (segLen > 0.0) {
+                var t = ((px - prev.first) * segX + (py - prev.second) * segY) / (segLen * segLen)
+                t = t.coerceIn(0.0, 1.0)
+                val projX = prev.first + t * segX
+                val projY = prev.second + t * segY
+                val perp = Math.hypot(px - projX, py - projY)
+                if (perp < bestPerp) {
+                    bestPerp = perp
+                    bestAlong = cumulative + t * segLen
+                }
+                cumulative += segLen
+            }
+            prev = cur
+        }
+        return if (bestPerp == Double.MAX_VALUE) null else RouteProjection(bestAlong, bestPerp)
+    }
+
     fun show(
         context: Context,
         httpClient: OkHttpClient,
@@ -74,6 +134,17 @@ object NearbyCategoryPopup {
         currentBearing: Float? = null,
         onPick: (HistoryEntry) -> Unit
     ) {
+        // v19.3.25: 카카오 안내 중일 때만(isFresh() - 5초 이내 갱신) 실제 경로선을 스냅샷으로
+        // 떠둠. 팝업 여는 동안 경로가 바뀔 일은 거의 없어서 한 번만 계산해서 재사용 -
+        // 매 항목마다 반복 조회/투영하지 않게 함. 안내 중이 아니면 빈 리스트가 되고, 아래
+        // directionLabel/routeAwareSortKey가 자동으로 기존 직선거리 방식으로 폴백함. #문제시 원복
+        val routeCoordsSnapshot = if (KakaoRouteDataRepository.isFresh()) {
+            KakaoRouteDataRepository.routeCoordinates
+        } else emptyList()
+        val currentRouteProjection = if (routeCoordsSnapshot.size >= 2) {
+            projectOntoRoute(curLat, curLon, routeCoordsSnapshot)
+        } else null
+
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(
@@ -168,7 +239,17 @@ object NearbyCategoryPopup {
         // v: 신규기능(주변검색 진행/역방향 표시) - GPS bearing과 "현재위치->후보" 방향을
         // 단순 비교(직선거리 기준, API 추가 호출 없음). 각도차 90도 이내면 진행방향으로
         // 대략 간주, 넘으면 역방향. 도로가 구불구불하면 부정확할 수 있음(직선 기준 추정치). #문제시 원복
-        fun directionLabel(targetLat: Double, targetLon: Double): String? {
+        // v19.3.25: 카카오 안내 중이면(routeCoordsSnapshot 있음) 위 직선비교 대신 실제
+        // 경로선 투영 결과를 우선 씀 - 경로 위/근처(400m 이내)면서 지금 위치보다 경로를
+        // 더 따라간 지점만 "경로 진행방향". 경로에서 너무 멀면(다른 도로) 판단을 포기하고
+        // 아래 직선비교로 폴백 - 경로가 아예 없을 때(카카오 안내 중 아님)와 동일하게 동작. #문제시 원복
+        fun directionLabel(targetLat: Double, targetLon: Double, thresholdM: Double = ROUTE_NEARBY_THRESHOLD_M): String? {
+            if (currentRouteProjection != null) {
+                val proj = projectOntoRoute(targetLat, targetLon, routeCoordsSnapshot)
+                if (proj != null && proj.perpDistM <= thresholdM) {
+                    return if (proj.alongDistM > currentRouteProjection.alongDistM) "경로 진행방향" else "경로 반대방향"
+                }
+            }
             val bearing = currentBearing ?: return null
             val dLon = Math.toRadians(targetLon - curLon)
             val lat1 = Math.toRadians(curLat)
@@ -181,8 +262,29 @@ object NearbyCategoryPopup {
             return if (diff <= 90) "진행방향" else "역방향"
         }
 
+        // v19.3.25: 경로 위/앞쪽인 후보를 목록 맨 위로 오게 하는 정렬 키. 경로 위/앞쪽이면
+        // "경로를 따라간 남은 거리"로, 아니면(경로 밖/뒤쪽/경로 자체가 없음) 기존 직선거리에
+        // 큰 오프셋을 더해 항상 뒤로 밀림 - 결과를 숨기지는 않고 순서만 바꿈(재억이 원했던
+        // 건 "안 보이게"가 아니라 "돌아가는 곳이 위에 안 뜨게"). #문제시 원복
+        fun routeAwareSortKey(lat: Double, lon: Double, fallbackDistanceMeters: Double?): Double {
+            if (currentRouteProjection != null) {
+                val proj = projectOntoRoute(lat, lon, routeCoordsSnapshot)
+                if (proj != null && proj.perpDistM <= ROUTE_NEARBY_THRESHOLD_M &&
+                    proj.alongDistM > currentRouteProjection.alongDistM
+                ) {
+                    return proj.alongDistM - currentRouteProjection.alongDistM
+                }
+            }
+            return 1_000_000.0 + (fallbackDistanceMeters ?: 2_000_000.0)
+        }
+
         fun renderResults(hits: List<HistoryEntry>, page: Int = 0) {
-            renderPaged(hits, page, { entry ->
+            // v19.3.25: 카카오 안내 중이면 경로를 따라 앞쪽인 곳부터 오도록 재정렬 - 오피넷/
+            // 전기차충전소(가격·속도 기준 정렬)는 그 자체가 의도된 정렬이라 여긴 손 안 댐. #문제시 원복
+            val sortedHits = if (currentRouteProjection != null) {
+                hits.sortedBy { routeAwareSortKey(it.lat, it.lon, it.distanceMeters) }
+            } else hits
+            renderPaged(sortedHits, page, { entry ->
                 val distText = entry.distanceMeters?.let { SearchRanking.formatDistance(it) }
                 val dirLabel = directionLabel(entry.lat, entry.lon)
                 val fullDist = if (dirLabel != null && distText != null) "$distText · $dirLabel" else distText
@@ -361,7 +463,7 @@ object NearbyCategoryPopup {
             }
             renderPaged(filteredHits, page, { entry ->
                 val distText = entry.distanceMeters?.let { SearchRanking.formatDistance(it) }
-                val dirLabel = directionLabel(entry.lat, entry.lon)
+                val dirLabel = directionLabel(entry.lat, entry.lon, EV_ROUTE_NEARBY_THRESHOLD_M)
                 val fullDist = if (dirLabel != null && distText != null) "$distText · $dirLabel" else distText
                 val nearby = envStations.filter { st -> distMeters(entry.lat, entry.lon, st.lat, st.lon) <= 150.0 }
                 val statusText = if (nearby.isEmpty()) {

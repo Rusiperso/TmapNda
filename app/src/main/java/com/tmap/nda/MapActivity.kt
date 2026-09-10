@@ -49,6 +49,13 @@ import java.io.IOException
 
 class MapActivity : AppCompatActivity() {
 
+    // v19.3.25: 재억 제보(폴드4 외부화면) - 티맵 SDK도 카카오와 같은 방식으로 화면 크기별
+    // 리소스를 고르기 때문에 같은 문제가 생길 수 있어 동일하게 대응. 이유는
+    // CoverScreenConfigFix 주석 참고. #문제시 원복
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(CoverScreenConfigFix.wrapIfDistorted(newBase))
+    }
+
     private lateinit var binding: ActivityMapBinding
     private var navigationFragment: NavigationFragment? = null
     // v3.9: PanelDragHelper.isEditMode로 이전 - Tmap/카카오 화면이 같은 편집모드 상태 공유
@@ -116,7 +123,17 @@ class MapActivity : AppCompatActivity() {
             // v4.0: 지도(tmapUILayout)는 이 자동보정 대상에서 빠져있어서, 바가 커지면
             // (큰 폰트 설정 등) 그만큼 지도가 더 가려지던 문제(사용자 지적 1번: "지도 부분이
             // 살짝씩 짤리는 증상"). 지도도 같이 밀어냄. #문제시 원복
-            applyTopPanelExpansion(binding.tmapUILayout, expandedHeight)
+            // v19.3.25: 재억 제보(폴드4 외부화면, 사진) - 티맵 SDK가 그리는 회전 안내 아이콘의
+            // 윗부분이 상단바에 가려 잘려 보임. 원인 - 위 expandedHeight는 상단바가
+            // baseHeight(56dp)보다 "더 커진 만큼만" 지도를 밀어냈음. 즉 baseHeight(56dp) 안쪽은
+            // 상단바 크기와 무관하게 항상 지도가 그 밑에 깔려 있었음. 상단바(llLeftHudPanel)는
+            // 배경이 불투명(#080808)이라 그 밑 지도는 원래 안 보이는 부분이라 평소엔 문제가
+            // 안 됐지만, 화면 자체 높이가 아주 작은 기기(폴드4 커버 화면)에서는 SDK가 자기
+            // 내부 좌표 기준으로 위쪽에 그리는 회전 아이콘이 그 "안 보이는 구간"과 겹쳐서
+            // 진짜로 잘려 보임. 지도는 상단바 전체 높이(panelHeight)만큼 통째로 밀어내도
+            // 어차피 불투명한 바 밑이라 화면상 손해가 없으므로, 지도만 expandedHeight 대신
+            // panelHeight 전체를 쓰도록 바꿈. #문제시 원복
+            applyTopPanelExpansion(binding.tmapUILayout, panelHeight)
         }
     }
 
@@ -3592,9 +3609,74 @@ class MapActivity : AppCompatActivity() {
                     val realRoadLimit = getRoadLimitSpeedFromEngine()
                     if (realRoadLimit >= 30) {
                         val tbtDist = getTbtDistFromEngine()
-                        val nearManeuverPoint = tbtDist in 0..TBT_NEAR_THRESHOLD_M
+                        var nearManeuverPoint = tbtDist in 0..TBT_NEAR_THRESHOLD_M
 
-                        if (realRoadLimit < lastValidRoadLimit && !nearManeuverPoint) {
+                        // v19.3.25 추가: 재억 재제보 - 지하차도뿐 아니라 "국도/고속도로를 직진
+                        // 중인데 분기점(나들목/분기)이 나오면" 옆(분기) 도로 제한속도가 잠깐
+                        // 찍히는 오탐도 있음. 원인 - 위 nearManeuverPoint는 티맵 자체 엔진이
+                        // "다음 안내지점까지 거리"로 주는 값(rgData.stGuidePoint.nTBTDist)만
+                        // 보고 판단하는데, 이 값은 SDK 클래스 구조상(TBTInfo에 회전타입/통행료/
+                        // 도로명 등 "경로 안내" 전용 필드만 있고 "사용자가 진짜 이 경로를
+                        // 타는지"를 구분하는 필드가 없음) 사용자가 실제로 그 분기를 타는지와
+                        // 무관하게, 도로망에 분기점이 가까이 있기만 해도 켜질 가능성이 있음
+                        // (티맵 자체 길안내가 꺼져있는 게 이 앱의 기본 사용 패턴이라 특히
+                        // 문제). 이 상태에서 nearManeuverPoint가 true가 되면 위 디바운스를
+                        // 건너뛰고 옆 분기 도로 값이 그대로 반영돼버림.
+                        //
+                        // 대응 - 카카오가 실제 길안내 중이면(KakaoRouteDataRepository, 콤마
+                        // 화면 경로선 기능이 이미 채워두는 실제 경로 좌표 재사용, 추가 API
+                        // 호출 없음) 티맵이 "분기점 근처"라고 준 그 지점(stGuidePoint의 실제
+                        // 좌표)이 카카오 경로선 위에 정말로 있는지 확인. 경로에서 벗어나
+                        // 있으면(다른 분기) "진짜 분기 진입"이 아니라고 보고 바이패스를 취소해서
+                        // 아래 디바운스를 그대로 타게 함. 카카오 안내 중이 아니면(비교할 실제
+                        // 경로가 없음) 기존 동작 그대로 유지 - 이 조건 자체가 새로 추가되지
+                        // 않으므로 회귀 위험 없음. #문제시 원복
+                        if (nearManeuverPoint && KakaoRouteDataRepository.isFresh()) {
+                            val routeCoords = KakaoRouteDataRepository.routeCoordinates
+                            if (routeCoords.size >= 2) {
+                                val guidePoint = getGuidePointLatLon()
+                                if (guidePoint != null) {
+                                    val distToRoute = distanceMetersToRoute(guidePoint.first, guidePoint.second, routeCoords)
+                                    if (distToRoute > GUIDE_POINT_ROUTE_TOLERANCE_M) {
+                                        // v19.3.25: 이 판정이 실제로 발동하는지(그리고 몇 m 차이로
+                                        // 걸렀는지) 나중에 재현됐을 때 바로 확인할 수 있게 남김
+                                        // - 이 로그가 없으면 다음에 또 오탐 나와도 이 검증이
+                                        // 아예 발동을 안 한 건지, 발동했는데 못 거른 건지 구분이
+                                        // 안 됨. #문제시 원복
+                                        NavLogger.d(this, "[분기오탐검증] 티맵 분기점이 카카오 경로에서 ${distToRoute.toInt()}m 벗어남 -> 즉시반영 취소")
+                                        nearManeuverPoint = false
+                                    }
+                                }
+                            }
+                        }
+
+                        // v19.3.25: 재억 제보 - 지하차도(60) 통과 중에 그 위를 지나가는 다른
+                        // 도로(80)의 제한속도가 잠깐씩 표시됨. 원인 - 아래 디바운스는 값이
+                        // "낮아질 때"만 걸리고 "높아질 때"는 무조건 즉시 반영했음(분기 진입 시
+                        // 빨리 반영하려고). 근데 지하차도/고가처럼 도로가 위아래로 겹치는
+                        // 구간에서는 GPS 매칭이 한 틱만 위쪽(높은 제한속도) 도로로 잘못
+                        // 튀었다가 바로 돌아오는 경우가 있는데, "높아지는 방향"이라 디바운스를
+                        // 안 타고 그 한 틱이 그대로 화면에 찍혀버림(로그: linkId는 그대로인데
+                        // 60<->80이 몇 초 사이 반복). 방향 상관없이 값이 바뀌면 똑같이
+                        // 디바운스를 걸도록 통일 - 진짜 분기(nearManeuverPoint)는 기존처럼
+                        // 예외로 즉시 반영. #문제시 원복
+                        //
+                        // v19.3.25 추가: 위 디바운스는 몇 틱만 버티면(REQUIRED_CONSECUTIVE) 결국
+                        // 받아들이는 구조라, 지하차도를 느리게 통과하면 오매칭이 그 틱수를 채워서
+                        // 결국 반영될 수 있음. rgData.isUnderpass()/isTunnel()을 까보니 SDK가
+                        // "지금 지하차도/터널 안"임을 GPS로 스스로 판단해서 주는 값이 있었음(다른
+                        // 항법앱들이 분기 속도를 안 잡는 것도 이런 신호를 쓰기 때문으로 보임).
+                        // 이 신호가 켜진 동안은 "값이 올라가는 쪽"만 디바운스 대신 아예 무시(터널/
+                        // 지하차도 안에서 제한속도가 실제로 올라가는 경우는 거의 없고, 위쪽 도로로
+                        // 튄 오매칭일 가능성이 훨씬 큼) - 내려가는 쪽(진짜 지하차도 제한속도)은
+                        // 그대로 즉시 반영돼서 안 막힘. #문제시 원복
+                        val underpassOrTunnel = isCurrentlyUnderpassOrTunnel()
+                        if (underpassOrTunnel && realRoadLimit > lastValidRoadLimit && !nearManeuverPoint) {
+                            // 위쪽 도로로 튄 오매칭으로 보고 무시, 대기값도 리셋(터널 빠져나온
+                            // 뒤 새 값이 진짜인지 다시 처음부터 확인하도록)
+                            pendingRoadLimit = -1
+                            pendingRoadLimitCount = 0
+                        } else if (realRoadLimit != lastValidRoadLimit && !nearManeuverPoint) {
                             if (realRoadLimit == pendingRoadLimit) {
                                 pendingRoadLimitCount++
                             } else {
@@ -3606,7 +3688,7 @@ class MapActivity : AppCompatActivity() {
                                 pendingRoadLimitCount = 0
                             }
                         } else {
-                            // 안내지점 근처거나, 속도가 높아지는 방향 → 즉시 반영
+                            // 안내지점 근처거나 값이 그대로임 → 즉시 반영
                             lastValidRoadLimit = realRoadLimit
                             pendingRoadLimitCount = 0
                         }
@@ -4291,6 +4373,15 @@ class MapActivity : AppCompatActivity() {
     private var getInstanceMethod: java.lang.reflect.Method? = null
     private var getRecentRGDataMethod: java.lang.reflect.Method? = null
     private var nRoadLimitSpeedField: java.lang.reflect.Field? = null
+    // v19.3.25: 재억 재요청("다른 앱들처럼 근본적으로 고칠 수 없나") - rgData 클래스를
+    // javap로 직접 까보니 isUnderpass()/isTunnel()이라는 게터가 이미 있었음(SDK가 GPS로
+    // "지금 지하차도/터널 안"임을 스스로 판단해서 주는 값). nearLinkInfos 배열도 있었지만
+    // 그 안엔 linkID/distance/mapLinkId만 있고 좌표·제한속도가 없어서(NearLinkInfo.class
+    // javap 결과) "후보 도로 중 경로에 가장 가까운 걸 골라내는" 방식은 SDK가 필요한 데이터
+    // 자체를 안 줘서 불가능함. 대신 이 isUnderpass/isTunnel 신호를 씀 - 범용 디바운스보다
+    // 훨씬 정확한 신호(진짜 지하차도/터널 구간에서만 켜짐). #문제시 원복
+    private var isUnderpassMethod: java.lang.reflect.Method? = null
+    private var isTunnelMethod: java.lang.reflect.Method? = null
     private var nTBTDistField: java.lang.reflect.Field? = null
     private var tbtDistFieldLookupFailed = false
     private var rgDataRecursiveDumped = false
@@ -4302,6 +4393,11 @@ class MapActivity : AppCompatActivity() {
     private var stGuidePointField: java.lang.reflect.Field? = null
     private var stGuidePointFieldLookupFailed = false
     private var nTBTTurnTypeField: java.lang.reflect.Field? = null
+    // v19.3.25: 일반 분기점(국도/고속도로) 오탐 대응 - stGuidePoint(TBTInfo)에 실제 좌표
+    // 필드(vpTBTPointLon/Lat)가 있는 걸 javap로 확인, 카카오 경로선과 대조하는 데 씀. #문제시 원복
+    private var vpTBTPointLonField: java.lang.reflect.Field? = null
+    private var vpTBTPointLatField: java.lang.reflect.Field? = null
+    private var vpTBTPointFieldLookupFailed = false
     // v4.13: 순정 Tmap 안내 시 콤마에 회전방향(좌/우/유턴)을 못 보내는 문제(사용자 9번) -
     // 정확한 코드→방향 매핑표를 아직 확정 못 해서 표시 로직은 없지만, 실주행 중 실제로
     // 어떤 코드가 찍히는지 확인할 수 있게 0이 아닌 값이 뜰 때만(스팸 방지, 30초 간격)
@@ -4313,6 +4409,10 @@ class MapActivity : AppCompatActivity() {
     private var pendingRoadLimitCount = 0
     private val REQUIRED_CONSECUTIVE = 2          // 오매칭 의심 시 최소 확인 횟수 (타이트하게)
     private val TBT_NEAR_THRESHOLD_M = 250        // 이 거리 이내면 "진짜 분기"로 간주하고 즉시 반영
+    // v19.3.25: 티맵이 준 분기점 좌표가 카카오 실제 경로선에서 이 거리(m) 안에 있어야
+    // "진짜 그 경로를 타는 분기"로 인정. GPS/경로좌표 오차 감안해 살짝 여유를 둠(너무
+    // 크면 실제로 다른 분기인데도 통과시켜버림, 너무 작으면 진짜 분기도 걸러버릴 수 있음). #문제시 원복
+    private val GUIDE_POINT_ROUTE_TOLERANCE_M = 80.0
 
     // rgData 필드 재귀 덤프용 (LaneInfoData[]/TBTInfo 같은 객체·배열 내부 필드까지 확인하기 위함)
     // - 배열: 앞에서 maxArrayItems개까지만 각 원소를 펼쳐서 찍음 (로그 폭주 방지)
@@ -4448,6 +4548,83 @@ class MapActivity : AppCompatActivity() {
         return Int.MAX_VALUE
     }
 
+    // v19.3.25: rgData.stGuidePoint(TBTInfo)의 실제 좌표(vpTBTPointLat/Lon)를 읽어옴 - 위
+    // getTbtDistFromEngine()과 같은 stGuidePoint를 다시 찾는 거라 약간 중복이지만, 기존
+    // 함수 시그니처(Int 반환)를 안 건드리려고 별도 함수로 분리. nearManeuverPoint가 이미
+    // true일 때만 호출되므로(카카오 안내 중일 때만) 비용 부담 작음. 실패하면 null 반환 -
+    // 호출부에서 null이면 기존 동작(카카오 경로 비교 생략)으로 안전하게 폴백함. #문제시 원복
+    private fun getGuidePointLatLon(): Pair<Double, Double>? {
+        try {
+            if (sdkManagerCompanion == null) {
+                val sdkManagerClass = Class.forName("com.skt.tmap.engine.navigation.SDKManager")
+                val companionField = sdkManagerClass.getField("Companion")
+                sdkManagerCompanion = companionField.get(null)
+                getInstanceMethod = sdkManagerCompanion?.javaClass?.getMethod("getInstance")
+            }
+            val sdkManager = getInstanceMethod?.invoke(sdkManagerCompanion) ?: return null
+            if (getRecentRGDataMethod == null) {
+                getRecentRGDataMethod = sdkManager.javaClass.getMethod("getRecentRGData")
+            }
+            val rgData = getRecentRGDataMethod?.invoke(sdkManager) ?: return null
+            if (stGuidePointField == null && !stGuidePointFieldLookupFailed) {
+                try {
+                    stGuidePointField = rgData.javaClass.getField("stGuidePoint")
+                } catch (fe: Exception) {
+                    stGuidePointFieldLookupFailed = true
+                    return null
+                }
+            }
+            val guidePoint = stGuidePointField?.get(rgData) ?: return null
+            if (vpTBTPointLatField == null && !vpTBTPointFieldLookupFailed) {
+                try {
+                    vpTBTPointLatField = guidePoint.javaClass.getField("vpTBTPointLat")
+                    vpTBTPointLonField = guidePoint.javaClass.getField("vpTBTPointLon")
+                } catch (fe: Exception) {
+                    vpTBTPointFieldLookupFailed = true
+                    NavLogger.e(this, "Reflection error (vpTBTPoint): ${fe.message} - 이후 재시도 안 함")
+                    return null
+                }
+            }
+            val lat = vpTBTPointLatField?.getDouble(guidePoint) ?: return null
+            val lon = vpTBTPointLonField?.getDouble(guidePoint) ?: return null
+            if (lat == 0.0 && lon == 0.0) return null
+            return lat to lon
+        } catch (e: Exception) {
+            NavLogger.e(this, "Reflection error (vpTBTPoint): ${e.message}")
+            return null
+        }
+    }
+
+    // v19.3.25: 위경도 점 하나가 경로 폴리라인(경도,위도 순서 쌍 목록)에서 얼마나 떨어져
+    // 있는지(m, 각 선분에 수직으로 투영한 최단거리) - NearbyCategoryPopup의 경로투영과 같은
+    // 원리(평면 근사, 수 km 범위에서 충분히 정확)지만, 이 함수는 도로 오탐 판정 전용이라
+    // 단순 최단거리만 필요해서(진행방향/누적거리는 불필요) 여기 따로 작게 둠 - 서로 다른
+    // 목적의 코드를 억지로 공유하면 한쪽 수정이 다른 쪽에 영향 줄 위험이 있어서 분리. #문제시 원복
+    private fun distanceMetersToRoute(lat: Double, lon: Double, routeCoords: List<Pair<Double, Double>>): Double {
+        val originLat = routeCoords[0].second
+        val originLon = routeCoords[0].first
+        val metersPerDegLat = 111320.0
+        val metersPerDegLon = 111320.0 * kotlin.math.cos(Math.toRadians(originLat))
+        fun toLocal(la: Double, lo: Double) = Pair((lo - originLon) * metersPerDegLon, (la - originLat) * metersPerDegLat)
+
+        val (px, py) = toLocal(lat, lon)
+        var best = Double.MAX_VALUE
+        var prev = toLocal(routeCoords[0].second, routeCoords[0].first)
+        for (i in 1 until routeCoords.size) {
+            val cur = toLocal(routeCoords[i].second, routeCoords[i].first)
+            val dx = cur.first - prev.first
+            val dy = cur.second - prev.second
+            val lenSq = dx * dx + dy * dy
+            val t = if (lenSq > 0) (((px - prev.first) * dx + (py - prev.second) * dy) / lenSq).coerceIn(0.0, 1.0) else 0.0
+            val projX = prev.first + t * dx
+            val projY = prev.second + t * dy
+            val dist = kotlin.math.hypot(px - projX, py - projY)
+            if (dist < best) best = dist
+            prev = cur
+        }
+        return best
+    }
+
     private fun getRoadLimitSpeedFromEngine(): Int {
         try {
             if (sdkManagerCompanion == null) {
@@ -4478,6 +4655,37 @@ class MapActivity : AppCompatActivity() {
             NavLogger.e(this, "Reflection error (RoadLimitSpeed): ${e.message}")
         }
         return -1
+    }
+
+    // v19.3.25: rgData.isUnderpass()/isTunnel() 그대로 물어봄 - SDK가 GPS로 스스로 판단한
+    // 값이라 우리가 좌표로 추정하는 것보다 정확함. 실패(리플렉션 오류 등)하면 안전하게
+    // false(평소 로직 그대로) 반환. #문제시 원복
+    private fun isCurrentlyUnderpassOrTunnel(): Boolean {
+        try {
+            if (sdkManagerCompanion == null) {
+                val sdkManagerClass = Class.forName("com.skt.tmap.engine.navigation.SDKManager")
+                val companionField = sdkManagerClass.getField("Companion")
+                sdkManagerCompanion = companionField.get(null)
+                getInstanceMethod = sdkManagerCompanion?.javaClass?.getMethod("getInstance")
+            }
+            val sdkManager = getInstanceMethod?.invoke(sdkManagerCompanion) ?: return false
+            if (getRecentRGDataMethod == null) {
+                getRecentRGDataMethod = sdkManager.javaClass.getMethod("getRecentRGData")
+            }
+            val rgData = getRecentRGDataMethod?.invoke(sdkManager) ?: return false
+            if (isUnderpassMethod == null) {
+                isUnderpassMethod = rgData.javaClass.getMethod("isUnderpass")
+            }
+            if (isTunnelMethod == null) {
+                isTunnelMethod = rgData.javaClass.getMethod("isTunnel")
+            }
+            val underpass = isUnderpassMethod?.invoke(rgData) as? Boolean ?: false
+            val tunnel = isTunnelMethod?.invoke(rgData) as? Boolean ?: false
+            return underpass || tunnel
+        } catch (e: Exception) {
+            NavLogger.e(this, "Reflection error (isUnderpass/isTunnel): ${e.message}")
+            return false
+        }
     }
 
     private var nLaneCountField: java.lang.reflect.Field? = null
