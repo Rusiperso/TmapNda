@@ -424,6 +424,11 @@ class MapActivity : AppCompatActivity() {
         // 켜야만 움직임. 앱 재시작해도 저장된 위치로 복원됨. #문제시 원복
         binding.llLeftHudPanel?.let { panel ->
             PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList())
+            // v19.3.26: 재억 제보 - 실제 터치는 거의 다 이 안의 가로스크롤(llTopBarRow)이
+            // 가로채서 위 리스너(panel 자신)까지 안 옴. llTopBarRow에서 받은 터치로도 같은
+            // panel을 움직이게 추가 연결. 자세한 이유는 PanelDragHelper.makeDraggable 주석
+            // 참고. #문제시 원복
+            PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), touchSource = binding.llTopBarRow)
             // v3.2: onCreate 시점엔 panel.width/height가 아직 0이라 clampAndPreventOverlap이
             // 저장된 위치를 무조건 (0,0)으로 눌러버리는 버그가 있었음(사용자 지적 3번: "편집으로
             // 내려도 재실행하면 다시 위로 올라감"). 레이아웃이 끝난 뒤(post)에 복원하도록 변경. #문제시 원복

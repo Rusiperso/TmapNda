@@ -52,31 +52,46 @@ object PanelDragHelper {
         return Pair(x, y)
     }
 
-    fun makeDraggable(context: Context, view: View, keyPrefix: String, isLandscape: Boolean, otherViews: List<View> = emptyList()) {
+    // v19.3.26: 재억 제보 확인(로그로 확정) - "UI 편집" 버튼 자체는 정상 토글되는데, 상단바를
+    // 눌러도 makeDraggable의 터치리스너에 ACTION_DOWN이 아예 안 찍힘. 원인 - llLeftHudPanel
+    // 안에는 글자 잘림 방지용으로 넣어둔 HorizontalScrollView(llTopBarRow) 하나가 거의 전체
+    // 면적을 차지하는데, 이 스크롤뷰가 편집모드에서도(비활성화해도) 가로 드래그 제스처를
+    // 자기가 먼저 가로채서, 정작 부모인 llLeftHudPanel까지 터치가 "떨어져 나오지" 않음.
+    // 그래서 touchSource(실제로 리스너를 붙일 뷰, 기본은 view 자신)와 view(실제로 움직일
+    // 대상)를 분리 - 호출부에서 touchSource로 llTopBarRow를 넘기면, 거기서 받은 터치로
+    // llLeftHudPanel을 움직이게 함. #문제시 원복
+    fun makeDraggable(
+        context: Context,
+        view: View,
+        keyPrefix: String,
+        isLandscape: Boolean,
+        otherViews: List<View> = emptyList(),
+        touchSource: View = view
+    ) {
         var dX = 0f
         var dY = 0f
 
-        view.setOnTouchListener { v, event ->
+        touchSource.setOnTouchListener { _, event ->
             // v19.3.25: 재억 제보(카카오/티맵 둘 다 "UI 편집" 눌러도 안 움직임) 진단용 임시
             // 로그 - 터치가 이 뷰까지 아예 도달하는지, 그 시점 isEditMode가 뭔지 확인.
             // 원인 확인되면 지워도 됨. #문제시 원복
             if (event.action == MotionEvent.ACTION_DOWN) {
-                NavLogger.d(context, "[UI편집진단] $keyPrefix 터치다운 도달, isEditMode=$isEditMode")
+                NavLogger.d(context, "[UI편집진단] $keyPrefix 터치다운 도달(source=${touchSource.javaClass.simpleName}), isEditMode=$isEditMode")
             }
             if (!isEditMode) return@setOnTouchListener false
 
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    dX = v.x - event.rawX
-                    dY = v.y - event.rawY
+                    dX = view.x - event.rawX
+                    dY = view.y - event.rawY
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val rawX = event.rawX + dX
                     val rawY = event.rawY + dY
-                    val (clampedX, clampedY) = clampAndPreventOverlap(v, rawX, rawY, otherViews)
+                    val (clampedX, clampedY) = clampAndPreventOverlap(view, rawX, rawY, otherViews)
 
-                    v.animate()
+                    view.animate()
                         .x(clampedX)
                         .y(clampedY)
                         .setDuration(0)
@@ -87,8 +102,8 @@ object PanelDragHelper {
                     val sharedPref = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                     val suffix = if (isLandscape) "land" else "port"
                     sharedPref.edit()
-                        .putFloat("${keyPrefix}_x_${suffix}", v.x)
-                        .putFloat("${keyPrefix}_y_${suffix}", v.y)
+                        .putFloat("${keyPrefix}_x_${suffix}", view.x)
+                        .putFloat("${keyPrefix}_y_${suffix}", view.y)
                         .apply()
                     true
                 }

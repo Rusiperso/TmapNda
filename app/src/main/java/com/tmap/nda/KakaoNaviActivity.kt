@@ -302,6 +302,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         binding.llLeftHudPanel?.let { panel ->
             PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList())
+            // v19.3.26: 재억 제보 - 실제 터치는 거의 다 이 안의 가로스크롤(llTopBarRow)이
+            // 가로채서 위 리스너(panel 자신)까지 안 옴. llTopBarRow에서 받은 터치로도 같은
+            // panel을 움직이게 추가 연결. 자세한 이유는 PanelDragHelper.makeDraggable 주석
+            // 참고. #문제시 원복
+            PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), touchSource = binding.llTopBarRow)
             panel.post {
                 PanelDragHelper.restorePosition(this, panel, "llLeftHudPanel", isLandscape, emptyList())
             }
