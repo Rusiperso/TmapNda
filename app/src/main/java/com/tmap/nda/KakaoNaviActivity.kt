@@ -1155,6 +1155,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // MapActivity와 동일한 앱 전역 싱글턴(OpenpilotStateRepository/SdiDataRepository)을
     // 그대로 관찰해서 자체 미니 HUD로 복제하는 방식으로 해결. #문제시 원복
     private val hudPollHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    // v19.3.30: 재억 제보 - "화면을 축소해서 전체 경로를 보면 회전 화살표가 제대로 나오는데,
+    // 평소(확대) 상태에선 잘린 것처럼 얇게 나온다"는 관찰. logNaviViewDiagnostics는 기존엔
+    // 길안내 시작 시점에만 찍혀서, 이렇게 나중에(주행 중 줌 상태 바뀔 때) 재현되는 경우를
+    // 못 잡았음. 아래 sdiRunnable(1초 주기)에 얹어서 15초마다 한 번씩 이 진단을 같이
+    // 찍음 - 카카오 SDK가 그리는 회전 박스(KNComponentCurDirectionView 등)의 실제
+    // 가로/세로 픽셀 크기가 그대로 로그에 남아서, 다음에 짤린 순간의 스크린샷+로그를
+    // 같이 받으면 "박스 자체가 비정상적으로 큰 건지 vs 아이콘 모양만 저런 건지" 바로 구분 가능. #문제시 원복
+    private var naviViewDiagnosticTick = 0
     private fun startMiniHudBinding() {
         // v: 사용자 최종 확정(2026-08-10) - 화면 문구는 딱 4개만: "Cruise On"/"Cruise Off",
         // "콤마 연결 중"/"콤마 연결 대기". "콤마 연결됨"이나 빈 칸 상태는 없음. #문제시 원복
@@ -1321,6 +1329,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // v: 재억 제보(2026-09-02) - 카카오 메뉴 음량과의 동기화. 이 1초 루프는
                 // 진단 로그용으로만 남기고, 실제 동기화는 아래 250ms 루프가 담당함. #문제시 원복
                 logKakaoVolumeDiagnostics()
+                naviViewDiagnosticTick++
+                if (naviViewDiagnosticTick >= 15) {
+                    naviViewDiagnosticTick = 0
+                    logNaviViewDiagnostics("주기(15초)")
+                }
                 hudPollHandler.postDelayed(this, 1000)
                 renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "kakao")
                 updateNavNotification()
