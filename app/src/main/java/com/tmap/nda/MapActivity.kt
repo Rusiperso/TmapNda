@@ -1603,8 +1603,26 @@ class MapActivity : AppCompatActivity() {
     }
 
     // v1.6: 속도가 도로 제한속도의 110%를 넘으면 경고음 - 기본 꺼짐, 이 다이얼로그에서 토글. #문제시 원복
+    // v19.3.32: 설정 백업 파일을 골라오는 표준 파일 선택기. 고른 즉시 SettingsBackup으로
+    // 복원하고, 드래그 위치/토글 등은 화면을 다시 만들어야 확실히 반영되므로 재시작 안내. #문제시 원복
+    private val restoreBackupLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            val ok = SettingsBackup.restoreFromUri(this, uri)
+            Toast.makeText(
+                this,
+                if (ok) "설정을 복원했습니다. 앱을 다시 시작해주세요." else "복원 실패 - 올바른 백업 파일인지 확인해주세요.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
     private fun showAppSettingsDialog() {
-        PanelDragHelper.showAppSettingsDialog(this, binding.vTouchLockOverlay) {
+        PanelDragHelper.showAppSettingsDialog(
+            this, binding.vTouchLockOverlay,
+            onRestoreRequested = { restoreBackupLauncher.launch("application/json") }
+        ) {
             applyTmapSatelliteViewSetting()
             applyTmapTrafficInfoSetting()
             // v: 재억 제보(2026-08-26) - 카테고리 버튼 표시를 꺼도 화면에서 바로 안 사라지던

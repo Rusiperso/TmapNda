@@ -279,7 +279,16 @@ object PanelDragHelper {
 
     // v3.9: 앱 설정 다이얼로그도 공용화. touchLockOverlay는 Tmap 화면에만 있는
     // 개념(카카오 화면은 자체 지도 제스처를 씀)이라 null이면 그 체크박스만 건너뜀. #문제시 원복
-    fun showAppSettingsDialog(context: android.app.Activity, touchLockOverlay: View?, onSaved: (() -> Unit)? = null) {
+    // v19.3.32: 재억 요청 - 실기기 테스트(우리 쪽이든 재억이든) 도중 앱 데이터가 날아가는
+    // 사고가 있었음("pm clear로 즐겨찾기/API키 전부 삭제됨" 사고). 언제든 복구할 수 있게
+    // 설정/즐겨찾기/API키를 통째로 파일 하나로 내보내고(공유해서 구글드라이브/이메일 등에
+    // 보관) 다시 불러오는 기능 추가. #문제시 원복
+    fun showAppSettingsDialog(
+        context: android.app.Activity,
+        touchLockOverlay: View?,
+        onRestoreRequested: (() -> Unit)? = null,
+        onSaved: (() -> Unit)? = null
+    ) {
         val pref = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         // v: 체크박스 -> 토글 스위치로 전환(재억 요청). 아울러 "체크=활성화, 빈칸=비활성화"로
         // 의미를 전부 통일. 이전엔 이름에 "끄기"가 들어간 두 항목(경고음, 이동식카메라 감속)이
@@ -586,6 +595,52 @@ object PanelDragHelper {
         container.addView(favoriteCountRow)
         container.addView(volumeSectionTitle)
         container.addView(volumeHintText)
+
+        // v19.3.32: 재억 요청 - 설정 백업/복원. 공유 방식으로 내보내서 재억이 원하는 곳
+        // (구글 드라이브/이메일/카카오톡 나에게 보내기 등)에 알아서 보관하게 하고,
+        // 복원은 표준 파일 선택기(SAF)로 그 파일을 다시 골라 불러오게 함. #문제시 원복
+        val backupSectionTitle = android.widget.TextView(context).apply {
+            text = "설정 백업/복원"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 15f
+            setPadding(40, 20, 40, 6)
+        }
+        val backupHintText = android.widget.TextView(context).apply {
+            text = "즐겨찾기·API 키·화면 설정을 파일로 저장해두면 나중에 다시 불러올 수 있습니다."
+            setTextColor(android.graphics.Color.parseColor("#999999"))
+            textSize = 13f
+            setPadding(40, 0, 40, 10)
+        }
+        val backupButtonRow = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            setPadding(40, 0, 40, 10)
+        }
+        val backupButton = android.widget.Button(context).apply {
+            text = "백업(공유)"
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+            ).apply { marginEnd = 10 }
+            setOnClickListener {
+                val shareIntent = SettingsBackup.exportAndShare(context)
+                if (shareIntent != null) {
+                    context.startActivity(android.content.Intent.createChooser(shareIntent, "설정 백업 공유"))
+                } else {
+                    android.widget.Toast.makeText(context, "백업 파일 생성에 실패했습니다", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        val restoreButton = android.widget.Button(context).apply {
+            text = "복원(파일선택)"
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+            )
+            setOnClickListener { onRestoreRequested?.invoke() }
+        }
+        backupButtonRow.addView(backupButton)
+        backupButtonRow.addView(restoreButton)
+        container.addView(backupSectionTitle)
+        container.addView(backupHintText)
+        container.addView(backupButtonRow)
         // v15.3: 설정 항목이 많아져서 다이얼로그 세로 길이가 화면을 넘길 수 있으므로
         // ScrollView로 감쌈. AlertDialog는 setView(content)의 버튼 줄을 항상 콘텐츠
         // 바깥에 별도로 그리기 때문에, 콘텐츠만 스크롤되고 취소/저장 버튼은 화면에

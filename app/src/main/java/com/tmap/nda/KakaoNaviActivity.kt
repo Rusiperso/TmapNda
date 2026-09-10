@@ -86,6 +86,20 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
+    // v19.3.32: 설정 백업 파일을 골라오는 표준 파일 선택기(MapActivity와 동일). #문제시 원복
+    private val restoreBackupLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            val ok = SettingsBackup.restoreFromUri(this, uri)
+            Toast.makeText(
+                this,
+                if (ok) "설정을 복원했습니다. 앱을 다시 시작해주세요." else "복원 실패 - 올바른 백업 파일인지 확인해주세요.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
     private fun applyTopPanelExpansion(view: View?, expandedHeight: Int) {
         if (view == null) return
         val params = view.layoutParams as? ViewGroup.MarginLayoutParams ?: return
@@ -1510,7 +1524,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             // v: 재억 제보(2026-08-26) - 경유지/카테고리 버튼 표시를 꺼도 화면에서 바로
             // 안 사라지던 문제. onSaved 콜백을 안 넘겨줘서 저장 즉시 반영이 안 되고
             // 다음 onResume(다른 화면 갔다 오기)에야 적용됐음. 저장 직후 바로 반영. #문제시 원복
-            PanelDragHelper.showAppSettingsDialog(this, null) {
+            PanelDragHelper.showAppSettingsDialog(
+                this, null,
+                onRestoreRequested = { restoreBackupLauncher.launch("application/json") }
+            ) {
                 val showWaypointButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                     .getBoolean("show_waypoint_button", true)
                 val showCategoryButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
