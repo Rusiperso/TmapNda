@@ -218,6 +218,13 @@ object PanelDragHelper {
             // 곳)만 눌러야 드래그되던 문제(사용자 지적 3번). 편집모드 켤 때 안의 모든 뷰를
             // 비활성화해서 어디를 눌러도 상단바 자체의 드래그가 먹히게 함. #문제시 원복
             draggablePanel?.let { setDescendantsEnabled(it, !isEditMode) }
+            // v19.3.29: 재억 제보 - v19.3.28에서 이동 핸들을 상단바(draggablePanel) 안으로
+            // 옮기고 나니, 바로 위 setDescendantsEnabled가 상단바의 "모든" 자손을 비활성화할
+            // 때 핸들도 같이 걸려서 편집모드에서 핸들 자체가 안 보임/안 눌림(비활성 상태라
+            // 배경 드로어블이 제대로 안 그려짐). 핸들은 상단바의 일부이면서 동시에 항상
+            // 눌려야 하는 예외라, 바로 뒤에서 다시 강제로 활성화함. #문제시 원복
+            dragHandle?.isEnabled = true
+            dragHandle?.isClickable = true
             if (isEditMode) {
                 button.text = "UI 편집 종료"
                 android.widget.Toast.makeText(context, "패널 아무 곳이나 눌러서 드래그하고, 우측 상단 체크(✓)를 눌러 확정하세요", android.widget.Toast.LENGTH_LONG).show()
