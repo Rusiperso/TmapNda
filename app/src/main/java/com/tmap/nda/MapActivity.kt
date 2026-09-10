@@ -165,7 +165,11 @@ class MapActivity : AppCompatActivity() {
             // 진짜로 잘려 보임. 지도는 상단바 전체 높이(panelHeight)만큼 통째로 밀어내도
             // 어차피 불투명한 바 밑이라 화면상 손해가 없으므로, 지도만 expandedHeight 대신
             // panelHeight 전체를 쓰도록 바꿈. #문제시 원복
-            applyTopPanelExpansion(binding.tmapUILayout, panelHeight)
+            // v19.3.33: 재억 제보(사진) - 상단바를 아래로 내려도 지도 위쪽에 검은 여백이 남음.
+            // 원인 - 이 리스너는 바 안의 글자(속도 등)만 바뀌어도 매번 불리는데, 여기서 바 위치와
+            // 상관없이 지도 위쪽을 무조건 바 높이만큼 밀어내서 applyMapOffsetForBarPosition이
+            // 맞춰둔 여백을 곧바로 덮어썼음. 바 위치를 보고 계산하는 함수로 통일. #문제시 원복
+            applyMapOffsetForBarPosition()
         }
     }
 
@@ -341,6 +345,9 @@ class MapActivity : AppCompatActivity() {
                         "right=${safeArea.right} bottom=${safeArea.bottom}"
                 )
             }
+            // v19.3.33: 위 applyBottomSafeInset이 지도 아래 여백을 안전영역만큼으로 되돌려서,
+            // 바를 아래에 붙여둔 상태면 지도 아래쪽이 바에 가려짐 - 바 위치 기준으로 다시 맞춤. #문제시 원복
+            applyMapOffsetForBarPosition()
 
             insets
         }
@@ -3591,9 +3598,19 @@ class MapActivity : AppCompatActivity() {
         } else {
             navigationFragment = getFragment() as NavigationFragment
 
-            supportFragmentManager.beginTransaction()
-                .add(R.id.tmapUILayout, navigationFragment!!)
-                .commitAllowingStateLoss()
+            // v19.3.33: 폴드4 외부화면 크래시 제보 - 화면 재생성이 짧은 간격으로 겹치면
+            // 티맵 SDK가 내부적으로 재사용하는 NavigationFragment 인스턴스가 아직 이전
+            // 화면의 FragmentManager에 "추가된" 상태로 남아있어서 여기서 IllegalStateException
+            // ("Fragment already added")으로 앱이 죽었음. 위 재생성 디바운스로 그 겹침 빈도
+            // 자체는 줄였지만, 혹시 남은 경우에도 최소한 크래시는 안 나게 방어. 실패하면
+            // 이번엔 못 붙이고 넘어가지만, 다음 재생성 때 정상적으로 다시 시도됨. #문제시 원복
+            try {
+                supportFragmentManager.beginTransaction()
+                    .add(R.id.tmapUILayout, navigationFragment!!)
+                    .commitAllowingStateLoss()
+            } catch (e: IllegalStateException) {
+                NavLogger.e(this, "NavigationFragment 추가 실패(already added로 추정) - 이번 화면은 지도 없이 넘어감: ${e.message}")
+            }
 
             // 진단용 리플렉션 전수조사라 무거움(예전에 화면 멈춤의 원인이었던 종류) -
             // 화면이 다시 만들어질 때마다 반복할 이유가 없어 처음 붙일 때만 실행. #문제시 원복
@@ -4153,9 +4170,30 @@ class MapActivity : AppCompatActivity() {
     // 쓰는 바람에 메뉴 항목들이 화면 밖으로 밀려 안 보였음(SDK는 화면 크기별로 다른 배치
     // 파일과 다른 크기값을 쓰는데, 이미 만들어진 화면은 그 값이 그대로 굳어 있음).
     // 창 모양이 실제로 바뀌면 다시 만드는 원래 방식으로 되돌림. #문제시 원복
+    // v19.3.33: 폴드4 외부화면(Discord 자동 크래시 제보, SM-F936N)에서 이 재생성이 짧은
+    // 시간 안에 계속 반복되다가(로그: 몇 초~몇십 초 간격으로 수십 번) "Fragment already
+    // added" 크래시로 이어짐. 재생성이 완전히 끝나기 전에 또 재생성이 걸리면, 티맵 SDK가
+    // 내부적으로 캐시해둔 NavigationFragment 인스턴스가 이전 FragmentManager에 여전히
+    // "추가된" 상태로 남아있어서 새 화면에 다시 붙이려 할 때 죽는 것으로 보임. 이 기기가
+    // 왜 방향이 계속 바뀐 것처럼 잡히는지 근본 원인은 아직 모르지만(회전 센서/윈도우
+    // 매니저 쪽 기기별 이슈로 추정), 직전 재생성 후 1.5초 안에 또 걸리면 오탐으로 보고
+    // 건너뛰어서 최소한 재생성끼리 겹치는 것은 막음. recreate()는 액티비티 인스턴스
+    // 자체를 새로 만들어버리므로, 이 값은 인스턴스 필드가 아니라 companion object(정적)에
+    // 둬야 재생성을 넘어 값이 유지됨. #문제시 원복
+    companion object {
+        private var lastOrientationRecreateAtMs = 0L
+    }
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (newConfig.orientation != inflatedOrientation) {
+            val now = System.currentTimeMillis()
+            val sinceLast = now - lastOrientationRecreateAtMs
+            if (sinceLast < 1500) {
+                NavLogger.e(this, "[화면방향] 가로<->세로 변경 감지했지만 직전 재생성 후 ${sinceLast}ms밖에 안 지나서 무시함(연속 오탐 의심)")
+                return
+            }
+            lastOrientationRecreateAtMs = now
             NavLogger.d(this, "[화면방향] 가로<->세로가 바뀌어 화면 배치를 다시 만듦")
             recreate()
             return

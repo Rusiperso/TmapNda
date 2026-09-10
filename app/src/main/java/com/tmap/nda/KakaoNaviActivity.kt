@@ -159,7 +159,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             val baseHeight = binding.llTopBarRow.minimumHeight
             val expandedHeight = (panelHeight - baseHeight).coerceAtLeast(0)
 
-            applyExactTopOffset(binding.naviView, panelHeight)
+            // v19.3.33: Tmap 화면과 동일 - 바 안의 글자만 바뀌어도 이 리스너가 불리면서 바 위치와
+            // 상관없이 지도 위쪽을 바 높이만큼 다시 밀어내, 바를 아래로 내려도 위에 여백이
+            // 남았음. 바 위치를 보고 계산하는 함수로 통일. #문제시 원복
+            applyMapOffsetForBarPosition()
             applyTopPanelExpansion(binding.svSecondaryPanel, expandedHeight)
         }
     }
@@ -3330,9 +3333,24 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 설정 메뉴의 전체경로/다른경로/경로취소 줄이 화면 밖으로 밀려 아예 안 보였음.
     // 다시 만드는 원래 방식으로 되돌리고, 대신 지금 안내 중인 목적지/경로 방식/경유지를
     // 인텐트에 계속 적어둬서 다시 만들어도 같은 안내를 그대로 이어가게 함. #문제시 원복
+    // v19.3.33: MapActivity와 동일 - 폴드4 외부화면(Discord 자동 크래시 제보)에서 이 재생성이
+    // 몇 초~몇십 초 간격으로 반복되는 게 확인됨(티맵 화면 쪽에서 그 재생성 겹침이
+    // "Fragment already added" 크래시까지 일으킴). 카카오 화면은 Fragment를 안 써서 같은
+    // 크래시는 안 나지만, 재생성이 겹칠 이유가 없으니 똑같이 디바운스 적용. #문제시 원복
+    companion object {
+        private var lastOrientationRecreateAtMs = 0L
+    }
+
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
         if (newConfig.orientation != inflatedOrientation) {
+            val now = System.currentTimeMillis()
+            val sinceLast = now - lastOrientationRecreateAtMs
+            if (sinceLast < 1500) {
+                NavLogger.e(this, "[화면방향] 가로<->세로 변경 감지했지만 직전 재생성 후 ${sinceLast}ms밖에 안 지나서 무시함(연속 오탐 의심)")
+                return
+            }
+            lastOrientationRecreateAtMs = now
             NavLogger.d(this, "[화면방향] 가로<->세로가 바뀌어 화면 배치를 다시 만듦")
             recreate()
             return
