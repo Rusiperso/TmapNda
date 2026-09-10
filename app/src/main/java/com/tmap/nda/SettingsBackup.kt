@@ -18,6 +18,15 @@ object SettingsBackup {
     private const val PREFS_NAME = "TmapNdaPrefs"
     private const val BACKUP_FILE_NAME = "TmapNda_설정백업.json"
 
+    // v19.3.35: 재억 제보 - 복원 직후 앱이 계속 강제종료됨. 원인 확인됨: UI 이동 위치처럼
+    // Float로 저장된 값이 마침 정수와 똑같이 생긴 값(예: 570.0)이면, JSON에는 그냥 570으로
+    // 찍혀서 원래 정수였는지 실수였는지 구분이 안 남. 복원할 때 "소수점 없으면 정수"로
+    // 판단해 putInt로 잘못 저장했고, 그 값을 실제로 쓰는 자리(PanelDragHelper.restorePosition
+    // 등)는 전부 getFloat()라 타입이 안 맞아 ClassCastException으로 죽었음. 내보낼 때
+    // 원래 Float였던 키 목록을 이 마커 밑에 따로 적어두고, 불러올 때는 그 목록에 있는
+    // 키는 JSON에 정수로 찍혀 있어도 무조건 Float로 되돌림. #문제시 원복
+    private const val FLOAT_KEYS_MARKER = "__tmapnda_float_keys__"
+
     private fun backupFile(context: Context): File {
         val dir = File(context.getExternalFilesDir(null), "backup")
         if (!dir.exists()) dir.mkdirs()
@@ -29,6 +38,7 @@ object SettingsBackup {
         return try {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val json = JSONObject()
+            val floatKeys = org.json.JSONArray()
             for ((key, value) in prefs.all) {
                 if (value == null) continue
                 // Set<String>(즐겨찾기 등 일부 항목이 쓸 수 있음)은 JSONArray로 변환해서 보존
@@ -38,8 +48,10 @@ object SettingsBackup {
                     json.put(key, arr)
                 } else {
                     json.put(key, value)
+                    if (value is Float) floatKeys.put(key)
                 }
             }
+            json.put(FLOAT_KEYS_MARKER, floatKeys)
             val file = backupFile(context)
             file.writeText(json.toString(2))
 
@@ -62,12 +74,22 @@ object SettingsBackup {
             val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                 ?: return false
             val json = JSONObject(text)
+            val floatKeys = mutableSetOf<String>()
+            json.optJSONArray(FLOAT_KEYS_MARKER)?.let { arr ->
+                for (i in 0 until arr.length()) floatKeys.add(arr.getString(i))
+            }
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val editor = prefs.edit()
             val keys = json.keys()
             var count = 0
             while (keys.hasNext()) {
                 val key = keys.next()
+                if (key == FLOAT_KEYS_MARKER) continue
+                if (key in floatKeys) {
+                    editor.putFloat(key, json.getDouble(key).toFloat())
+                    count++
+                    continue
+                }
                 when (val value = json.get(key)) {
                     is Boolean -> editor.putBoolean(key, value)
                     is Int -> editor.putInt(key, value)
@@ -90,5 +112,28 @@ object SettingsBackup {
             NavLogger.e(context, "[설정백업] 복원 실패: ${e.message}")
             false
         }
+    }
+}
+
+// v19.3.35: 위와 같은 이유로 이미 잘못된 타입(Int)으로 저장돼버린 폰은 이 수정 이후에도
+// 그 값이 남아있는 한 계속 죽는다. getFloat() 대신 이걸로 읽으면 타입이 안 맞아도
+// 죽지 않고, 읽은 값을 그 자리에서 바로 올바른 타입(Float)으로 고쳐 다시 저장해서
+// 다음번부터는 정상적으로 읽히게 함(자가치유). #문제시 원복
+fun android.content.SharedPreferences.getFloatSafe(key: String, default: Float): Float {
+    return try {
+        getFloat(key, default)
+    } catch (e: ClassCastException) {
+        val recovered = when (val raw = all[key]) {
+            is Int -> raw.toFloat()
+            is Long -> raw.toFloat()
+            is Double -> raw.toFloat()
+            is String -> raw.toFloatOrNull() ?: default
+            else -> default
+        }
+        try {
+            edit().putFloat(key, recovered).apply()
+        } catch (_: Exception) {
+        }
+        recovered
     }
 }

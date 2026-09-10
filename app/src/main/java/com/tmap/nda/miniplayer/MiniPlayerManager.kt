@@ -1,5 +1,6 @@
 package com.tmap.nda.miniplayer
 
+import com.tmap.nda.getFloatSafe
 import android.app.Activity
 import android.content.ComponentName
 import android.content.Context
@@ -181,13 +182,16 @@ object MiniPlayerManager {
                 titleMaxWidthPx = title.layoutParams.width.takeIf { it > 0 } ?: fallbackTextWidthPx,
                 artistMaxWidthPx = artist.layoutParams.width.takeIf { it > 0 } ?: fallbackTextWidthPx
             )
-            val savedScaleX = prefs.getFloat("${keyPrefix}_scaleX_$suffix", 1.0f)
-            val savedScaleY = prefs.getFloat("${keyPrefix}_scaleY_$suffix", 1.0f)
+            // v19.3.35: 설정 복원 후 강제종료 문제(자세한 원인은 SettingsBackup.getFloatSafe
+            // 주석 참고)와 같은 이유로, 이 화면 위치/크기 값도 getFloat() 대신 안전한 버전으로
+            // 읽어서 혹시 타입이 잘못 저장돼 있어도 죽지 않게 함. #문제시 원복
+            val savedScaleX = prefs.getFloatSafe("${keyPrefix}_scaleX_$suffix", 1.0f)
+            val savedScaleY = prefs.getFloatSafe("${keyPrefix}_scaleY_$suffix", 1.0f)
             applyScale(savedScaleX, savedScaleY, base, art, title, artist, playPause, prev, next)
 
             outerContainer.post {
-                val x = prefs.getFloat("${keyPrefix}_x_$suffix", -1f)
-                val y = prefs.getFloat("${keyPrefix}_y_$suffix", -1f)
+                val x = prefs.getFloatSafe("${keyPrefix}_x_$suffix", -1f)
+                val y = prefs.getFloatSafe("${keyPrefix}_y_$suffix", -1f)
                 if (x != -1f && y != -1f) {
                     val parent = outerContainer.parent as? View
                     if (parent != null) {

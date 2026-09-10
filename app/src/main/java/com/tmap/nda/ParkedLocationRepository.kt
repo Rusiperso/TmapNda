@@ -77,8 +77,10 @@ object ParkedLocationRepository {
     /** "내 차 위치" 조회용. 유예시간이 아직 안 지나 확정 안 된 기록은 null 반환(오탐 가능성 있음). */
     fun getConfirmedLocation(context: Context): ParkedLocation? {
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        val lat = prefs.getFloat(KEY_LAT, 0f)
-        val lon = prefs.getFloat(KEY_LON, 0f)
+        // v19.3.35: 설정 복원 후 강제종료 문제와 같은 이유(SettingsBackup.getFloatSafe 주석
+        // 참고)로 안전한 버전으로 읽음. #문제시 원복
+        val lat = prefs.getFloatSafe(KEY_LAT, 0f)
+        val lon = prefs.getFloatSafe(KEY_LON, 0f)
         val time = prefs.getLong(KEY_TIME, 0L)
         if (time == 0L) return null
         val pending = prefs.getBoolean(KEY_PENDING_CONFIRM, false)

@@ -159,8 +159,8 @@ object PanelDragHelper {
     fun restorePosition(context: Context, view: View, keyPrefix: String, isLandscape: Boolean, otherViews: List<View> = emptyList()) {
         val sharedPref = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         val suffix = if (isLandscape) "land" else "port"
-        val x = sharedPref.getFloat("${keyPrefix}_x_${suffix}", -1f)
-        val y = sharedPref.getFloat("${keyPrefix}_y_${suffix}", -1f)
+        val x = sharedPref.getFloatSafe("${keyPrefix}_x_${suffix}", -1f)
+        val y = sharedPref.getFloatSafe("${keyPrefix}_y_${suffix}", -1f)
 
         if (x != -1f && y != -1f) {
             val (clampedX, clampedY) = clampAndPreventOverlap(view, x, y, otherViews)
