@@ -429,6 +429,12 @@ class MapActivity : AppCompatActivity() {
             // panel을 움직이게 추가 연결. 자세한 이유는 PanelDragHelper.makeDraggable 주석
             // 참고. #문제시 원복
             PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), touchSource = binding.llTopBarRow)
+            // v19.3.27: 재억 제보 - 위 llTopBarRow 경유로도 여전히 안 움직여서, 스크롤뷰와
+            // 아예 무관한 별도 "이동" 핸들(btnDragHandleTopBar)도 같은 panel을 움직이게 연결.
+            // #문제시 원복
+            binding.btnDragHandleTopBar?.let {
+                PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), touchSource = it)
+            }
             // v3.2: onCreate 시점엔 panel.width/height가 아직 0이라 clampAndPreventOverlap이
             // 저장된 위치를 무조건 (0,0)으로 눌러버리는 버그가 있었음(사용자 지적 3번: "편집으로
             // 내려도 재실행하면 다시 위로 올라감"). 레이아웃이 끝난 뒤(post)에 복원하도록 변경. #문제시 원복
@@ -458,7 +464,7 @@ class MapActivity : AppCompatActivity() {
         }
         // v3.9: Tmap/카카오 화면 동일 동작을 위해 공용 함수로 교체 (사용자: "기본 UI는 차등 두지 말 것")
         binding.btnEditPanelPosition?.let {
-            PanelDragHelper.wireEditToggleButton(this, it, binding.svSecondaryPanel, binding.btnMoreMenu, binding.btnConfirmEditPosition, binding.llLeftHudPanel)
+            PanelDragHelper.wireEditToggleButton(this, it, binding.svSecondaryPanel, binding.btnMoreMenu, binding.btnConfirmEditPosition, binding.llLeftHudPanel, binding.btnDragHandleTopBar)
         }
 
         // Tmap 지도 터치 무력화: 화면/정보 표시는 그대로, 지도(NavigationFragment)로 가는

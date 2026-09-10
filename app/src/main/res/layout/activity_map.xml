@@ -654,6 +654,24 @@
         android:elevation="30dp"
         android:visibility="gone"/>
 
+    <!-- v19.3.27: 재억 제보 - 상단바 안 가로스크롤(llTopBarRow)이 드래그 터치를 계속
+         가로채서(v19.3.26 시도로도 완전히 해결 안 됨), 스크롤뷰와 무관한 별도의 "이동" 핸들을
+         추가함. 스크롤뷰 밖의 독립된 뷰라 터치를 가로챌 대상이 없음 - 편집모드에서 이 버튼을
+         누르고 끌면 상단바 전체(llLeftHudPanel)가 그만큼 움직임. #문제시 원복 -->
+    <Button
+        android:id="@+id/btnDragHandleTopBar"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="12dp"
+        android:layout_marginEnd="72dp"
+        android:text="이동"
+        android:textSize="12sp"
+        android:textColor="#FFFFFF"
+        android:background="@drawable/bg_miniplayer_confirm"
+        android:elevation="30dp"
+        android:visibility="gone"/>
+
     <!-- v: 재억 요청(2026-08-25) - 우측 상단 대신 예전 카카오 경유지 버튼 자리(정중앙, 34dp)로
          다시 이동. #문제시 원복 -->
     <ImageButton

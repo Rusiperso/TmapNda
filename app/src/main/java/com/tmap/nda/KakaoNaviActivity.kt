@@ -307,6 +307,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             // panel을 움직이게 추가 연결. 자세한 이유는 PanelDragHelper.makeDraggable 주석
             // 참고. #문제시 원복
             PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), touchSource = binding.llTopBarRow)
+            // v19.3.27: 재억 제보 - 위 llTopBarRow 경유로도 여전히 안 움직여서, 스크롤뷰와
+            // 아예 무관한 별도 "이동" 핸들(btnDragHandleTopBar)도 같은 panel을 움직이게 연결.
+            // #문제시 원복
+            binding.btnDragHandleTopBar?.let {
+                PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), touchSource = it)
+            }
             panel.post {
                 PanelDragHelper.restorePosition(this, panel, "llLeftHudPanel", isLandscape, emptyList())
             }
@@ -1448,7 +1454,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             finishAffinity()
         }
         binding.btnEditPanelPosition?.let {
-            PanelDragHelper.wireEditToggleButton(this, it, binding.svSecondaryPanel, binding.btnMoreMenu, binding.btnConfirmEditPosition, binding.llLeftHudPanel)
+            PanelDragHelper.wireEditToggleButton(this, it, binding.svSecondaryPanel, binding.btnMoreMenu, binding.btnConfirmEditPosition, binding.llLeftHudPanel, binding.btnDragHandleTopBar)
         }
         binding.btnParkedLocation?.setOnClickListener {
             binding.svSecondaryPanel?.visibility = View.GONE

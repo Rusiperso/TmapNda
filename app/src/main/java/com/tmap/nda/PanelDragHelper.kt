@@ -174,7 +174,8 @@ object PanelDragHelper {
         secondaryPanel: View?,
         moreMenuButton: View?,
         confirmButton: View? = null,
-        draggablePanel: android.view.ViewGroup? = null
+        draggablePanel: android.view.ViewGroup? = null,
+        dragHandle: View? = null
     ) {
         fun setEditMode(enabled: Boolean) {
             // v19.3.25: 위 makeDraggable 진단 로그와 짝 - 버튼이 실제로 눌렸는지, 그때
@@ -187,6 +188,11 @@ object PanelDragHelper {
             moreMenuButton?.isEnabled = !isEditMode
             moreMenuButton?.alpha = if (isEditMode) 0.4f else 1.0f
             confirmButton?.visibility = if (isEditMode) View.VISIBLE else View.GONE
+            // v19.3.27: 재억 제보 - 상단바 안 가로스크롤이 드래그 터치를 계속 가로채서
+            // makeDraggable의 touchSource 대응만으로는 안 풀림. 편집모드일 때만 뜨는
+            // 별도 "이동" 핸들 버튼을 확인체크(✓) 버튼처럼 항상 최상단에 띄워서, 그걸
+            // 누르고 끌면 확실하게 움직이게 함. #문제시 원복
+            dragHandle?.visibility = if (isEditMode) View.VISIBLE else View.GONE
             // v4.0: 자식 버튼/입력창이 터치를 먼저 가로채서, 빈 공간(아이콘·글자가 없는
             // 곳)만 눌러야 드래그되던 문제(사용자 지적 3번). 편집모드 켤 때 안의 모든 뷰를
             // 비활성화해서 어디를 눌러도 상단바 자체의 드래그가 먹히게 함. #문제시 원복
