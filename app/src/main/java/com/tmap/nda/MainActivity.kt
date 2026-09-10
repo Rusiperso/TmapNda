@@ -48,6 +48,25 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // v19.3.34: 재억 지적 - 앱을 새로 깔면 앱 키를 넣기 전엔 설정 메뉴(복원 버튼)까지 못 가서
+    // 복원 자체가 불가능했음. 첫 화면에서 바로 복원. 복원이 끝나면 이 화면을 자동 시작 없이
+    // 다시 열어서, 복원된 키/체크 상태가 칸에 채워진 걸 보고 "시작"을 누르게 함. #문제시 원복
+    private val restoreBackupLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val ok = SettingsBackup.restoreFromUri(this, uri)
+        Toast.makeText(
+            this,
+            if (ok) "설정을 복원했습니다." else "복원 실패 - 올바른 백업 파일인지 확인해주세요.",
+            Toast.LENGTH_LONG
+        ).show()
+        if (ok) {
+            startActivity(Intent(this, MainActivity::class.java).putExtra("auto_start", false))
+            finish()
+        }
+    }
+
     // v: 재억 요청(2026-08-27) - Navdy 자동연결이 항상 "BLUETOOTH_CONNECT 권한 없음"으로
     // 건너뛰기만 했던 원인 확인됨: 이 권한을 사용자에게 물어보는 코드 자체가 없어서
     // 안드로이드 12+에서는 영원히 거부 상태로 남아있었음. 길안내 시작을 막는 필수 권한(위치 등)과
@@ -294,6 +313,16 @@ class MainActivity : AppCompatActivity() {
             DiscordReporter.setEnabled(this, isChecked)
         }
         binding.etNickname.setText(DiscordReporter.getNickname(this))
+
+        binding.btnRestoreBackup.setOnClickListener { restoreBackupLauncher.launch("application/json") }
+        binding.btnExportBackup.setOnClickListener {
+            val shareIntent = SettingsBackup.exportAndShare(this)
+            if (shareIntent != null) {
+                startActivity(Intent.createChooser(shareIntent, "설정 백업 공유"))
+            } else {
+                Toast.makeText(this, "백업 파일 생성에 실패했습니다", Toast.LENGTH_SHORT).show()
+            }
+        }
 
         try {
             val pInfo = packageManager.getPackageInfo(packageName, 0)

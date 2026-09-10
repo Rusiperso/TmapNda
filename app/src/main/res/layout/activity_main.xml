@@ -25,7 +25,34 @@
         android:textSize="24sp"
         android:textStyle="bold"
         android:layout_gravity="center_horizontal"
-        android:layout_marginBottom="32dp"/>
+        android:layout_marginBottom="16dp"/>
+
+    <!-- v19.3.34: 재억 지적 - 복원하려 해도 앱 키를 먼저 넣어야 설정 메뉴까지 갈 수 있어서,
+         앱을 새로 깔았을 때 정작 복원을 못 함. 첫 화면에서 바로 복원/백업할 수 있게 둠. #문제시 원복 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="24dp">
+
+        <Button
+            android:id="@+id/btnRestoreBackup"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginEnd="8dp"
+            android:text="백업 파일로 복원"/>
+
+        <Button
+            android:id="@+id/btnExportBackup"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="백업(공유)"/>
+
+    </LinearLayout>
 
     <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
