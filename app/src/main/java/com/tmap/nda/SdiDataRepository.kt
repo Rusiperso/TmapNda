@@ -16,6 +16,17 @@ object SdiDataRepository {
     /** 지금 카메라/방지턱 등 안전이벤트에 근접 중인지(500m 이내) */
     fun isNearCameraEvent(): Boolean = sdiType > 0 && sdiDistance in 1..500
 
+    // v(2026-09-11): 재억 제보 - "규정속도 10% 이하로 주행했는데도 경고음이 계속 남"
+    // 로그를 다시 대조해보니 경고음이 실제로 울린 순간의 speedKph/limit 값 자체는
+    // (limit*1.1을 진짜로 넘겨서) 계산상 틀리지 않았음. 대신 GPS 위치가 튈 때
+    // (location.speed가 한 순간만 스파이크) 그 단 한 개 샘플만으로 바로 경고음을
+    // 울리고 있었던 게 원인으로 보임 - 사용자 체감으로는 "실제로는 10% 안 넘겼는데
+    // 왜 울리냐"가 됨(순간 GPS 오차로 잠깐 튄 값 기준). MapActivity/KakaoNaviActivity
+    // 양쪽 다 같은 GPS 흐름을 타므로, "연속 N번 샘플이 다 기준을 넘어야" 진짜 과속으로
+    // 인정하도록 공용 카운터를 둠(화면 전환돼도 카운트가 안 끊기게 공유). #문제시 원복
+    @Volatile var overSpeedConsecutiveCount: Int = 0
+    const val OVER_SPEED_REQUIRED_CONSECUTIVE = 3
+
     var roadLimitSpeed: Int = 80
 
     // v: 버그수정(재억 제보 - "10% 이하로 달렸는데도 경고음 남") - 카카오 화면은

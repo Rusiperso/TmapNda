@@ -3465,10 +3465,23 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         if (!nearCamera) {
             SdiDataRepository.cameraApproachWarned = false
         }
-        val shouldWarn = if (nearCamera) {
-            speedKph > limit * 1.1 && !SdiDataRepository.cameraApproachWarned
+        // v(2026-09-11): 재억 제보 - "10% 이하로 달렸는데도 경고음 계속 남" 재발.
+        // MapActivity와 동일 진단 - GPS 순간 스파이크 한 샘플만으로 바로 울리던 걸,
+        // 연속 OVER_SPEED_REQUIRED_CONSECUTIVE번(3번) 연속으로 기준을 넘어야 실제
+        // 과속으로 인정하도록 변경. 카운터는 SdiDataRepository에서 MapActivity와
+        // 공유해서 화면 전환 중에도 끊기지 않게 함. #문제시 원복
+        val isOverThreshold = speedKph > limit * 1.1
+        if (isOverThreshold) {
+            SdiDataRepository.overSpeedConsecutiveCount++
         } else {
-            speedKph > limit * 1.1 && now - SdiDataRepository.lastOverSpeedWarningTime > 8000L
+            SdiDataRepository.overSpeedConsecutiveCount = 0
+        }
+        val sustainedOverSpeed = isOverThreshold &&
+            SdiDataRepository.overSpeedConsecutiveCount >= SdiDataRepository.OVER_SPEED_REQUIRED_CONSECUTIVE
+        val shouldWarn = if (nearCamera) {
+            sustainedOverSpeed && !SdiDataRepository.cameraApproachWarned
+        } else {
+            sustainedOverSpeed && now - SdiDataRepository.lastOverSpeedWarningTime > 8000L
         }
         if (shouldWarn) {
             SdiDataRepository.lastOverSpeedWarningTime = now
