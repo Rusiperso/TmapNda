@@ -3460,7 +3460,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         NavLogger.dIfChanged(this, "과속경고음진단", "[과속경고음진단] limit=$limit (limit*1.1=${limit * 1.1}) 이때속도=$speedKph")
         // v: 재억 제보(2026-08-22) - 카메라 접근 중엔 300~500m에서 한 번, 100m 이내에서
         // 또 한 번(8초 쿨다운마다 반복) 울리던 걸 "이 카메라 하나당 한 번"으로 제한.
-        // 카메라가 없을 때(그냥 과속 중)는 기존처럼 8초마다 반복 경고. MapActivity와 동일 로직. #문제시 원복
+        // 카메라가 없을 때(그냥 과속 중)는 반복 경고(간격은 SdiDataRepository의
+        // OVER_SPEED_REPEAT_INTERVAL_MS 참고 - 2026-09-11에 8초->20초로 완화됨).
+        // MapActivity와 동일 로직. #문제시 원복
         val nearCamera = SdiDataRepository.isNearCameraEvent()
         if (!nearCamera) {
             SdiDataRepository.cameraApproachWarned = false
@@ -3481,7 +3483,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val shouldWarn = if (nearCamera) {
             sustainedOverSpeed && !SdiDataRepository.cameraApproachWarned
         } else {
-            sustainedOverSpeed && now - SdiDataRepository.lastOverSpeedWarningTime > 8000L
+            sustainedOverSpeed && now - SdiDataRepository.lastOverSpeedWarningTime > SdiDataRepository.OVER_SPEED_REPEAT_INTERVAL_MS
         }
         if (shouldWarn) {
             SdiDataRepository.lastOverSpeedWarningTime = now
