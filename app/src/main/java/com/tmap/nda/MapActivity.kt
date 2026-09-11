@@ -144,6 +144,37 @@ class MapActivity : AppCompatActivity() {
         tmapLayout.layoutParams = params
     }
 
+    // v19.3.37: 재억 요청 - 상단바를 통째로 숨겨서 지도(카카오/티맵 둘 다)에 화면을
+    // 최대한 양보하는 기능. 설정 메뉴 안이 아니라 플로팅 버튼으로 바로 켜고 끔.
+    // 상단바가 GONE이면 panelHeight가 0이 돼서 applyMapOffsetForBarPosition()이
+    // 아무것도 안 하고 그냥 리턴해버리므로(방어 코드), 숨길 때는 이 함수가 직접
+    // 여백을 원래대로(=밀어낸 거 없음) 되돌림. #문제시 원복
+    private fun isTopPanelHidden(): Boolean =
+        getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("top_panel_hidden", false)
+
+    private fun setTopPanelHidden(hidden: Boolean) {
+        getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).edit()
+            .putBoolean("top_panel_hidden", hidden).apply()
+        binding.llLeftHudPanel.visibility = if (hidden) View.GONE else View.VISIBLE
+        // v19.3.37: 숨겨진 상태면 "누르면 펼쳐짐"(▲), 보이는 상태면 "누르면 접힘"(▼) -
+        // 지금 뭘 누르면 어떻게 되는지 화살표 방향으로 바로 알 수 있게. #문제시 원복
+        binding.btnToggleTopPanel?.setImageResource(if (hidden) R.drawable.ic_chevron_up else R.drawable.ic_chevron_down)
+        if (hidden) {
+            val tmapLayout = binding.tmapUILayout
+            val params = tmapLayout.layoutParams as? ViewGroup.MarginLayoutParams
+            if (params != null) {
+                val originalTop = originalTopMargins.getOrPut(tmapLayout.id) { 0 }
+                val originalBottom = originalBottomMargins.getOrPut(tmapLayout.id) { 0 }
+                val safeBottom = lastAppliedBottomInset.coerceAtLeast(0)
+                params.topMargin = originalTop
+                params.bottomMargin = originalBottom + safeBottom
+                tmapLayout.layoutParams = params
+            }
+        } else {
+            applyMapOffsetForBarPosition()
+        }
+    }
+
     private fun installTopPanelAutoOffset() {
         binding.llLeftHudPanel.addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
             val panelHeight = bottom - top
@@ -463,21 +494,19 @@ class MapActivity : AppCompatActivity() {
             PanelDragHelper.makeDraggable(this, it, "llOffset", isLandscape, emptyList())
         }
 
-        // v2.9: 상단 HUD 바(llLeftHudPanel)도 드래그로 위치 옮길 수 있게 - 단, 예전처럼
-        // 상시로 드래그되면 실수로 밀릴 수 있어서 "UI 편집" 버튼으로 편집모드를
-        // 켜야만 움직임. 앱 재시작해도 저장된 위치로 복원됨. #문제시 원복
+        // v2.9~v19.3.38: 상단 HUD 바(llLeftHudPanel)를 자유 드래그로 옮기던 방식.
+        // v19.3.39: 재억 요청 - "지도 한가운데 걸쳐두고 쓸 사람은 없다"는 지적에 따라
+        // 자유 드래그를 버리고, "이동" 핸들을 누르면 반대쪽 가장자리로 한 번에 점프하는
+        // 버튼으로 바꿈. 핸들이 지금 뭘 누르면 어디로 갈지 화살표로 미리 보여줌. #문제시 원복
         binding.llLeftHudPanel?.let { panel ->
-            PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), onSettled = ::applyMapOffsetForBarPosition)
-            // v19.3.26: 재억 제보 - 실제 터치는 거의 다 이 안의 가로스크롤(llTopBarRow)이
-            // 가로채서 위 리스너(panel 자신)까지 안 옴. llTopBarRow에서 받은 터치로도 같은
-            // panel을 움직이게 추가 연결. 자세한 이유는 PanelDragHelper.makeDraggable 주석
-            // 참고. #문제시 원복
-            PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), touchSource = binding.llTopBarRow, onSettled = ::applyMapOffsetForBarPosition)
-            // v19.3.27: 재억 제보 - 위 llTopBarRow 경유로도 여전히 안 움직여서, 스크롤뷰와
-            // 아예 무관한 별도 "이동" 핸들(btnDragHandleTopBar)도 같은 panel을 움직이게 연결.
-            // #문제시 원복
-            binding.btnDragHandleTopBar?.let {
-                PanelDragHelper.makeDraggable(this, panel, "llLeftHudPanel", isLandscape, emptyList(), touchSource = it, onSettled = ::applyMapOffsetForBarPosition)
+            fun updateDragHandleArrow() {
+                binding.btnDragHandleTopBar?.text = PanelDragHelper.dragHandleArrow(panel)
+            }
+            binding.btnDragHandleTopBar?.setOnClickListener {
+                PanelDragHelper.snapPanelToOppositeEdge(this, panel, "llLeftHudPanel", isLandscape) {
+                    applyMapOffsetForBarPosition()
+                }
+                updateDragHandleArrow()
             }
             // v3.2: onCreate 시점엔 panel.width/height가 아직 0이라 clampAndPreventOverlap이
             // 저장된 위치를 무조건 (0,0)으로 눌러버리는 버그가 있었음(사용자 지적 3번: "편집으로
@@ -486,6 +515,7 @@ class MapActivity : AppCompatActivity() {
                 PanelDragHelper.restorePosition(this, panel, "llLeftHudPanel", isLandscape, emptyList())
                 // v19.3.30: 저장된 위치를 복원한 직후에도 그 위치 기준으로 지도 여백을 맞춤
                 applyMapOffsetForBarPosition()
+                updateDragHandleArrow()
             }
         }
 
@@ -498,6 +528,19 @@ class MapActivity : AppCompatActivity() {
                 PanelDragHelper.restorePosition(this, btn, "btnNearbyCategory", isLandscape, emptyList())
             }
         }
+        // v19.3.37: 재억 요청 - 카카오 화면 왼쪽 안내 박스가 화면이 좁을수록 겹쳐 보이는
+        // 문제(SDK 자체 한계) 대응 - 설정 메뉴 토글이 아니라, 언제든 눌러서 바로 상단바를
+        // 껐다 켤 수 있는 플로팅 버튼. v19.3.37b: 재억 요청 - "UI 편집" 모드를 따로 켤 필요
+        // 없이 이 버튼 자체를 1초 꾹 누르면 바로 그 자리에서 드래그 이동, 짧게 탭하면 토글. #문제시 원복
+        binding.btnToggleTopPanel?.let { btn ->
+            btn.post {
+                PanelDragHelper.restorePosition(this, btn, "btnToggleTopPanel", isLandscape, emptyList())
+            }
+            PanelDragHelper.makeLongPressDraggable(this, btn, "btnToggleTopPanel", isLandscape) {
+                setTopPanelHidden(!isTopPanelHidden())
+            }
+        }
+        setTopPanelHidden(isTopPanelHidden())
         // v: 신규기능(미니 플레이어) - 재억 요청(2026-08-28). 카카오 화면과 동일. #문제시 원복
         binding.flMiniPlayerContainer?.let { outer ->
             com.tmap.nda.miniplayer.MiniPlayerManager.attach(

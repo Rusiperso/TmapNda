@@ -177,6 +177,106 @@ object PanelDragHelper {
         }
     }
 
+    // v19.3.37: 재억 요청 - 상단바 표시/숨김 플로팅 버튼은 "UI 편집" 모드를 따로 켜지 않아도
+    // 언제든 그 자리에서 길게(1초) 누르면 바로 드래그해서 옮길 수 있어야 함(짧게 누르면
+    // 원래 기능 = 토글). isEditMode에 안 걸리는 별도 함수 - 버튼을 누르고 1초 안에 손을 떼거나
+    // 손가락이 크게 움직이면(=드래그 시도로 간주) 탭으로 안 치고 그냥 취소. 1초가 차면 그때부터
+    // 드래그 시작, 손을 뗄 때 위치 저장(다른 플로팅 버튼과 같은 키 형식이라 restorePosition을
+    // 그대로 재사용 가능). #문제시 원복
+    fun makeLongPressDraggable(
+        context: Context,
+        view: View,
+        keyPrefix: String,
+        isLandscape: Boolean,
+        longPressMs: Long = 1000L,
+        onTap: () -> Unit
+    ) {
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        var dX = 0f
+        var dY = 0f
+        var downX = 0f
+        var downY = 0f
+        var dragging = false
+        var longPressRunnable: Runnable? = null
+        val touchSlop = 12f * view.resources.displayMetrics.density
+
+        view.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    dragging = false
+                    downX = event.rawX
+                    downY = event.rawY
+                    dX = view.x - event.rawX
+                    dY = view.y - event.rawY
+                    longPressRunnable = Runnable {
+                        dragging = true
+                        view.animate().scaleX(1.15f).scaleY(1.15f).setDuration(120).start()
+                    }
+                    handler.postDelayed(longPressRunnable!!, longPressMs)
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (!dragging) {
+                        val moved = kotlin.math.hypot((event.rawX - downX).toDouble(), (event.rawY - downY).toDouble())
+                        if (moved > touchSlop) {
+                            longPressRunnable?.let { handler.removeCallbacks(it) }
+                        }
+                        return@setOnTouchListener true
+                    }
+                    val rawX = event.rawX + dX
+                    val rawY = event.rawY + dY
+                    val (clampedX, clampedY) = clampAndPreventOverlap(view, rawX, rawY, emptyList())
+                    view.x = clampedX
+                    view.y = clampedY
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    longPressRunnable?.let { handler.removeCallbacks(it) }
+                    if (dragging) {
+                        view.animate().scaleX(1f).scaleY(1f).setDuration(120).start()
+                        val sharedPref = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                        val suffix = if (isLandscape) "land" else "port"
+                        sharedPref.edit()
+                            .putFloat("${keyPrefix}_x_${suffix}", view.x)
+                            .putFloat("${keyPrefix}_y_${suffix}", view.y)
+                            .apply()
+                    } else if (event.action == MotionEvent.ACTION_UP) {
+                        onTap()
+                    }
+                    dragging = false
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    // v19.3.39: 재억 요청 - 상단바(llLeftHudPanel)는 폭이 화면 전체(match_parent)라 좌우로는
+    // 움직일 데가 없고, 위/아래 딱 두 자리 중 하나로만 쓰이는 게 실제 사용 패턴("지도 한가운데
+    // 걸쳐두고 쓸 사람은 없다"는 재억 지적). 그래서 자유 드래그 대신, "이동" 핸들을 누르면
+    // 지금 반대쪽 가장자리로 한 번에 옮겨주는 버튼으로 바꿈. #문제시 원복
+    fun snapPanelToOppositeEdge(context: Context, view: View, keyPrefix: String, isLandscape: Boolean, onSettled: (() -> Unit)? = null) {
+        val parent = view.parent as? View ?: return
+        val insets = ViewCompat.getRootWindowInsets(view)?.getInsets(WindowInsetsCompat.Type.systemBars())
+        val minY = (insets?.top ?: 0).toFloat()
+        val maxY = (parent.height - (insets?.bottom ?: 0) - view.height).toFloat().coerceAtLeast(minY)
+        // 지금 아래쪽에 있으면 위로, 그 외(위쪽/애매한 위치)는 아래로 - 기본값은 아래쪽
+        val targetY = if (currentSnapEdge(view) == SnapEdge.BOTTOM) minY else maxY
+        view.x = 0f
+        view.y = targetY
+        val sharedPref = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        val suffix = if (isLandscape) "land" else "port"
+        sharedPref.edit()
+            .putFloat("${keyPrefix}_x_${suffix}", 0f)
+            .putFloat("${keyPrefix}_y_${suffix}", targetY)
+            .apply()
+        onSettled?.invoke()
+    }
+
+    /** 이동 핸들에 표시할 화살표 - 지금 눌렀을 때 어느 방향으로 움직일지를 보여줌. */
+    fun dragHandleArrow(view: View): String =
+        if (currentSnapEdge(view) == SnapEdge.BOTTOM) "▲" else "▼"
+
     fun restorePosition(context: Context, view: View, keyPrefix: String, isLandscape: Boolean, otherViews: List<View> = emptyList()) {
         val sharedPref = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         val suffix = if (isLandscape) "land" else "port"

@@ -474,8 +474,8 @@
             android:layout_height="44dp"
             android:layout_gravity="center_vertical|end"
             android:layout_marginEnd="76dp"
-            android:text="이동"
-            android:textSize="11sp"
+            android:text="▼"
+            android:textSize="19sp"
             android:textColor="#FFFFFF"
             android:background="@drawable/bg_miniplayer_confirm"
             android:visibility="gone"/>
@@ -670,6 +670,23 @@
         android:scaleType="center"
         android:elevation="30dp"
         android:visibility="gone"/>
+
+    <!-- v19.3.37: 재억 요청 - 상단바를 완전히 숨겨서 카카오/티맵 지도에 화면을 최대한
+         양보하는 기능. 설정 메뉴 토글 대신, 언제든 눌러서 바로 켜고 끌 수 있는 플로팅
+         버튼으로 - 편집모드처럼 위치도 자유롭게 옮길 수 있음(길게 누를 필요 없이 바로
+         드래그). #문제시 원복 -->
+    <ImageButton
+        android:id="@+id/btnToggleTopPanel"
+        android:layout_width="46dp"
+        android:layout_height="46dp"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="110dp"
+        android:src="@drawable/ic_chevron_down"
+        android:background="@drawable/shape_circle_gray"
+        android:scaleType="center"
+        android:contentDescription="상단바 표시/숨김"
+        android:elevation="25dp"/>
 
     <!-- v: 재억 요청(2026-08-25) - 우측 상단 대신 예전 카카오 경유지 버튼 자리(정중앙, 34dp)로
          다시 이동. #문제시 원복 -->

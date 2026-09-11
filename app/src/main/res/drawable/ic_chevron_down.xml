@@ -1,0 +1,14 @@
+<!-- v19.3.37: 상단바 숨김 버튼 - "보이는 중" 상태(누르면 접힘)를 나타내는 아래 화살표. #문제시 원복 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M6,9l6,6 6,-6"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+</vector>

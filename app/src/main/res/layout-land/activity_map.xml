@@ -461,8 +461,8 @@
             android:layout_height="44dp"
             android:layout_gravity="center_vertical|end"
             android:layout_marginEnd="76dp"
-            android:text="이동"
-            android:textSize="11sp"
+            android:text="▼"
+            android:textSize="19sp"
             android:textColor="#FFFFFF"
             android:background="@drawable/bg_miniplayer_confirm"
             android:visibility="gone"/>
@@ -754,6 +754,20 @@
         android:scaleType="center"
         android:elevation="30dp"
         android:visibility="gone"/>
+
+    <!-- v19.3.37: 재억 요청 - 상단바 표시/숨김 플로팅 버튼(세로 모드와 동일). #문제시 원복 -->
+    <ImageButton
+        android:id="@+id/btnToggleTopPanel"
+        android:layout_width="46dp"
+        android:layout_height="46dp"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="110dp"
+        android:src="@drawable/ic_chevron_down"
+        android:background="@drawable/shape_circle_gray"
+        android:scaleType="center"
+        android:contentDescription="상단바 표시/숨김"
+        android:elevation="25dp"/>
 
     <!-- v: 재억 요청(2026-08-25) - 우측 상단 대신 예전 카카오 경유지 버튼 자리(정중앙, 34dp)로
          다시 이동. #문제시 원복 -->
