@@ -1100,7 +1100,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     var blueHost: android.view.View? = null
                     var cursor = view.parent
                     var depth = 0
-                    val diagLog = StringBuilder()
                     // v10.5 폴백 버그 수정: 파란색을 못 찾았을 때 화면 전체까지 올라가버리는 것을
                     // 막기 위한 안전장치(원래 버튼 크기의 6배, 최소 250px) - 아래 "host"(파란색
                     // 아닌 일반 폴백) 후보 크기 제한용으로 계속 씀. #문제시 원복
@@ -1129,9 +1128,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         val c = cursor
                         val bg = c.background
                         val color = unwrapColor(bg)
-                        diagLog.append("[$depth]${c.javaClass.simpleName}/${bg?.javaClass?.simpleName}")
                         if (color != null) {
-                            diagLog.append("(#${Integer.toHexString(color)})")
                             if (isBlue(color)) {
                                 c.getLocationOnScreen(screenLoc)
                                 val cRect = android.graphics.Rect(
@@ -1141,14 +1138,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                                 val overlapsRealTopBar = !topBarRect.isEmpty && android.graphics.Rect.intersects(cRect, topBarRect)
                                 if (!overlapsRealTopBar) {
                                     blueHost = c
-                                    diagLog.append("★파란색채택")
                                     break
-                                } else {
-                                    diagLog.append("(실제 상단바와 겹쳐서 제외 rect=$cRect)")
                                 }
                             }
                         }
-                        diagLog.append(" ")
                         if ((c.width > host.width || c.height > host.height) &&
                             c.width <= maxFallbackSize && c.height <= maxFallbackSize) {
                             host = c
@@ -1156,7 +1149,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         cursor = c.parent
                         depth++
                     }
-                    NavLogger.d(this, "[안내종료훅][진단] 배경탐색경로: $diagLog")
                     if (blueHost != null) {
                         host = blueHost
                     }
@@ -1182,7 +1174,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                             else -> true
                         }
                     }
-                    NavLogger.d(this, "[안내종료훅] 델리게이트 호스트=${host.javaClass.simpleName}(w=${host.width},h=${host.height}, 파란배경탐지=${blueHost != null}) - OnTouchListener 직접클릭 방식으로 전환")
                 } catch (e: Exception) {
                     NavLogger.e(this, "[안내종료훅] 델리게이트 재계산 예외: ${e.message}")
                 }
