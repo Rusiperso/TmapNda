@@ -523,10 +523,19 @@ class MapActivity : AppCompatActivity() {
         // v: 재억 지적(2026-08-26) - "UI 편집"을 눌러도 카테고리 버튼은 반응이 없다는
         // 지적 - llLeftHudPanel만 드래그 대상이었고 이 버튼은 아예 빠져있었음. 같은
         // 방식(makeDraggable/restorePosition)으로 편집모드에서 같이 옮길 수 있게 추가. #문제시 원복
+        // v19.3.41: 재억 요청 - 이 버튼도 "UI 편집" 모드에 안 들어가도, 플로팅 버튼(상단바
+        // 표시/숨김)처럼 1초 꾹 누르면 바로 그 자리에서 옮길 수 있게. 짧게 누르면 원래
+        // 하던 동작(주변 카테고리 검색)이 그대로 나가야 해서, onTap에서 버튼 자신의
+        // performClick()을 호출 - 실제 클릭 리스너는 setupNearbyCategoryButton()에서
+        // 따로 등록되니 그게 그대로 실행됨. #문제시 원복
         binding.btnNearbyCategory?.let { btn ->
-            PanelDragHelper.makeDraggable(this, btn, "btnNearbyCategory", isLandscape, emptyList())
+            PanelDragHelper.makeLongPressDraggable(this, btn, "btnNearbyCategory", isLandscape) {
+                btn.performClick()
+            }
             btn.post {
                 PanelDragHelper.restorePosition(this, btn, "btnNearbyCategory", isLandscape, emptyList())
+                // v19.3.41: 예전에 저장된 위치가 상단바 뒤였을 수도 있으니 실행할 때마다 확인차 맨 앞으로. #문제시 원복
+                btn.bringToFront()
             }
         }
         // v19.3.37: 재억 요청 - 카카오 화면 왼쪽 안내 박스가 화면이 좁을수록 겹쳐 보이는
@@ -536,6 +545,10 @@ class MapActivity : AppCompatActivity() {
         binding.btnToggleTopPanel?.let { btn ->
             btn.post {
                 PanelDragHelper.restorePosition(this, btn, "btnToggleTopPanel", isLandscape, emptyList())
+                // v19.3.41: 재억 제보 - 이 버튼을 상단바 쪽으로 옮기면 상단바 뒤로 숨어버림.
+                // 앱을 켤 때마다 저장된 위치를 복원한 직후 무조건 맨 앞으로 올려서 확실히
+                // 보이게 함(터치 시에도 한 번 더 올림 - makeLongPressDraggable 참고). #문제시 원복
+                btn.bringToFront()
             }
             PanelDragHelper.makeLongPressDraggable(this, btn, "btnToggleTopPanel", isLandscape) {
                 setTopPanelHidden(!isTopPanelHidden())
@@ -1891,6 +1904,17 @@ class MapActivity : AppCompatActivity() {
     }
 
     private fun checkOverSpeedWarning(speedKph: Int) {
+        // v19.3.41: 재억 제보 - "티맵은(카카오 안내 중이라) 음소거 모드인데 왜 경고음이
+        // 나냐" - 진짜 원인 찾음. 이 함수를 부르는 GPS 리스너(locationListener, 아래
+        // requestLocationUpdates)는 안드로이드 시스템 리스너라 MapActivity가 뒤로
+        // 밀려나 있어도(카카오 화면이 위에 떠 있어도) 계속 살아서 계속 불림. 그런데
+        // 이때 쓰는 limit(SdiDataRepository.roadLimitSpeed)은 티맵 SDK가 화면에 안
+        // 그려지는 동안 갱신을 멈춰서 옛날 값(예: 몇 분 전 통과한 구간의 낮은 제한속도)에
+        // 멈춰있음 - 그래서 "실제 도로는 60인데 옛날 30 기준으로 계산해서 61이 30의
+        // 110%를 넘었다"고 잘못 판단해 경고음(ToneGenerator, 티맵 음소거 설정과는
+        // 완전히 무관한 별도 재생경로)이 울렸던 것. 카카오 안내 중엔 이 함수 전체를
+        // 건너뛰어서, 카카오 화면이 떠 있을 땐 카카오 자체 알림만 남게 함. #문제시 원복
+        if (KakaoRouteDataRepository.isFresh()) return
         val pref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         if (!pref.getBoolean("over_speed_warning_enabled", true)) return
         val limit = SdiDataRepository.roadLimitSpeed

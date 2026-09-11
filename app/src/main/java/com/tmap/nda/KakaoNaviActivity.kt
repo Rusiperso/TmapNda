@@ -400,22 +400,34 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // v: 재억 지적(2026-08-26) - "UI 편집"을 눌러도 경유지/카테고리/경유지취소 버튼은
         // 반응이 없다는 지적 - llLeftHudPanel만 드래그 대상이었고 이 버튼들은 빠져있었음.
         // 같은 방식으로 편집모드에서 같이 옮길 수 있게 추가. #문제시 원복
+        // v19.3.41: 재억 요청 - "UI 편집" 모드에 안 들어가도, 플로팅 버튼(상단바 표시/숨김)
+        // 처럼 1초 꾹 누르면 바로 그 자리에서 옮길 수 있게. 짧게 누르면 원래 클릭 동작이
+        // 그대로 나가야 해서 onTap에서 버튼 자신의 performClick()을 호출. #문제시 원복
         binding.btnAddWaypoint?.let { btn ->
-            PanelDragHelper.makeDraggable(this, btn, "btnAddWaypoint", isLandscape, emptyList())
+            PanelDragHelper.makeLongPressDraggable(this, btn, "btnAddWaypoint", isLandscape) {
+                btn.performClick()
+            }
             btn.post {
                 PanelDragHelper.restorePosition(this, btn, "btnAddWaypoint", isLandscape, emptyList())
+                btn.bringToFront()
             }
         }
         binding.btnNearbyCategory?.let { btn ->
-            PanelDragHelper.makeDraggable(this, btn, "btnNearbyCategory", isLandscape, emptyList())
+            PanelDragHelper.makeLongPressDraggable(this, btn, "btnNearbyCategory", isLandscape) {
+                btn.performClick()
+            }
             btn.post {
                 PanelDragHelper.restorePosition(this, btn, "btnNearbyCategory", isLandscape, emptyList())
+                btn.bringToFront()
             }
         }
         binding.btnCancelWaypoint?.let { btn ->
-            PanelDragHelper.makeDraggable(this, btn, "btnCancelWaypoint", isLandscape, emptyList())
+            PanelDragHelper.makeLongPressDraggable(this, btn, "btnCancelWaypoint", isLandscape) {
+                btn.performClick()
+            }
             btn.post {
                 PanelDragHelper.restorePosition(this, btn, "btnCancelWaypoint", isLandscape, emptyList())
+                btn.bringToFront()
             }
         }
         // v19.3.37: 재억 요청 - Tmap 화면과 동일한 상단바 표시/숨김 플로팅 버튼. 카카오
@@ -426,6 +438,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         binding.btnToggleTopPanel?.let { btn ->
             btn.post {
                 PanelDragHelper.restorePosition(this, btn, "btnToggleTopPanel", isLandscape, emptyList())
+                // v19.3.41: Tmap 화면과 동일 - 예전에 저장된 위치가 상단바 뒤였을 수도 있으니
+                // 실행할 때마다 확인차 맨 앞으로. #문제시 원복
+                btn.bringToFront()
             }
             PanelDragHelper.makeLongPressDraggable(this, btn, "btnToggleTopPanel", isLandscape) {
                 setTopPanelHidden(!isTopPanelHidden())

@@ -203,6 +203,13 @@ object PanelDragHelper {
         view.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    // v19.3.41: 재억 제보 - 이 버튼을 상단바 쪽으로 옮기면 상단바 "뒤"로
+                    // 숨어버리고, 안 보이는데도 그 자리 터치를 계속 이 버튼이 먼저 가져가서
+                    // 상단바 가로스크롤이 그 부분만 안 먹히는 문제까지 같이 생겼음(elevation을
+                    // 더 높게 줘도 형제 뷰 사이의 실제 그리기 순서까지는 보장 안 됐던 것으로
+                    // 보임). 터치가 닿는 즉시 무조건 맨 앞으로 올려서 항상 보이고 항상
+                    // 눌리게 함. #문제시 원복
+                    view.bringToFront()
                     dragging = false
                     downX = event.rawX
                     downY = event.rawY
