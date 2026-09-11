@@ -26,7 +26,7 @@ object CoverScreenConfigFix {
 
     // 카카오 knsdk_ui aar의 첫 리소스 문턱(values-sw600dp) 아래로 확실히 내려서 기본(폰용)
     // 리소스가 선택되게 함
-    private const val FORCED_SW_DP = 480
+    private const val FORCED_SW_DP = 400
 
     // 이 문턱 이상이면 "SDK가 태블릿급 큰 UI를 고를 수 있는 상태"로 간주
     private const val SW_TRIGGER_DP = 600
