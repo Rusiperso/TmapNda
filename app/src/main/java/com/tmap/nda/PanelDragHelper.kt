@@ -211,6 +211,9 @@ object PanelDragHelper {
                     longPressRunnable = Runnable {
                         dragging = true
                         view.animate().scaleX(1.15f).scaleY(1.15f).setDuration(120).start()
+                        // v19.3.40: 재억 제보 - 버튼이 커지는 것만으론 지금 이동모드로
+                        // 들어갔는지 잘 안 느껴짐. 토스트로 명확하게 알려줌. #문제시 원복
+                        android.widget.Toast.makeText(context, "이동 모드 - 원하는 위치에서 손을 떼세요", android.widget.Toast.LENGTH_SHORT).show()
                     }
                     handler.postDelayed(longPressRunnable!!, longPressMs)
                     true

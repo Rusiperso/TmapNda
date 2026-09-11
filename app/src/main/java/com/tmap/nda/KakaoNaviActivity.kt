@@ -162,8 +162,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).edit()
             .putBoolean("top_panel_hidden", hidden).apply()
         binding.llLeftHudPanel.visibility = if (hidden) View.GONE else View.VISIBLE
-        // v19.3.37: Tmap 화면과 동일 - 화살표 방향으로 지금 눌렀을 때 어떻게 되는지 표시. #문제시 원복
-        binding.btnToggleTopPanel?.setImageResource(if (hidden) R.drawable.ic_chevron_up else R.drawable.ic_chevron_down)
+        // v19.3.40: Tmap 화면과 동일 - 화살표 대신 "숨김"/"표시" 글자로 명확하게 표시. #문제시 원복
+        binding.btnToggleTopPanel?.text = if (hidden) "표시" else "숨김"
         if (hidden) {
             val naviViewRef = naviView
             val params = naviViewRef.layoutParams as? ViewGroup.MarginLayoutParams

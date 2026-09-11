@@ -156,9 +156,10 @@ class MapActivity : AppCompatActivity() {
         getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).edit()
             .putBoolean("top_panel_hidden", hidden).apply()
         binding.llLeftHudPanel.visibility = if (hidden) View.GONE else View.VISIBLE
-        // v19.3.37: 숨겨진 상태면 "누르면 펼쳐짐"(▲), 보이는 상태면 "누르면 접힘"(▼) -
-        // 지금 뭘 누르면 어떻게 되는지 화살표 방향으로 바로 알 수 있게. #문제시 원복
-        binding.btnToggleTopPanel?.setImageResource(if (hidden) R.drawable.ic_chevron_up else R.drawable.ic_chevron_down)
+        // v19.3.37: 화살표 방향으로 표시. v19.3.40: 재억 제보 - 화살표만으론 뭘 누르는
+        // 버튼인지 헷갈림 - 지금 눌렀을 때 벌어질 일을 그대로 글자로 적음("숨김"=누르면
+        // 숨겨짐, "표시"=누르면 다시 보임). #문제시 원복
+        binding.btnToggleTopPanel?.text = if (hidden) "표시" else "숨김"
         if (hidden) {
             val tmapLayout = binding.tmapUILayout
             val params = tmapLayout.layoutParams as? ViewGroup.MarginLayoutParams
