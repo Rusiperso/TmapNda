@@ -534,8 +534,13 @@ class MapActivity : AppCompatActivity() {
             }
             btn.post {
                 PanelDragHelper.restorePosition(this, btn, "btnNearbyCategory", isLandscape, emptyList())
-                // v19.3.41: 예전에 저장된 위치가 상단바 뒤였을 수도 있으니 실행할 때마다 확인차 맨 앞으로. #문제시 원복
-                btn.bringToFront()
+                // v19.3.42: 재억 실기기에서 실측 확인 - bringToFront() 단독으로는 실제로 다시
+                // 그려지지도 터치도 안 먹혀서(자세한 이유는 PanelDragHelper.forceToFront 주석
+                // 참고), requestLayout()+invalidate()까지 같이 하는 함수로 교체. 상단바와 겹치는
+                // 자리를 포함해 실기기로 직접 강제 배치해 재확인한 결과 이 함수만으로 상단바
+                // 표시/숨김 어느 상태에서도 정상 동작함 - 재억 요청대로 상단바 위로도 자유롭게
+                // 이동 가능(충돌 회피로 막지 않음). #문제시 원복
+                PanelDragHelper.forceToFront(btn)
             }
         }
         // v19.3.37: 재억 요청 - 카카오 화면 왼쪽 안내 박스가 화면이 좁을수록 겹쳐 보이는
@@ -543,12 +548,13 @@ class MapActivity : AppCompatActivity() {
         // 껐다 켤 수 있는 플로팅 버튼. v19.3.37b: 재억 요청 - "UI 편집" 모드를 따로 켤 필요
         // 없이 이 버튼 자체를 1초 꾹 누르면 바로 그 자리에서 드래그 이동, 짧게 탭하면 토글. #문제시 원복
         binding.btnToggleTopPanel?.let { btn ->
+            // v19.3.44: 재억 요청 - 이 버튼은 기본값 안 보임 - 메뉴 > 설정 > 화면 표시에서
+            // 켜야만 보이게 함. #문제시 원복
+            btn.visibility = if (getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                    .getBoolean("show_toggle_top_panel_button", false)) View.VISIBLE else View.GONE
             btn.post {
                 PanelDragHelper.restorePosition(this, btn, "btnToggleTopPanel", isLandscape, emptyList())
-                // v19.3.41: 재억 제보 - 이 버튼을 상단바 쪽으로 옮기면 상단바 뒤로 숨어버림.
-                // 앱을 켤 때마다 저장된 위치를 복원한 직후 무조건 맨 앞으로 올려서 확실히
-                // 보이게 함(터치 시에도 한 번 더 올림 - makeLongPressDraggable 참고). #문제시 원복
-                btn.bringToFront()
+                PanelDragHelper.forceToFront(btn)
             }
             PanelDragHelper.makeLongPressDraggable(this, btn, "btnToggleTopPanel", isLandscape) {
                 setTopPanelHidden(!isTopPanelHidden())
@@ -1699,6 +1705,11 @@ class MapActivity : AppCompatActivity() {
             val showCategoryButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 .getBoolean("show_category_button", true)
             binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
+            // v19.3.44: 재억 요청 - 상단바 표시/숨김 플로팅 버튼은 기본 안 보이고, 설정에서
+            // 켰을 때만 보이게. 다른 설정들처럼 저장 즉시 반영. #문제시 원복
+            val showTogglePanelBtn = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .getBoolean("show_toggle_top_panel_button", false)
+            binding.btnToggleTopPanel?.visibility = if (showTogglePanelBtn) View.VISIBLE else View.GONE
             binding.flMiniPlayerContainer?.let { outer ->
                 com.tmap.nda.miniplayer.MiniPlayerManager.refresh(
                     this, outer,
@@ -4118,6 +4129,11 @@ class MapActivity : AppCompatActivity() {
             val showCategoryButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 .getBoolean("show_category_button", true)
             binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
+            // v19.3.44: 재억 요청 - 상단바 표시/숨김 플로팅 버튼은 기본 안 보이고, 설정에서
+            // 켰을 때만 보이게. 다른 설정들처럼 저장 즉시 반영. #문제시 원복
+            val showTogglePanelBtn = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                .getBoolean("show_toggle_top_panel_button", false)
+            binding.btnToggleTopPanel?.visibility = if (showTogglePanelBtn) View.VISIBLE else View.GONE
         }
         // v: 재억 요청(2026-08-22) - 카카오 화면에서 돌아오는 순간뿐 아니라, 티맵 화면이
         // 다시 보이기 시작하는 즉시 최신 차선정보를 한 번 그려주고, 이후 새 데이터가 들어올

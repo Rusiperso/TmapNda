@@ -16,6 +16,18 @@ object PanelDragHelper {
     // 편집모드는 앱 전체에서 하나만 존재 - 화면(Activity)이 바뀌어도 같은 상태 유지
     var isEditMode = false
 
+    // v19.3.42: 실기기(재억 폰) 직접 붙여서 확인함 - 상단바 표시/숨김 버튼, 주변검색 버튼이
+    // 둘 다 화면에서 완전히 사라지고 터치도 안 먹혔던 진짜 원인. bringToFront()만 단독으로
+    // 부르면 이 기기/빌드 조합에서는 실제로 다시 그려지지도, 터치 히트테스트가 갱신되지도
+    // 않는 것으로 확인됨(reassertKakaoOverlayVisible()에 이미 있던 bringToFront()+
+    // requestLayout()+invalidate() 세트만 항상 정상 동작하는 걸 보고 알아냄). bringToFront()를
+    // 쓰는 자리는 전부 이 함수로 통일해서 같은 문제가 또 생기지 않게 함. #문제시 원복
+    fun forceToFront(view: View) {
+        view.bringToFront()
+        view.requestLayout()
+        view.invalidate()
+    }
+
     // v19.3.30: 재억 요청 - "상단바를 아래로 내리면 지도가 위로 올라와서 자리를 맞바꿔야
     // 하는 거 아니냐, 위에 여백이 남는다". 상단바가 지금 화면 상단/하단 중 어디에
     // 붙어있는지(자석 스냅 결과와 같은 기준) 판정해서, 호출부(MapActivity/KakaoNaviActivity)가
@@ -188,6 +200,12 @@ object PanelDragHelper {
         view: View,
         keyPrefix: String,
         isLandscape: Boolean,
+        // v19.3.42: 재억 실기기에서 확인 - 이 버튼을 상단바(llLeftHudPanel) 위로 끌어다 놓으면
+        // forceToFront()로도 안 풀리는 터치 우선순위 문제가 남아있었음(상단바 쪽이 계속
+        // 터치를 먼저 가져감). 근본적으로 애초에 겹치는 자리로 못 가게 막는 게 더 확실해서,
+        // 경유지/카테고리 버튼처럼 otherViews(겹치면 안 되는 뷰 목록)를 받아 여기서도
+        // 충돌 회피(clampAndPreventOverlap)에 그대로 활용. #문제시 원복
+        otherViews: List<View> = emptyList(),
         longPressMs: Long = 1000L,
         onTap: () -> Unit
     ) {
@@ -209,7 +227,7 @@ object PanelDragHelper {
                     // 더 높게 줘도 형제 뷰 사이의 실제 그리기 순서까지는 보장 안 됐던 것으로
                     // 보임). 터치가 닿는 즉시 무조건 맨 앞으로 올려서 항상 보이고 항상
                     // 눌리게 함. #문제시 원복
-                    view.bringToFront()
+                    forceToFront(view)
                     dragging = false
                     downX = event.rawX
                     downY = event.rawY
@@ -235,7 +253,7 @@ object PanelDragHelper {
                     }
                     val rawX = event.rawX + dX
                     val rawY = event.rawY + dY
-                    val (clampedX, clampedY) = clampAndPreventOverlap(view, rawX, rawY, emptyList())
+                    val (clampedX, clampedY) = clampAndPreventOverlap(view, rawX, rawY, otherViews)
                     view.x = clampedX
                     view.y = clampedY
                     true
@@ -271,7 +289,8 @@ object PanelDragHelper {
         val minY = (insets?.top ?: 0).toFloat()
         val maxY = (parent.height - (insets?.bottom ?: 0) - view.height).toFloat().coerceAtLeast(minY)
         // 지금 아래쪽에 있으면 위로, 그 외(위쪽/애매한 위치)는 아래로 - 기본값은 아래쪽
-        val targetY = if (currentSnapEdge(view) == SnapEdge.BOTTOM) minY else maxY
+        val movingToTop = currentSnapEdge(view) == SnapEdge.BOTTOM
+        val targetY = if (movingToTop) minY else maxY
         view.x = 0f
         view.y = targetY
         val sharedPref = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
@@ -280,6 +299,13 @@ object PanelDragHelper {
             .putFloat("${keyPrefix}_x_${suffix}", 0f)
             .putFloat("${keyPrefix}_y_${suffix}", targetY)
             .apply()
+        // v19.3.43: 재억 요청 - 플로팅 버튼 이동할 때처럼, 상단바가 실제로 옮겨졌다는 걸
+        // 짧은 문구로 알려줌. #문제시 원복
+        android.widget.Toast.makeText(
+            context,
+            if (movingToTop) "상단바를 위로 옮겼습니다" else "상단바를 아래로 옮겼습니다",
+            android.widget.Toast.LENGTH_SHORT
+        ).show()
         onSettled?.invoke()
     }
 
@@ -475,6 +501,14 @@ object PanelDragHelper {
         val showMiniPlayerCheckBox = android.widget.Switch(context).apply {
             text = "미니 플레이어 표시 (지금 재생 중인 음악)"
             isChecked = pref.getBoolean(com.tmap.nda.miniplayer.MiniPlayerManager.PREF_KEY_ENABLED, true)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
+        // v19.3.44: 재억 요청 - 상단바 표시/숨김 플로팅 버튼을 기본적으로 안 보이게 해두고,
+        // 필요한 사람만 여기서 켜서 쓰게 함. 기본값 꺼짐(false). #문제시 원복
+        val showToggleTopPanelButtonCheckBox = android.widget.Switch(context).apply {
+            text = "상단바 표시/숨김 플로팅 버튼 보이기"
+            isChecked = pref.getBoolean("show_toggle_top_panel_button", false)
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
@@ -706,7 +740,8 @@ object PanelDragHelper {
             distanceFormatKmCheckBox,       // 1000m 이상일 때 km 단위로 거리 표시
             unlockMapTouchCheckBox,         // 티맵 터치 잠금 해제 (핀치줌/드래그 허용) - 화면표시로 이동
             showLaneOverlayTmapCheckBox,    // 차선 안내 오버레이 표시 (Tmap 화면 한정)
-            showMiniPlayerCheckBox          // 미니 플레이어 표시
+            showMiniPlayerCheckBox,          // 미니 플레이어 표시
+            showToggleTopPanelButtonCheckBox // 상단바 표시/숨김 플로팅 버튼 보이기
         ))
         addAccordionGroup("버튼 표시", listOf(
             showWaypointButtonCheckBox,      // 경유지 버튼 표시
@@ -795,6 +830,7 @@ object PanelDragHelper {
                     .putBoolean("show_waypoint_button", showWaypointButtonCheckBox.isChecked)
                     .putBoolean("show_category_button", showCategoryButtonCheckBox.isChecked)
                     .putBoolean("show_cancel_waypoint_button", showCancelWaypointButtonCheckBox.isChecked)
+                    .putBoolean("show_toggle_top_panel_button", showToggleTopPanelButtonCheckBox.isChecked)
                     .putBoolean("tmap_satellite_view_enabled", satelliteViewCheckBox.isChecked)
                     .putBoolean("tmap_traffic_info_enabled", trafficInfoCheckBox.isChecked)
                     .putBoolean("route_line_display_enabled", routeLineDisplayCheckBox.isChecked)

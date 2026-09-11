@@ -403,13 +403,17 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // v19.3.41: 재억 요청 - "UI 편집" 모드에 안 들어가도, 플로팅 버튼(상단바 표시/숨김)
         // 처럼 1초 꾹 누르면 바로 그 자리에서 옮길 수 있게. 짧게 누르면 원래 클릭 동작이
         // 그대로 나가야 해서 onTap에서 버튼 자신의 performClick()을 호출. #문제시 원복
+        // v19.3.42: 재억 실기기에서 강제 배치까지 해서 재확인 - bringToFront()+requestLayout()+
+        // invalidate()(PanelDragHelper.forceToFront)만으로 상단바 표시/숨김 어느 상태에서도,
+        // 상단바와 겹치는 자리를 포함해 정상적으로 보이고 눌림. 그래서 충돌 회피로 막지 않고
+        // 재억 요청대로 상단바 위로도 자유롭게 이동 가능하게 둠. #문제시 원복
         binding.btnAddWaypoint?.let { btn ->
             PanelDragHelper.makeLongPressDraggable(this, btn, "btnAddWaypoint", isLandscape) {
                 btn.performClick()
             }
             btn.post {
                 PanelDragHelper.restorePosition(this, btn, "btnAddWaypoint", isLandscape, emptyList())
-                btn.bringToFront()
+                PanelDragHelper.forceToFront(btn)
             }
         }
         binding.btnNearbyCategory?.let { btn ->
@@ -418,7 +422,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
             btn.post {
                 PanelDragHelper.restorePosition(this, btn, "btnNearbyCategory", isLandscape, emptyList())
-                btn.bringToFront()
+                PanelDragHelper.forceToFront(btn)
             }
         }
         binding.btnCancelWaypoint?.let { btn ->
@@ -427,7 +431,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
             btn.post {
                 PanelDragHelper.restorePosition(this, btn, "btnCancelWaypoint", isLandscape, emptyList())
-                btn.bringToFront()
+                PanelDragHelper.forceToFront(btn)
             }
         }
         // v19.3.37: 재억 요청 - Tmap 화면과 동일한 상단바 표시/숨김 플로팅 버튼. 카카오
@@ -436,11 +440,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // 모드를 따로 켤 필요 없이 이 버튼 자체를 1초 꾹 누르면 바로 그 자리에서 드래그
         // 이동, 짧게 탭하면 토글. #문제시 원복
         binding.btnToggleTopPanel?.let { btn ->
+            // v19.3.44: 재억 요청 - 이 버튼은 기본값 안 보임 - 메뉴 > 설정 > 화면 표시에서
+            // 켜야만 보이게 함(Tmap 화면과 동일). #문제시 원복
+            btn.visibility = if (getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                    .getBoolean("show_toggle_top_panel_button", false)) View.VISIBLE else View.GONE
             btn.post {
                 PanelDragHelper.restorePosition(this, btn, "btnToggleTopPanel", isLandscape, emptyList())
-                // v19.3.41: Tmap 화면과 동일 - 예전에 저장된 위치가 상단바 뒤였을 수도 있으니
-                // 실행할 때마다 확인차 맨 앞으로. #문제시 원복
-                btn.bringToFront()
+                PanelDragHelper.forceToFront(btn)
             }
             PanelDragHelper.makeLongPressDraggable(this, btn, "btnToggleTopPanel", isLandscape) {
                 setTopPanelHidden(!isTopPanelHidden())
@@ -1603,6 +1609,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 binding.btnAddWaypoint?.visibility = if (showWaypointButton) View.VISIBLE else View.GONE
                 binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
                 binding.btnCancelWaypoint?.visibility = if (showCancelWaypointButton && activeWaypoints.isNotEmpty()) View.VISIBLE else View.GONE
+                // v19.3.44: 재억 요청 - 상단바 표시/숨김 플로팅 버튼은 기본 안 보이고, 설정에서
+                // 켰을 때만 보이게. 다른 설정들처럼 저장 즉시 반영. #문제시 원복
+                binding.btnToggleTopPanel?.visibility = if (getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                        .getBoolean("show_toggle_top_panel_button", false)) View.VISIBLE else View.GONE
                 binding.flMiniPlayerContainer?.let { outer ->
                     com.tmap.nda.miniplayer.MiniPlayerManager.refresh(
                         this, outer,

@@ -678,8 +678,8 @@
          크기로 맞추고, 아이콘 대신 "숨김"/"표시" 글자로 명확하게 표시. #문제시 원복 -->
     <Button
         android:id="@+id/btnToggleTopPanel"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
         android:layout_gravity="bottom|end"
         android:layout_marginEnd="16dp"
         android:layout_marginBottom="110dp"
@@ -692,7 +692,7 @@
         android:paddingHorizontal="0dp"
         android:paddingVertical="0dp"
         android:text="숨김"
-        android:textSize="12sp"
+        android:textSize="14sp"
         android:textColor="#FFFFFF"
         android:background="@drawable/shape_circle_gray"
         android:contentDescription="상단바 표시/숨김"

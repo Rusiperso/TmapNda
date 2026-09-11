@@ -12,8 +12,8 @@ android {
         applicationId = "com.tmap.nda"
         minSdk = 26
         targetSdk = 36
-        versionCode = 453
-        versionName = "19.3.41"
+        versionCode = 454
+        versionName = "19.3.44"
     }
 
     signingConfigs {
@@ -106,7 +106,10 @@ dependencies {
   implementation("com.google.android.material:material:1.11.0")
 
   // TMapUISDK
-  implementation("com.tmapmobility.tmap:tmap-ui-sdk:1.0.0.0155")
+  // v19.3.44: 재억 요청 - Tmap 공식 배포 zip(1.77) 샘플이 참조하는 최신 버전으로 업데이트.
+  // 카카오내비 SDK는 카카오모빌리티 릴리즈 페이지 확인 결과 1.12.8-hotfix02(2025.11.18)가
+  // 이미 최신이라 그대로 유지. #문제시 원복
+  implementation("com.tmapmobility.tmap:tmap-ui-sdk:1.0.0.0158")
   // 카카오내비 SDK - 검색/경로계산/실시간안내를 카카오로 우회 (Tmap 화면 위에 오버레이로 얹음)
   implementation("com.kakaomobility.knsdk:knsdk_ui:1.12.8-hotfix02")
 
