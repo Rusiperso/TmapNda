@@ -40,6 +40,8 @@ object CoverScreenConfigFix {
         val swDp = config.smallestScreenWidthDp
         val heightDp = config.screenHeightDp
 
+        NavLogger.d(base, "[화면왜곡진단] sw=${swDp}dp height=${heightDp}dp widthDp=${config.screenWidthDp}dp")
+
         if (swDp < SW_TRIGGER_DP || heightDp >= REAL_HEIGHT_SUSPECT_DP) {
             return base
         }
