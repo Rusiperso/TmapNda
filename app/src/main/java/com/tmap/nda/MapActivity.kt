@@ -281,6 +281,7 @@ class MapActivity : AppCompatActivity() {
         binding.btnMuteToggle?.setBackgroundResource(
             if (isTmapMuted) R.drawable.shape_rounded_gray else R.drawable.shape_rounded_green
         )
+        binding.tvMuteToggleLabel?.text = if (isTmapMuted) "무음" else "켜짐"
         // v1.6: 예전엔 음소거 '해제' 상태에서도 매번 setVolume(100)을 강제 호출해서, 사용자가
         // 하드웨어 버튼 등으로 50 같은 값으로 맞춰도 앱 재시작/토글 때마다 100으로 되돌아갔음
         // (사용자 지적 - "볼륨 50으로 했는데 다음에 실행하면 다시 100이 됨"). 이제 음소거 상태일
@@ -1433,7 +1434,7 @@ class MapActivity : AppCompatActivity() {
         val titleView = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            setBackgroundColor(android.graphics.Color.parseColor("#212121"))
+            setBackgroundResource(R.drawable.bg_dialog_title_top_rounded)
             setPadding(24, 24, 24, 20)
             addView(android.widget.TextView(this@MapActivity).apply {
                 text = "검색 이력 전체"
@@ -1490,7 +1491,7 @@ class MapActivity : AppCompatActivity() {
         }
         dialog.show()
         // 다이얼로그 창 배경 자체도 명시적으로 지정 (테마 상속으로 까맣게 뜨는 것 방지)
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
+        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog_212121_rounded)
     }
 
     // v2.1: 인라인 리스트(lvSearchResults) 대신 카카오 화면과 동일한 팝업 다이얼로그 방식으로
@@ -1530,7 +1531,7 @@ class MapActivity : AppCompatActivity() {
             startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon)
         }
         dialog.show()
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
+        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog_212121_rounded)
     }
 
     // v1.7: 검색결과/이력 목록에 android.R.layout.simple_list_item_1을 그대로 쓰면 앱 기본
@@ -1626,7 +1627,7 @@ class MapActivity : AppCompatActivity() {
                 goDirectly(position)
             }
             routeDialog.show()
-            routeDialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
+            routeDialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog_212121_rounded)
         }
 
         val (curLat, curLon) = resolveCurrentWgs84LatLon()
@@ -2620,7 +2621,7 @@ class MapActivity : AppCompatActivity() {
         }
 
         dialog.show()
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
+        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog_212121_rounded)
         // v11.3: 목록에서 아무것도 안 고르고 "취소" 누르거나 다이얼로그 밖을 눌러서 닫아도
         // 상태 표시줄에 "검색 결과 45건 - 목적지를 선택하세요"가 그대로 남아있던 문제
         // (재억 지적) - 다이얼로그가 닫힐 때, 실제로 목적지를 고른 게 아니면 상태

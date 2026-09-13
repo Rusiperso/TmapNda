@@ -1505,6 +1505,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         binding.btnKakaoMuteToggle?.setBackgroundResource(
             if (kakaoMuted) R.drawable.shape_rounded_gray else R.drawable.shape_rounded_green
         )
+        binding.tvKakaoMuteToggleLabel?.text = if (kakaoMuted) "무음" else "켜짐"
     }
 
     private fun setupHudActionButtons() {
@@ -2197,7 +2198,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val titleView = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            setBackgroundColor(android.graphics.Color.parseColor("#212121"))
+            setBackgroundResource(R.drawable.bg_dialog_title_top_rounded)
             setPadding(24, 24, 24, 20)
             addView(android.widget.TextView(this@KakaoNaviActivity).apply {
                 text = "검색 이력 전체"
@@ -2245,7 +2246,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             showRoutePriorityDialog(picked)
         }
         dialog.show()
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
+        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog_212121_rounded)
     }
 
     // v1.6: 검색 버튼 누르면 화면이 티맵으로 나갔다 다시 들어오던 문제 - 굳이 MapActivity로
@@ -2698,7 +2699,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 goDirectly(position)
             }
             routeDialog.show()
-            routeDialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#212121")))
+            routeDialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog_212121_rounded)
         }
 
         val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
