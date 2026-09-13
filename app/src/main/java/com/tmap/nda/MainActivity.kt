@@ -213,6 +213,10 @@ class MainActivity : AppCompatActivity() {
         // 자동 업데이트 체크
         AutoUpdater.checkForUpdates(this)
 
+        // 재설치하면 후킹/scope 설정과 함께 즐겨찾기·API키도 날아가는 문제가 있어서,
+        // 하루에 한 번은 사람이 안 눌러도 조용히 파일로 백업해둠. #문제시 원복
+        SettingsBackup.autoBackupIfDue(this)
+
         requestIgnoreBatteryOptimizationsIfNeeded()
 
         val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)

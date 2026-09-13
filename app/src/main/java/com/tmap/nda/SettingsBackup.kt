@@ -128,6 +128,42 @@ object SettingsBackup {
         }
     }
 
+    // v: 재억 요청 - 백업 버튼을 안 눌러도 며칠에 한 번은 자동으로 저장해두자는 요청.
+    // 공유 화면(사람이 눌러줘야 하는 exportAndShare)과 별개로, 조용히 파일로만 남기는
+    // 버전. 재설치하면 후킹/scope 설정과 함께 이 값들도 날아가는 문제가 있어서, 최소한
+    // 마지막으로 켰을 때 설정은 파일로 남아있게 하려는 목적. #문제시 원복
+    private const val AUTO_BACKUP_PREFS_NAME = "TmapNdaAutoBackupMeta"
+    private const val AUTO_BACKUP_LAST_KEY = "last_auto_backup_at"
+    private const val AUTO_BACKUP_INTERVAL_MS = 24L * 60 * 60 * 1000
+    private const val AUTO_BACKUP_FILE_NAME = "TmapNda_자동백업.json"
+
+    private fun autoBackupFile(context: Context): File {
+        val dir = File(context.getExternalFilesDir(null), "backup")
+        if (!dir.exists()) dir.mkdirs()
+        return File(dir, AUTO_BACKUP_FILE_NAME)
+    }
+
+    /** 하루에 한 번, 사람이 건드리지 않아도 현재 설정을 파일로 조용히 저장해둠(공유 화면 안 뜸). */
+    fun autoBackupIfDue(context: Context) {
+        try {
+            val meta = context.getSharedPreferences(AUTO_BACKUP_PREFS_NAME, Context.MODE_PRIVATE)
+            val last = meta.getLong(AUTO_BACKUP_LAST_KEY, 0L)
+            val now = System.currentTimeMillis()
+            if (now - last < AUTO_BACKUP_INTERVAL_MS) return
+
+            val root = JSONObject()
+            root.put(FORMAT_VERSION_MARKER, CURRENT_FORMAT_VERSION)
+            root.put(PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)))
+            root.put(QUICKSLOTS_PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(QUICKSLOTS_PREFS_NAME, Context.MODE_PRIVATE)))
+            autoBackupFile(context).writeText(root.toString(2))
+
+            meta.edit().putLong(AUTO_BACKUP_LAST_KEY, now).apply()
+            NavLogger.d(context, "[설정백업] 자동 백업 저장됨")
+        } catch (e: Exception) {
+            NavLogger.e(context, "[설정백업] 자동 백업 실패: ${e.message}")
+        }
+    }
+
     /** 파일 선택기로 고른 백업 파일(uri)의 내용을 읽어 지금 설정에 덮어씀. 성공하면 true. */
     fun restoreFromUri(context: Context, uri: Uri): Boolean {
         return try {

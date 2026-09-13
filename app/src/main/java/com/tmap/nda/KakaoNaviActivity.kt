@@ -3514,11 +3514,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     override fun onLocationChanged(location: Location) {
         try {
             if (location.provider != LocationManager.GPS_PROVIDER) {
-                NavLogger.d(this, "[GPS] provider=${location.provider} 무시(GPS_PROVIDER만 사용)")
+                // 나중에 카메라/경로 오탐 분석용으로는 남겨두되, 매번 찍히면 로그가
+                // 금방 커지니 몇 초에 한 번만 기록. #문제시 원복
+                NavLogger.dThrottled(this, "gps_provider_ignored", 5000L, "[GPS] provider=${location.provider} 무시(GPS_PROVIDER만 사용)")
                 return
             }
             if (location.hasAccuracy() && location.accuracy > 50f) {
-                NavLogger.d(this, "[GPS] 정확도 낮아 무시: accuracy=${location.accuracy}m")
+                NavLogger.dThrottled(this, "gps_low_accuracy", 5000L, "[GPS] 정확도 낮아 무시: accuracy=${location.accuracy}m")
                 return
             }
             val speedKph = (location.speed * 3.6).toInt()

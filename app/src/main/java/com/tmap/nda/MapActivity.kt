@@ -3938,7 +3938,9 @@ class MapActivity : AppCompatActivity() {
                             locationListener, android.os.Looper.getMainLooper()
                         )
                     }
-                } catch (_: SecurityException) {}
+                } catch (e: SecurityException) {
+                    NavLogger.e(this, "[GPS] 위치 갱신 요청 실패: ${e.message}")
+                }
 
                 try {
                     val lastKnown = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
@@ -3947,7 +3949,9 @@ class MapActivity : AppCompatActivity() {
                         lastKnownLat = lastKnown.latitude
                         lastKnownLon = lastKnown.longitude
                     }
-                } catch (_: SecurityException) {}
+                } catch (e: SecurityException) {
+                    NavLogger.e(this, "[GPS] 마지막 위치 조회 실패: ${e.message}")
+                }
 
                 locationManager.registerGnssStatusCallback(object : android.location.GnssStatus.Callback() {
                     override fun onStarted() {
