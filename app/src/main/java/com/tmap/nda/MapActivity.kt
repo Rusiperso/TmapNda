@@ -1239,7 +1239,7 @@ class MapActivity : AppCompatActivity() {
                     text = "저장"
                     textSize = 14f
                     setTextColor(android.graphics.Color.parseColor("#A0C8F0"))
-                    setBackgroundColor(android.graphics.Color.parseColor("#233A4A"))
+                    setBackgroundResource(R.drawable.bg_chip_save_rounded)
                     setPadding(36, 20, 36, 20)
                     val marginParams = android.widget.LinearLayout.LayoutParams(
                         android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -1258,7 +1258,7 @@ class MapActivity : AppCompatActivity() {
                     text = "삭제"
                     textSize = 14f
                     setTextColor(android.graphics.Color.parseColor("#F0A0A0"))
-                    setBackgroundColor(android.graphics.Color.parseColor("#3A2323"))
+                    setBackgroundResource(R.drawable.bg_chip_delete_rounded)
                     setPadding(36, 20, 36, 20)
                     val marginParams = android.widget.LinearLayout.LayoutParams(
                         android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -1329,7 +1329,7 @@ class MapActivity : AppCompatActivity() {
             val container = android.widget.LinearLayout(this).apply {
                 orientation = android.widget.LinearLayout.VERTICAL
                 gravity = android.view.Gravity.CENTER
-                setBackgroundColor(android.graphics.Color.parseColor("#262626"))
+                setBackgroundResource(R.drawable.bg_quickslot_chip_rounded)
                 layoutParams = android.widget.LinearLayout.LayoutParams(
                     0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
                 ).apply { marginEnd = 12 }
