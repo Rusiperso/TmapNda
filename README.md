@@ -8,7 +8,7 @@
 
 [![Latest Release](https://img.shields.io/github/v/release/Rusiperso/TmapNda?label=%EC%B5%9C%EC%8B%A0%20%EB%B2%84%EC%A0%84&color=3A6EF6)](https://github.com/Rusiperso/TmapNda/releases)
 [![Platform](https://img.shields.io/badge/Platform-Android-3DDC84)](https://github.com/Rusiperso/TmapNda/releases)
-[![Discord](https://img.shields.io/badge/Discord-참여하기-5865F2)](https://discord.gg/cfuMCCxEE)
+[![Discord](https://img.shields.io/badge/Discord-참여하기-5865F2)](https://discord.gg/eQhbvUVWKv)
 
 </div>
 
@@ -541,4 +541,4 @@ A. 안드로이드의 "배터리 최적화" 예외를 요청하는 팝업입니�
 
 사용법 질문, 버그 공유, 업데이트 소식은 디스코드에서 확인할 수 있습니다.
 
-- 디스코드: https://discord.gg/cfuMCCxEE
+- 디스코드: https://discord.gg/eQhbvUVWKv
