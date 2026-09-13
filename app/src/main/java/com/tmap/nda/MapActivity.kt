@@ -275,11 +275,11 @@ class MapActivity : AppCompatActivity() {
     }
 
     private fun applyMuteState() {
-        binding.btnMuteToggle?.setImageResource(
+        binding.ivMuteToggleIcon?.setImageResource(
             if (isTmapMuted) android.R.drawable.ic_lock_silent_mode else android.R.drawable.ic_lock_silent_mode_off
         )
         binding.btnMuteToggle?.setBackgroundResource(
-            if (isTmapMuted) R.drawable.shape_circle_gray else R.drawable.shape_circle_green
+            if (isTmapMuted) R.drawable.shape_rounded_gray else R.drawable.shape_rounded_green
         )
         // v1.6: 예전엔 음소거 '해제' 상태에서도 매번 setVolume(100)을 강제 호출해서, 사용자가
         // 하드웨어 버튼 등으로 50 같은 값으로 맞춰도 앱 재시작/토글 때마다 100으로 되돌아갔음

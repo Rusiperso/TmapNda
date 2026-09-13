@@ -321,27 +321,63 @@
             <View android:layout_width="1dp" android:layout_height="28dp" android:background="#1A1A1A" android:layout_marginHorizontal="8dp"/>
 
             <!-- 음소거 / 검색 -->
-            <ImageButton
+            <LinearLayout
                 android:id="@+id/btnMuteToggle"
                 android:layout_width="38dp"
-                android:layout_height="34dp"
+                android:layout_height="38dp"
                 android:layout_marginEnd="8dp"
-                android:src="@android:drawable/ic_lock_silent_mode"
-                android:background="@drawable/shape_circle_gray"
-                android:scaleType="center"/>
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@drawable/shape_rounded_gray"
+                android:contentDescription="음소거"
+                android:tooltipText="음소거"
+                android:clickable="true"
+                android:focusable="true">
+                <ImageView
+                    android:id="@+id/ivMuteToggleIcon"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@android:drawable/ic_lock_silent_mode"
+                    android:importantForAccessibility="no"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="무음"
+                    android:textColor="#CCCCCC"
+                    android:textSize="8sp"
+                    android:includeFontPadding="false"/>
+            </LinearLayout>
 
             <!-- v3.1: 예전엔 이 버튼도 음성검색, 필드 안 마이크도 음성검색이라 완전히
                  중복이었음. 이 버튼을 음성검색 전용(아이콘도 마이크로)으로 통일하고,
                  필드 안 아이콘은 최근검색으로 바꿈. #문제시 원복 -->
-            <ImageButton
+            <LinearLayout
                 android:id="@+id/btnOpenSearch"
                 android:layout_width="38dp"
-                android:layout_height="34dp"
+                android:layout_height="38dp"
                 android:layout_marginEnd="8dp"
-                android:src="@drawable/ic_mic"
-                android:tint="#FFFFFF"
-                android:background="@drawable/shape_circle_gray"
-                android:scaleType="center"/>
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@drawable/shape_rounded_gray"
+                android:contentDescription="음성검색"
+                android:tooltipText="음성검색"
+                android:clickable="true"
+                android:focusable="true">
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/ic_mic"
+                    android:importantForAccessibility="no"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="음성"
+                    android:textColor="#CCCCCC"
+                    android:textSize="8sp"
+                    android:includeFontPadding="false"/>
+            </LinearLayout>
 
             <!-- v2.9: 검색 팝업을 거치지 않고 상단바에서 바로 입력 가능하도록.
                  v3.9: 남은 공간을 다 차지하던 걸(weight=1) 고정폭으로 줄임
@@ -386,23 +422,59 @@
             <!-- v11.9: 집/회사를 최근검색 팝업 안(즐겨찾기와 같이)에서 상단바 고정 버튼으로
                  이동(재억 요청) - 순서는 검색창 -> 집 -> 회사 -> 업로드 -> 메뉴. 검색창
                  자체는 지금 크기(220dp 고정폭) 그대로 유지. #문제시 원복 -->
-            <ImageButton
+            <LinearLayout
                 android:id="@+id/btnHomeQuickSlot"
                 android:layout_width="38dp"
-                android:layout_height="34dp"
+                android:layout_height="38dp"
                 android:layout_marginEnd="8dp"
-                android:src="@drawable/ic_home_quickslot"
-                android:background="@drawable/shape_circle_gray"
-                android:scaleType="center"/>
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@drawable/shape_rounded_gray"
+                android:contentDescription="집"
+                android:tooltipText="집"
+                android:clickable="true"
+                android:focusable="true">
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/ic_home_quickslot"
+                    android:importantForAccessibility="no"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="집"
+                    android:textColor="#CCCCCC"
+                    android:textSize="8sp"
+                    android:includeFontPadding="false"/>
+            </LinearLayout>
 
-            <ImageButton
+            <LinearLayout
                 android:id="@+id/btnWorkQuickSlot"
                 android:layout_width="38dp"
-                android:layout_height="34dp"
+                android:layout_height="38dp"
                 android:layout_marginEnd="8dp"
-                android:src="@drawable/ic_work_quickslot"
-                android:background="@drawable/shape_circle_gray"
-                android:scaleType="center"/>
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@drawable/shape_rounded_gray"
+                android:contentDescription="회사"
+                android:tooltipText="회사"
+                android:clickable="true"
+                android:focusable="true">
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/ic_work_quickslot"
+                    android:importantForAccessibility="no"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="회사"
+                    android:textColor="#CCCCCC"
+                    android:textSize="8sp"
+                    android:includeFontPadding="false"/>
+            </LinearLayout>
 
             <!-- v7.9: 로그전송을 더보기(≡) 메뉴 밖으로 빼서 상단바 고정 버튼으로 - 메뉴
                  바로 왼쪽에 배치, 나머지 순서는 그대로 유지 (재억 요청). #문제시 원복 -->
@@ -436,14 +508,32 @@
             <!-- v4.1: 순서를 검색창 -> 메뉴 -> 이벤트로 재배치 (사용자 요청). 이벤트는
                  생겼다 없어졌다 하는 항목이라 맨 끝에 둬서 다른 요소를 계속 밀어내지
                  않게 함. #문제시 원복 -->
-            <ImageButton
+            <LinearLayout
                 android:id="@+id/btnMoreMenu"
                 android:layout_width="38dp"
-                android:layout_height="34dp"
-                android:src="@drawable/ic_hamburger"
-                android:background="@drawable/shape_circle_gray"
-                android:scaleType="center"
-                android:layout_marginEnd="10dp"/>
+                android:layout_height="38dp"
+                android:layout_marginEnd="10dp"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@drawable/shape_rounded_gray"
+                android:contentDescription="메뉴"
+                android:tooltipText="메뉴"
+                android:clickable="true"
+                android:focusable="true">
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/ic_hamburger"
+                    android:importantForAccessibility="no"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="메뉴"
+                    android:textColor="#CCCCCC"
+                    android:textSize="8sp"
+                    android:includeFontPadding="false"/>
+            </LinearLayout>
 
             <!-- 카메라/구간단속/방지턱 등 이벤트 - 항상 맨 끝 -->
             <!-- v: 재억 요청(2026-08-25) - 상단바 아이콘이 34dp->38dp로 커진 것에 맞춰
