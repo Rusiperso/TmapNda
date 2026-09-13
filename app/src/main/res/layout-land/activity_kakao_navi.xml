@@ -285,14 +285,32 @@
 
             <!-- v7.9: 로그전송을 더보기(≡) 메뉴 밖으로 빼서 상단바 고정 버튼으로 - 메뉴
                  바로 왼쪽에 배치, 나머지 순서는 그대로 유지 (재억 요청). #문제시 원복 -->
-            <ImageButton
+            <LinearLayout
                 android:id="@+id/btnShareLogTopBar"
                 android:layout_width="38dp"
-                android:layout_height="34dp"
+                android:layout_height="38dp"
                 android:layout_marginEnd="8dp"
-                android:src="@android:drawable/ic_menu_upload"
-                android:background="@drawable/shape_circle_gray"
-                android:scaleType="center"/>
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@drawable/shape_rounded_gray"
+                android:contentDescription="로그 전송"
+                android:tooltipText="로그 전송"
+                android:clickable="true"
+                android:focusable="true">
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/ic_mail"
+                    android:importantForAccessibility="no"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="로그"
+                    android:textColor="#CCCCCC"
+                    android:textSize="8sp"
+                    android:includeFontPadding="false"/>
+            </LinearLayout>
 
             <!-- v4.1: 순서를 검색창 -> 메뉴 -> 안내종료 -> 이벤트로 재배치 (사용자 요청).
                  이벤트는 생겼다 없어졌다 하는 항목이라 맨 끝에 둬서 다른 요소를 계속
