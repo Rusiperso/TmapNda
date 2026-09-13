@@ -55,6 +55,18 @@ object KakaoToNavdyTurn {
         if (rgCodeName.startsWith("KNRGCode_RotaryDirection_") ||
             rgCodeName.startsWith("KNRGCode_RoundaboutDirection_")
         ) {
+            // v: 재억 제보(2026-09-12, 실기기 사진으로 확인) - 카카오 화면(자체 아이콘)은
+            // 9시 방향(왼쪽)으로 나오는데 클러스터/콤마 아이콘은 반대쪽(우측)으로 떴음.
+            // 원인: 이 함수가 별도로 리플렉션 읽어온 directionAngle(그 순간 89도 - 우측
+            // 완만로 분류됨)을 썼는데, 정작 정답은 코드명 끝자리("...RoundaboutDirection_9"
+            // 의 9)가 이미 시계 방향(9시)으로 들고 있었음. TmapNdaCarAppService.kt의
+            // 안드로이드오토용 변환은 이미 이 끝자리 숫자를 쓰고 있어서 맞게 나왔던 것과
+            // 대조됨. directionAngle은 신뢰 못 할 다른 값으로 보고, 끝자리 숫자를 우선
+            // 사용하도록 변경. #문제시 원복
+            val clockFromCode = rgCodeName.substringAfterLast('_').toIntOrNull()
+            if (clockFromCode != null && clockFromCode in 1..12) {
+                return roundaboutFromAngle((clockFromCode % 12) * 30)
+            }
             return roundaboutFromAngle(directionAngle)
         }
         if (rgCodeName.startsWith("KNRGCode_Direction_")) {

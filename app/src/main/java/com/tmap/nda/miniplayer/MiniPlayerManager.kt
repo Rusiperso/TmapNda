@@ -530,8 +530,19 @@ object MiniPlayerManager {
         // 세션은 일시정지 상태일 수도 있다는 뜻. 재생/일시정지 여부로 거르지 말고,
         // 상태와 무관하게 가장 최근에 실제로 갱신된 세션(lastPositionUpdateTime)을
         // 그대로 신뢰하도록 변경. #문제시 원복
-        val stickyPick = lastPickedPackageName?.let { pkg -> controllers?.firstOrNull { it.packageName == pkg } }
-        val mostRecentlyUpdated = controllers?.maxByOrNull { it.playbackState?.lastPositionUpdateTime ?: 0L }
+        // v: 재억 제보(2026-09-13, 실기기 로그로 확인 - "실제 재생곡이랑 미니플레이어 표시가
+        // 가끔 다르다") - 유튜브 등 일부 앱은 재생을 완전히 멈춘(state=STOPPED) 뒤에도
+        // lastPositionUpdateTime이 갱신되는 경우가 있음. "가장 최근 갱신"만 보고 고르다 보니,
+        // 이 멈춘 세션이 실제로 재생 중인 다른 앱(예: 애플뮤직)의 곡을 밀어내고 뽑혔음
+        // (로그: youtube state=1(STOPPED) upd가 더 최근이라는 이유로 apple.music(재생/일시정지
+        // 중)을 제치고 선택됨). STOPPED/NONE 상태는 "지금 쓰고 있는 세션"일 수 없으므로
+        // 아무리 최근에 갱신됐어도 후보에서 아예 제외. #문제시 원복
+        val liveControllers = controllers?.filter {
+            val st = it.playbackState?.state
+            st != PlaybackState.STATE_STOPPED && st != PlaybackState.STATE_NONE
+        }
+        val stickyPick = lastPickedPackageName?.let { pkg -> liveControllers?.firstOrNull { it.packageName == pkg } }
+        val mostRecentlyUpdated = liveControllers?.maxByOrNull { it.playbackState?.lastPositionUpdateTime ?: 0L }
         // 이전에 고르던 세션이 여전히 존재하고, 그게 여전히 "가장 최근 갱신"이기도 하면
         // 화면 전환 시 판단이 안 흔들리게 그대로 유지. 다른 세션이 더 최근에 갱신됐으면
         // (진짜로 다른 걸 조작 중이라는 뜻) 그쪽으로 바꿈. #문제시 원복

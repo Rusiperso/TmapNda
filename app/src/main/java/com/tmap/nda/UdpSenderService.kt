@@ -951,10 +951,16 @@ class UdpSenderService : Service() {
                         // 확인 횟수 요구치를 훨씬 늘림"으로 바꿈 - 분기 오매칭은 보통 GPS
                         // 순간 튐이라 1~2초면 사라지는데, 진짜 도로 제한속도 변화는 몇 초씩
                         // 계속 유지되므로 이 방식으로 안전하게 구분됨. #문제시 원복
-                        val routeExpectsExitOrTurnSoon = KakaoRouteDataRepository.tbtDist < 500 &&
+                        // v: 재억 제보(2026-09-12, 실기기 로그로 확인) - tbtDist가 카카오 SDK에서
+                        // 못 읽히면 0으로 떨어지는데(KakaoGuidanceDelegate의 리플렉션 실패 시 기본값),
+                        // 그 0을 "회전 지점 바로 코앞"으로 오인해서 근처 갈림길의 낮은 제한속도를
+                        // 검증 없이 그대로 받아들이는 사고가 있었음(로그: 실제 회전까지 9km 넘게
+                        // 남았는데 tbtDist=0으로 찍혀 분기 오매칭 방어가 통째로 꺼짐 - 60->40 급감속).
+                        // tbtDist=0은 "코앞"이 아니라 "값을 못 읽음"으로 보고 제외. #문제시 원복
+                        val routeExpectsExitOrTurnSoon = KakaoRouteDataRepository.tbtDist in 1 until 500 &&
                             KakaoRouteDataRepository.tbtTurnType in setOf(12, 13, 6, 7, 101, 102)
                         val nearManeuverPoint = routeExpectsExitOrTurnSoon &&
-                            KakaoRouteDataRepository.tbtDist in 0..GENERAL_ROAD_LIMIT_TBT_NEAR_THRESHOLD_M
+                            KakaoRouteDataRepository.tbtDist in 1..GENERAL_ROAD_LIMIT_TBT_NEAR_THRESHOLD_M
                         val requiredConsecutiveNow = if (routeExpectsExitOrTurnSoon) GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE else GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE_FAR_FROM_ROUTE_TURN
                         // v: 재억 재설명(2026-09-02) - limitSpeed 경로와 동일하게, 카카오 기준
                         // 본선 직진 중이면 티맵 엔진의 하향 값도 받아들이지 않음. #문제시 원복
