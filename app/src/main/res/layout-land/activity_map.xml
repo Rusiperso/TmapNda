@@ -889,18 +889,35 @@
 
     <!-- v: 재억 요청(2026-08-25) - 우측 상단 대신 예전 카카오 경유지 버튼 자리(정중앙, 34dp)로
          다시 이동. #문제시 원복 -->
-    <ImageButton
+    <LinearLayout
         android:id="@+id/btnNearbyCategory"
         android:layout_width="60dp"
         android:layout_height="60dp"
         android:layout_gravity="top|start"
         android:layout_marginTop="76dp"
         android:layout_marginStart="34dp"
-        android:src="@drawable/ic_category"
-        android:background="@drawable/shape_circle_gray"
-        android:scaleType="center"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="@drawable/shape_rounded_gray"
         android:contentDescription="주변 카테고리 검색"
-        android:elevation="20dp"/>
+        android:tooltipText="주변 검색"
+        android:elevation="20dp"
+        android:clickable="true"
+        android:focusable="true">
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/ic_category"
+            android:importantForAccessibility="no"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="주변"
+            android:textColor="#CCCCCC"
+            android:textSize="9sp"
+            android:includeFontPadding="false"/>
+    </LinearLayout>
 
     <!-- v: 신규기능(미니 플레이어) - 카카오 가로 화면과 동일 구조/ID.
          v: 재억 제보(2026-08-28, 4차, 실기기 영상으로 확인) - 컨테이너 고정폭(180dp)이

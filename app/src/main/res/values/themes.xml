@@ -2,4 +2,11 @@
 <resources>
 
     <style name="Theme.TmapNda" parent="Theme.MaterialComponents.Light.NoActionBar" />
+
+    <!-- 재억 요청 - 앱 안 모든 팝업(주변탐색/경유지추가/최근검색/즐겨찾기 등, 전부 android.R.style.Theme_Material_Dialog_Alert
+         공용 사용)을 각진 모서리 대신 둥근 모서리로 통일. 색은 기존 Material 다크 다이얼로그 배경(#303030)과
+         동일하게 유지 - 모서리만 둥글게. #문제시 원복 -->
+    <style name="RoundedDialogTheme" parent="android:Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/bg_dialog_rounded</item>
+    </style>
 </resources>

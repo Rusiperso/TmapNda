@@ -124,7 +124,7 @@ class MainActivity : AppCompatActivity() {
             navdyBluetoothPermissionLauncher.launch(missingBluetoothPermissions.toTypedArray())
             return
         }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
             .setTitle("나브디 연결에 블루투스 권한이 필요합니다")
             .setMessage(
                 "'주변 기기' 권한이 꺼져 있어서 나브디에 연결을 시도조차 못 하고 있습니다.\n" +

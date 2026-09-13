@@ -1499,11 +1499,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     }
 
     private fun updateMuteButtonStyle() {
-        binding.btnKakaoMuteToggle?.setImageResource(
+        binding.ivKakaoMuteToggleIcon?.setImageResource(
             if (kakaoMuted) android.R.drawable.ic_lock_silent_mode else android.R.drawable.ic_lock_silent_mode_off
         )
         binding.btnKakaoMuteToggle?.setBackgroundResource(
-            if (kakaoMuted) R.drawable.shape_circle_gray else R.drawable.shape_circle_green
+            if (kakaoMuted) R.drawable.shape_rounded_gray else R.drawable.shape_rounded_green
         )
     }
 
@@ -1553,7 +1553,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
         binding.btnDeleteAllLogs?.setOnClickListener {
             binding.svSecondaryPanel?.visibility = View.GONE
-            android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
                 .setTitle("로그 전체 삭제")
                 .setMessage("저장된 로그 파일을 전부 삭제할까요? 되돌릴 수 없습니다.")
                 .setPositiveButton("삭제") { _, _ ->
@@ -1679,7 +1679,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             showInPlaceSearchDialog()
             return
         }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
             .setTitle(existing.name)
             // v14.10: MapActivity와 동일 - 순서를 "다시 검색 -> 이름 변경 -> 경로 방식 변경
             // -> 삭제 -> 취소"로 재변경, "안내 방법 변경"을 "경로 방식 변경"으로 이름도 변경(재억 요청). #문제시 원복
@@ -1696,7 +1696,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                             setText(existing.name)
                             setTextColor(android.graphics.Color.WHITE)
                         }
-                        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                        android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
                             .setTitle("이름 변경")
                             .setView(input)
                             .setPositiveButton("저장") { _, _ ->
@@ -1725,7 +1725,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 방식이고, 안내 중이 아닐 땐 예전과 완전히 동일하게 바로 안내를 시작함. #문제시 원복
     private fun handleQuickSlotTap(existing: HistoryEntry) {
         if (currentDestName.isNotBlank() && KakaoRouteDataRepository.isFresh()) {
-            android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
                 .setTitle("경유지로 추가할까요?")
                 .setMessage("'${existing.name}'을(를) 지금 안내(${currentDestName})의 경유지로 추가할까요, 아니면 새 목적지로 바꿀까요?")
                 .setPositiveButton("경유지 추가") { _, _ -> addWaypointToActiveGuidance(existing) }
@@ -1864,7 +1864,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             if (existing != null) "$label (현재: ${existing.name})" else "$label (비어있음)"
         }.toTypedArray()
 
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
             .setTitle("어디에 저장할까요? - ${entry.name}")
             .setItems(items) { _, which ->
                 val (_, slot) = slotLabels[which]
@@ -2218,11 +2218,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             })
         }
 
-        dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        dialog = android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
             .setCustomTitle(titleView)
             .setView(listView)
             .setPositiveButton("전체 삭제") { _, _ ->
-                android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
                     .setTitle("검색 이력 전체 삭제")
                     .setMessage("검색 이력을 전부 삭제할까요?")
                     .setPositiveButton("삭제") { _, _ ->
@@ -2354,7 +2354,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     Toast.makeText(this, "등록된 경유지가 없습니다", Toast.LENGTH_SHORT).show()
                 }
                 activeWaypoints.size == 1 -> {
-                    android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
                         .setTitle("경유지 취소")
                         .setMessage("'${activeWaypoints[0].name}'를 경로에서 뺄까요?")
                         .setPositiveButton("취소하기") { _, _ -> rebuildRouteWithWaypoints(emptyList(), "경유지취소") }
@@ -2363,7 +2363,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 }
                 else -> {
                     val labels = activeWaypoints.mapIndexed { i, w -> "${i + 1}. ${w.name} 빼기" } + "경유지 전부 빼기"
-                    android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
                         .setTitle("경유지 취소 (${activeWaypoints.size}개)")
                         .setItems(labels.toTypedArray()) { _, which ->
                             if (which == activeWaypoints.size) {
@@ -2399,7 +2399,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             // 곧바로 안내가 시작되고 있었음. #문제시 원복
             NearbyCategoryPopup.show(this, searchHttpClient, restKey, curLat, curLon, lastKnownBearing) { picked ->
                 if (currentDestName.isNotBlank()) {
-                    android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
                         .setTitle("경유지로 추가할까요?")
                         .setMessage("'${picked.name}'을(를) 지금 안내(${currentDestName})의 경유지로 추가할까요, 아니면 새 목적지로 바꿀까요?")
                         .setPositiveButton("경유지 추가") { _, _ -> addWaypointToActiveGuidance(picked) }
@@ -2427,7 +2427,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         } else {
             arrayOf("음성으로 찾기", "텍스트로 찾기")
         }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
             .setTitle("경유지 검색 방법")
             .setItems(items) { _, which ->
                 when (which) {
@@ -2576,7 +2576,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // AlertDialog는 setMessage()와 setItems()를 동시에 지원하지 않음 - 메시지가
         // 설정돼 있으면 목록 영역이 아예 안 그려짐. 그래서 제목/메시지/취소만 보였던 것.
         // 안내 문구를 제목에 합치고 setItems만 남겨서 목록이 실제로 표시되게 함. #문제시 원복
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
             .setTitle("'${picked.name}' 경유지로 추가\n어떤 방식으로 갈까요? (경로 전체에 적용됩니다)")
             .setItems(optionLabels) { _, which ->
                 applyRouteOption(optionPriorities[which], optionAvoidOptions[which])
@@ -2596,7 +2596,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             setTextColor(android.graphics.Color.WHITE)
             setHintTextColor(android.graphics.Color.parseColor("#AAAAAA"))
         }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
             .setTitle(if (pendingWaypointAddition) "경유지 검색" else "목적지 재검색")
             .setView(input)
             .setPositiveButton("검색") { _, _ ->
@@ -2688,7 +2688,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             val listView = android.widget.ListView(this)
             val adapter = darkTextAdapter(ArrayList<CharSequence>(labels))
             listView.adapter = adapter
-            val routeDialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            val routeDialog = android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
                 .setTitle("${picked.name}\n어떻게 갈까요?")
                 .setView(listView)
                 .setNegativeButton("취소", null)
@@ -3007,7 +3007,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
 
-        val pickDialog = android.app.AlertDialog.Builder(this@KakaoNaviActivity, android.R.style.Theme_Material_Dialog_Alert)
+        val pickDialog = android.app.AlertDialog.Builder(this@KakaoNaviActivity, R.style.RoundedDialogTheme)
             .setView(listView)
             .setNegativeButton("취소", null)
             .setNeutralButton("이전", null)

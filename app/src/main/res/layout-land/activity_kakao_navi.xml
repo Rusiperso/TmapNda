@@ -200,27 +200,63 @@
             <View android:layout_width="1dp" android:layout_height="28dp" android:background="#1A1A1A" android:layout_marginHorizontal="8dp"/>
 
             <!-- 음소거 / 검색 -->
-            <ImageButton
+            <LinearLayout
                 android:id="@+id/btnKakaoMuteToggle"
                 android:layout_width="38dp"
-                android:layout_height="34dp"
+                android:layout_height="38dp"
                 android:layout_marginEnd="8dp"
-                android:src="@android:drawable/ic_lock_silent_mode_off"
-                android:background="@drawable/bg_miniplayer_confirm"
-                android:scaleType="center"/>
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@drawable/shape_rounded_gray"
+                android:contentDescription="음소거"
+                android:tooltipText="음소거"
+                android:clickable="true"
+                android:focusable="true">
+                <ImageView
+                    android:id="@+id/ivKakaoMuteToggleIcon"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@android:drawable/ic_lock_silent_mode_off"
+                    android:importantForAccessibility="no"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="무음"
+                    android:textColor="#CCCCCC"
+                    android:textSize="8sp"
+                    android:includeFontPadding="false"/>
+            </LinearLayout>
 
             <!-- v3.1: 예전엔 이 버튼도 음성검색, 필드 안 마이크도 음성검색이라 완전히
                  중복이었음. 이 버튼을 음성검색 전용(아이콘도 마이크로)으로 통일하고,
                  필드 안 아이콘은 최근검색으로 바꿈. #문제시 원복 -->
-            <ImageButton
+            <LinearLayout
                 android:id="@+id/btnOpenSearch"
                 android:layout_width="38dp"
-                android:layout_height="34dp"
+                android:layout_height="38dp"
                 android:layout_marginEnd="8dp"
-                android:src="@drawable/ic_mic"
-                android:tint="#FFFFFF"
-                android:background="@drawable/shape_circle_gray"
-                android:scaleType="center"/>
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@drawable/shape_rounded_gray"
+                android:contentDescription="음성검색"
+                android:tooltipText="음성검색"
+                android:clickable="true"
+                android:focusable="true">
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/ic_mic"
+                    android:importantForAccessibility="no"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="음성"
+                    android:textColor="#CCCCCC"
+                    android:textSize="8sp"
+                    android:includeFontPadding="false"/>
+            </LinearLayout>
 
             <!-- v2.9: 검색 팝업을 거치지 않고 상단바에서 바로 입력 가능하도록.
                  v3.9: 남은 공간을 다 차지하던 걸(weight=1) 고정폭으로 줄임
@@ -679,47 +715,98 @@
         android:elevation="25dp"/>
 
     <!-- v: 재억 요청(2026-08-26) - 카테고리 버튼을 앞으로, 경유지 버튼을 뒤로 순서 변경(세로화면과 동일). #문제시 원복 -->
-    <ImageButton
+    <LinearLayout
         android:id="@+id/btnNearbyCategory"
         android:layout_width="60dp"
         android:layout_height="60dp"
         android:layout_gravity="top|start"
         android:layout_marginTop="76dp"
         android:layout_marginStart="18dp"
-        android:src="@drawable/ic_category"
-        android:background="@drawable/shape_circle_gray"
-        android:scaleType="center"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="@drawable/shape_rounded_gray"
         android:contentDescription="주변 카테고리 검색"
-        android:elevation="20dp"/>
+        android:tooltipText="주변 검색"
+        android:elevation="20dp"
+        android:clickable="true"
+        android:focusable="true">
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/ic_category"
+            android:importantForAccessibility="no"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="주변"
+            android:textColor="#CCCCCC"
+            android:textSize="9sp"
+            android:includeFontPadding="false"/>
+    </LinearLayout>
 
-    <ImageButton
+    <LinearLayout
         android:id="@+id/btnAddWaypoint"
         android:layout_width="60dp"
         android:layout_height="60dp"
         android:layout_gravity="top|start"
         android:layout_marginTop="76dp"
         android:layout_marginStart="82dp"
-        android:src="@drawable/ic_add_waypoint"
-        android:background="@drawable/shape_circle_gray"
-        android:scaleType="center"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="@drawable/shape_rounded_gray"
         android:contentDescription="경유지 추가"
-        android:elevation="20dp"/>
+        android:tooltipText="경유지 추가"
+        android:elevation="20dp"
+        android:clickable="true"
+        android:focusable="true">
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/ic_add_waypoint"
+            android:importantForAccessibility="no"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="경유지"
+            android:textColor="#CCCCCC"
+            android:textSize="9sp"
+            android:includeFontPadding="false"/>
+    </LinearLayout>
 
     <!-- v: 신규기능(경유지 취소 버튼) - 경유지가 실제로 추가돼 있을 때만 보임(코드에서
          visibility 제어). #문제시 원복 -->
-    <ImageButton
+    <LinearLayout
         android:id="@+id/btnCancelWaypoint"
         android:layout_width="60dp"
         android:layout_height="60dp"
         android:layout_gravity="top|start"
         android:layout_marginTop="76dp"
         android:layout_marginStart="146dp"
-        android:src="@drawable/ic_cancel_waypoint"
-        android:background="@drawable/shape_circle_red"
-        android:scaleType="center"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="@drawable/shape_rounded_red"
         android:contentDescription="경유지 취소"
+        android:tooltipText="경유지 취소"
         android:visibility="gone"
-        android:elevation="20dp"/>
+        android:elevation="20dp"
+        android:clickable="true"
+        android:focusable="true">
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/ic_cancel_waypoint"
+            android:importantForAccessibility="no"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="취소"
+            android:textColor="#FFFFFF"
+            android:textSize="9sp"
+            android:includeFontPadding="false"/>
+    </LinearLayout>
 
     <!-- v: 신규기능(미니 플레이어) - 재억 요청(2026-08-28). 가로에서는 폭 여유가 적어
          기본 위치를 우측 위 세로 카드로 다르게 둠(세로형 배치는 아이콘 순서만 다름).

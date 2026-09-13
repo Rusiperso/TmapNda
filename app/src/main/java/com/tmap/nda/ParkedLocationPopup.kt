@@ -17,7 +17,7 @@ object ParkedLocationPopup {
         }
         val timeText = SimpleDateFormat("M월 d일 a h:mm", Locale.KOREAN).format(java.util.Date(saved.savedAt))
 
-        AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog.Builder(context, R.style.RoundedDialogTheme)
             .setTitle("내 차 위치")
             .setMessage("$timeText 저장됨")
             .setPositiveButton("여기로 안내") { _, _ ->

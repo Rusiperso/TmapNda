@@ -814,7 +814,7 @@ object PanelDragHelper {
         val scrollableContainer = android.widget.ScrollView(context).apply {
             addView(container)
         }
-        android.app.AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+        android.app.AlertDialog.Builder(context, R.style.RoundedDialogTheme)
             .setTitle("앱 설정")
             .setView(scrollableContainer)
             .setPositiveButton("저장") { _, _ ->
@@ -854,7 +854,7 @@ object PanelDragHelper {
                 // 허용해야 하는지 바로 안내. 권한 자체는 런타임 요청이 안 되는 특수권한이라 시스템
                 // 설정 화면으로 직접 보내야 함. #문제시 원복
                 if (showMiniPlayerCheckBox.isChecked && !com.tmap.nda.miniplayer.MiniPlayerManager.hasNotificationAccess(context)) {
-                    android.app.AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+                    android.app.AlertDialog.Builder(context, R.style.RoundedDialogTheme)
                         .setTitle("알림 접근 권한 필요")
                         .setMessage("미니 플레이어가 지금 재생 중인 음악 정보를 읽으려면 '알림 접근' 권한이 필요합니다. 설정 화면에서 TmapNda를 찾아 허용해 주세요.")
                         .setPositiveButton("설정으로 이동") { _, _ ->

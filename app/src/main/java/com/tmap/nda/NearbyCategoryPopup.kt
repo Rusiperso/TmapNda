@@ -175,7 +175,7 @@ object NearbyCategoryPopup {
         root.addView(leftScroll)
         root.addView(rightScroll)
 
-        val dialog = AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+        val dialog = AlertDialog.Builder(context, R.style.RoundedDialogTheme)
             .setTitle("주변 검색")
             .setView(root)
             .setNegativeButton("닫기", null)
@@ -431,7 +431,7 @@ object NearbyCategoryPopup {
         /** 급속/완속/초급속/전체 고르는 팝업. */
         fun showEvSpeedChooser(kakaoHits: List<HistoryEntry>, envStations: List<EvChargerHelper.ChargerStation>) {
             val options = arrayOf("전체", "초급속", "급속", "완속")
-            AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+            AlertDialog.Builder(context, R.style.RoundedDialogTheme)
                 .setTitle("충전기 속도 선택")
                 .setItems(options) { _, which ->
                     evSpeedFilter = if (which == 0) null else options[which]
@@ -548,7 +548,7 @@ object NearbyCategoryPopup {
                     if (index > 0) moveOptions.add("맨 위로")
                     if (index < currentOrder.size - 1) moveOptions.add("맨 아래로")
                     if (moveOptions.isEmpty()) return@setOnLongClickListener true
-                    AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+                    AlertDialog.Builder(context, R.style.RoundedDialogTheme)
                         .setTitle("'${item.label}' 위치 바꾸기")
                         .setItems(moveOptions.toTypedArray()) { _, which ->
                             val moved = currentOrder.removeAt(index)
@@ -584,7 +584,7 @@ object NearbyCategoryPopup {
         val checkedStates = BooleanArray(actualBrands.size) { i -> actualBrands[i].second in currentSaved }
         val labels = actualBrands.map { it.first }.toTypedArray()
 
-        val builder = AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+        val builder = AlertDialog.Builder(context, R.style.RoundedDialogTheme)
             .setTitle("주유소 브랜드 선택 (여러 개 가능, 전체 해제 시 전체표시)")
             .setMultiChoiceItems(labels, checkedStates) { _, which, isChecked -> checkedStates[which] = isChecked }
             .setPositiveButton("적용") { _, _ ->
@@ -606,7 +606,7 @@ object NearbyCategoryPopup {
     /** 유종(휘발유/경유/LPG) 선택 팝업. 처음 한 번만 뜨고 이후엔 저장된 값을 계속 씀. */
     private fun showFuelChooser(context: Context, onPick: (String) -> Unit) {
         val labels = OpinetHelper.FUEL_TYPES.map { it.first }.toTypedArray()
-        AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog.Builder(context, R.style.RoundedDialogTheme)
             .setTitle("유종 선택 (내 차량 기준)")
             .setCancelable(false)
             .setItems(labels) { _, which -> onPick(OpinetHelper.FUEL_TYPES[which].second) }

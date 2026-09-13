@@ -166,7 +166,7 @@ object QuickSlotShortcutHelper {
             return
         }
         if (isCurrentlyGuiding()) {
-            android.app.AlertDialog.Builder(activity)
+            android.app.AlertDialog.Builder(activity, R.style.RoundedDialogTheme)
                 .setMessage("${entry.name}(으)로 갈까요?")
                 .setPositiveButton("예") { _, _ -> startGuideTo(entry) }
                 .setNegativeButton("아니오", null)

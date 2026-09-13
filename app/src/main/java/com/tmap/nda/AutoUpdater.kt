@@ -194,7 +194,7 @@ object AutoUpdater {
             }
             currentUpdateDialog = null
         }
-        val dialog = AlertDialog.Builder(context)
+        val dialog = AlertDialog.Builder(context, R.style.RoundedDialogTheme)
             .setTitle("새로운 업데이트 발견")
             .setMessage("최신 버전($newVersion)이 등록되었습니다.\n지금 업데이트 하시겠습니까?")
             .setPositiveButton("업데이트") { _, _ ->
@@ -284,7 +284,7 @@ object AutoUpdater {
         // 미리 확인해서 우리가 직접 안내 + 설정 화면 바로가기를 제공함.
         // (한번 허용해두면 이후 업데이트부터는 이 단계 없이 바로 설치됨)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
-            AlertDialog.Builder(context)
+            AlertDialog.Builder(context, R.style.RoundedDialogTheme)
                 .setTitle("설치 권한 필요")
                 .setMessage("업데이트를 설치하려면 '알 수 없는 앱 설치' 허용이 필요합니다.\n다음 화면에서 허용으로 바꿔주세요. (한번만 설정하면 다음 업데이트부터는 다시 묻지 않습니다.)")
                 .setPositiveButton("설정으로 이동") { _, _ ->
@@ -359,7 +359,7 @@ object AutoUpdater {
                     textSize = 13f
                 }
                 scrollView.addView(textView)
-                AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+                AlertDialog.Builder(context, R.style.RoundedDialogTheme)
                     .setTitle(if (tag.isNotBlank()) "업데이트 내역 ($tag)" else "업데이트 내역")
                     .setView(scrollView)
                     .setPositiveButton("닫기", null)

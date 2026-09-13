@@ -447,7 +447,7 @@ class MapActivity : AppCompatActivity() {
         // 전체 삭제 버튼 추가. #문제시 원복
         binding.btnDeleteAllLogs?.setOnClickListener {
             binding.svSecondaryPanel?.visibility = View.GONE
-            android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
                 .setTitle("로그 전체 삭제")
                 .setMessage("저장된 로그 파일을 전부 삭제할까요? 되돌릴 수 없습니다.")
                 .setPositiveButton("삭제") { _, _ ->
@@ -651,7 +651,7 @@ class MapActivity : AppCompatActivity() {
         // 저장돼 있으면 "이어서 안내할까요?" 물어봄(재억 요청). 자동으로 바로 시작하지
         // 않고 꼭 물어봐서, 다른 곳으로 갈 상황이면 그냥 무시하고 새로 검색할 수 있게 함. #문제시 원복
         ResumeGuidanceStore.get(this)?.let { saved ->
-            android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
                 .setTitle("안내 이어가기")
                 .setMessage("${saved.name}(으)로 가던 중이었어요. 이어서 안내할까요?")
                 .setPositiveButton("이어서 안내") { _, _ ->
@@ -863,7 +863,7 @@ class MapActivity : AppCompatActivity() {
             showTmapTextSearchDialog()
             return
         }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
             .setTitle(existing.name)
             // v14.10: 재억 요청 - 메뉴 순서를 "다시 검색 -> 이름 변경 -> 경로 방식 변경 ->
             // 삭제 -> 취소"로 재변경. "안내 방법 변경"은 "경로 방식 변경"으로 이름도 변경. #문제시 원복
@@ -880,7 +880,7 @@ class MapActivity : AppCompatActivity() {
                             setText(existing.name)
                             setTextColor(android.graphics.Color.WHITE)
                         }
-                        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                        android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
                             .setTitle("이름 변경")
                             .setView(input)
                             .setPositiveButton("저장") { _, _ ->
@@ -910,7 +910,7 @@ class MapActivity : AppCompatActivity() {
         val guidingNow = KakaoRouteDataRepository.isFresh()
         val destName = KakaoRouteDataRepository.destinationName
         if (guidingNow) {
-            android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
                 .setTitle("경유지로 추가할까요?")
                 .setMessage("'${existing.name}'을(를) 지금 안내($destName)의 경유지로 추가할까요, 아니면 새 목적지로 바꿀까요?")
                 .setPositiveButton("경유지 추가") { _, _ ->
@@ -966,7 +966,7 @@ class MapActivity : AppCompatActivity() {
             setTextColor(android.graphics.Color.WHITE)
             setHintTextColor(android.graphics.Color.parseColor("#AAAAAA"))
         }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
             .setTitle("목적지 재검색")
             .setView(input)
             .setPositiveButton("검색") { _, _ ->
@@ -1455,11 +1455,11 @@ class MapActivity : AppCompatActivity() {
             })
         }
 
-        dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        dialog = android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
             .setCustomTitle(titleView)
             .setView(listView)
             .setPositiveButton("전체 삭제") { _, _ ->
-                android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
                     .setTitle("검색 이력 전체 삭제")
                     .setMessage("검색 이력을 전부 삭제할까요?")
                     .setPositiveButton("삭제") { _, _ -> clearSearchHistory() }
@@ -1507,7 +1507,7 @@ class MapActivity : AppCompatActivity() {
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
 
-        val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        val dialog = android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
             .setTitle("최근 검색")
             .setView(listView)
             .setNegativeButton("닫기") { _, _ ->
@@ -1616,7 +1616,7 @@ class MapActivity : AppCompatActivity() {
                 redRowIndex = if (saveToSlot != null) CLEAR_OPTION_INDEX else null
             )
             listView.adapter = adapter
-            val routeDialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            val routeDialog = android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
                 .setTitle("${picked.name}\n어떻게 갈까요?")
                 .setView(listView)
                 .setNegativeButton("취소", null)
@@ -1998,7 +1998,7 @@ class MapActivity : AppCompatActivity() {
             setHintTextColor(android.graphics.Color.parseColor("#AAAAAA"))
             hint = "카카오 REST API 키 (카카오 디벨로퍼스 > 내 앱 > REST API 키)"
         }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
             .setTitle("카카오 로컬 검색 API 키 입력")
             .setMessage("목적지 검색을 쓰려면 본인의 카카오 REST API 키가 필요해.\n각자 본인 키를 써야 검색 할당량을 나눠 쓰지 않아.\n(https://developers.kakao.com 에서 무료 발급)")
             .setView(input)
@@ -2363,7 +2363,7 @@ class MapActivity : AppCompatActivity() {
             .mapIndexed { index, slot -> "즐겨찾기 ${index + 1}" to slot }
         slotLabels.addAll(favoriteSlots)
 
-        val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        val dialog = android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
             .setView(buildQuickSlotPickerView(entry, slotLabels))
             .create()
         dialog.show()
@@ -2469,7 +2469,7 @@ class MapActivity : AppCompatActivity() {
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
 
-        val dialog = android.app.AlertDialog.Builder(this@MapActivity, android.R.style.Theme_Material_Dialog_Alert)
+        val dialog = android.app.AlertDialog.Builder(this@MapActivity, R.style.RoundedDialogTheme)
             .setView(listView)
             .setNegativeButton("취소", null)
             .setNeutralButton("이전", null)
