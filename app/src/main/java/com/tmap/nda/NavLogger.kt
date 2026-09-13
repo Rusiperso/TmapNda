@@ -64,22 +64,41 @@ object NavLogger {
     // 옮겨서, 로그를 남기는 행위 자체가 메인 스레드를 묶지 않도록 함. #문제시 원복
     private val ioExecutor = Executors.newSingleThreadExecutor()
 
+    private fun writeLine(appContextSafe: Context, level: String, message: String) {
+        val file = logFile(appContextSafe)
+        if (file.exists() && file.length() > MAX_LOG_SIZE_BYTES) {
+            val rotatedName = "tmapnda_log_${System.currentTimeMillis()}.txt"
+            file.renameTo(File(file.parentFile, rotatedName))
+        }
+        val line = "${timeFormat.format(Date())} [${versionTag(appContextSafe)}] [$level] $message\n"
+        // 플랫폼 기본 charset에 의존하던 FileWriter 대신 UTF-8을 명시함.
+        // 예전엔 로그 공유/전송 과정에서 한글이 mojibake(占쏙옙 패턴)로 영구 손상되는 문제가 있었음. #문제시 원복
+        OutputStreamWriter(FileOutputStream(logFile(appContextSafe), true), StandardCharsets.UTF_8).use { it.write(line) }
+    }
+
     private fun appendToFile(context: Context, level: String, message: String) {
         val appContextSafe = context.applicationContext
         ioExecutor.execute {
             try {
-                val file = logFile(appContextSafe)
-                if (file.exists() && file.length() > MAX_LOG_SIZE_BYTES) {
-                    val rotatedName = "tmapnda_log_${System.currentTimeMillis()}.txt"
-                    file.renameTo(File(file.parentFile, rotatedName))
-                }
-                val line = "${timeFormat.format(Date())} [${versionTag(appContextSafe)}] [$level] $message\n"
-                // 플랫폼 기본 charset에 의존하던 FileWriter 대신 UTF-8을 명시함.
-                // 예전엔 로그 공유/전송 과정에서 한글이 mojibake(占쏙옙 패턴)로 영구 손상되는 문제가 있었음. #문제시 원복
-                OutputStreamWriter(FileOutputStream(logFile(appContextSafe), true), StandardCharsets.UTF_8).use { it.write(line) }
+                writeLine(appContextSafe, level, message)
             } catch (e: Exception) {
                 Log.e(TAG, "NavLogger appendToFile error: ${e.message}")
             }
+        }
+    }
+
+    // v: 재억 제보(2026-09-13, 크래시 로그) - 크래시 핸들러가 NavLogger.e()로 FATAL 로그를
+    // 남겨도 그게 ioExecutor 큐에 던져지기만 하고 실제 디스크 기록은 비동기라서, 그 직후
+    // 곧바로 프로세스가 죽으면 파일에 채 쓰이기도 전에 죽어버림. 디스코드 자동보고가 그
+    // 로그 파일을 첨부하는데, 정작 첨부파일엔 "왜 죽었는지"가 하나도 안 남는 문제가 있었음.
+    // 크래시처럼 "이 줄만은 무조건 디스크에 남아야 하는" 경우를 위해 그 자리에서 바로(동기)
+    // 써버리는 버전을 따로 둠. #문제시 원복
+    fun eCrashBlocking(context: Context, message: String) {
+        Log.e(TAG, message)
+        try {
+            writeLine(context.applicationContext, "E", message)
+        } catch (e: Exception) {
+            Log.e(TAG, "NavLogger eCrashBlocking error: ${e.message}")
         }
     }
 

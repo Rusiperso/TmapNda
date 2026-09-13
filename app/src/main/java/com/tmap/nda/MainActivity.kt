@@ -178,7 +178,9 @@ class MainActivity : AppCompatActivity() {
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             val stackTrace = Log.getStackTraceString(throwable)
             try {
-                NavLogger.e(
+                // 비동기 큐(NavLogger.e)에 던지면 디스크 기록 전에 프로세스가 죽어버려
+                // 첨부 로그에 원인이 안 남을 수 있음 - 크래시는 그 자리에서 바로 씀
+                NavLogger.eCrashBlocking(
                     applicationContext,
                     "===== FATAL: 앱 강제종료 (thread=${thread.name}) =====\n$stackTrace"
                 )
