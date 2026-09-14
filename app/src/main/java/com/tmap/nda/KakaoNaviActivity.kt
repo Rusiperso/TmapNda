@@ -1503,7 +1503,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             if (kakaoMuted) android.R.drawable.ic_lock_silent_mode else android.R.drawable.ic_lock_silent_mode_off
         )
         binding.btnKakaoMuteToggle?.setBackgroundResource(
-            if (kakaoMuted) R.drawable.shape_rounded_gray else R.drawable.shape_rounded_green
+            if (kakaoMuted) R.drawable.shape_rounded_gray else R.drawable.shape_rounded_blue
         )
         binding.tvKakaoMuteToggleLabel?.text = if (kakaoMuted) "무음" else "켜짐"
     }
@@ -1563,6 +1563,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 }
                 .setNegativeButton("취소", null)
                 .show()
+                .let { PanelDragHelper.tintDestructivePositiveButton(it) }
         }
         binding.btnExitApp?.setOnClickListener {
             // v4.23: MapActivity.onDestroy()가 더 이상 자동으로 서비스를 안 멈추게 바꿔서
@@ -2232,6 +2233,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     }
                     .setNegativeButton("취소", null)
                     .show()
+                    .let { PanelDragHelper.tintDestructivePositiveButton(it) }
             }
             .setNegativeButton("닫기", null)
             .create()
@@ -2246,6 +2248,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             showRoutePriorityDialog(picked)
         }
         dialog.show()
+        PanelDragHelper.tintDestructivePositiveButton(dialog)
         dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog_212121_rounded)
     }
 

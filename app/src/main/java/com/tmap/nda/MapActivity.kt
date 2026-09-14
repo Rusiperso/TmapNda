@@ -279,7 +279,7 @@ class MapActivity : AppCompatActivity() {
             if (isTmapMuted) android.R.drawable.ic_lock_silent_mode else android.R.drawable.ic_lock_silent_mode_off
         )
         binding.btnMuteToggle?.setBackgroundResource(
-            if (isTmapMuted) R.drawable.shape_rounded_gray else R.drawable.shape_rounded_green
+            if (isTmapMuted) R.drawable.shape_rounded_gray else R.drawable.shape_rounded_blue
         )
         binding.tvMuteToggleLabel?.text = if (isTmapMuted) "무음" else "켜짐"
         // v1.6: 예전엔 음소거 '해제' 상태에서도 매번 setVolume(100)을 강제 호출해서, 사용자가
@@ -457,6 +457,7 @@ class MapActivity : AppCompatActivity() {
                 }
                 .setNegativeButton("취소", null)
                 .show()
+                .let { PanelDragHelper.tintDestructivePositiveButton(it) }
         }
 
         // v1.7: 짧게 누르기가 카카오키 재입력 화면으로 가버려서, 정작 자주 쓸 앱 설정
@@ -1466,6 +1467,7 @@ class MapActivity : AppCompatActivity() {
                     .setPositiveButton("삭제") { _, _ -> clearSearchHistory() }
                     .setNegativeButton("취소", null)
                     .show()
+                    .let { PanelDragHelper.tintDestructivePositiveButton(it) }
             }
             .setNegativeButton("닫기") { _, _ ->
                 // v2.6에서 고친 것과 동일: 닫을 때 포커스를 유지하고 키보드를 명시적으로
@@ -1490,6 +1492,7 @@ class MapActivity : AppCompatActivity() {
             showRoutePriorityDialog(picked)
         }
         dialog.show()
+        PanelDragHelper.tintDestructivePositiveButton(dialog)
         // 다이얼로그 창 배경 자체도 명시적으로 지정 (테마 상속으로 까맣게 뜨는 것 방지)
         dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog_212121_rounded)
     }

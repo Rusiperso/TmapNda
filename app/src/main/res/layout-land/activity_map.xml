@@ -581,6 +581,7 @@
          만듦 - 예전엔 llLeftHudPanel 안에 있어서 펼쳐지면 상단바 전체 높이가 커져서
          드래그 편집 가능 범위가 줄어드는 문제가 있었음(사용자 지적 2번). 이제 llLeftHudPanel은
          내용에 맞춰 독립적으로 측정되고 보조 패널 위치도 코드에서 자동 보정함. #문제시 원복 -->
+    <!-- 재억 요청 - 애플(iOS) 액션시트 스타일. ID는 기존 그대로 유지. #문제시 원복 -->
     <ScrollView
         android:id="@+id/svSecondaryPanel"
         android:layout_width="wrap_content"
@@ -589,150 +590,175 @@
         android:layout_marginTop="60dp"
         android:layout_marginEnd="4dp"
         android:visibility="gone"
-        android:background="#0D0D0D"
+        android:background="@android:color/transparent"
         android:elevation="22dp"
         android:overScrollMode="never"
-        android:maxHeight="420dp">
+        android:maxHeight="460dp">
 
         <LinearLayout
-            android:layout_width="280dp"
+            android:layout_width="270dp"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="14dp">
+            android:orientation="vertical">
 
             <!-- v7.9: "로그 전송"은 상단바 고정 버튼(btnShareLogTopBar)으로 이동됨 -
-                 메뉴 밖으로 뺌 (재억 요청). #문제시 원복 -->
+                 메뉴 밖으로 뺌 (재억 요청). -->
 
-            <Button
-                android:id="@+id/btnEditPanelPosition"
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="42dp"
-                android:text="UI 편집"
-                android:textSize="15sp"
-                android:textColor="#CCCCCC"
-                android:gravity="center_vertical|start"
-                android:paddingStart="10dp"
-                android:drawableStart="@drawable/ic_edit_pencil"
-                android:drawableTint="#CCCCCC"
-                android:drawablePadding="10dp"
-                android:backgroundTint="#111111"
-                android:layout_marginBottom="4dp"/>
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_action_sheet">
 
-            <Button
-                android:id="@+id/btnCheckUpdate"
-                android:layout_width="match_parent"
-                android:layout_height="42dp"
-                android:text="업데이트 확인"
-                android:textSize="15sp"
-                android:textColor="#CCCCCC"
-                android:gravity="center_vertical|start"
-                android:paddingStart="10dp"
-                android:drawableStart="@drawable/ic_refresh"
-                android:drawableTint="#CCCCCC"
-                android:drawablePadding="10dp"
-                android:backgroundTint="#111111"
-                android:layout_marginBottom="4dp"/>
+                <Button
+                    android:id="@+id/btnEditPanelPosition"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="UI 편집"
+                    android:textSize="14sp"
+                    android:textColor="#F2F2F7"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="14dp"
+                    android:drawableStart="@drawable/ic_edit_pencil"
+                    android:drawableTint="#F2F2F7"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+                <View style="@style/ActionSheetDivider"/>
 
-            <!-- v3.5: 도움말 - 항상 GitHub 최신 릴리즈 노트를 웹으로 열어서 업데이트해도
-                 항상 최신 내용 보여줌(사용자 지적 10번) -->
-            <Button
-                android:id="@+id/btnHelp"
-                android:layout_width="match_parent"
-                android:layout_height="42dp"
-                android:text="업데이트 내역"
-                android:textSize="15sp"
-                android:textColor="#CCCCCC"
-                android:gravity="center_vertical|start"
-                android:paddingStart="10dp"
-                android:drawableStart="@drawable/ic_help_info"
-                android:drawableTint="#CCCCCC"
-                android:drawablePadding="10dp"
-                android:backgroundTint="#111111"
-                android:layout_marginBottom="4dp"/>
+                <Button
+                    android:id="@+id/btnCheckUpdate"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="업데이트 확인"
+                    android:textSize="14sp"
+                    android:textColor="#F2F2F7"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="14dp"
+                    android:drawableStart="@drawable/ic_refresh"
+                    android:drawableTint="#F2F2F7"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+                <View style="@style/ActionSheetDivider"/>
 
-            <Button
-                android:id="@+id/btnDeleteAllLogs"
-                android:layout_width="match_parent"
-                android:layout_height="42dp"
-                android:text="로그 전체 삭제"
-                android:textSize="15sp"
-                android:textColor="#CCCCCC"
-                android:gravity="center_vertical|start"
-                android:paddingStart="10dp"
-                android:drawableStart="@drawable/ic_send_paperplane"
-                android:drawableTint="#CCCCCC"
-                android:drawablePadding="10dp"
-                android:backgroundTint="#111111"
-                android:layout_marginBottom="4dp"/>
+                <!-- v3.5: 도움말 - 항상 GitHub 최신 릴리즈 노트를 웹으로 열어서 업데이트해도
+                     항상 최신 내용 보여줌(사용자 지적 10번) -->
+                <Button
+                    android:id="@+id/btnHelp"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="업데이트 내역"
+                    android:textSize="14sp"
+                    android:textColor="#F2F2F7"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="14dp"
+                    android:drawableStart="@drawable/ic_help_info"
+                    android:drawableTint="#F2F2F7"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+
+            </LinearLayout>
+
+            <View android:layout_width="1dp" android:layout_height="8dp"/>
 
             <!-- v4.14: 메뉴 순서 조정 - "설정"을 로그 전체 삭제와 도움말 사이로 이동
-                 (사용자 요청). #문제시 원복 -->
-            <!-- v: 신규기능(주차 위치) - "설정" 바로 위에 추가(재억 확인 완료). #문제시 원복 -->
-            <Button
-                android:id="@+id/btnParkedLocation"
+                 (사용자 요청). v: 신규기능(주차 위치) - "설정" 바로 위에 추가(재억 확인 완료). -->
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="42dp"
-                android:text="내 차 위치"
-                android:textSize="15sp"
-                android:textColor="#CCCCCC"
-                android:gravity="center_vertical|start"
-                android:paddingStart="10dp"
-                android:drawableStart="@drawable/ic_event_parking"
-                android:drawableTint="#CCCCCC"
-                android:drawablePadding="10dp"
-                android:backgroundTint="#111111"
-                android:layout_marginBottom="4dp"/>
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_action_sheet">
 
-            <Button
-                android:id="@+id/btnEditKey"
-                android:layout_width="match_parent"
-                android:layout_height="42dp"
-                android:text="설정"
-                android:textSize="15sp"
-                android:textColor="#CCCCCC"
-                android:gravity="center_vertical|start"
-                android:paddingStart="10dp"
-                android:drawableStart="@drawable/ic_settings_gear"
-                android:drawableTint="#CCCCCC"
-                android:drawablePadding="10dp"
-                android:backgroundTint="#111111"
-                android:layout_marginBottom="4dp"/>
+                <Button
+                    android:id="@+id/btnParkedLocation"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="내 차 위치"
+                    android:textSize="14sp"
+                    android:textColor="#F2F2F7"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="14dp"
+                    android:drawableStart="@drawable/ic_event_parking"
+                    android:drawableTint="#F2F2F7"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+                <View style="@style/ActionSheetDivider"/>
 
-            <Button
-                android:id="@+id/btnGuideHelp"
-                android:layout_width="match_parent"
-                android:layout_height="42dp"
-                android:text="도움말"
-                android:textSize="15sp"
-                android:textColor="#CCCCCC"
-                android:gravity="center_vertical|start"
-                android:paddingStart="10dp"
-                android:drawableStart="@drawable/ic_guide_book"
-                android:drawableTint="#CCCCCC"
-                android:drawablePadding="10dp"
-                android:backgroundTint="#111111"
-                android:layout_marginBottom="4dp"/>
+                <Button
+                    android:id="@+id/btnEditKey"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="설정"
+                    android:textSize="14sp"
+                    android:textColor="#F2F2F7"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="14dp"
+                    android:drawableStart="@drawable/ic_settings_gear"
+                    android:drawableTint="#F2F2F7"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+                <View style="@style/ActionSheetDivider"/>
 
-            <Button
-                android:id="@+id/btnExitApp"
+                <Button
+                    android:id="@+id/btnGuideHelp"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="도움말"
+                    android:textSize="14sp"
+                    android:textColor="#F2F2F7"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="14dp"
+                    android:drawableStart="@drawable/ic_guide_book"
+                    android:drawableTint="#F2F2F7"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+
+            </LinearLayout>
+
+            <View android:layout_width="1dp" android:layout_height="8dp"/>
+
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="42dp"
-                android:text="앱 종료"
-                android:textSize="15sp"
-                android:textColor="#EF5350"
-                android:gravity="center_vertical|start"
-                android:paddingStart="10dp"
-                android:drawableStart="@drawable/ic_power_off"
-                android:drawableTint="#EF5350"
-                android:drawablePadding="10dp"
-                android:backgroundTint="#1A0000"/>
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_action_sheet">
+
+                <Button
+                    android:id="@+id/btnDeleteAllLogs"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="로그 전체 삭제"
+                    android:textSize="14sp"
+                    android:textColor="#FF453A"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="14dp"
+                    android:drawableStart="@drawable/ic_send_paperplane"
+                    android:drawableTint="#FF453A"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+                <View style="@style/ActionSheetDivider"/>
+
+                <Button
+                    android:id="@+id/btnExitApp"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="앱 종료"
+                    android:textSize="14sp"
+                    android:textColor="#FF453A"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="14dp"
+                    android:drawableStart="@drawable/ic_power_off"
+                    android:drawableTint="#FF453A"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/tvAppVersion"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
                 android:text=""
-                android:textColor="#333333"
+                android:textColor="#5C5C5E"
                 android:textSize="9sp"
                 android:layout_marginTop="8dp"/>
 

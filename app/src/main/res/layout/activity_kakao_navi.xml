@@ -489,6 +489,7 @@
     </FrameLayout>
 
     <!-- v3.0: 보조 패널을 llLeftHudPanel 밖으로 분리 (Tmap 화면과 동일 이유) -->
+    <!-- 재억 요청 - 애플(iOS) 액션시트 스타일. ID는 기존 그대로 유지. #문제시 원복 -->
     <ScrollView
         android:id="@+id/svSecondaryPanel"
         android:layout_width="wrap_content"
@@ -497,145 +498,169 @@
         android:layout_marginTop="60dp"
         android:layout_marginEnd="4dp"
         android:visibility="gone"
-        android:background="#0D0D0D"
+        android:background="@android:color/transparent"
         android:elevation="22dp"
         android:overScrollMode="never"
-        android:maxHeight="420dp">
+        android:maxHeight="460dp">
 
         <LinearLayout
-            android:layout_width="280dp"
+            android:layout_width="270dp"
             android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- v7.9: "로그 전송"은 상단바 고정 버튼(btnShareLogTopBar)으로 이동됨 -
+                 메뉴 밖으로 뺌 (재억 요청). -->
+
+            <!-- v4.23: "일부 모바일 폰에서 메뉴에 UI편집/설정이 안보임"(사용자 지적) -
+                 PanelDragHelper.wireEditToggleButton()이 필요로 하는 btnConfirmEditPosition/
+                 llLeftHudPanel이 이 레이아웃(세로 카카오)에도 이미 다 있어서, 가로 카카오/티맵과
+                 동일하게 추가. -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="14dp">
+                android:background="@drawable/bg_action_sheet">
 
-                <!-- v7.9: "로그 전송"은 상단바 고정 버튼(btnShareLogTopBar)으로 이동됨 -
-                     메뉴 밖으로 뺌 (재억 요청). #문제시 원복 -->
-
-                <!-- v4.23: "일부 모바일 폰에서 메뉴에 UI편집/설정이 안보임"(사용자 지적) -
-                     예전엔 "티맵 전용 상태와 얽혀있어 보류"라고 남겨뒀었는데, 확인해보니
-                     PanelDragHelper.wireEditToggleButton()이 필요로 하는 btnConfirmEditPosition/
-                     llLeftHudPanel이 이 레이아웃(세로 카카오)에도 이미 다 있고, 가로 카카오
-                     화면도 완전히 같은 공용 코드로 이미 잘 동작 중이라 - 굳이 뺄 이유가 없었음.
-                     가로 카카오/티맵과 동일하게 추가. #문제시 원복 -->
                 <Button
                     android:id="@+id/btnEditPanelPosition"
                     android:layout_width="match_parent"
-                    android:layout_height="42dp"
+                    android:layout_height="46dp"
                     android:text="UI 편집"
-                    android:textSize="15sp"
-                    android:textColor="#CCCCCC"
+                    android:textSize="14sp"
+                    android:textColor="#F2F2F7"
                     android:gravity="center_vertical|start"
-                    android:paddingStart="10dp"
+                    android:paddingStart="14dp"
                     android:drawableStart="@drawable/ic_edit_pencil"
-                    android:drawableTint="#CCCCCC"
-                    android:drawablePadding="10dp"
-                    android:backgroundTint="#111111"
-                    android:layout_marginBottom="4dp"/>
+                    android:drawableTint="#F2F2F7"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+                <View style="@style/ActionSheetDivider"/>
 
                 <!-- v3.8: 티맵 화면과 동일하게 업데이트확인/도움말/앱종료 추가
-                     (사용자 지적 2·3번: "카카오 화면 더보기가 티맵보다 항목이 적음"). #문제시 원복 -->
+                     (사용자 지적 2·3번: "카카오 화면 더보기가 티맵보다 항목이 적음"). -->
                 <Button
                     android:id="@+id/btnCheckUpdate"
                     android:layout_width="match_parent"
-                    android:layout_height="42dp"
+                    android:layout_height="46dp"
                     android:text="업데이트 확인"
-                    android:textSize="15sp"
-                    android:textColor="#CCCCCC"
+                    android:textSize="14sp"
+                    android:textColor="#F2F2F7"
                     android:gravity="center_vertical|start"
-                    android:paddingStart="10dp"
+                    android:paddingStart="14dp"
                     android:drawableStart="@drawable/ic_refresh"
-                    android:drawableTint="#CCCCCC"
-                    android:drawablePadding="10dp"
-                    android:backgroundTint="#111111"
-                    android:layout_marginBottom="4dp"/>
+                    android:drawableTint="#F2F2F7"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+                <View style="@style/ActionSheetDivider"/>
 
                 <Button
                     android:id="@+id/btnHelp"
                     android:layout_width="match_parent"
-                    android:layout_height="42dp"
+                    android:layout_height="46dp"
                     android:text="업데이트 내역"
-                    android:textSize="15sp"
-                    android:textColor="#CCCCCC"
+                    android:textSize="14sp"
+                    android:textColor="#F2F2F7"
                     android:gravity="center_vertical|start"
-                    android:paddingStart="10dp"
+                    android:paddingStart="14dp"
                     android:drawableStart="@drawable/ic_help_info"
-                    android:drawableTint="#CCCCCC"
-                    android:drawablePadding="10dp"
-                    android:backgroundTint="#111111"
-                    android:layout_marginBottom="4dp"/>
+                    android:drawableTint="#F2F2F7"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
 
-                <Button
-                    android:id="@+id/btnDeleteAllLogs"
-                    android:layout_width="match_parent"
-                    android:layout_height="42dp"
-                    android:text="로그 전체 삭제"
-                    android:textSize="15sp"
-                    android:textColor="#CCCCCC"
-                    android:gravity="center_vertical|start"
-                    android:paddingStart="10dp"
-                    android:drawableStart="@drawable/ic_send_paperplane"
-                    android:drawableTint="#CCCCCC"
-                    android:drawablePadding="10dp"
-                    android:backgroundTint="#111111"
-                    android:layout_marginBottom="4dp"/>
+            </LinearLayout>
 
-                <!-- v4.14: 메뉴 순서 조정 - "설정"을 로그 전체 삭제와 도움말 사이로 이동
-                     (사용자 요청), v4.23: 세로 카카오에도 신규 추가. #문제시 원복 -->
+            <View android:layout_width="1dp" android:layout_height="8dp"/>
+
+            <!-- v4.14: 메뉴 순서 조정 - "설정"을 로그 전체 삭제와 도움말 사이로 이동
+                 (사용자 요청), v4.23: 세로 카카오에도 신규 추가. -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_action_sheet">
+
                 <Button
                     android:id="@+id/btnEditKey"
                     android:layout_width="match_parent"
-                    android:layout_height="42dp"
+                    android:layout_height="46dp"
                     android:text="설정"
-                    android:textSize="15sp"
-                    android:textColor="#CCCCCC"
+                    android:textSize="14sp"
+                    android:textColor="#F2F2F7"
                     android:gravity="center_vertical|start"
-                    android:paddingStart="10dp"
+                    android:paddingStart="14dp"
                     android:drawableStart="@drawable/ic_settings_gear"
-                    android:drawableTint="#CCCCCC"
-                    android:drawablePadding="10dp"
-                    android:backgroundTint="#111111"
-                    android:layout_marginBottom="4dp"/>
+                    android:drawableTint="#F2F2F7"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+                <View style="@style/ActionSheetDivider"/>
 
                 <Button
                     android:id="@+id/btnGuideHelp"
                     android:layout_width="match_parent"
-                    android:layout_height="42dp"
+                    android:layout_height="46dp"
                     android:text="도움말"
-                    android:textSize="15sp"
-                    android:textColor="#CCCCCC"
+                    android:textSize="14sp"
+                    android:textColor="#F2F2F7"
                     android:gravity="center_vertical|start"
-                    android:paddingStart="10dp"
+                    android:paddingStart="14dp"
                     android:drawableStart="@drawable/ic_guide_book"
-                    android:drawableTint="#CCCCCC"
-                    android:drawablePadding="10dp"
-                    android:backgroundTint="#111111"
-                    android:layout_marginBottom="4dp"/>
+                    android:drawableTint="#F2F2F7"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+
+            </LinearLayout>
+
+            <View android:layout_width="1dp" android:layout_height="8dp"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_action_sheet">
+
+                <Button
+                    android:id="@+id/btnDeleteAllLogs"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="로그 전체 삭제"
+                    android:textSize="14sp"
+                    android:textColor="#FF453A"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="14dp"
+                    android:drawableStart="@drawable/ic_send_paperplane"
+                    android:drawableTint="#FF453A"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+                <View style="@style/ActionSheetDivider"/>
 
                 <Button
                     android:id="@+id/btnExitApp"
                     android:layout_width="match_parent"
-                    android:layout_height="42dp"
+                    android:layout_height="46dp"
                     android:text="앱 종료"
-                    android:textSize="15sp"
-                    android:textColor="#EF5350"
+                    android:textSize="14sp"
+                    android:textColor="#FF453A"
                     android:gravity="center_vertical|start"
-                    android:paddingStart="10dp"
+                    android:paddingStart="14dp"
                     android:drawableStart="@drawable/ic_power_off"
-                    android:drawableTint="#EF5350"
-                    android:backgroundTint="#1A0000"
-                    android:layout_marginBottom="4dp"/>
-
-                <TextView
-                    android:id="@+id/tvAppVersion"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text=""
-                    android:textColor="#333333"
-                    android:textSize="9sp"
-                    android:layout_marginTop="4dp"/>
+                    android:drawableTint="#FF453A"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
 
             </LinearLayout>
-        </ScrollView>
+
+            <TextView
+                android:id="@+id/tvAppVersion"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:text=""
+                android:textColor="#5C5C5E"
+                android:textSize="9sp"
+                android:layout_marginTop="8dp"/>
+
+        </LinearLayout>
+    </ScrollView>
 
     <!-- v3.1: 사용자 요청 - EVENT/SIGNAL/최근검색을 더보기 목록에서 제거하되 내부 로직은 유지. #문제시 원복 -->
     <LinearLayout

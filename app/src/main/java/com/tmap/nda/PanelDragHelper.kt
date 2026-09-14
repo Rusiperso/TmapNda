@@ -13,6 +13,14 @@ import androidx.core.view.WindowInsetsCompat
  * private로 있던 로직을 여기로 옮겨서 두 화면이 같이 씀. #문제시 원복
  */
 object PanelDragHelper {
+    // 재억 요청 - 앱 전체 팝업을 애플(iOS) 스타일로 맞추면서, "삭제"처럼 되돌릴 수 없는
+    // 버튼은 iOS 알림창처럼 빨간 글씨로 구분. RoundedDialogTheme의 colorAccent(파란색)는
+    // 모든 버튼에 공통 적용되므로, 위험한 버튼만 이 함수로 show() 직후 개별 덮어씀. #문제시 원복
+    fun tintDestructivePositiveButton(dialog: android.app.AlertDialog) {
+        dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
+            ?.setTextColor(android.graphics.Color.parseColor("#FF453A"))
+    }
+
     // 편집모드는 앱 전체에서 하나만 존재 - 화면(Activity)이 바뀌어도 같은 상태 유지
     var isEditMode = false
 

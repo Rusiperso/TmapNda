@@ -6,7 +6,19 @@
     <!-- 재억 요청 - 앱 안 모든 팝업(주변탐색/경유지추가/최근검색/즐겨찾기 등, 전부 android.R.style.Theme_Material_Dialog_Alert
          공용 사용)을 각진 모서리 대신 둥근 모서리로 통일. 색은 기존 Material 다크 다이얼로그 배경(#303030)과
          동일하게 유지 - 모서리만 둥글게. #문제시 원복 -->
+    <!-- 재억 요청 - 앱 전체 팝업을 애플(iOS) 느낌으로: 반투명 다크 배경(bg_dialog_rounded) +
+         버튼 글자색을 iOS 파란색(#0A84FF)으로 통일. colorAccent 하나로 setPositiveButton/
+         setNegativeButton 등 android.app.AlertDialog 표준 버튼 전부가 한번에 파란색이 됨. #문제시 원복 -->
     <style name="RoundedDialogTheme" parent="android:Theme.Material.Dialog.Alert">
         <item name="android:windowBackground">@drawable/bg_dialog_rounded</item>
+        <item name="android:colorAccent">#0A84FF</item>
+        <item name="android:textColorPrimary">#F2F2F7</item>
+    </style>
+
+    <!-- 더보기(≡) 메뉴 액션시트 카드 안 항목 사이 얇은 구분선(iOS 스타일) -->
+    <style name="ActionSheetDivider">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">0.6dp</item>
+        <item name="android:background">#3D3D3D</item>
     </style>
 </resources>
