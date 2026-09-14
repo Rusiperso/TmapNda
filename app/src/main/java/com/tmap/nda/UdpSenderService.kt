@@ -36,6 +36,8 @@ import java.util.concurrent.TimeUnit
 
 class UdpSenderService : Service() {
 
+    private val usbAccessoryReceiver = UsbAccessoryReceiver()
+
     private val CHANNEL_ID = "TmapNdaChannel"
     private val UDP_PORT = 7706
     private var targetIp = "255.255.255.255"
@@ -528,6 +530,17 @@ class UdpSenderService : Service() {
 
         createUdpSendSocket()
         registerWifiNetworkWatcher()
+
+        // v: 재억 요청(2026-09-15) - USB 액세서리(AA) 연결/해제 감지해서 폰 화면 블랙
+        // 오버레이 켜고 끄기. #문제시 원복
+        try {
+            registerReceiver(
+                usbAccessoryReceiver,
+                android.content.IntentFilter("android.hardware.usb.action.USB_STATE")
+            )
+        } catch (e: Exception) {
+            NavLogger.e(this, "[화면블랙] USB 상태 리시버 등록 실패: ${e.message}")
+        }
 
         try {
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -2245,6 +2258,11 @@ class UdpSenderService : Service() {
         NavLogger.e(this, "===== UdpSenderService.onDestroy() 호출됨 - 서비스 종료됨 =====\n$trace")
         // v: [초안 - 미커밋] TmapNdaCarNotifier도 같이 정리 (리스너 해제 + 알림 취소). #문제시 원복
         com.tmap.nda.hud.TmapNdaCarNotifier.stop()
+        try {
+            unregisterReceiver(usbAccessoryReceiver)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         super.onDestroy()
         // isRunning을 가장 먼저 false로 내려서, 각 수신 루프들이 while(isActive && isRunning.get())
         // 조건에서 스스로 빠져나오도록 신호를 준 뒤 소켓을 닫는다.

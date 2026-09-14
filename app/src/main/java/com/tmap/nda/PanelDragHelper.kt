@@ -512,6 +512,15 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
+        // v: 재억 요청(2026-09-15) - 차량 USB(AA 액세서리 모드) 연결시 폰 화면을 검게
+        // 덮는 기능. 엔미러 안 쓰는 사람에게도 적용될 수 있어서 기본값 꺼짐(false),
+        // 필요한 사람만 켜서 쓰게 함. #문제시 원복
+        val blackScreenOnUsbConnectCheckBox = android.widget.Switch(context).apply {
+            text = "차량 연결시 폰 화면 블랙 처리"
+            isChecked = pref.getBoolean("black_screen_on_usb_connect", false)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
         val unlockMapTouchCheckBox = if (touchLockOverlay != null) {
             android.widget.Switch(context).apply {
                 text = "티맵 터치 잠금 해제 (핀치줌/드래그 허용)"
@@ -741,7 +750,8 @@ object PanelDragHelper {
             unlockMapTouchCheckBox,         // 티맵 터치 잠금 해제 (핀치줌/드래그 허용) - 화면표시로 이동
             showLaneOverlayTmapCheckBox,    // 차선 안내 오버레이 표시 (Tmap 화면 한정)
             showMiniPlayerCheckBox,          // 미니 플레이어 표시
-            showToggleTopPanelButtonCheckBox // 상단바 표시/숨김 플로팅 버튼 보이기
+            showToggleTopPanelButtonCheckBox, // 상단바 표시/숨김 플로팅 버튼 보이기
+            blackScreenOnUsbConnectCheckBox   // 차량 연결시 폰 화면 블랙 처리
         ))
         addAccordionGroup("버튼 표시", listOf(
             showWaypointButtonCheckBox,      // 경유지 버튼 표시
@@ -827,6 +837,7 @@ object PanelDragHelper {
                     .putBoolean("lane_overlay_tmap_enabled", showLaneOverlayTmapCheckBox.isChecked)
                     .putBoolean("USE_KM_DISTANCE_FORMAT", distanceFormatKmCheckBox.isChecked)
                     .putBoolean("arrival_radius_alert_enabled", arrivalRadiusAlertCheckBox.isChecked)
+                    .putBoolean("black_screen_on_usb_connect", blackScreenOnUsbConnectCheckBox.isChecked)
                     .putBoolean("show_waypoint_button", showWaypointButtonCheckBox.isChecked)
                     .putBoolean("show_category_button", showCategoryButtonCheckBox.isChecked)
                     .putBoolean("show_cancel_waypoint_button", showCancelWaypointButtonCheckBox.isChecked)

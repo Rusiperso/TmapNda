@@ -128,6 +128,11 @@
             android:foregroundServiceType="location"
             android:exported="false" />
 
+        <!-- v: 재억 요청(2026-09-15) - 차량 USB 연결시 폰 화면 블랙 오버레이. #문제시 원복 -->
+        <service
+            android:name=".BlackScreenOverlayService"
+            android:exported="false" />
+
         <!-- v4.24: "순정 티맵은 HUD 되는데 TmapNda 카카오는 안 된다"(사용자, 반복 지적) -
              순정 티맵 APK를 까봐서 비교한 결과, TmapCarAppService가 NAVIGATION과 함께
              FEATURE_CLUSTER 카테고리도 선언하고 있었음. 예전 코멘트("계기판 지도를 직접
