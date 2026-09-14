@@ -277,7 +277,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="top"
         android:elevation="20dp"
-        android:background="#8C0A0A0C">
+        android:background="@android:color/transparent">
 
         <!-- v3.11: 화면 좁을 때 대비 가로 스크롤 가능하게 감쌈. #문제시 원복 -->
         <HorizontalScrollView
@@ -297,12 +297,19 @@
             android:paddingVertical="4dp"
             android:paddingHorizontal="12dp">
 
+            <!-- v19.3.60: 재억 요청 - 큰 검은 바 배경을 없애고 요소별로 반투명 유리 칩(bg_chip_glass)에
+                 따로 떠있게 함. 이 llTopBarRow 전체는 그대로 한 덩어리라 UI편집 드래그/스냅 할 때
+                 이 안의 속도·연결상태·버튼들이 항상 같이 통째로 이동함(부모 컨테이너만 옮기므로).
+                 #문제시 원복 -->
             <!-- 속도 -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:gravity="bottom">
+                android:gravity="bottom"
+                android:background="@drawable/bg_chip_glass"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="4dp">
 
                 <TextView
                     android:id="@+id/tvCurrentSpeed"
@@ -328,14 +335,17 @@
                     android:layout_marginBottom="4dp"/>
             </LinearLayout>
 
-            <View android:layout_width="1dp" android:layout_height="28dp" android:background="#1A1A1A" android:layout_marginHorizontal="10dp"/>
+            <View android:layout_width="8dp" android:layout_height="0dp"/>
 
             <!-- 상태 -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:gravity="start">
+                android:gravity="start"
+                android:background="@drawable/bg_chip_glass"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="4dp">
 
                 <LinearLayout
                     android:layout_width="wrap_content"
@@ -372,7 +382,7 @@
                     android:layout_marginTop="1dp"/>
             </LinearLayout>
 
-            <View android:layout_width="16dp" android:layout_height="0dp"/>
+            <View android:layout_width="8dp" android:layout_height="0dp"/>
 
             <Button
                 android:id="@+id/btnGpsStatus"
@@ -386,7 +396,7 @@
                 android:ellipsize="end"
                 android:includeFontPadding="false"
                 android:paddingHorizontal="8dp"
-                android:backgroundTint="#4D5A5A5E"
+                android:backgroundTint="#9928282C"
                 android:layout_marginEnd="8dp"/>
 
             <LinearLayout
