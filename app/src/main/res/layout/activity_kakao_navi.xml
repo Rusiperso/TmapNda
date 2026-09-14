@@ -117,6 +117,10 @@
                     android:text="0"
                     android:textColor="#FFFFFF"
                     android:textSize="28sp"
+                    android:shadowColor="#CC000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="3"
                     android:textStyle="bold"/>
 
                 <TextView
@@ -178,8 +182,12 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Cruise Off"
-                            android:textColor="#CCCCCC"
+                            android:textColor="#FFFFFF"
                             android:textSize="9sp"
+                            android:shadowColor="#CC000000"
+                            android:shadowDx="0"
+                            android:shadowDy="0"
+                            android:shadowRadius="3"
                             android:maxLines="1"
                             android:ellipsize="end"/>
                     </LinearLayout>
@@ -189,7 +197,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="콤마 연결 대기"
-                        android:textColor="#CCCCCC"
+                        android:textColor="#FFFFFF"
                         android:textSize="13sp"
                         android:textStyle="bold"
                         android:layout_marginTop="1dp"/>
@@ -250,8 +258,12 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="1dp"
                     android:text="무음"
-                    android:textColor="#CCCCCC"
+                    android:textColor="#FFFFFF"
                     android:textSize="8sp"
+                    android:shadowColor="#CC000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="2.5"
                     android:includeFontPadding="false"/>
             </LinearLayout>
 
@@ -280,8 +292,12 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="1dp"
                     android:text="음성"
-                    android:textColor="#CCCCCC"
+                    android:textColor="#FFFFFF"
                     android:textSize="8sp"
+                    android:shadowColor="#CC000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="2.5"
                     android:includeFontPadding="false"/>
             </LinearLayout>
 
@@ -294,7 +310,7 @@
                 android:layout_height="38dp"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
-                android:background="@drawable/bg_sdi_panel"
+                android:background="@drawable/bg_chip_glass"
                 android:paddingHorizontal="10dp">
 
                 <EditText
@@ -350,8 +366,12 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="1dp"
                     android:text="집"
-                    android:textColor="#CCCCCC"
+                    android:textColor="#FFFFFF"
                     android:textSize="8sp"
+                    android:shadowColor="#CC000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="2.5"
                     android:includeFontPadding="false"/>
             </LinearLayout>
 
@@ -377,8 +397,12 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="1dp"
                     android:text="회사"
-                    android:textColor="#CCCCCC"
+                    android:textColor="#FFFFFF"
                     android:textSize="8sp"
+                    android:shadowColor="#CC000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="2.5"
                     android:includeFontPadding="false"/>
             </LinearLayout>
 
@@ -406,8 +430,12 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="1dp"
                     android:text="로그"
-                    android:textColor="#CCCCCC"
+                    android:textColor="#FFFFFF"
                     android:textSize="8sp"
+                    android:shadowColor="#CC000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="2.5"
                     android:includeFontPadding="false"/>
             </LinearLayout>
 
@@ -436,8 +464,12 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="1dp"
                     android:text="메뉴"
-                    android:textColor="#CCCCCC"
+                    android:textColor="#FFFFFF"
                     android:textSize="8sp"
+                    android:shadowColor="#CC000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="2.5"
                     android:includeFontPadding="false"/>
             </LinearLayout>
 
@@ -778,8 +810,12 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="1dp"
             android:text="주변"
-            android:textColor="#CCCCCC"
+            android:textColor="#FFFFFF"
             android:textSize="8sp"
+            android:shadowColor="#CC000000"
+            android:shadowDx="0"
+            android:shadowDy="0"
+            android:shadowRadius="2.5"
             android:includeFontPadding="false"/>
     </LinearLayout>
 
@@ -808,8 +844,12 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="1dp"
             android:text="경유지"
-            android:textColor="#CCCCCC"
+            android:textColor="#FFFFFF"
             android:textSize="8sp"
+            android:shadowColor="#CC000000"
+            android:shadowDx="0"
+            android:shadowDy="0"
+            android:shadowRadius="2.5"
             android:includeFontPadding="false"/>
     </LinearLayout>
 
@@ -843,6 +883,10 @@
             android:text="취소"
             android:textColor="#FFFFFF"
             android:textSize="8sp"
+            android:shadowColor="#CC000000"
+            android:shadowDx="0"
+            android:shadowDy="0"
+            android:shadowRadius="2.5"
             android:includeFontPadding="false"/>
     </LinearLayout>
 

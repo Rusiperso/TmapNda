@@ -1215,7 +1215,10 @@ class MapActivity : AppCompatActivity() {
                 val row = android.widget.LinearLayout(this@MapActivity).apply {
                     orientation = android.widget.LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
-                    setBackgroundColor(android.graphics.Color.parseColor("#181818"))
+                    // v19.3.61: 재억 지적 - 리스트 줄마다 따로 불투명 배경(#181818)을 씌워서
+                    // 다이얼로그 전체를 반투명으로 바꿔도 이 줄들만 진하게 남아있었음. 투명하게
+                    // 바꿔서 다이얼로그 창 배경(RoundedDialogTheme)이 그대로 비치게 함. #문제시 원복
+                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
                     setPadding(24, 20, 16, 20)
                 }
                 val nameText = android.widget.TextView(this@MapActivity).apply {
@@ -1295,7 +1298,7 @@ class MapActivity : AppCompatActivity() {
 
         listView = android.widget.ListView(this)
         listView.adapter = buildAdapter()
-        listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
+        listView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
 
@@ -1516,7 +1519,7 @@ class MapActivity : AppCompatActivity() {
 
         val listView = android.widget.ListView(this)
         listView.adapter = darkTextAdapter(history.map { if (it.addr.isNotBlank()) "${it.name}\n${it.addr}" else it.name })
-        listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
+        listView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
 
@@ -2478,7 +2481,7 @@ class MapActivity : AppCompatActivity() {
         val lastPage = (hits.size - 1) / pageSize
 
         val listView = android.widget.ListView(this@MapActivity)
-        listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
+        listView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
 

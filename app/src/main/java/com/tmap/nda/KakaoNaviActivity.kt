@@ -1970,7 +1970,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 val row = android.widget.LinearLayout(this@KakaoNaviActivity).apply {
                     orientation = android.widget.LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
-                    setBackgroundColor(android.graphics.Color.parseColor("#181818"))
+                    // v19.3.61: Tmap 화면과 동일 - 줄마다 따로 불투명 배경 씌우던 것 투명으로. #문제시 원복
+                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
                     setPadding(24, 20, 16, 20)
                 }
                 val nameText = android.widget.TextView(this@KakaoNaviActivity).apply {
@@ -2067,7 +2068,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
         listView = android.widget.ListView(this)
         listView.adapter = buildAdapter()
-        listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
+        listView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
 
@@ -3012,7 +3013,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val lastPage = (hits.size - 1) / pageSize
 
         val listView = android.widget.ListView(this@KakaoNaviActivity)
-        listView.setBackgroundColor(android.graphics.Color.parseColor("#181818"))
+        listView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
 
