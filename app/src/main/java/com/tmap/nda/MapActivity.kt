@@ -118,10 +118,19 @@ class MapActivity : AppCompatActivity() {
     // 따라 지도 위/아래 여백을 다시 계산 - 위에 붙어있으면 기존처럼 지도 위쪽을 밀어내고,
     // 아래에 붙어있으면 반대로 지도 아래쪽을 그만큼 밀어내고 위쪽은 비움. 가운데 등
     // 애매한 위치면 어느 쪽도 안 밀어냄(불투명 바가 지도 위에 그냥 떠있는 형태). #문제시 원복
+    // v19.3.59: 재억 요청 - 상단바를 반투명 유리로 바꿨는데, 지도가 상단바 높이(panelHeight)
+    // 전체만큼 밀려나 있어서 바 밑에 지도가 아예 없어 반투명이 눈에 안 보이던 문제. v19.3.25가
+    // "바 기본 높이(baseHeight) 안쪽은 어차피 불투명해서 안 보인다"는 전제로 panelHeight 전체를
+    // 밀어냈던 건데, 이제 그 전제가 깨져서 원복. 기본 높이만큼은 지도를 그대로 두고(반투명 바
+    // 밑으로 비치게), 큰 폰트 등으로 바가 기본보다 "더 커진 만큼(expandedHeight)"만 밀어냄 -
+    // v19.3.25가 고치려던 폴드4 커버 화면 회전아이콘 문제는 기본 높이 구간에서 재발할 수 있으니
+    // 제보 오면 다시 살펴볼 것. #문제시 원복
     private fun applyMapOffsetForBarPosition() {
         val panel = binding.llLeftHudPanel ?: return
         val panelHeight = panel.height
         if (panelHeight <= 0) return
+        val baseHeight = binding.llTopBarRow.minimumHeight
+        val expandedHeight = (panelHeight - baseHeight).coerceAtLeast(0)
         val tmapLayout = binding.tmapUILayout
         val params = tmapLayout.layoutParams as? ViewGroup.MarginLayoutParams ?: return
         val originalTop = originalTopMargins.getOrPut(tmapLayout.id) { 0 }
@@ -129,12 +138,12 @@ class MapActivity : AppCompatActivity() {
         val safeBottom = lastAppliedBottomInset.coerceAtLeast(0)
         when (PanelDragHelper.currentSnapEdge(panel)) {
             PanelDragHelper.SnapEdge.TOP -> {
-                params.topMargin = originalTop + panelHeight
+                params.topMargin = originalTop + expandedHeight
                 params.bottomMargin = originalBottom + safeBottom
             }
             PanelDragHelper.SnapEdge.BOTTOM -> {
                 params.topMargin = originalTop
-                params.bottomMargin = originalBottom + safeBottom + panelHeight
+                params.bottomMargin = originalBottom + safeBottom + expandedHeight
             }
             PanelDragHelper.SnapEdge.OTHER -> {
                 params.topMargin = originalTop

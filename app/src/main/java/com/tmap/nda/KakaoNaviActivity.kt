@@ -127,22 +127,27 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // v19.3.30: 재억 요청(Tmap 화면과 동일) - 상단바를 화면 아래로 내려서 확정하면 지도가
     // 그만큼 위로 올라와서 자리를 맞바꿔야 함. 상단바가 화면 위/아래 어느 가장자리에
     // 붙어있는지(PanelDragHelper.currentSnapEdge)에 따라 naviView 위/아래 여백을 다시 계산. #문제시 원복
+    // v19.3.59: Tmap 화면과 동일 - 상단바가 반투명 유리로 바뀌면서, 지도를 상단바 높이
+    // 전체만큼 밀어내면 바 밑에 지도가 없어 반투명이 안 보임. 바 기본 높이(baseHeight)만큼은
+    // 지도를 그대로 두고, 그보다 "더 커진 만큼(expandedHeight)"만 밀어냄. #문제시 원복
     private fun applyMapOffsetForBarPosition() {
         val panel = binding.llLeftHudPanel ?: return
         val panelHeight = panel.height
         if (panelHeight <= 0) return
+        val baseHeight = binding.llTopBarRow.minimumHeight
+        val expandedHeight = (panelHeight - baseHeight).coerceAtLeast(0)
         val naviViewRef = naviView
         val params = naviViewRef.layoutParams as? ViewGroup.MarginLayoutParams ?: return
         val originalTop = originalTopMargins.getOrPut(naviViewRef.id) { 0 }
         val originalBottom = originalBottomMargins.getOrPut(naviViewRef.id) { params.bottomMargin }
         when (PanelDragHelper.currentSnapEdge(panel)) {
             PanelDragHelper.SnapEdge.TOP -> {
-                params.topMargin = originalTop + panelHeight
+                params.topMargin = originalTop + expandedHeight
                 params.bottomMargin = originalBottom
             }
             PanelDragHelper.SnapEdge.BOTTOM -> {
                 params.topMargin = originalTop
-                params.bottomMargin = originalBottom + panelHeight
+                params.bottomMargin = originalBottom + expandedHeight
             }
             PanelDragHelper.SnapEdge.OTHER -> {
                 params.topMargin = originalTop
