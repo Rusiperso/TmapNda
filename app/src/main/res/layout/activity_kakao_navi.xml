@@ -74,7 +74,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="top"
         android:elevation="20dp"
-        android:background="#080808">
+        android:background="#8C0A0A0C">
 
         <!-- 상시 노출 줄: 속도 / 제한 / 상태 / GPS / 음소거 / 검색 / 메뉴.
              v3.11: 화면이 좁아서 내용이 잘리는 경우(사용자 지적: "겔럭시 Fe23 6.4인치에서
@@ -213,7 +213,7 @@
                 android:ellipsize="end"
                 android:includeFontPadding="false"
                 android:paddingHorizontal="10dp"
-                android:backgroundTint="#111111" />
+                android:backgroundTint="#4D5A5A5E" />
 
             <View android:layout_width="1dp" android:layout_height="28dp" android:background="#1A1A1A" android:layout_marginHorizontal="8dp"/>
 

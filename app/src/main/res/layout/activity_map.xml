@@ -277,7 +277,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="top"
         android:elevation="20dp"
-        android:background="#FF080808">
+        android:background="#8C0A0A0C">
 
         <!-- v3.11: 화면 좁을 때 대비 가로 스크롤 가능하게 감쌈. #문제시 원복 -->
         <HorizontalScrollView
@@ -386,7 +386,7 @@
                 android:ellipsize="end"
                 android:includeFontPadding="false"
                 android:paddingHorizontal="8dp"
-                android:backgroundTint="#111111"
+                android:backgroundTint="#4D5A5A5E"
                 android:layout_marginEnd="8dp"/>
 
             <LinearLayout
