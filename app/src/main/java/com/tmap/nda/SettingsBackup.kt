@@ -1,5 +1,6 @@
 package com.tmap.nda
 
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -179,13 +180,30 @@ object SettingsBackup {
             root.put(PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)))
             root.put(QUICKSLOTS_PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(QUICKSLOTS_PREFS_NAME, Context.MODE_PRIVATE)))
             val bytes = root.toString(2).toByteArray()
-            // v: 재억 요청(2026-09-15) - 파일명이 밀리초 타임스탬프라 너무 길고 알아보기
-            // 어려웠음("TmapNda_설정백업_1789474207084.json") - 날짜만 담아 짧게. 같은 날
-            // 두 번 저장하면 덮어써짐(간단함을 우선). #문제시 원복
-            val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.KOREA).format(java.util.Date())
-            val fileName = "TmapNda_$dateStr.json"
+            // v: 재억 요청(2026-09-15) - 처음엔 밀리초 타임스탬프("TmapNda_설정백업_1789474207084.json")
+            // 라 너무 길어서 날짜만 넣는 걸로 바꿨는데, 그러면 누를 때마다(날짜가 바뀔 때마다)
+            // 다운로드 폴더에 파일이 계속 쌓인다는 지적(재억). 날짜/시각 없이 항상 똑같은
+            // 파일 이름 하나만 쓰고, 다시 누르면 그 파일 내용만 덮어쓰도록 변경. #문제시 원복
+            val fileName = "TmapNda_BackUp.json"
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // 같은 이름으로 insert()만 하면 MediaStore가 덮어쓰는 대신 "TmapNda_BackUp (1).json"
+                // 처럼 새 파일을 또 만들어버림 - 먼저 같은 이름의 기존 항목을 찾아 지운 뒤 새로 만들어야
+                // 진짜 덮어쓰기가 됨. #문제시 원복
+                val existing = context.contentResolver.query(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    arrayOf(MediaStore.Downloads._ID),
+                    "${MediaStore.Downloads.DISPLAY_NAME}=? AND ${MediaStore.Downloads.RELATIVE_PATH}=?",
+                    arrayOf(fileName, Environment.DIRECTORY_DOWNLOADS + "/"),
+                    null
+                )
+                existing?.use { cursor ->
+                    val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID)
+                    while (cursor.moveToNext()) {
+                        val existingUri = ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cursor.getLong(idColumn))
+                        context.contentResolver.delete(existingUri, null, null)
+                    }
+                }
                 val values = ContentValues().apply {
                     put(MediaStore.Downloads.DISPLAY_NAME, fileName)
                     put(MediaStore.Downloads.MIME_TYPE, "application/json")
