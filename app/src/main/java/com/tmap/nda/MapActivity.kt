@@ -1619,9 +1619,12 @@ class MapActivity : AppCompatActivity() {
             )
         }
 
-        fun showPickerWithResults(minutesArr: Array<Int?>, distArr: Array<Int?>) {
+        fun showPickerWithResults(minutesArr: Array<Int?>, distArr: Array<Int?>, costArr: Array<Int?> = arrayOfNulls(3)) {
             val labels = optionLabels.mapIndexed { i, label ->
-                "$label\n${SearchRanking.formatEtaMinutes(minutesArr[i]) ?: "계산 실패"}"
+                // v: 신규기능(예상 통행료 표시, 재억 요청 2026-09-15) - KakaoNaviActivity와 동일. #문제시 원복
+                val etaLine = SearchRanking.formatEtaMinutes(minutesArr[i]) ?: "계산 실패"
+                val costLine = costArr.getOrNull(i)?.takeIf { it > 0 }?.let { " · 통행료 %,d원".format(it) } ?: ""
+                "$label\n$etaLine$costLine"
             }.toMutableList()
             if (saveToSlot != null) {
                 labels.add("저장된 방식 삭제")
@@ -1652,6 +1655,7 @@ class MapActivity : AppCompatActivity() {
         }
         val minutesArr = arrayOfNulls<Int>(3)
         val distArr = arrayOfNulls<Int>(3)
+        val costArr = arrayOfNulls<Int>(3)
         var receivedCount = 0
         // v13.6: 재억 지적(계산 느림) - "출발-도착 연결"을 3번 따로 안 하고 한 번만 해서
         // 그 위에서 3개 우선순위만 각각 계산하도록 함(computeEtaForOptions). #문제시 원복
@@ -1662,16 +1666,17 @@ class MapActivity : AppCompatActivity() {
         KakaoSdkState.computeEtaForOptions(
             this, curLat, curLon, picked.lat, picked.lon,
             options = optionPriorities.zip(optionAvoidOptions)
-        ) { index, minutes, distanceMeters ->
+        ) { index, minutes, distanceMeters, tollCostWon ->
             runOnUiThread {
                 minutesArr[index] = minutes
                 distArr[index] = distanceMeters
+                costArr[index] = tollCostWon
                 receivedCount++
                 if (receivedCount == 3) {
                     // v: 재억 재지적(2026-08-29) - KakaoNaviActivity와 동일 - "왜 자꾸 팝업
                     // 없이 바로 안내를 시작하냐"는 강한 제보로 이 자동 생략 로직을 완전히
                     // 제거. #문제시 원복
-                    showPickerWithResults(minutesArr, distArr)
+                    showPickerWithResults(minutesArr, distArr, costArr)
                 }
             }
         }
@@ -3381,7 +3386,7 @@ class MapActivity : AppCompatActivity() {
                                 guidance,
                                 trip,
                                 KNRoutePriority.KNRoutePriority_Recommand,
-                                KNRouteAvoidOption.KNRouteAvoidOption_None.value
+                                RouteAvoidSettings.applySchoolZoneAvoid(this@MapActivity, KNRouteAvoidOption.KNRouteAvoidOption_None.value)
                             )
                             // 초기화 직후 서페이스가 이전(idle) 프레임을 그대로 들고 있을 수 있어서
                             // 강제로 한 번 더 무효화/재측정 요청. #문제시 원복
@@ -3405,7 +3410,7 @@ class MapActivity : AppCompatActivity() {
                                 guidance,
                                 trip,
                                 KNRoutePriority.KNRoutePriority_Recommand,
-                                KNRouteAvoidOption.KNRouteAvoidOption_None.value
+                                RouteAvoidSettings.applySchoolZoneAvoid(this@MapActivity, KNRouteAvoidOption.KNRouteAvoidOption_None.value)
                             )
                             isRequestingKakaoRoute = false
                         }

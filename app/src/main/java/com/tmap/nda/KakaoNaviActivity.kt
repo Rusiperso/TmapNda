@@ -919,7 +919,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 naviView.guideNewDestinations(
                     trip,
                     activeRoutePriority,
-                    activeRouteAvoidOption
+                    RouteAvoidSettings.applySchoolZoneAvoid(this, activeRouteAvoidOption)
                 )
                 naviView.requestLayout()
                 naviView.invalidate()
@@ -2525,7 +2525,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 }
                 try {
                     trip.setRouteConfig(CarFuelSettings.buildRouteConfiguration(this))
-                    naviView.guideNewDestinations(trip, activeRoutePriority, activeRouteAvoidOption)
+                    naviView.guideNewDestinations(trip, activeRoutePriority, RouteAvoidSettings.applySchoolZoneAvoid(this, activeRouteAvoidOption))
                     naviView.requestLayout()
                     naviView.invalidate()
                     NavLogger.d(this, "[$logTag] 성공 (경유지 ${waypoints.size}개)")
@@ -2691,9 +2691,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
         }
 
-        fun showPickerWithResults(minutesArr: Array<Int?>) {
+        fun showPickerWithResults(minutesArr: Array<Int?>, costArr: Array<Int?> = arrayOfNulls(3)) {
             val labels = optionLabels.mapIndexed { i, label ->
-                "$label\n${SearchRanking.formatEtaMinutes(minutesArr[i]) ?: "계산 실패"}"
+                // v: 신규기능(예상 통행료 표시, 재억 요청 2026-09-15) - 통행료 값을 못 구했으면
+                // (SDK가 안 주거나 무료도로라 0원인 경우 포함) 그냥 시간만 보여주고 생략. #문제시 원복
+                val etaLine = SearchRanking.formatEtaMinutes(minutesArr[i]) ?: "계산 실패"
+                val costLine = costArr.getOrNull(i)?.takeIf { it > 0 }?.let { " · 통행료 %,d원".format(it) } ?: ""
+                "$label\n$etaLine$costLine"
             }.toMutableList()
             // v: 재억 요청(2026-08-22) - MapActivity와 동일 - "경로 방식 변경" 메뉴로
             // 들어왔을 때만 맨 아래에 "저장된 방식 삭제" 추가. #문제시 원복
@@ -2723,6 +2727,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
         val minutesArr = arrayOfNulls<Int>(3)
         val distArr = arrayOfNulls<Int>(3)
+        val costArr = arrayOfNulls<Int>(3)
         var receivedCount = 0
         // v: 재억 제보(2026-08-31, 실기기로 확인 - "길안내 중 경유지 추가할 때 추천/고속/
         // 무료 목록이 안 뜨고 취소 버튼만 덩그러니 있다") - 이 선택창은 3개 옵션의 예상
@@ -2737,7 +2742,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         fun showPickerOnce() {
             if (pickerShown) return
             pickerShown = true
-            showPickerWithResults(minutesArr)
+            showPickerWithResults(minutesArr, costArr)
         }
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             if (!pickerShown) {
@@ -2750,10 +2755,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         KakaoSdkState.computeEtaForOptions(
             this, curLat, curLon, picked.lat, picked.lon,
             options = optionPriorities.zip(optionAvoidOptions)
-        ) { index, minutes, distanceMeters ->
+        ) { index, minutes, distanceMeters, tollCostWon ->
             runOnUiThread {
                 minutesArr[index] = minutes
                 distArr[index] = distanceMeters
+                costArr[index] = tollCostWon
                 receivedCount++
                 if (receivedCount == 3) {
                     showPickerOnce()

@@ -329,7 +329,7 @@ object KakaoSdkState {
         trip: Any,
         priority: KNRoutePriority,
         avoidOption: Int,
-        callback: (etaMinutes: Int?, distanceMeters: Int?) -> Unit
+        callback: (etaMinutes: Int?, distanceMeters: Int?, tollCostWon: Int?) -> Unit
     ) {
         try {
             val routeMethod = trip.javaClass.methods.firstOrNull {
@@ -338,7 +338,7 @@ object KakaoSdkState {
             if (routeMethod == null) {
                 NavLogger.e(context, "[소요시간계산] routeWithPriority(3개 인자) 함수를 못 찾음")
                 DiscordReporter.reportRouteCalcFailure(context, "routeWithPriority(3개 인자) 함수를 못 찾음")
-                callback(null, null)
+                callback(null, null, null)
                 return
             }
             val function2Class = Class.forName("kotlin.jvm.functions.Function2")
@@ -360,9 +360,17 @@ object KakaoSdkState {
                         val distanceMethod = firstRoute.javaClass.methods.firstOrNull {
                             it.name == "getTotalDist" && it.parameterCount == 0
                         }
+                        // v: 신규기능(예상 통행료 표시, 재억 요청 2026-09-15) - KNRoute.getTotalCost()도
+                        // 같은 방식(리플렉션)으로 꺼내서 같이 넘겨줌. 카카오가 문서로 확정 안 해준
+                        // 필드라 다른 값들처럼 후보 하나만 시도하고, 없으면 null로 둠(호출부에서
+                        // null이면 통행료 표시를 그냥 생략). #문제시 원복
+                        val costMethod = firstRoute.javaClass.methods.firstOrNull {
+                            it.name == "getTotalCost" && it.parameterCount == 0
+                        }
                         val durationSeconds = (durationMethod?.invoke(firstRoute) as? Number)?.toInt()
                         val distanceMeters = (distanceMethod?.invoke(firstRoute) as? Number)?.toInt()
-                        callback(durationSeconds?.takeIf { it > 0 }?.let { (it + 30) / 60 }, distanceMeters)
+                        val tollCostWon = (costMethod?.invoke(firstRoute) as? Number)?.toInt()
+                        callback(durationSeconds?.takeIf { it > 0 }?.let { (it + 30) / 60 }, distanceMeters, tollCostWon)
                     } else {
                         val guessTimeMethod = trip.javaClass.methods.firstOrNull {
                             (it.name == "guessTime" || it.name.startsWith("getGuessTime")) && it.parameterCount == 0
@@ -372,7 +380,7 @@ object KakaoSdkState {
                         }
                         val gt = (guessTimeMethod?.invoke(trip) as? Number)?.toInt()
                         val gd = (guessDistMethod?.invoke(trip) as? Number)?.toInt()
-                        callback(gt?.takeIf { it > 0 }?.let { (it + 30) / 60 }, gd)
+                        callback(gt?.takeIf { it > 0 }?.let { (it + 30) / 60 }, gd, null)
                     }
                 }
                 null
@@ -381,7 +389,7 @@ object KakaoSdkState {
         } catch (e: Exception) {
             NavLogger.e(context, "[소요시간계산] routeWithPriority 호출 예외: ${e.message}")
             DiscordReporter.reportRouteCalcFailure(context, "routeWithPriority 호출 예외: ${e.message}")
-            callback(null, null)
+            callback(null, null, null)
         }
     }
 
@@ -401,7 +409,7 @@ object KakaoSdkState {
         options: List<Pair<KNRoutePriority, Int>>,
         retryCount: Int = 0,
         onTripReady: (Any?) -> Unit = {},
-        callback: (index: Int, etaMinutes: Int?, distanceMeters: Int?) -> Unit
+        callback: (index: Int, etaMinutes: Int?, distanceMeters: Int?, tollCostWon: Int?) -> Unit
     ) {
         if (!initialized) {
             NavLogger.d(context, "[소요시간계산] KNSDK 아직 초기화 안 됨(재시도 $retryCount/10)")
@@ -413,7 +421,7 @@ object KakaoSdkState {
                 NavLogger.e(context, "[소요시간계산] 10번 재시도해도 KNSDK 준비 안 됨 - 포기")
                 DiscordReporter.reportRouteCalcFailure(context, "10번 재시도해도 KNSDK 준비 안 됨")
                 onTripReady(null)
-                options.indices.forEach { callback(it, null, null) }
+                options.indices.forEach { callback(it, null, null, null) }
             }
             return
         }
@@ -427,13 +435,13 @@ object KakaoSdkState {
                     NavLogger.e(context, "[소요시간계산] makeTripWithStart 실패: ${error?.msg ?: "trip=null"}")
                     DiscordReporter.reportRouteCalcFailure(context, "makeTripWithStart 실패: ${error?.msg ?: "trip=null"}")
                     onTripReady(null)
-                    options.indices.forEach { callback(it, null, null) }
+                    options.indices.forEach { callback(it, null, null, null) }
                     return@makeTripWithStart
                 }
                 onTripReady(trip)
                 options.forEachIndexed { index, (priority, avoidOption) ->
-                    invokeRouteWithPriority(context, trip, priority, avoidOption) { minutes, distanceMeters ->
-                        callback(index, minutes, distanceMeters)
+                    invokeRouteWithPriority(context, trip, priority, avoidOption) { minutes, distanceMeters, tollCostWon ->
+                        callback(index, minutes, distanceMeters, tollCostWon)
                     }
                 }
             }
@@ -441,7 +449,7 @@ object KakaoSdkState {
             NavLogger.e(context, "[소요시간계산] 경로계산 요청 자체 예외: ${e.message}")
             DiscordReporter.reportRouteCalcFailure(context, "경로계산 요청 자체 예외: ${e.message}")
             onTripReady(null)
-            options.indices.forEach { callback(it, null, null) }
+            options.indices.forEach { callback(it, null, null, null) }
         }
     }
 

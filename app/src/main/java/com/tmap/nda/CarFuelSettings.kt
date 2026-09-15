@@ -18,6 +18,7 @@ object CarFuelSettings {
     private const val PREFS_NAME = "TmapNdaPrefs"
     private const val KEY_CAR_TYPE = "kakao_car_type"
     private const val KEY_CAR_FUEL = "kakao_car_fuel"
+    private const val KEY_USE_HIPASS = "kakao_use_hipass"
 
     val CAR_TYPE_LABELS: LinkedHashMap<KNCarType, String> = linkedMapOf(
         KNCarType.KNCarType_1 to "승용차",
@@ -50,19 +51,22 @@ object CarFuelSettings {
         return CAR_FUEL_LABELS.keys.find { it.name == name } ?: KNCarFuel.KNCarFuel_Gasoline
     }
 
-    fun save(context: Context, carType: KNCarType, carFuel: KNCarFuel) {
+    fun getUseHipass(context: Context): Boolean = prefs(context).getBoolean(KEY_USE_HIPASS, false)
+
+    fun save(context: Context, carType: KNCarType, carFuel: KNCarFuel, useHipass: Boolean) {
         prefs(context).edit()
             .putString(KEY_CAR_TYPE, carType.name)
             .putString(KEY_CAR_FUEL, carFuel.name)
+            .putBoolean(KEY_USE_HIPASS, useHipass)
             .apply()
     }
 
-    /** 저장해둔 차종/연료로 KNRouteConfiguration을 만듦(그 외 항목은 SDK 기본값과 동일하게 둠). */
+    /** 저장해둔 차종/연료/하이패스로 KNRouteConfiguration을 만듦(그 외 항목은 SDK 기본값과 동일하게 둠). */
     fun buildRouteConfiguration(context: Context): KNRouteConfiguration {
         return KNRouteConfiguration(
             getCarType(context),
             getCarFuel(context),
-            false,
+            getUseHipass(context),
             KNCarUsage.KNCarUsage_Default,
             0, 0, 0, 0,
             KNRouteConfiguration_FreightOption(),

@@ -510,6 +510,14 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
+        // v: 재억 요청(2026-09-15) - 스쿨존(어린이보호구역) 회피. 추천/고속도로/무료도로
+        // 중 뭘 고르든 항상 같이 적용됨(RouteAvoidSettings에서 avoidOption에 비트로 더해줌). #문제시 원복
+        val avoidSchoolZoneCheckBox = android.widget.Switch(context).apply {
+            text = "스쿨존(어린이보호구역) 회피"
+            isChecked = RouteAvoidSettings.getAvoidSchoolZone(context)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
         // v5.2: 초기 설정화면(MainActivity)에 있던 항목을 여기로 이동 - 매번 앱 처음 켤 때만
         // 보이는 화면이라 여기 있을 이유가 없었음(사용자 지적). SharedPreferences 키는
         // 그대로(USE_KM_DISTANCE_FORMAT) 써서 기존 저장값/읽는 쪽 코드는 안 건드림. #문제시 원복
@@ -766,7 +774,8 @@ object PanelDragHelper {
             // v: 재억 요청(2026-09-15) - "화면 표시"가 아니라 위험요소를 알려주는 기능이라
             // 상단바 이벤트 표시와 같은 그룹이 맞다는 지적으로 이동. #문제시 원복
             accidentAlertCheckBox,      // 사고/공사구간 알림 표시
-            emergencyAlertCheckBox      // 긴급차량 접근 알림 표시
+            emergencyAlertCheckBox,     // 긴급차량 접근 알림 표시
+            avoidSchoolZoneCheckBox     // 스쿨존(어린이보호구역) 회피
         ))
         addAccordionGroup("화면 표시", listOfNotNull(
             satelliteViewCheckBox,          // 티맵 위성지도 보기
@@ -857,9 +866,18 @@ object PanelDragHelper {
             addView(carFuelValueText)
             addView(carFuelChangeButton)
         }
+        // v: 재억 요청(2026-09-15) - 하이패스 차량이면 통행료가 하이패스 요금 기준으로
+        // 계산되게. KNRouteConfiguration.useHipass 그대로 연결. #문제시 원복
+        val useHipassCheckBox = android.widget.Switch(context).apply {
+            text = "하이패스 장착 (통행료를 하이패스 요금으로 계산)"
+            isChecked = CarFuelSettings.getUseHipass(context)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
         container.addView(carFuelSectionTitle)
         container.addView(carFuelHintText)
         container.addView(carFuelRow)
+        container.addView(useHipassCheckBox)
 
         // v19.3.32: 재억 요청 - 설정 백업/복원. 공유 방식으로 내보내서 재억이 원하는 곳
         // (구글 드라이브/이메일/카카오톡 나에게 보내기 등)에 알아서 보관하게 하고,
@@ -934,7 +952,7 @@ object PanelDragHelper {
             .setTitle("앱 설정")
             .setView(scrollableContainer)
             .setPositiveButton("저장") { _, _ ->
-                CarFuelSettings.save(context, selectedCarType, selectedCarFuel)
+                CarFuelSettings.save(context, selectedCarType, selectedCarFuel, useHipassCheckBox.isChecked)
                 pref.edit()
                     .putBoolean("over_speed_warning_enabled", checkBox.isChecked)
                     // 저장 키(mobile_cam_slowdown_disabled)는 "꺼졌는지 여부"라 스위치 상태를
@@ -944,6 +962,7 @@ object PanelDragHelper {
                     .putBoolean("lane_overlay_tmap_enabled", showLaneOverlayTmapCheckBox.isChecked)
                     .putBoolean("accident_alert_enabled", accidentAlertCheckBox.isChecked)
                     .putBoolean("emergency_alert_enabled", emergencyAlertCheckBox.isChecked)
+                    .putBoolean("kakao_avoid_school_zone", avoidSchoolZoneCheckBox.isChecked)
                     .putBoolean("USE_KM_DISTANCE_FORMAT", distanceFormatKmCheckBox.isChecked)
                     .putBoolean("arrival_radius_alert_enabled", arrivalRadiusAlertCheckBox.isChecked)
                     .putBoolean("black_screen_on_usb_connect", blackScreenOnUsbConnectCheckBox.isChecked)
