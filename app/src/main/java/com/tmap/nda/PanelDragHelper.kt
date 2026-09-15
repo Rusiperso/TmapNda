@@ -762,7 +762,11 @@ object PanelDragHelper {
             checkBox,                   // 속도 10% 초과 시 경고음
             arrivalRadiusAlertCheckBox, // 목적지 근처 도착 알림 (소리+진동)
             showTopBarEventCheckBox,    // 상단바에 이벤트(카메라/구간단속/방지턱) 표시
-            kakaoOnlySdiCheckBox        // 카카오 안내 중 카메라는 카카오 것만 사용
+            kakaoOnlySdiCheckBox,       // 카카오 안내 중 카메라는 카카오 것만 사용
+            // v: 재억 요청(2026-09-15) - "화면 표시"가 아니라 위험요소를 알려주는 기능이라
+            // 상단바 이벤트 표시와 같은 그룹이 맞다는 지적으로 이동. #문제시 원복
+            accidentAlertCheckBox,      // 사고/공사구간 알림 표시
+            emergencyAlertCheckBox      // 긴급차량 접근 알림 표시
         ))
         addAccordionGroup("화면 표시", listOfNotNull(
             satelliteViewCheckBox,          // 티맵 위성지도 보기
@@ -771,8 +775,6 @@ object PanelDragHelper {
             distanceFormatKmCheckBox,       // 1000m 이상일 때 km 단위로 거리 표시
             unlockMapTouchCheckBox,         // 티맵 터치 잠금 해제 (핀치줌/드래그 허용) - 화면표시로 이동
             showLaneOverlayTmapCheckBox,    // 차선 안내 오버레이 표시 (Tmap 화면 한정)
-            accidentAlertCheckBox,          // 사고/공사구간 알림 표시
-            emergencyAlertCheckBox,         // 긴급차량 접근 알림 표시
             showMiniPlayerCheckBox,          // 미니 플레이어 표시
             showToggleTopPanelButtonCheckBox, // 상단바 표시/숨김 플로팅 버튼 보이기
             blackScreenOnUsbConnectCheckBox   // 차량 연결시 폰 화면 블랙 처리
@@ -795,6 +797,69 @@ object PanelDragHelper {
         container.addView(favoriteCountRow)
         container.addView(volumeSectionTitle)
         container.addView(volumeHintText)
+
+        // v: 재억 요청(2026-09-15) - 카카오 경로 계산에 쓸 차종/연료를 한 번 골라두면
+        // 계속 그 값으로 경로가 계산되게(주유소 안내도 같은 연료 기준을 따라감). 값 자체는
+        // CarFuelSettings에 저장하고, 실제 경로에 적용하는 부분은 KakaoNaviActivity의
+        // makeTripWithStart 콜백에서 trip.routeConfig에 얹어줌. #문제시 원복
+        var selectedCarType = CarFuelSettings.getCarType(context)
+        var selectedCarFuel = CarFuelSettings.getCarFuel(context)
+        val carFuelSectionTitle = android.widget.TextView(context).apply {
+            text = "차종 · 연료 설정"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 15f
+            setPadding(40, 20, 40, 6)
+        }
+        val carFuelHintText = android.widget.TextView(context).apply {
+            text = "카카오 경로 계산과 주유소 안내에 사용돼요"
+            setTextColor(android.graphics.Color.parseColor("#999999"))
+            textSize = 13f
+            setPadding(40, 0, 40, 10)
+        }
+        val carFuelValueText = android.widget.TextView(context).apply {
+            text = "${CarFuelSettings.CAR_TYPE_LABELS[selectedCarType]} · ${CarFuelSettings.CAR_FUEL_LABELS[selectedCarFuel]}"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 14f
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+            )
+        }
+        val carFuelChangeButton = android.widget.Button(context).apply {
+            text = "변경"
+            setOnClickListener {
+                val carTypeNames = CarFuelSettings.CAR_TYPE_LABELS.values.toTypedArray()
+                val carTypeKeys = CarFuelSettings.CAR_TYPE_LABELS.keys.toList()
+                android.app.AlertDialog.Builder(context, R.style.RoundedDialogTheme)
+                    .setTitle("차종 선택")
+                    .setSingleChoiceItems(carTypeNames, carTypeKeys.indexOf(selectedCarType)) { carTypeDialog, carTypeWhich ->
+                        selectedCarType = carTypeKeys[carTypeWhich]
+                        carTypeDialog.dismiss()
+                        val fuelNames = CarFuelSettings.CAR_FUEL_LABELS.values.toTypedArray()
+                        val fuelKeys = CarFuelSettings.CAR_FUEL_LABELS.keys.toList()
+                        android.app.AlertDialog.Builder(context, R.style.RoundedDialogTheme)
+                            .setTitle("연료 선택")
+                            .setSingleChoiceItems(fuelNames, fuelKeys.indexOf(selectedCarFuel)) { fuelDialog, fuelWhich ->
+                                selectedCarFuel = fuelKeys[fuelWhich]
+                                carFuelValueText.text = "${CarFuelSettings.CAR_TYPE_LABELS[selectedCarType]} · ${CarFuelSettings.CAR_FUEL_LABELS[selectedCarFuel]}"
+                                fuelDialog.dismiss()
+                            }
+                            .setNegativeButton("취소", null)
+                            .show()
+                    }
+                    .setNegativeButton("취소", null)
+                    .show()
+            }
+        }
+        val carFuelRow = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(40, 0, 40, 10)
+            addView(carFuelValueText)
+            addView(carFuelChangeButton)
+        }
+        container.addView(carFuelSectionTitle)
+        container.addView(carFuelHintText)
+        container.addView(carFuelRow)
 
         // v19.3.32: 재억 요청 - 설정 백업/복원. 공유 방식으로 내보내서 재억이 원하는 곳
         // (구글 드라이브/이메일/카카오톡 나에게 보내기 등)에 알아서 보관하게 하고,
@@ -869,6 +934,7 @@ object PanelDragHelper {
             .setTitle("앱 설정")
             .setView(scrollableContainer)
             .setPositiveButton("저장") { _, _ ->
+                CarFuelSettings.save(context, selectedCarType, selectedCarFuel)
                 pref.edit()
                     .putBoolean("over_speed_warning_enabled", checkBox.isChecked)
                     // 저장 키(mobile_cam_slowdown_disabled)는 "꺼졌는지 여부"라 스위치 상태를

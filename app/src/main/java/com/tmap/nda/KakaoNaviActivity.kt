@@ -897,6 +897,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     if (finishOnFailure) finish()
                     return@runOnUiThread
                 }
+                // v: 재억 요청(2026-09-15) - 저장해둔 차종/연료를 이 경로에 적용. 안 하면
+                // SDK 기본값(승용차+휘발유)으로만 계산됨. #문제시 원복
+                trip.setRouteConfig(CarFuelSettings.buildRouteConfiguration(this))
                 NavLogger.d(this, "카카오 경로요청 성공, 안내 시작: $destName")
                 // v12.9: 안내 이어가기 - 안내가 실제로 시작되는 이 시점에 목적지를 저장.
                 // 정상 도착 또는 안내종료 버튼 - 어느 쪽이든 finishGuidance()에서 지워짐. #문제시 원복
@@ -2521,6 +2524,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     return@runOnUiThread
                 }
                 try {
+                    trip.setRouteConfig(CarFuelSettings.buildRouteConfiguration(this))
                     naviView.guideNewDestinations(trip, activeRoutePriority, activeRouteAvoidOption)
                     naviView.requestLayout()
                     naviView.invalidate()

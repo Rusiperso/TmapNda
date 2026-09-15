@@ -3337,6 +3337,8 @@ class MapActivity : AppCompatActivity() {
                     hideKakaoOverlay()
                 } else {
                     NavLogger.d(this, "카카오 경로요청 성공, 안내 시작: $name")
+                    // v: 재억 요청(2026-09-15) - KakaoNaviActivity와 동일하게 저장해둔 차종/연료 적용. #문제시 원복
+                    trip.setRouteConfig(CarFuelSettings.buildRouteConfiguration(this))
                     val guidance = KNSDK.sharedGuidance()!!
                     val naviView = recreateKakaoNaviView()
                     if (naviView == null) {

@@ -179,7 +179,11 @@ object SettingsBackup {
             root.put(PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)))
             root.put(QUICKSLOTS_PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(QUICKSLOTS_PREFS_NAME, Context.MODE_PRIVATE)))
             val bytes = root.toString(2).toByteArray()
-            val fileName = "TmapNda_설정백업_${System.currentTimeMillis()}.json"
+            // v: 재억 요청(2026-09-15) - 파일명이 밀리초 타임스탬프라 너무 길고 알아보기
+            // 어려웠음("TmapNda_설정백업_1789474207084.json") - 날짜만 담아 짧게. 같은 날
+            // 두 번 저장하면 덮어써짐(간단함을 우선). #문제시 원복
+            val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.KOREA).format(java.util.Date())
+            val fileName = "TmapNda_$dateStr.json"
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
