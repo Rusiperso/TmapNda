@@ -496,6 +496,20 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
+        // v: 재억 요청(2026-09-15) - 사고/공사구간, 긴급차량 접근 자동 알림 표시 켜고 끄기.
+        // #문제시 원복
+        val accidentAlertCheckBox = android.widget.Switch(context).apply {
+            text = "사고/공사구간 알림 표시"
+            isChecked = pref.getBoolean("accident_alert_enabled", true)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
+        val emergencyAlertCheckBox = android.widget.Switch(context).apply {
+            text = "긴급차량 접근 알림 표시"
+            isChecked = pref.getBoolean("emergency_alert_enabled", true)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 30)
+        }
         // v5.2: 초기 설정화면(MainActivity)에 있던 항목을 여기로 이동 - 매번 앱 처음 켤 때만
         // 보이는 화면이라 여기 있을 이유가 없었음(사용자 지적). SharedPreferences 키는
         // 그대로(USE_KM_DISTANCE_FORMAT) 써서 기존 저장값/읽는 쪽 코드는 안 건드림. #문제시 원복
@@ -757,6 +771,8 @@ object PanelDragHelper {
             distanceFormatKmCheckBox,       // 1000m 이상일 때 km 단위로 거리 표시
             unlockMapTouchCheckBox,         // 티맵 터치 잠금 해제 (핀치줌/드래그 허용) - 화면표시로 이동
             showLaneOverlayTmapCheckBox,    // 차선 안내 오버레이 표시 (Tmap 화면 한정)
+            accidentAlertCheckBox,          // 사고/공사구간 알림 표시
+            emergencyAlertCheckBox,         // 긴급차량 접근 알림 표시
             showMiniPlayerCheckBox,          // 미니 플레이어 표시
             showToggleTopPanelButtonCheckBox, // 상단바 표시/숨김 플로팅 버튼 보이기
             blackScreenOnUsbConnectCheckBox   // 차량 연결시 폰 화면 블랙 처리
@@ -813,6 +829,22 @@ object PanelDragHelper {
                 }
             }
         }
+        // v: 재억 요청(2026-09-15) - 공유 화면을 거치지 않고 다운로드 폴더에 바로 저장.
+        // #문제시 원복
+        val backupLocalButton = android.widget.Button(context).apply {
+            text = "백업(로컬)"
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+            ).apply { marginEnd = 10 }
+            setOnClickListener {
+                val ok = SettingsBackup.exportToLocalDownloads(context)
+                android.widget.Toast.makeText(
+                    context,
+                    if (ok) "다운로드 폴더에 저장했습니다" else "저장 실패",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
         val restoreButton = android.widget.Button(context).apply {
             text = "복원(파일선택)"
             layoutParams = android.widget.LinearLayout.LayoutParams(
@@ -820,6 +852,7 @@ object PanelDragHelper {
             )
             setOnClickListener { onRestoreRequested?.invoke() }
         }
+        backupButtonRow.addView(backupLocalButton)
         backupButtonRow.addView(backupButton)
         backupButtonRow.addView(restoreButton)
         container.addView(backupSectionTitle)
@@ -843,6 +876,8 @@ object PanelDragHelper {
                     .putBoolean("mobile_cam_slowdown_disabled", !disableMobileCamCheckBox.isChecked)
                     .putBoolean("topbar_event_enabled", showTopBarEventCheckBox.isChecked)
                     .putBoolean("lane_overlay_tmap_enabled", showLaneOverlayTmapCheckBox.isChecked)
+                    .putBoolean("accident_alert_enabled", accidentAlertCheckBox.isChecked)
+                    .putBoolean("emergency_alert_enabled", emergencyAlertCheckBox.isChecked)
                     .putBoolean("USE_KM_DISTANCE_FORMAT", distanceFormatKmCheckBox.isChecked)
                     .putBoolean("arrival_radius_alert_enabled", arrivalRadiusAlertCheckBox.isChecked)
                     .putBoolean("black_screen_on_usb_connect", blackScreenOnUsbConnectCheckBox.isChecked)

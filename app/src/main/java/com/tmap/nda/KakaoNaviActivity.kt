@@ -1415,6 +1415,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 }
                 hudPollHandler.postDelayed(this, 1000)
                 renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "kakao")
+                renderAlertBanners(this@KakaoNaviActivity, binding.llAccidentAlert, binding.tvAccidentAlert, binding.llEmergencyAlert, binding.tvEmergencyAlert)
                 updateNavNotification()
             }
         }
@@ -3347,6 +3348,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "kakao")
         }
         LaneSignalRepository.notifyChanged()
+        AccidentAlertRepository.activeRenderer = {
+            renderAlertBanners(this@KakaoNaviActivity, binding.llAccidentAlert, binding.tvAccidentAlert, binding.llEmergencyAlert, binding.tvEmergencyAlert)
+        }
+        EmergencyAlertRepository.activeRenderer = AccidentAlertRepository.activeRenderer
+        AccidentAlertRepository.notifyChanged()
         // v: 재억 제보(2026-08-30) - MapActivity와 대칭으로, 이 화면이 다시 보일 때마다
         // (예: 티맵 화면에서 잠깐 설정을 열었다 닫는 등으로 이 화면이 일시정지-재개될
         // 때) 미니플레이어를 이 화면 것으로 재부착. #문제시 원복
@@ -3375,6 +3381,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         super.onPause()
         NavLogger.d(this, "[lifecycle] onPause")
         LaneSignalRepository.activeRenderer = null
+        AccidentAlertRepository.activeRenderer = null
+        EmergencyAlertRepository.activeRenderer = null
         try {
             unregisterReceiver(volumeChangeReceiver)
         } catch (e: Exception) {

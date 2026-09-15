@@ -1144,6 +1144,48 @@ class KakaoGuidanceDelegate(
         }
     }
 
+    // v: 재억 요청(2026-09-15) - 사고/공사구간 자동 팝업용. 이미 받고 있던 사고 코드를
+    // 화면 알림으로도 보여줌. #문제시 원복
+    private val ACCIDENT_CODE_TITLES = mapOf(
+        "KNSafetyCode_TrafficAccidentPos" to "교통사고 주의",
+        "KNSafetyCode_CarAccidentPos" to "차량사고 주의",
+        "KNSafetyCode_PedestrianAccidentPos" to "보행자사고 주의",
+        "KNSafetyCode_ChildrenAccidentPos" to "어린이사고 주의",
+        "KNSafetyCode_DrowsyDrivingAccidentPos" to "졸음운전 사고다발",
+        "KNSafetyCode_IntentTrafficAccident" to "사고다발구간"
+    )
+
+    private fun updateAccidentAlert(safetyList: List<*>?) {
+        try {
+            var nearest: Any? = null
+            var nearestDist = Int.MAX_VALUE
+            val myDistFromS = KakaoRouteDataRepository.currentDistFromS
+            safetyList?.forEach { item ->
+                if (item == null) return@forEach
+                val codeName = findGetter(item, "getCode")?.toString()
+                if (codeName !in ACCIDENT_CODE_TITLES) return@forEach
+                if (findGetterBool(item, "Passed") == true) return@forEach
+                val location = findGetter(item, "getLocation")
+                val distFromS = location?.let { findGetterInt(it, "DistFromS") } ?: -1
+                val d = if (distFromS > 0 && myDistFromS > 0) (distFromS - myDistFromS) else -1
+                if (d in 0 until nearestDist) {
+                    nearestDist = d
+                    nearest = item
+                }
+            }
+            val item = nearest
+            if (item != null && nearestDist <= 3000) {
+                val codeName = findGetter(item, "getCode")?.toString()
+                val title = ACCIDENT_CODE_TITLES[codeName] ?: "사고 주의"
+                AccidentAlertRepository.update(title, nearestDist)
+            } else {
+                AccidentAlertRepository.clear()
+            }
+        } catch (e: Exception) {
+            NavLogger.e(context, "[사고알림] 반영 예외: ${e.message}")
+        }
+    }
+
     // ===== SafetyGuideDelegate =====
     private var lastUnmappedSafetyCodeLogTime = 0L
     override fun guidanceDidUpdateSafetyGuide(guidance: KNGuidance, safetyGuide: KNGuide_Safety?) {
@@ -1169,6 +1211,8 @@ class KakaoGuidanceDelegate(
             val gpsPos = try {
                 KNSDK.sharedGpsManager()?.recentGpsData?.pos
             } catch (e: Exception) { null }
+
+            updateAccidentAlert(safetyList)
 
             safetyList?.forEach { item ->
                 if (item == null) return@forEach
@@ -1403,7 +1447,41 @@ class KakaoGuidanceDelegate(
                     try { "${m.name}=${m.invoke(citsGuide)}" } catch (e: Exception) { "${m.name}=<실패>" }
                 }
         } catch (e: Exception) { "덤프 실패: ${e.message}" }
+        // v1.4(재억 개인 테스트용): getCitsList()가 실제로 채워지는 순간을 놓치지 않으려고,
+        // 리스트 안 원소(KNCits_TrafSignal 등) 각각의 getter까지 통째로 재귀 덤프함. 이제까지
+        // 117번 다 빈 리스트였는데, 혹시 실제 신호등 데이터 나오는 구간을 지나가면 여기서
+        // remainTime/lightState 같은 실제 필드명과 값을 바로 확인할 수 있음. #문제시 원복
+        val citsList = try { citsGuide.citsList } catch (e: Exception) { null }
+        // v: 재억 요청(2026-09-15) - 긴급차량 접근 알림. C-ITS 리스트 안에 KNCits_Emergency
+        // 타입 항목이 있으면 그대로 반영 - 지금까진 이 채널 자체가 117번 다 빈 값이었어서
+        // (신호등 잔여시간 조사 때 확인) 실제로 뜰지는 미확인. 데이터가 오는 날 바로
+        // 뜨도록 UI만 먼저 연결해둠. #문제시 원복
+        try {
+            val emergencyItem = citsList?.firstOrNull { it?.javaClass?.simpleName?.contains("Emergency") == true }
+            if (emergencyItem != null) {
+                EmergencyAlertRepository.update("119차량 접근중")
+            } else {
+                EmergencyAlertRepository.clear()
+            }
+        } catch (e: Exception) {
+            NavLogger.e(context, "[긴급차량알림] 반영 예외: ${e.message}")
+        }
+        val itemDump = if (citsList.isNullOrEmpty()) {
+            "리스트 비어있음(size=${citsList?.size ?: 0})"
+        } else {
+            citsList.joinToString(" || ") { item ->
+                val itemFields = try {
+                    item?.javaClass?.methods
+                        ?.filter { it.parameterTypes.isEmpty() && it.name.startsWith("get") }
+                        ?.joinToString(", ") { m ->
+                            try { "${m.name}=${m.invoke(item)}" } catch (e: Exception) { "${m.name}=<실패>" }
+                        } ?: "null"
+                } catch (e: Exception) { "덤프 실패: ${e.message}" }
+                "[${item?.javaClass?.simpleName}] $itemFields"
+            }
+        }
         NavLogger.d(context, "[신호등?] didUpdateCitsGuide 호출됨: $citsGuide | $fieldDump")
+        NavLogger.d(context, "[신호등?][아이템상세] $itemDump")
         naviView?.didUpdateCitsGuide(guidance, citsGuide)
     }
 }

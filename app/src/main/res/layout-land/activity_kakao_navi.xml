@@ -46,6 +46,52 @@
             android:textStyle="bold" />
     </LinearLayout>
 
+    <!-- v: 재억 요청(2026-09-15) - 사고/공사구간, 긴급차량 접근 자동 알림 배너.
+         차선안내 바로 아래 줄에 세로로 쌓음(둘 다 뜰 수 있어서). #문제시 원복 -->
+    <LinearLayout
+        android:id="@+id/llAccidentAlert"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="100dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="#DDFFC107"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="6dp"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/tvAccidentAlert"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="⚠ 사고 주의"
+            android:textColor="#1A1A1A"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/llEmergencyAlert"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="138dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="#DDFF4D4F"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="6dp"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/tvEmergencyAlert"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🚨 119차량 접근중"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
     <!-- ===== 상단 HUD 바 (Tmap 화면과 동일 패턴) ===== -->
     <!-- v19.3.28: 재억 제보 - 편집모드 "이동" 핸들이 상단바에 가려 보이고, 상단바를 옮겨도
          핸들은 따로 안 움직임. FrameLayout으로 바꿔 핸들을 상단바 안쪽에 겹쳐서 얹음 -

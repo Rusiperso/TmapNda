@@ -1,9 +1,13 @@
 package com.tmap.nda
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import org.json.JSONObject
 import java.io.File
@@ -161,6 +165,42 @@ object SettingsBackup {
             NavLogger.d(context, "[설정백업] 자동 백업 저장됨")
         } catch (e: Exception) {
             NavLogger.e(context, "[설정백업] 자동 백업 실패: ${e.message}")
+        }
+    }
+
+    // v: 재억 요청(2026-09-15) - "백업(공유)"는 매번 카카오톡/이메일 등 다른 앱을 거쳐야 해서
+    // 귀찮다는 지적 - 공유 화면 없이 바로 폰 다운로드 폴더에 파일로 떨어지는 방식을 추가.
+    // MediaStore(Android 10+ Scoped Storage)로 Downloads에 직접 저장 - 별도 저장소 권한 불필요.
+    // #문제시 원복
+    fun exportToLocalDownloads(context: Context): Boolean {
+        return try {
+            val root = JSONObject()
+            root.put(FORMAT_VERSION_MARKER, CURRENT_FORMAT_VERSION)
+            root.put(PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)))
+            root.put(QUICKSLOTS_PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(QUICKSLOTS_PREFS_NAME, Context.MODE_PRIVATE)))
+            val bytes = root.toString(2).toByteArray()
+            val fileName = "TmapNda_설정백업_${System.currentTimeMillis()}.json"
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                    put(MediaStore.Downloads.MIME_TYPE, "application/json")
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                }
+                val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: return false
+                context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) } ?: return false
+            } else {
+                @Suppress("DEPRECATION")
+                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                if (!dir.exists()) dir.mkdirs()
+                File(dir, fileName).writeBytes(bytes)
+            }
+            NavLogger.d(context, "[설정백업] 로컬 저장 완료: $fileName")
+            true
+        } catch (e: Exception) {
+            NavLogger.e(context, "[설정백업] 로컬 저장 실패: ${e.message}")
+            false
         }
     }
 
