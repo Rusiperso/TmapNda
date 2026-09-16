@@ -784,7 +784,21 @@ class UdpSenderService : Service() {
                             KakaoRouteDataRepository.tbtTurnType in setOf(12, 13, 6, 7, 101, 102)
                         val nearManeuverPointForLimitSpeed = routeExpectsExitOrTurnSoonForLimitSpeed &&
                             KakaoRouteDataRepository.tbtDist in 0..GENERAL_ROAD_LIMIT_TBT_NEAR_THRESHOLD_M
-                        val requiredConsecutiveNowForLimitSpeed = if (routeExpectsExitOrTurnSoonForLimitSpeed) GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE else GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE_FAR_FROM_ROUTE_TURN
+                        // v: 버그수정(재억 제보 - "고가/지하차도, 분기점에서 순간적으로 옆 도로 값을
+                        // 잡아서 차가 갑자기 감속") - 이 연속확인 요구치는 지금까지 카카오 길안내
+                        // 여부와 무관하게 "진출/회전 예정이냐"로만 정했는데, 티맵 엔진이 이미 주는
+                        // nearLinks(지금 위치에 겹치는 후보 도로 개수)를 카카오 길안내 중일 때만
+                        // 참고하고 있었음(kakaoVetsLimitChange 안에서만 호출). 목적지 없이 그냥
+                        // 티맵만 켜놓고 달릴 땐 이 신호를 아예 안 써서 보호가 훨씬 약했음. 카카오
+                        // 길안내 여부와 무관하게 항상 확인하도록 승격 - 겹치는 후보가 1개뿐이면
+                        // (오매칭이 물리적으로 불가능) 바로 인정, 2개 이상이면(고가/지하차도/분기점처럼
+                        // 실제로 헷갈릴 수 있는 곳) 기존처럼 신중하게. #문제시 원복
+                        val nearLinksNowForLimitSpeed = readTmapNearLinkCount()
+                        val requiredConsecutiveNowForLimitSpeed = when {
+                            nearLinksNowForLimitSpeed == 1 -> 1
+                            routeExpectsExitOrTurnSoonForLimitSpeed -> GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE
+                            else -> GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE_FAR_FROM_ROUTE_TURN
+                        }
                         // v: 재억 재설명(2026-09-02) - 카카오 안내 중이고 카카오 기준 본선 직진
                         // 중이면, 티맵이 낮은 값을 아무리 여러 번 줘도 받아들이지 않음. #문제시 원복
                         val kakaoGuidingForLimitSpeed = KakaoRouteDataRepository.isFresh()
@@ -982,7 +996,14 @@ class UdpSenderService : Service() {
                             KakaoRouteDataRepository.tbtTurnType in setOf(12, 13, 6, 7, 101, 102)
                         val nearManeuverPoint = routeExpectsExitOrTurnSoon &&
                             KakaoRouteDataRepository.tbtDist in 1..GENERAL_ROAD_LIMIT_TBT_NEAR_THRESHOLD_M
-                        val requiredConsecutiveNow = if (routeExpectsExitOrTurnSoon) GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE else GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE_FAR_FROM_ROUTE_TURN
+                        // v: 버그수정 - limitSpeed 경로와 동일하게, nearLinks(겹치는 후보 도로 개수)를
+                        // 카카오 길안내 여부와 무관하게 항상 확인. #문제시 원복
+                        val nearLinksNow = readTmapNearLinkCount()
+                        val requiredConsecutiveNow = when {
+                            nearLinksNow == 1 -> 1
+                            routeExpectsExitOrTurnSoon -> GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE
+                            else -> GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE_FAR_FROM_ROUTE_TURN
+                        }
                         // v: 재억 재설명(2026-09-02) - limitSpeed 경로와 동일하게, 카카오 기준
                         // 본선 직진 중이면 티맵 엔진의 하향 값도 받아들이지 않음. #문제시 원복
                         val kakaoBlocksForRealLimit = KakaoRouteDataRepository.isFresh() &&
