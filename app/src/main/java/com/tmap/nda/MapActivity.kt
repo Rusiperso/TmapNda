@@ -1956,7 +1956,15 @@ class MapActivity : AppCompatActivity() {
         if (KakaoRouteDataRepository.isFresh()) return
         val pref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         if (!pref.getBoolean("over_speed_warning_enabled", true)) return
-        val limit = SdiDataRepository.roadLimitSpeed
+        // v: 버그수정(재억 제보 - "제한속도 올라가는 구간에서 10% 안 넘었는데도 경고음") -
+        // roadLimitSpeed는 분기 오매칭 방지 때문에 몇 초씩 옛 값을 들고 있을 수 있음.
+        // 티맵이 방금 보고한 최신 값(instantRoadLimitSpeed)이 있으면 경고음 판단만 그걸
+        // 우선 씀 - 화면 표시/콤마 전송(roadLimitSpeed)은 그대로 보호됨. #문제시 원복
+        val limit = if (SdiDataRepository.isInstantRoadLimitFresh()) {
+            SdiDataRepository.instantRoadLimitSpeed
+        } else {
+            SdiDataRepository.roadLimitSpeed
+        }
         if (limit < 30 || speedKph <= 0) return
         val now = System.currentTimeMillis()
         // v: "65로 주행 중이었고 60 제한이면 10%(66)를 안 넘었는데 경고음이 났다"(사용자

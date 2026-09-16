@@ -770,6 +770,10 @@ class UdpSenderService : Service() {
                     // 근처로 인식하게 넓힘. #문제시 원복
                     if (currentLimitSpeed >= 30) {
                         lastRoadLimitUpdateTime = System.currentTimeMillis()
+                        // v: 버그수정 - 과속경고음 판단용 "즉시값"은 아래 보류 로직과 무관하게
+                        // 항상 최신으로 갱신(#문제시 원복 - SdiDataRepository.instantRoadLimitSpeed 참고)
+                        SdiDataRepository.instantRoadLimitSpeed = currentLimitSpeed
+                        SdiDataRepository.instantRoadLimitSpeedUpdatedAt = System.currentTimeMillis()
                         // v: 재억 재제보(2026-08-28, 실기기 로그로 확인) - realRoadLimit(엔진
                         // 리플렉션) 경로와 완전히 똑같은 구멍이 이 번들 값(limitSpeed) 경로에도
                         // 있었음: roadLimitSpeed를 무조건 즉시 반영하고 있었음. 같은 히스테리시스를
@@ -938,6 +942,10 @@ class UdpSenderService : Service() {
                     }
                     if (realRoadLimit >= 30) {
                         lastRoadLimitUpdateTime = System.currentTimeMillis()
+                        // v: 버그수정 - 과속경고음 판단용 "즉시값"은 아래 보류 로직과 무관하게
+                        // 항상 최신으로 갱신(#문제시 원복 - SdiDataRepository.instantRoadLimitSpeed 참고)
+                        SdiDataRepository.instantRoadLimitSpeed = realRoadLimit
+                        SdiDataRepository.instantRoadLimitSpeedUpdatedAt = System.currentTimeMillis()
                         // v: 재억 제보(2026-08-28, 실기기 로그로 확인) - 예전엔 roadLimitSpeed(실제
                         // openpilot에 나가는 값)를 여기서 무조건 즉시 반영해두고, 나중에 "이번 프레임에
                         // 카메라 이벤트가 없으면" generalRoadLimitSpeed로 되돌리는 뒤늦은 보정에만

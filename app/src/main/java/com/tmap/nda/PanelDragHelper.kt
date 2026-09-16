@@ -655,7 +655,7 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             textSize = 16f
             gravity = android.view.Gravity.CENTER
-            setBackgroundColor(android.graphics.Color.parseColor("#9928282C"))
+            setBackgroundColor(android.graphics.Color.parseColor("#B328282C"))
             setPadding(24, 12, 24, 12)
             setOnClickListener {
                 if (favoriteCount > 0) {
@@ -670,7 +670,7 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             textSize = 16f
             gravity = android.view.Gravity.CENTER
-            setBackgroundColor(android.graphics.Color.parseColor("#9928282C"))
+            setBackgroundColor(android.graphics.Color.parseColor("#B328282C"))
             setPadding(24, 12, 24, 12)
             setOnClickListener {
                 if (favoriteCount < QuickSlotStore.MAX_FAVORITE_SLOTS) {
@@ -737,7 +737,7 @@ object PanelDragHelper {
                 orientation = android.widget.LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
                 setPadding(40, 24, 40, 24)
-                setBackgroundColor(android.graphics.Color.parseColor("#9928282C"))
+                setBackgroundColor(android.graphics.Color.parseColor("#B328282C"))
             }
             val headerText = android.widget.TextView(context).apply {
                 setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)

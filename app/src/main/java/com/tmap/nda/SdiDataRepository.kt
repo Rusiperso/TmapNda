@@ -18,6 +18,20 @@ object SdiDataRepository {
 
     var roadLimitSpeed: Int = 80
 
+    // v: 버그수정(재억 제보 - "제한속도 올라가는 구간에서 10% 안 넘었는데도 경고음") -
+    // roadLimitSpeed(위 값)는 분기 오매칭 방지를 위해 일부러 몇 초~몇 번의 확인 주기 동안
+    // 옛(더 낮은) 값을 들고 있다가 뒤늦게 갱신됨(UdpSenderService의 "카카오기준보류" 로직).
+    // 화면 표시/openpilot 전송은 이 보호가 꼭 필요하지만, 과속경고음 판단까지 이 보류된
+    // 값을 쓰면 "화면엔 이미 80이 떠 있는데 56에서 운다"처럼 보임. 티맵이 보고하는 즉시(보류
+    // 없이) 값을 별도로 들고 있다가, 과속경고음 판단에서만 이 값을 우선 사용함. #문제시 원복
+    @Volatile var instantRoadLimitSpeed: Int = 0
+    @Volatile var instantRoadLimitSpeedUpdatedAt: Long = 0L
+
+    fun isInstantRoadLimitFresh(maxAgeMs: Long = 5000L): Boolean {
+        return instantRoadLimitSpeed >= 30 &&
+            (System.currentTimeMillis() - instantRoadLimitSpeedUpdatedAt) < maxAgeMs
+    }
+
     // v: 버그수정(재억 제보 - "10% 이하로 달렸는데도 경고음 남") - 카카오 화면은
     // roadLimitSpeed(위 값, Tmap 전용)를 채워주는 코드가 없어서 항상 Tmap 화면의
     // 마지막 값(또는 기본값 80)이 그대로 남아있었음. 카카오 화면은 이 값을 별도로 써서
