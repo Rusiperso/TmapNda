@@ -172,6 +172,7 @@ class MainActivity : AppCompatActivity() {
         NavLogger.appContext = applicationContext
         // v: 재억 요청(2026-09-15) - 실사용자가 몇 명인지 대략이라도 알 수 있게, 하루 한 번
         // 익명 신호를 디스코드로 보냄(자동 오류 보고 꺼둔 사람은 안 감). #문제시 원복
+        DiscordReporter.reportInstallIfNew(applicationContext)
         DiscordReporter.reportHeartbeatIfDue(applicationContext)
 
         // 이전엔 앱이 강제종료돼도 원인이 로그파일 어디에도 안 남아서(NavLogger는 우리가 명시적으로

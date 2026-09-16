@@ -100,6 +100,8 @@ object DiscordReporter {
     private const val KEY_LAST_HEARTBEAT = "usage_heartbeat_last_sent_at"
     private const val HEARTBEAT_INTERVAL_MS = 24L * 60 * 60 * 1000
     private const val COLOR_HEARTBEAT = 0x57F287L
+    private const val KEY_INSTALL_REPORTED = "install_reported"
+    private const val COLOR_INSTALL = 0x3498DBL
 
     fun reportHeartbeatIfDue(context: Context) {
         if (!isEnabled(context)) return
@@ -117,6 +119,31 @@ object DiscordReporter {
                 client.newCall(request).execute().close()
             } catch (e: Exception) {
                 // 조용히 무시 - 이 신호 실패가 앱 동작에 영향을 주면 안 됨
+            }
+        }
+    }
+
+    /**
+     * 설치 후 첫 실행 때 딱 한 번만 신호를 보냄 - 신규 설치 수 집계용.
+     * 설치ID가 아직 없는 경우(=진짜 첫 실행)에만 보내야 하므로, installId()가 새 ID를
+     * 만들어서 저장하기 전에 먼저 확인함 - 이미 쓰던 사람이 업데이트로 이 기능을 처음
+     * 받는 경우(설치ID는 이미 있음)까지 "신규 설치"로 잘못 세는 걸 막기 위함.
+     */
+    fun reportInstallIfNew(context: Context) {
+        if (!isEnabled(context)) return
+        val p = prefs(context)
+        if (p.contains(KEY_INSTALL_ID) || p.getBoolean(KEY_INSTALL_REPORTED, false)) return
+        p.edit().putBoolean(KEY_INSTALL_REPORTED, true).apply()
+
+        val appContextSafe = context.applicationContext
+        reportExecutor.submit {
+            try {
+                val payload = buildPayload("[신규설치]", COLOR_INSTALL, commonFields(appContextSafe))
+                val body = payload.toRequestBody("application/json".toMediaTypeOrNull())
+                val request = Request.Builder().url(HEARTBEAT_WEBHOOK_URL).post(body).build()
+                client.newCall(request).execute().close()
+            } catch (e: Exception) {
+                // 조용히 무시
             }
         }
     }
