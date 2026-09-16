@@ -13,6 +13,9 @@
         <item name="android:windowBackground">@drawable/bg_dialog_rounded</item>
         <item name="android:colorAccent">#0A84FF</item>
         <item name="android:textColorPrimary">#F2F2F7</item>
+        <!-- 재억 요청 - 팝업 뒤로 지도가 너무 안 비쳐서(기본 60%) 30%로 낮춤. #문제시 원복 -->
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:backgroundDimAmount">0.3</item>
     </style>
 
     <!-- 더보기(≡) 메뉴 액션시트 카드 안 항목 사이 얇은 구분선(iOS 스타일) -->
