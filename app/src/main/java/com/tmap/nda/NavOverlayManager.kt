@@ -363,6 +363,7 @@ object NavOverlayManager {
 
         val icon = TurnHookIconView(context).apply { tint = distColor }
         val dist = TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             textSize = distSp
             setTextColor(distColor)
             setTypeface(typeface, if (dimmed) android.graphics.Typeface.NORMAL else android.graphics.Typeface.BOLD)
@@ -374,6 +375,7 @@ object NavOverlayManager {
             addView(dist, wrapParams().apply { marginStart = dp(9) })
         }
         val road = TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             textSize = roadSp
             setTextColor(roadColor)
             maxLines = 1
@@ -385,6 +387,7 @@ object NavOverlayManager {
         // 타야 하는 차선)에 해당하는 번호만 골라 "1, 2차로"처럼 보여줌. 회전 방향(좌/우/직진)과
         // 무관하게 동작 - 그 시점의 추천 차선 목록만 보고 그대로 표시. #문제시 원복
         val lane = TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             textSize = roadSp - 1.5f
             setTextColor(Color.parseColor("#8FE0A8"))
             setBackgroundColor(Color.parseColor("#1B4D2C"))

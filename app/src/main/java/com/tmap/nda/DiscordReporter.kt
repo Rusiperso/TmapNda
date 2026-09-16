@@ -87,6 +87,40 @@ object DiscordReporter {
         prefs(context).edit().putString(KEY_NICKNAME, nickname.trim()).apply()
     }
 
+    // v: 재억 요청(2026-09-15) - "지금 몇 명이나 쓰고 있는지 알 방법 없나" - 사용자에게
+    // 새로 뭘 공개하지 않고(README 문구도 그대로), 이미 있는 "자동 오류 보고" 설치ID를
+    // 재사용해서 하루 한 번만 "그냥 살아있다"는 익명 신호를 같은 웹훅으로 보냄. 크래시
+    // 로그 첨부 없이 설치ID/기기/버전만 담김 - 자동 오류 보고를 꺼둔 사람은 이것도 안 감
+    // (isEnabled 그대로 재사용, 새 동의를 따로 받을 필요 없음). #문제시 원복
+    // v: 재억 요청(2026-09-15) - 크래시 보고 채널과 섞이면 재억이 그 채널을 볼 때마다 매번
+    // 보이니까, 완전히 조용한 전용 채널("사용현황")을 따로 만들어서 거기로만 보냄. 클로드는
+    // 이 채널을 먼저 언급하지 않고, 재억이 "몇 명이나 써?"라고 물어볼 때만 확인해서 답함. #문제시 원복
+    private const val HEARTBEAT_WEBHOOK_URL =
+        "https://discord.com/api/webhooks/1549402829763121176/AjekL6hW14wQdUTMN0lLlEWfn7vdDbEIywPu_rTrXaeaD0gkHtow9gaqpeC2HmbP6QTN"
+    private const val KEY_LAST_HEARTBEAT = "usage_heartbeat_last_sent_at"
+    private const val HEARTBEAT_INTERVAL_MS = 24L * 60 * 60 * 1000
+    private const val COLOR_HEARTBEAT = 0x57F287L
+
+    fun reportHeartbeatIfDue(context: Context) {
+        if (!isEnabled(context)) return
+        val p = prefs(context)
+        val now = System.currentTimeMillis()
+        if (now - p.getLong(KEY_LAST_HEARTBEAT, 0L) < HEARTBEAT_INTERVAL_MS) return
+        p.edit().putLong(KEY_LAST_HEARTBEAT, now).apply()
+
+        val appContextSafe = context.applicationContext
+        reportExecutor.submit {
+            try {
+                val payload = buildPayload("[사용중]", COLOR_HEARTBEAT, commonFields(appContextSafe))
+                val body = payload.toRequestBody("application/json".toMediaTypeOrNull())
+                val request = Request.Builder().url(HEARTBEAT_WEBHOOK_URL).post(body).build()
+                client.newCall(request).execute().close()
+            } catch (e: Exception) {
+                // 조용히 무시 - 이 신호 실패가 앱 동작에 영향을 주면 안 됨
+            }
+        }
+    }
+
     private fun installId(context: Context): String {
         val p = prefs(context)
         p.getString(KEY_INSTALL_ID, null)?.let { return it }

@@ -72,6 +72,10 @@
                 android:layout_height="wrap_content"
                 android:text=""
                 android:textColor="#AAAAAA"
+                android:shadowColor="#FF000000"
+                android:shadowDx="0"
+                android:shadowDy="0"
+                android:shadowRadius="5.5"
                 android:textSize="11sp" />
         </LinearLayout>
 
@@ -95,6 +99,10 @@
                 android:layout_height="wrap_content"
                 android:text="길안내 중"
                 android:textColor="#FFFFFF"
+                android:shadowColor="#FF000000"
+                android:shadowDx="0"
+                android:shadowDy="0"
+                android:shadowRadius="5.5"
                 android:textSize="13sp"
                 android:textStyle="bold" />
 
@@ -161,6 +169,10 @@
             android:layout_marginStart="10dp"
             android:text=""
             android:textColor="#FFFFFF"
+            android:shadowColor="#FF000000"
+            android:shadowDx="0"
+            android:shadowDy="0"
+            android:shadowRadius="5.5"
             android:textSize="14sp"
             android:textStyle="bold" />
     </LinearLayout>
@@ -220,10 +232,10 @@
                     android:text="0"
                     android:textColor="#FFFFFF"
                     android:textSize="28sp"
-                    android:shadowColor="#CC000000"
+                    android:shadowColor="#FF000000"
                     android:shadowDx="0"
                     android:shadowDy="0"
-                    android:shadowRadius="3"
+                    android:shadowRadius="5.5"
                     android:textStyle="bold"/>
 
                 <TextView
@@ -241,6 +253,10 @@
                     android:layout_height="wrap_content"
                     android:text="--"
                     android:textColor="#FF5252"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
                     android:textSize="13sp"
                     android:textStyle="bold"
                     android:background="@drawable/bg_speed_limit_hud"
@@ -287,10 +303,10 @@
                             android:text="OP OFF"
                             android:textColor="#FFFFFF"
                             android:textSize="13sp"
-                            android:shadowColor="#CC000000"
+                            android:shadowColor="#FF000000"
                             android:shadowDx="0"
                             android:shadowDy="0"
-                            android:shadowRadius="3"
+                            android:shadowRadius="5.5"
                             android:textStyle="bold"/>
                     </LinearLayout>
 
@@ -363,10 +379,10 @@
                     android:text="무음"
                     android:textColor="#FFFFFF"
                     android:textSize="8sp"
-                    android:shadowColor="#CC000000"
+                    android:shadowColor="#FF000000"
                     android:shadowDx="0"
                     android:shadowDy="0"
-                    android:shadowRadius="2.5"
+                    android:shadowRadius="4.5"
                     android:includeFontPadding="false"/>
             </LinearLayout>
 
@@ -397,10 +413,10 @@
                     android:text="음성"
                     android:textColor="#FFFFFF"
                     android:textSize="8sp"
-                    android:shadowColor="#CC000000"
+                    android:shadowColor="#FF000000"
                     android:shadowDx="0"
                     android:shadowDy="0"
-                    android:shadowRadius="2.5"
+                    android:shadowRadius="4.5"
                     android:includeFontPadding="false"/>
             </LinearLayout>
 
@@ -423,6 +439,10 @@
                     android:layout_weight="1"
                     android:hint="목적지 검색"
                     android:textColor="#FFFFFF"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
                     android:textColorHint="#666666"
                     android:textSize="12sp"
                     android:background="@android:color/transparent"
@@ -471,10 +491,10 @@
                     android:text="집"
                     android:textColor="#FFFFFF"
                     android:textSize="8sp"
-                    android:shadowColor="#CC000000"
+                    android:shadowColor="#FF000000"
                     android:shadowDx="0"
                     android:shadowDy="0"
-                    android:shadowRadius="2.5"
+                    android:shadowRadius="4.5"
                     android:includeFontPadding="false"/>
             </LinearLayout>
 
@@ -502,10 +522,10 @@
                     android:text="회사"
                     android:textColor="#FFFFFF"
                     android:textSize="8sp"
-                    android:shadowColor="#CC000000"
+                    android:shadowColor="#FF000000"
                     android:shadowDx="0"
                     android:shadowDy="0"
-                    android:shadowRadius="2.5"
+                    android:shadowRadius="4.5"
                     android:includeFontPadding="false"/>
             </LinearLayout>
 
@@ -535,10 +555,10 @@
                     android:text="로그"
                     android:textColor="#FFFFFF"
                     android:textSize="8sp"
-                    android:shadowColor="#CC000000"
+                    android:shadowColor="#FF000000"
                     android:shadowDx="0"
                     android:shadowDy="0"
-                    android:shadowRadius="2.5"
+                    android:shadowRadius="4.5"
                     android:includeFontPadding="false"/>
             </LinearLayout>
 
@@ -569,10 +589,10 @@
                     android:text="메뉴"
                     android:textColor="#FFFFFF"
                     android:textSize="8sp"
-                    android:shadowColor="#CC000000"
+                    android:shadowColor="#FF000000"
                     android:shadowDx="0"
                     android:shadowDy="0"
-                    android:shadowRadius="2.5"
+                    android:shadowRadius="4.5"
                     android:includeFontPadding="false"/>
             </LinearLayout>
 
@@ -597,6 +617,10 @@
                 android:textStyle="bold"
                 android:maxLines="1"
                 android:gravity="center_vertical"
+                android:shadowColor="#FF000000"
+                android:shadowDx="0"
+                android:shadowDy="0"
+                android:shadowRadius="5.5"
                 android:visibility="gone"/>
         </LinearLayout>
         </HorizontalScrollView>
@@ -613,6 +637,10 @@
             android:text="▼"
             android:textSize="19sp"
             android:textColor="#FFFFFF"
+            android:shadowColor="#FF000000"
+            android:shadowDx="0"
+            android:shadowDy="0"
+            android:shadowRadius="5.5"
             android:background="@drawable/bg_miniplayer_confirm"
             android:visibility="gone"/>
     </FrameLayout>
@@ -656,6 +684,10 @@
                     android:text="UI 편집"
                     android:textSize="14sp"
                     android:textColor="#F2F2F7"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
                     android:gravity="center_vertical|start"
                     android:paddingStart="14dp"
                     android:drawableStart="@drawable/ic_edit_pencil"
@@ -671,6 +703,10 @@
                     android:text="업데이트 확인"
                     android:textSize="14sp"
                     android:textColor="#F2F2F7"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
                     android:gravity="center_vertical|start"
                     android:paddingStart="14dp"
                     android:drawableStart="@drawable/ic_refresh"
@@ -688,6 +724,10 @@
                     android:text="업데이트 내역"
                     android:textSize="14sp"
                     android:textColor="#F2F2F7"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
                     android:gravity="center_vertical|start"
                     android:paddingStart="14dp"
                     android:drawableStart="@drawable/ic_help_info"
@@ -714,6 +754,10 @@
                     android:text="내 차 위치"
                     android:textSize="14sp"
                     android:textColor="#F2F2F7"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
                     android:gravity="center_vertical|start"
                     android:paddingStart="14dp"
                     android:drawableStart="@drawable/ic_event_parking"
@@ -729,6 +773,10 @@
                     android:text="설정"
                     android:textSize="14sp"
                     android:textColor="#F2F2F7"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
                     android:gravity="center_vertical|start"
                     android:paddingStart="14dp"
                     android:drawableStart="@drawable/ic_settings_gear"
@@ -744,6 +792,10 @@
                     android:text="도움말"
                     android:textSize="14sp"
                     android:textColor="#F2F2F7"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
                     android:gravity="center_vertical|start"
                     android:paddingStart="14dp"
                     android:drawableStart="@drawable/ic_guide_book"
@@ -768,6 +820,10 @@
                     android:text="로그 전체 삭제"
                     android:textSize="14sp"
                     android:textColor="#FF453A"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
                     android:gravity="center_vertical|start"
                     android:paddingStart="14dp"
                     android:drawableStart="@drawable/ic_send_paperplane"
@@ -783,6 +839,10 @@
                     android:text="앱 종료"
                     android:textSize="14sp"
                     android:textColor="#FF453A"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
                     android:gravity="center_vertical|start"
                     android:paddingStart="14dp"
                     android:drawableStart="@drawable/ic_power_off"
@@ -950,6 +1010,10 @@
         android:text="숨김"
         android:textSize="14sp"
         android:textColor="#FFFFFF"
+        android:shadowColor="#FF000000"
+        android:shadowDx="0"
+        android:shadowDy="0"
+        android:shadowRadius="5.5"
         android:background="@drawable/shape_circle_gray"
         android:contentDescription="상단바 표시/숨김"
         android:elevation="25dp"/>
@@ -983,10 +1047,10 @@
             android:text="주변"
             android:textColor="#FFFFFF"
             android:textSize="9sp"
-            android:shadowColor="#CC000000"
+            android:shadowColor="#FF000000"
             android:shadowDx="0"
             android:shadowDy="0"
-            android:shadowRadius="2.5"
+            android:shadowRadius="4.5"
             android:includeFontPadding="false"/>
     </LinearLayout>
 
@@ -1037,6 +1101,10 @@
                     android:layout_height="wrap_content"
                     android:text="재생 중인 음악 없음"
                     android:textColor="#FFFFFF"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
                     android:textSize="12sp"
                     android:textStyle="bold"
                     android:singleLine="true"
@@ -1051,6 +1119,10 @@
                     android:layout_height="wrap_content"
                     android:text=""
                     android:textColor="#9AA1AC"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
                     android:textSize="10sp"
                     android:singleLine="true"
                     android:ellipsize="marquee"

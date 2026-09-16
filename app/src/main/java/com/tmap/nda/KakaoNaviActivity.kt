@@ -706,6 +706,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             if (view == null || view.parent == null) {
                 view = android.widget.TextView(this).apply {
                     setTextColor(android.graphics.Color.WHITE)
+                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     textSize = 22f
                     gravity = android.view.Gravity.CENTER
                     setPadding(56, 28, 56, 28)
@@ -1807,6 +1808,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 gravity = android.view.Gravity.CENTER_VERTICAL
             }
             val tv = android.widget.TextView(this).apply {
+                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 text = entry.name
                 setTextColor(android.graphics.Color.parseColor("#DDDDDD"))
                 textSize = 12f
@@ -1831,6 +1833,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             rowContainer.addView(tv)
             if (currentDestName.isNotBlank()) {
                 val addBtn = android.widget.TextView(this).apply {
+                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = "추가"
                     textSize = 12f
                     setTextColor(android.graphics.Color.parseColor("#A0E8B0"))
@@ -1979,6 +1982,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     setPadding(24, 20, 16, 20)
                 }
                 val nameText = android.widget.TextView(this@KakaoNaviActivity).apply {
+                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = if (entry.addr.isNotBlank()) "${entry.name}\n${entry.addr}" else entry.name
                     setTextColor(android.graphics.Color.WHITE)
                     layoutParams = android.widget.LinearLayout.LayoutParams(
@@ -2005,6 +2009,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // 버튼(티맵 화면 v14.4에만 있었음)을 이식하고, 새로 "경로추가"(지금 안내
                 // 중인 목적지는 그대로 두고 경유지로 끼워넣기) 버튼도 같이 추가. #문제시 원복
                 val saveText = android.widget.TextView(this@KakaoNaviActivity).apply {
+                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = "저장"
                     textSize = 14f
                     setTextColor(android.graphics.Color.parseColor("#A0C8F0"))
@@ -2021,6 +2026,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     }
                 }
                 val addWaypointText = android.widget.TextView(this@KakaoNaviActivity).apply {
+                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = "경로추가"
                     textSize = 14f
                     setTextColor(android.graphics.Color.parseColor("#A0E8B0"))
@@ -2040,6 +2046,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // v10.9-5: MapActivity와 동일 - "✕" 작은 글자 대신 배경 있는 "삭제" 버튼으로
                 // 바꾸고 누르는 영역도 넓힘(재억 지적). #문제시 원복
                 val deleteText = android.widget.TextView(this@KakaoNaviActivity).apply {
+                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = "삭제"
                     textSize = 14f
                     setTextColor(android.graphics.Color.parseColor("#F0A0A0"))
@@ -2079,6 +2086,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // v11.3: MapActivity와 동일 - 집/회사/즐겨찾기1/2/3 다섯 칸 빠른등록 아이콘 행. #문제시 원복
         fun buildQuickSlotButton(slot: String, emoji: String): Pair<View, android.widget.TextView> {
             val etaText = android.widget.TextView(this).apply {
+                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 textSize = 9f
                 gravity = android.view.Gravity.CENTER
                 setTextColor(android.graphics.Color.parseColor("#FFD54F"))
@@ -2090,6 +2098,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             // 이름을 보여줌(재억 요청). #문제시 원복
             val registeredEntry = QuickSlotStore.get(this@KakaoNaviActivity, slot)
             val iconText = android.widget.TextView(this).apply {
+                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 if (registeredEntry != null) {
                     text = registeredEntry.name
                     textSize = 12f
@@ -2212,6 +2221,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             setBackgroundResource(R.drawable.bg_dialog_title_top_rounded)
             setPadding(24, 24, 24, 20)
             addView(android.widget.TextView(this@KakaoNaviActivity).apply {
+                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 text = "검색 이력 전체"
                 textSize = 18f
                 setTextColor(android.graphics.Color.WHITE)
@@ -2639,6 +2649,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 val view = super.getView(position, convertView, parent)
                 val tv = view.findViewById<android.widget.TextView>(android.R.id.text1)
                 tv.setTextColor(android.graphics.Color.WHITE)
+                tv.setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 tv.setPadding(24, 20, 24, 20)
                 return view
             }

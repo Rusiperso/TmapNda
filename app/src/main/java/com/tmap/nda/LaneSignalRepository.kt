@@ -220,6 +220,7 @@ private fun renderLaneBoxesFallback(context: android.content.Context, laneBoxCon
     laneBoxContainer.removeAllViews()
     LaneSignalRepository.lanes.forEach { info ->
         val tv = android.widget.TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = when {
                 info.busType != 0 -> "B"
                 info.recommended -> "▲"

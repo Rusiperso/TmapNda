@@ -353,6 +353,7 @@ object AutoUpdater {
                 if (context.isFinishing || context.isDestroyed) return@withContext
                 val scrollView = android.widget.ScrollView(context)
                 val textView = android.widget.TextView(context).apply {
+                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = body
                     setTextColor(android.graphics.Color.parseColor("#DDDDDD"))
                     setPadding(40, 20, 40, 20)

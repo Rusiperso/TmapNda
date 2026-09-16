@@ -1222,6 +1222,7 @@ class MapActivity : AppCompatActivity() {
                     setPadding(24, 20, 16, 20)
                 }
                 val nameText = android.widget.TextView(this@MapActivity).apply {
+                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = if (entry.addr.isNotBlank()) "${entry.name}\n${entry.addr}" else entry.name
                     setTextColor(android.graphics.Color.WHITE)
                     layoutParams = android.widget.LinearLayout.LayoutParams(
@@ -1249,6 +1250,7 @@ class MapActivity : AppCompatActivity() {
                 // 등록할 수 있는 "저장" 버튼. 이미 등록된 칸을 골라도 그대로 덮어씀(재억 확인).
                 // #문제시 원복
                 val saveText = android.widget.TextView(this@MapActivity).apply {
+                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = "저장"
                     textSize = 14f
                     setTextColor(android.graphics.Color.parseColor("#A0C8F0"))
@@ -1268,6 +1270,7 @@ class MapActivity : AppCompatActivity() {
                 // 위치가 잘 안 보이고 오터치도 잦았음(재억 지적) - 배경이 있는 "삭제" 글자
                 // 버튼으로 바꾸고, 누르는 영역(패딩)도 훨씬 넓게 키움. #문제시 원복
                 val deleteText = android.widget.TextView(this@MapActivity).apply {
+                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = "삭제"
                     textSize = 14f
                     setTextColor(android.graphics.Color.parseColor("#F0A0A0"))
@@ -1308,6 +1311,7 @@ class MapActivity : AppCompatActivity() {
         // 다이얼로그 제목(setTitle) 자리에 이 행까지 포함한 커스텀 뷰를 넣음. #문제시 원복
         fun buildQuickSlotButton(slot: String, emoji: String): Pair<View, android.widget.TextView> {
             val etaText = android.widget.TextView(this).apply {
+                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 textSize = 9f
                 gravity = android.view.Gravity.CENTER
                 setTextColor(android.graphics.Color.parseColor("#FFD54F"))
@@ -1322,6 +1326,7 @@ class MapActivity : AppCompatActivity() {
             // 잘라서 표시. 등록 안 된 칸은 지금처럼 하트 + "미등록". #문제시 원복
             val registeredEntry = QuickSlotStore.get(this@MapActivity, slot)
             val iconText = android.widget.TextView(this).apply {
+                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 if (registeredEntry != null) {
                     text = registeredEntry.name
                     textSize = 12f
@@ -1450,6 +1455,7 @@ class MapActivity : AppCompatActivity() {
             setBackgroundResource(R.drawable.bg_dialog_title_top_rounded)
             setPadding(24, 24, 24, 20)
             addView(android.widget.TextView(this@MapActivity).apply {
+                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 text = "검색 이력 전체"
                 textSize = 18f
                 setTextColor(android.graphics.Color.WHITE)
@@ -1568,6 +1574,7 @@ class MapActivity : AppCompatActivity() {
                     if (position == redRowIndex) android.graphics.Color.parseColor("#E24B4A")
                     else android.graphics.Color.WHITE
                 )
+                tv.setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 tv.setPadding(24, 20, 24, 20)
                 return view
             }
@@ -2408,11 +2415,13 @@ class MapActivity : AppCompatActivity() {
         card.addView(android.widget.TextView(this).apply {
             text = "어디에 저장할까요?"
             setTextColor(android.graphics.Color.WHITE)
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             textSize = 16f
         })
         card.addView(android.widget.TextView(this).apply {
             text = entry.name
             setTextColor(android.graphics.Color.parseColor("#4FA8E8"))
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             textSize = 13f
             setPadding(0, dp(4), 0, dp(14))
         })

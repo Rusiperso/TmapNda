@@ -213,6 +213,7 @@ object NearbyCategoryPopup {
                     setPadding(dp(context, 8), dp(context, 12), dp(context, 8), dp(context, 8))
                 }
                 navRow.addView(TextView(context).apply {
+                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = "이전"
                     textSize = 14f
                     setTextColor(if (safePage > 0) android.graphics.Color.WHITE else android.graphics.Color.GRAY)
@@ -220,12 +221,14 @@ object NearbyCategoryPopup {
                     if (safePage > 0) setOnClickListener { onPageChange(safePage - 1) }
                 })
                 navRow.addView(TextView(context).apply {
+                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = "${safePage + 1} / $totalPages"
                     textSize = 14f
                     setTextColor(android.graphics.Color.WHITE)
                     setPadding(dp(context, 12), dp(context, 8), dp(context, 12), dp(context, 8))
                 })
                 navRow.addView(TextView(context).apply {
+                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = "다음"
                     textSize = 14f
                     setTextColor(if (safePage < totalPages - 1) android.graphics.Color.WHITE else android.graphics.Color.GRAY)
@@ -621,6 +624,7 @@ object NearbyCategoryPopup {
         }
         val topRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         topRow.addView(TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = title
             textSize = 14f
             setTextColor(android.graphics.Color.WHITE)
@@ -628,6 +632,7 @@ object NearbyCategoryPopup {
         })
         if (distText != null) {
             topRow.addView(TextView(context).apply {
+                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 text = distText
                 textSize = 13f
                 setTextColor(android.graphics.Color.WHITE)
@@ -637,6 +642,7 @@ object NearbyCategoryPopup {
             val etaMinutes = estimateEtaMinutes(distText)
             if (etaMinutes != null) {
                 topRow.addView(TextView(context).apply {
+                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = "  약 ${etaMinutes}분"
                     textSize = 13f
                     setTextColor(android.graphics.Color.parseColor("#FFD54F"))
@@ -646,6 +652,7 @@ object NearbyCategoryPopup {
         row.addView(topRow)
         if (priceText != null) {
             row.addView(TextView(context).apply {
+                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 text = priceText
                 textSize = 13f
                 setTextColor(android.graphics.Color.parseColor("#FFD54F"))
@@ -665,6 +672,7 @@ object NearbyCategoryPopup {
         // 순서로 변경(이름 먼저, 그다음 거리, 그다음 예상시간) - 편의점뿐 아니라 이 공용
         // 함수를 쓰는 모든 일반 카테고리(카페/약국/은행/병원/마트 등)에 다 적용됨. #문제시 원복
         val titleView = TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = title
             textSize = titleSize
             setTextColor(android.graphics.Color.WHITE)
@@ -673,6 +681,7 @@ object NearbyCategoryPopup {
         row.addView(titleView)
         if (subtitle != null) {
             val subtitleView = TextView(context).apply {
+                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 text = subtitle
                 textSize = 13f
                 setTextColor(android.graphics.Color.WHITE)
@@ -683,6 +692,7 @@ object NearbyCategoryPopup {
         val etaMinutes = estimateEtaMinutes(subtitle)
         if (etaMinutes != null) {
             val etaView = TextView(context).apply {
+                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 text = "약 ${etaMinutes}분"
                 textSize = 13f
                 setTextColor(android.graphics.Color.parseColor("#FFD54F"))

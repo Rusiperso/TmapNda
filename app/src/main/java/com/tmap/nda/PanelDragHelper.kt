@@ -642,6 +642,7 @@ object PanelDragHelper {
         // v: 재억 요청(2026-09-02) - 상한을 5 -> 10으로 확장(QuickSlotStore.MAX_FAVORITE_SLOTS). #문제시 원복
         var favoriteCount = QuickSlotStore.favoriteCount(context)
         val favoriteCountValueText = android.widget.TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = favoriteCount.toString()
             setTextColor(android.graphics.Color.WHITE)
             textSize = 15f
@@ -649,6 +650,7 @@ object PanelDragHelper {
             minWidth = 40
         }
         val favoriteMinusButton = android.widget.TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "−"
             setTextColor(android.graphics.Color.WHITE)
             textSize = 16f
@@ -663,6 +665,7 @@ object PanelDragHelper {
             }
         }
         val favoritePlusButton = android.widget.TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "+"
             setTextColor(android.graphics.Color.WHITE)
             textSize = 16f
@@ -681,6 +684,7 @@ object PanelDragHelper {
             gravity = android.view.Gravity.CENTER_VERTICAL
             setPadding(40, 10, 40, 30)
             addView(android.widget.TextView(context).apply {
+                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 text = "즐겨찾기 표시 개수"
                 setTextColor(android.graphics.Color.WHITE)
                 layoutParams = android.widget.LinearLayout.LayoutParams(
@@ -704,6 +708,7 @@ object PanelDragHelper {
         // 다른 설정들처럼 슬라이더로 값만 정해두고 맨 아래 "저장" 버튼 누를 때 한 번에
         // 같이 저장되도록 통합. #문제시 원복
         val volumeSectionTitle = android.widget.TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "길안내 음량"
             setTextColor(android.graphics.Color.WHITE)
             textSize = 15f
@@ -712,6 +717,7 @@ object PanelDragHelper {
         // v: 재억 요청(2026-08-25) - 물리 볼륨버튼으로 실시간 조절/동기화가 되므로 슬라이더
         // 제거. "길안내 음량" 제목만 남기고 그 아래 안내 문구로 대체. #문제시 원복
         val volumeHintText = android.widget.TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "차량/헤드유닛 물리 볼륨버튼으로 조절하세요"
             setTextColor(android.graphics.Color.parseColor("#999999"))
             textSize = 13f
@@ -734,6 +740,7 @@ object PanelDragHelper {
                 setBackgroundColor(android.graphics.Color.parseColor("#9928282C"))
             }
             val headerText = android.widget.TextView(context).apply {
+                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 text = title
                 setTextColor(android.graphics.Color.parseColor("#8AB4FF"))
                 textSize = 14f
@@ -742,6 +749,7 @@ object PanelDragHelper {
                 )
             }
             val chevron = android.widget.TextView(context).apply {
+                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 text = "▾"
                 setTextColor(android.graphics.Color.parseColor("#8AB4FF"))
                 textSize = 14f
@@ -814,18 +822,21 @@ object PanelDragHelper {
         var selectedCarType = CarFuelSettings.getCarType(context)
         var selectedCarFuel = CarFuelSettings.getCarFuel(context)
         val carFuelSectionTitle = android.widget.TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "차종 · 연료 설정"
             setTextColor(android.graphics.Color.WHITE)
             textSize = 15f
             setPadding(40, 20, 40, 6)
         }
         val carFuelHintText = android.widget.TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "카카오 경로 계산과 주유소 안내에 사용돼요"
             setTextColor(android.graphics.Color.parseColor("#999999"))
             textSize = 13f
             setPadding(40, 0, 40, 10)
         }
         val carFuelValueText = android.widget.TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "${CarFuelSettings.CAR_TYPE_LABELS[selectedCarType]} · ${CarFuelSettings.CAR_FUEL_LABELS[selectedCarFuel]}"
             setTextColor(android.graphics.Color.WHITE)
             textSize = 14f
@@ -883,12 +894,14 @@ object PanelDragHelper {
         // (구글 드라이브/이메일/카카오톡 나에게 보내기 등)에 알아서 보관하게 하고,
         // 복원은 표준 파일 선택기(SAF)로 그 파일을 다시 골라 불러오게 함. #문제시 원복
         val backupSectionTitle = android.widget.TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "설정 백업/복원"
             setTextColor(android.graphics.Color.WHITE)
             textSize = 15f
             setPadding(40, 20, 40, 6)
         }
         val backupHintText = android.widget.TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "즐겨찾기·API 키·화면 설정을 파일로 저장해두면 나중에 다시 불러올 수 있습니다."
             setTextColor(android.graphics.Color.parseColor("#999999"))
             textSize = 13f
