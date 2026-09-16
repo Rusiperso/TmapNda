@@ -284,24 +284,31 @@ object AutoUpdater {
         // 미리 확인해서 우리가 직접 안내 + 설정 화면 바로가기를 제공함.
         // (한번 허용해두면 이후 업데이트부터는 이 단계 없이 바로 설치됨)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
-            AlertDialog.Builder(context, R.style.RoundedDialogTheme)
-                .setTitle("설치 권한 필요")
-                .setMessage("업데이트를 설치하려면 '알 수 없는 앱 설치' 허용이 필요합니다.\n다음 화면에서 허용으로 바꿔주세요. (한번만 설정하면 다음 업데이트부터는 다시 묻지 않습니다.)")
-                .setPositiveButton("설정으로 이동") { _, _ ->
-                    val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                        data = Uri.parse("package:${context.packageName}")
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                AlertDialog.Builder(context, R.style.RoundedDialogTheme)
+                    .setTitle("설치 권한 필요")
+                    .setMessage("업데이트를 설치하려면 '알 수 없는 앱 설치' 허용이 필요합니다.\n다음 화면에서 허용으로 바꿔주세요. (한번만 설정하면 다음 업데이트부터는 다시 묻지 않습니다.)")
+                    .setPositiveButton("설정으로 이동") { _, _ ->
+                        val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                            data = Uri.parse("package:${context.packageName}")
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        try {
+                            context.startActivity(settingsIntent)
+                            Toast.makeText(context, "허용 후 다시 '업데이트 확인'을 눌러주세요.", Toast.LENGTH_LONG).show()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Settings intent failed", e)
+                            NavLogger.e(context, "Settings intent failed: ${e.message}")
+                        }
                     }
-                    try {
-                        context.startActivity(settingsIntent)
-                        Toast.makeText(context, "허용 후 다시 '업데이트 확인'을 눌러주세요.", Toast.LENGTH_LONG).show()
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Settings intent failed", e)
-                        NavLogger.e(context, "Settings intent failed: ${e.message}")
-                    }
-                }
-                .setNegativeButton("취소", null)
-                .show()
+                    .setNegativeButton("취소", null)
+                    .show()
+            } catch (e: Exception) {
+                // 다운로드 완료 브로드캐스트를 받은 시점에 화면이 이미 사라졌으면
+                // 다이얼로그를 띄울 창 토큰이 없어 BadTokenException으로 앱이 죽었었음.
+                Log.e(TAG, "설치 권한 안내 다이얼로그 표시 실패", e)
+                NavLogger.e(context, "[업데이트확인] 설치 권한 안내 다이얼로그 표시 실패: ${e.message}")
+            }
             return
         }
 
