@@ -52,6 +52,13 @@ class KakaoGuidanceDelegate(
     // startKakaoOverlayGuidance()/showKakaoIdleMap()에서 naviView가 만들어지거나
     // 재사용될 때마다 갱신해줌. #문제시 원복
     var naviView: com.kakaomobility.knsdk.ui.view.KNNaviView? = null
+    // v19.3.72: 재억 실기기 제보 - mapViewMode=Top만으로는 idle map의 자동 카메라 추적이
+    // 안 막혀서("전체 경로가 살짝 보였다가 내 위치로 다시 확 줌인됨") 경로선택 패널이
+    // 떠있는 동안은 위치 갱신 전달 자체를 다시 끊음(전에 부작용이라 생각했던 "위치 마커가
+    // 이상한 곳에 있다"는 사실 위치 마커가 아니라 화면 중앙 고정인 나침반/현위치 버튼
+    // 아이콘이었을 가능성이 높음 - 실제 파란 화살표가 카메라 이동과 무관하게 항상 화면
+    // 정중앙에 있었음). #문제시 원복
+    var suppressLocationForward = false
     private var lastLocationLogAt = 0L
 
     // ===== GuideStateDelegate =====
@@ -595,7 +602,9 @@ class KakaoGuidanceDelegate(
             NavLogger.e(context, "[HUD 브릿지] guidanceDidUpdateLocation 반영 실패: ${e.message}")
         }
 
-        naviView?.guidanceDidUpdateLocation(guidance, locationGuide)
+        if (!suppressLocationForward) {
+            naviView?.guidanceDidUpdateLocation(guidance, locationGuide)
+        }
     }
 
     // ===== RouteGuideDelegate =====

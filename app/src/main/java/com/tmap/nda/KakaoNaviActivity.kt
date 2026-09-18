@@ -78,6 +78,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // v19.3.72: 신규기능(경로 선택 팝업에 목적지 핀 표시, 재억 요청 2026-09-18) - 지금
     // 찍혀있는 목적지 핀을 기억해뒀다가 팝업이 닫힐 때 지우기 위한 참조.
     private var destinationPinMarker: KNMapMarker? = null
+    // v19.3.72: 재억이 준 CarrotNavi 2.2.0 원본 소스(KakaoMapActivity.kt)에서 확인한 정석
+    // 방식 - 경로 미리보기 중엔 지도 모드를 Top(진북고정 2D)으로 바꿔서 자동 추적을 잠깐
+    // 멈추고, 끝나면 원래 모드로 되돌림. 이전에 썼던 "위치 갱신 자체를 끊는" 방식보다
+    // 이게 원본이 검증한 진짜 방법. #문제시 원복
+    private var savedMapViewMode: com.kakaomobility.knsdk.ui.component.MapViewCameraMode? = null
+    // v19.3.72: 화면이 방금 막 열려서 아직 안내를 시작한 적 없는 첫 목적지 확정
+    // 단계인지 표시. 경로선택 카드에서 "취소"를 눌렀을 때 티맵으로 돌아갈지
+    // (finish) 판단하는 데 씀 - 이미 안내 중이던 걸 바꾸려다 취소한 경우는 false로
+    // 유지되어 기존 안내가 그대로 이어짐. #문제시 원복
+    private var isFirstTimeDestinationChoice = false
     private val originalTopMargins = mutableMapOf<Int, Int>()
     private val originalBottomMargins = mutableMapOf<Int, Int>()
 
@@ -683,6 +693,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             if (routePriorityName != null) {
                 resolveCurrentPositionThenRequestRoute(destName, destLat, destLon)
             } else {
+                // v19.3.72: 재억 실기기 제보 - "취소 눌러도 티맵으로 안 돌아간다"의 원인 -
+                // currentDestName이 onCreate 초반에 이미 destName으로 채워져 있어서,
+                // "이미 안내 중이던 걸 바꾸려다 취소" 판별에 currentDestName을 썼던 게
+                // 이 경로(방금 새로 열린 화면)에서도 항상 false가 되어버렸음. 화면이 갓
+                // 열려서 아직 안내를 한 번도 시작한 적 없는 이 경우만 표시해두는 전용
+                // 플래그로 교체. #문제시 원복
+                isFirstTimeDestinationChoice = true
                 showRoutePriorityDialog(HistoryEntry(destName, "", destLat, destLon))
             }
         }
@@ -2616,18 +2633,278 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private fun showDestinationPinOnMap(lat: Double, lon: Double) {
         try {
             val mapView = naviView.mapComponent.mapView ?: return
+            // v19.3.72: 재억 실기기 제보 - mapViewMode=Top만으로는 자동 추적이 다 안 막혀서
+            // "경로가 잠깐 보였다가 내 위치로 도로 확 줌인된다"는 문제가 남아있었음. 지도
+            // 모드 전환에 더해 위치 포워딩도 같이 끊어서 확실히 고정되게 함. #문제시 원복
+            if (savedMapViewMode == null) {
+                savedMapViewMode = naviView.mapViewMode
+            }
+            naviView.mapViewMode = com.kakaomobility.knsdk.ui.component.MapViewCameraMode.Top
+            kakaoGuidanceDelegate?.suppressLocationForward = true
+            mapView.removeRoutesAll()
+            mapView.removeMarkersAll()
             val katec = KNSDK.convertWGS84ToKATEC(lon, lat)
             val point = FloatPoint(katec.x.toFloat(), katec.y.toFloat())
             val marker = KNMapMarker(point)
             mapView.addMarker(marker)
             destinationPinMarker = marker
-            mapView.moveCamera(KNMapCameraUpdate.Creator.targetTo(point), true, false)
+            // v19.3.72: 카드가 다시 왼쪽 위로 돌아왔으니, 핀이 카드에 안 가리게 화면
+            // 오른쪽 아래로 살짝 치우친 지점에 오도록 조정. #문제시 원복
+            val cameraUpdate = KNMapCameraUpdate.Creator.targetTo(point)
+                .anchorTo(FloatPoint(0.62f, 0.55f))
+                .tiltTo(0f)
+                .bearingTo(0f)
+            mapView.moveCamera(cameraUpdate, false, false)
+            NavLogger.d(this, "[목적지핀][진단] point=(${point.x},${point.y}) mapViewMode=${naviView.mapViewMode} moveCamera 호출완료")
         } catch (e: Exception) {
             NavLogger.e(this, "[목적지핀] 표시 실패: ${e.message}")
         }
     }
 
+    // v19.3.72: 신규기능(재억 요청 2026-09-18) - "목적지 고르면 지도 위에 핀 찍고, 그
+    // 아래에 우리 앱 기존 다이얼로그 스타일(반투명 검정 카드 #28282C 70%, 20dp 라운드,
+    // 골드 강조색)로 경로 선택 카드가 뜨게" 만든 새 오버레이. AlertDialog 목록 대신
+    // naviView 위에 코드로 뷰를 직접 얹는 방식이라 레이아웃 xml은 안 건드림. #문제시 원복
+    private fun showRouteChoicePanel(
+        picked: HistoryEntry,
+        optionLabels: List<String>,
+        minutesArr: Array<Int?>,
+        costArr: Array<Int?>,
+        routesArr: Array<Any?>,
+        startLat: Double,
+        startLon: Double,
+        goDirectly: (Int) -> Unit
+    ): () -> Unit {
+        val density = resources.displayMetrics.density
+        fun dp(v: Int) = (v * density).toInt()
+        val root = binding.root as ViewGroup
+        // v19.3.72: 재억 요청(2026-09-18) - fitTo 자동 맞춤을 포기하고 거리 기반 줌
+        // 계산으로 바꿨으니, 카드 위치가 지도 표시 영역 모양에 영향을 주는 이유가 없어짐.
+        // 원래 요청대로 왼쪽 위(경유지 버튼 오른쪽/GPS 아래)로 되돌림. #문제시 원복
+        val cardWidthForFit = minOf(dp(360), (resources.displayMetrics.widthPixels * 0.42).toInt())
+        val panelMarginStart = dp(170).toFloat()
+        val panelMarginTop = dp(76).toFloat()
+
+        var selectedIndex = 0
+        var panelView: View? = null
+        // v19.3.72: 재억 실기기 제보 - 계산 결과가 옵션별로 하나씩 도착할 때마다 매번
+        // fitTo로 카메라를 다시 움직였더니, 전환이 끝나기 전에 또 새로 움직이는 일이
+        // 반복돼서 화면이 어중간한 상태로 찍히는 경우가 있었음("목적지가 잘려 보인다").
+        // 같은 옵션에 대해선 카메라를 한 번만 맞추도록 기록. #문제시 원복
+        val fittedIndices = mutableSetOf<Int>()
+        val tabViews = mutableListOf<android.widget.TextView>()
+        lateinit var timeText: android.widget.TextView
+        lateinit var etaText: android.widget.TextView
+        lateinit var distText: android.widget.TextView
+
+        fun removePanel() {
+            panelView?.let { root.removeView(it) }
+            panelView = null
+        }
+
+        // v19.3.72: 재억 요청(2026-09-18) - "전체 경로를 화면에 자동으로 맞추기"는
+        // 완전히 폐기함. fitTo/거리기반 zoomTo 둘 다 카카오 비공식 API 특성상 예측 가능한
+        // 결과를 못 만들어서(로그로 여러 번 확인) 계속 튀는 값이 나왔음. 이제 목적지
+        // 핀(showDestinationPinOnMap에서 이미 안정적으로 찍고 카메라도 그쪽으로 이동시켜
+        // "여기 맞아?" 확인하는 기능)만 남기고, 경로 전체를 화면에 맞추는 시도는 하지
+        // 않음 - 필요하면 사용자가 손으로 확대/축소. #문제시 원복
+        fun drawRouteAndFit() {}
+
+        fun updateSelection() {
+            tabViews.forEachIndexed { i, tv ->
+                if (i == selectedIndex) {
+                    tv.setBackgroundColor(android.graphics.Color.parseColor("#FFD54F"))
+                    tv.setTextColor(android.graphics.Color.parseColor("#212121"))
+                    tv.setTypeface(null, android.graphics.Typeface.BOLD)
+                } else {
+                    tv.setBackgroundColor(android.graphics.Color.parseColor("#14FFFFFF"))
+                    tv.setTextColor(android.graphics.Color.parseColor("#CCCCCC"))
+                    tv.setTypeface(null, android.graphics.Typeface.NORMAL)
+                }
+            }
+            val minutes = minutesArr[selectedIndex]
+            val etaLine = SearchRanking.formatEtaMinutes(minutes)
+            // v19.3.72: 재억 실기기 제보 - "계산실패?" - 실제로는 실패한 게 아니라, 거리가
+            // 멀어서(평택-대구 등) 계산이 3초 넘게 걸린 것뿐이었는데 "계산 실패"라고 써놔서
+            // 영영 안 되는 것처럼 보였음. 아직 값이 안 왔을 때는 "계산 중..."으로 바꾸고,
+            // 값이 도착하면(아래 refresh 참고) 다시 그려서 실제 값으로 바뀌게 함. #문제시 원복
+            timeText.text = etaLine ?: "계산 중..."
+            etaText.text = ""
+            val toll = costArr.getOrNull(selectedIndex)?.takeIf { it > 0 }
+            distText.text = when {
+                minutes == null -> ""
+                toll != null -> "통행료 %,d원".format(toll)
+                else -> "통행료 무료"
+            }
+            drawRouteAndFit()
+        }
+
+        val card = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            background = android.graphics.drawable.GradientDrawable().apply {
+                // v19.3.72: 재억 실기기 제보 - 지도 위에 바로 얹히다 보니 원래 다이얼로그
+                // 배경(70% 반투명)만으로는 뒤에 있는 지도 지명 글자가 버튼 글씨에 비쳐
+                // 보였음("취소" 버튼에 "비도"가 겹쳐 보임). 92%로 더 불투명하게 올림. #문제시 원복
+                setColor(android.graphics.Color.parseColor("#EB28282C"))
+                cornerRadius = dp(20).toFloat()
+            }
+            setPadding(dp(20), dp(18), dp(20), dp(16))
+        }
+
+        card.addView(android.widget.TextView(this).apply {
+            text = picked.name
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 17f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        })
+        if (picked.addr.isNotBlank()) {
+            card.addView(android.widget.TextView(this).apply {
+                text = picked.addr
+                setTextColor(android.graphics.Color.parseColor("#BBBBBB"))
+                textSize = 12f
+                setPadding(0, dp(2), 0, dp(14))
+            })
+        } else {
+            card.addView(View(this).apply {
+                layoutParams = android.widget.LinearLayout.LayoutParams(0, dp(10))
+            })
+        }
+
+        val tabsRow = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+        }
+        optionLabels.forEachIndexed { i, label ->
+            val tab = android.widget.TextView(this).apply {
+                text = label
+                textSize = 13f
+                gravity = android.view.Gravity.CENTER
+                setPadding(dp(4), dp(9), dp(4), dp(9))
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = dp(10).toFloat()
+                }
+                isClickable = true
+                setOnClickListener {
+                    selectedIndex = i
+                    updateSelection()
+                }
+            }
+            val lp = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            if (i > 0) lp.marginStart = dp(8)
+            tabsRow.addView(tab, lp)
+            tabViews.add(tab)
+        }
+        card.addView(tabsRow, android.widget.LinearLayout.LayoutParams(
+            android.widget.LinearLayout.LayoutParams.MATCH_PARENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(14) })
+
+        val metaRow = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        timeText = android.widget.TextView(this).apply {
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 22f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        }
+        etaText = android.widget.TextView(this).apply {
+            setTextColor(android.graphics.Color.parseColor("#FFD54F"))
+            textSize = 13f
+            setPadding(dp(8), 0, 0, 0)
+        }
+        distText = android.widget.TextView(this).apply {
+            setTextColor(android.graphics.Color.parseColor("#FFB74D"))
+            textSize = 12f
+            gravity = android.view.Gravity.END
+        }
+        metaRow.addView(timeText)
+        metaRow.addView(etaText)
+        metaRow.addView(distText, android.widget.LinearLayout.LayoutParams(
+            0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+        ))
+        card.addView(metaRow, android.widget.LinearLayout.LayoutParams(
+            android.widget.LinearLayout.LayoutParams.MATCH_PARENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(16) })
+
+        val btnRow = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+        }
+        val cancelBtn = android.widget.TextView(this).apply {
+            text = "취소"
+            gravity = android.view.Gravity.CENTER
+            setTextColor(android.graphics.Color.parseColor("#DDDDDD"))
+            textSize = 14f
+            setPadding(0, dp(13), 0, dp(13))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(android.graphics.Color.parseColor("#1AFFFFFF"))
+                cornerRadius = dp(12).toFloat()
+            }
+            isClickable = true
+            setOnClickListener {
+                removePanel()
+                clearDestinationPin()
+                // v19.3.72: 재억 요청(2026-09-18) - "취소 누르면 다시 티맵으로 돌아오기".
+                // isFirstTimeDestinationChoice로 판단 - 이미 안내 중이던 걸 "새 목적지로
+                // 바꿀까요?"에서 취소한 경우는 기존 안내를 그대로 이어가야 하므로 안 나감.
+                // v19.3.72(2차): 재억 실기기 제보 - 그냥 finish()만 하니 ResumeGuidanceStore/
+                // KakaoRouteDataRepository에 "안내 중" 상태가 안 지워진 채로 남아서, 다음에
+                // 목적지를 다시 검색하면 "경유지 추가/새 목적지로" 팝업이 엉뚱하게 떴음.
+                // 원래 "안내종료" 버튼이 쓰는 finishGuidance()로 정식으로 정리하고 나가도록
+                // 교체(이 시점엔 아직 실제 안내가 시작 전이라 stop()을 불러도 안전함). #문제시 원복
+                if (isFirstTimeDestinationChoice) {
+                    finishGuidance()
+                }
+            }
+        }
+        val startBtn = android.widget.TextView(this).apply {
+            text = "안내 시작"
+            gravity = android.view.Gravity.CENTER
+            setTextColor(android.graphics.Color.parseColor("#212121"))
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            textSize = 14f
+            setPadding(0, dp(13), 0, dp(13))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(android.graphics.Color.parseColor("#FFD54F"))
+                cornerRadius = dp(12).toFloat()
+            }
+            isClickable = true
+            setOnClickListener {
+                removePanel()
+                clearDestinationPin()
+                goDirectly(selectedIndex)
+            }
+        }
+        btnRow.addView(cancelBtn, android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        btnRow.addView(startBtn, android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(10) })
+        card.addView(btnRow)
+
+        // v19.3.72: 재억 요청(2026-09-18) - 왼쪽 위(경유지 버튼 오른쪽/GPS 아래)로 원복. #문제시 원복
+        val frameParams = android.widget.FrameLayout.LayoutParams(cardWidthForFit, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT).apply {
+            gravity = android.view.Gravity.TOP or android.view.Gravity.START
+            marginStart = panelMarginStart.toInt()
+            topMargin = panelMarginTop.toInt()
+        }
+        root.addView(card, frameParams)
+        panelView = card
+        updateSelection()
+        return ::updateSelection
+    }
+
     private fun clearDestinationPin() {
+        kakaoGuidanceDelegate?.suppressLocationForward = false
+        // v19.3.72: CarrotNavi 원본과 동일 - 저장해둔 지도 모드로 복원. #문제시 원복
+        savedMapViewMode?.let {
+            try {
+                naviView.mapViewMode = it
+            } catch (e: Exception) {
+                NavLogger.e(this, "[경로선택] 지도모드 복원 실패: ${e.message}")
+            }
+            savedMapViewMode = null
+        }
+        try {
+            naviView.mapComponent.mapView?.removeRoutesAll()
+        } catch (e: Exception) {
+            NavLogger.e(this, "[경로선택] 미리보기 경로선 제거 실패: ${e.message}")
+        }
         val marker = destinationPinMarker ?: return
         destinationPinMarker = null
         try {
@@ -2771,6 +3048,44 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             resolveCurrentPositionThenRequestRoute(picked.name, picked.lat, picked.lon, finishOnFailure = false)
         }
 
+        // v19.3.72: showRouteChoicePanel이 전체 경로를 보여주려면 출발점 좌표가 필요해서,
+        // 원래 뒤쪽에 있던 이 계산을 goDirectly 정의 뒤 · showPickerWithResults 정의
+        // 앞으로 끌어올림(코틀린은 지역함수가 자기보다 뒤에 선언된 지역변수를 못 씀). #문제시 원복
+        val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
+        if (curLat == null || curLon == null) {
+            clearDestinationPin()
+            goDirectly(0)
+            return
+        }
+
+        // v19.3.72: 신규기능(재억 요청 2026-09-18) - "목적지 고르면 지도+경로선택이 한
+        // 화면에 같이 보여야 하는 거 아니냐"는 요청으로, 실제로 그 목적지로 안내를 시작하는
+        // 경우(saveToSlot == null)는 목록형 AlertDialog 대신 지도 위에 뜨는 반투명 카드형
+        // 패널로 대체함. v19.3.72(2차): 처음엔 3초 계산을 기다렸다가 한 번에 그렸는데,
+        // 거리가 먼 목적지(평택-대구 등, 재억 실기기 제보)는 3초 안에 계산이 다 안 끝나서
+        // "계산 실패"로 굳어버리는 문제가 있었음 - 이제 계산을 기다리지 않고 핀 찍자마자
+        // 바로 패널부터 띄우고, 옵션별 계산 결과가 하나씩 도착할 때마다 그 값으로 다시
+        // 그려서(refresh) 자연스럽게 채워지게 함. "이동방식 저장" 전용 메뉴(saveToSlot != null,
+        // 실제로 안 감)는 굳이 지도가 필요없어서 기존 목록 팝업을 그대로 둠. #문제시 원복
+        if (saveToSlot == null) {
+            val minutesArr = arrayOfNulls<Int>(3)
+            val costArr = arrayOfNulls<Int>(3)
+            val routesArr = arrayOfNulls<Any>(3)
+            val refresh = showRouteChoicePanel(picked, optionLabels, minutesArr, costArr, routesArr, curLat, curLon, ::goDirectly)
+            KakaoSdkState.computeEtaForOptions(
+                this, curLat, curLon, picked.lat, picked.lon,
+                options = optionPriorities.zip(optionAvoidOptions)
+            ) { index, minutes, _, tollCostWon, route ->
+                runOnUiThread {
+                    minutesArr[index] = minutes
+                    costArr[index] = tollCostWon
+                    routesArr[index] = route
+                    refresh()
+                }
+            }
+            return
+        }
+
         fun showPickerWithResults(minutesArr: Array<Int?>, costArr: Array<Int?> = arrayOfNulls(3)) {
             val labels = optionLabels.mapIndexed { i, label ->
                 // v: 신규기능(예상 통행료 표시, 재억 요청 2026-09-15) - 통행료 값을 못 구했으면
@@ -2781,9 +3096,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }.toMutableList()
             // v: 재억 요청(2026-08-22) - MapActivity와 동일 - "경로 방식 변경" 메뉴로
             // 들어왔을 때만 맨 아래에 "저장된 방식 삭제" 추가. #문제시 원복
-            if (saveToSlot != null) {
-                labels.add("저장된 방식 삭제")
-            }
+            labels.add("저장된 방식 삭제")
             val listView = android.widget.ListView(this)
             val adapter = darkTextAdapter(ArrayList<CharSequence>(labels))
             listView.adapter = adapter
@@ -2792,9 +3105,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 .setView(listView)
                 .setNegativeButton("취소", null)
                 .create()
-            // v19.3.72: 취소를 누르든 방식을 고르든, 팝업이 닫히면 찍어둔 목적지 핀도
-            // 같이 지움(재억 요청 2026-09-18). #문제시 원복
-            routeDialog.setOnDismissListener { clearDestinationPin() }
             listView.setOnItemClickListener { _, _, position, _ ->
                 routeDialog.dismiss()
                 goDirectly(position)
@@ -2803,12 +3113,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             routeDialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog_212121_rounded)
         }
 
-        val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
-        if (curLat == null || curLon == null) {
-            clearDestinationPin()
-            goDirectly(0)
-            return
-        }
         val minutesArr = arrayOfNulls<Int>(3)
         val distArr = arrayOfNulls<Int>(3)
         val costArr = arrayOfNulls<Int>(3)
@@ -2839,7 +3143,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         KakaoSdkState.computeEtaForOptions(
             this, curLat, curLon, picked.lat, picked.lon,
             options = optionPriorities.zip(optionAvoidOptions)
-        ) { index, minutes, distanceMeters, tollCostWon ->
+        ) { index, minutes, distanceMeters, tollCostWon, _ ->
             runOnUiThread {
                 minutesArr[index] = minutes
                 distArr[index] = distanceMeters

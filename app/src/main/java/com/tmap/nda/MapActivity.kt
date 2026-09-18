@@ -1684,7 +1684,7 @@ class MapActivity : AppCompatActivity() {
         KakaoSdkState.computeEtaForOptions(
             this, curLat, curLon, picked.lat, picked.lon,
             options = optionPriorities.zip(optionAvoidOptions)
-        ) { index, minutes, distanceMeters, tollCostWon ->
+        ) { index, minutes, distanceMeters, tollCostWon, _ ->
             runOnUiThread {
                 minutesArr[index] = minutes
                 distArr[index] = distanceMeters
