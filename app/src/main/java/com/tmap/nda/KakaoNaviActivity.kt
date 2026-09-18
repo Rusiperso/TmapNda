@@ -2726,12 +2726,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
         fun updateSelection() {
             tabViews.forEachIndexed { i, tv ->
+                // v19.3.74: 재억 제보 - setBackgroundColor()가 처음에 만들어둔 둥근 모서리
+                // GradientDrawable을 각진 배경으로 통째로 덮어써서, 탭만 계속 각진 모서리로
+                // 보였음. 배경 드로어블은 그대로 두고 색만 바꾸도록 수정. #문제시 원복
+                val bg = tv.background as android.graphics.drawable.GradientDrawable
                 if (i == selectedIndex) {
-                    tv.setBackgroundColor(android.graphics.Color.parseColor("#FFD54F"))
+                    bg.setColor(android.graphics.Color.parseColor("#FFD54F"))
                     tv.setTextColor(android.graphics.Color.parseColor("#212121"))
                     tv.setTypeface(null, android.graphics.Typeface.BOLD)
                 } else {
-                    tv.setBackgroundColor(android.graphics.Color.parseColor("#14FFFFFF"))
+                    bg.setColor(android.graphics.Color.parseColor("#14FFFFFF"))
                     tv.setTextColor(android.graphics.Color.parseColor("#CCCCCC"))
                     tv.setTypeface(null, android.graphics.Typeface.NORMAL)
                 }
@@ -2756,10 +2760,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val card = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             background = android.graphics.drawable.GradientDrawable().apply {
-                // v19.3.72: 재억 실기기 제보 - 지도 위에 바로 얹히다 보니 원래 다이얼로그
-                // 배경(70% 반투명)만으로는 뒤에 있는 지도 지명 글자가 버튼 글씨에 비쳐
-                // 보였음("취소" 버튼에 "비도"가 겹쳐 보임). 92%로 더 불투명하게 올림. #문제시 원복
-                setColor(android.graphics.Color.parseColor("#EB28282C"))
+                // v19.3.74: 재억 요청 - 다른 팝업들과 통일성 있게 다시 70% 반투명(#B3)으로.
+                setColor(android.graphics.Color.parseColor("#B328282C"))
                 cornerRadius = dp(20).toFloat()
             }
             setPadding(dp(20), dp(18), dp(20), dp(16))
@@ -2794,7 +2796,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 gravity = android.view.Gravity.CENTER
                 setPadding(dp(4), dp(9), dp(4), dp(9))
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    cornerRadius = dp(10).toFloat()
+                    cornerRadius = dp(12).toFloat()
                 }
                 isClickable = true
                 setOnClickListener {
