@@ -24,6 +24,9 @@ import com.kakaomobility.knsdk.KNSDK
 import com.kakaomobility.knsdk.KNSpeedOverAlertOption
 import com.kakaomobility.knsdk.common.objects.KNPOI
 import com.kakaomobility.knsdk.common.objects.KNError
+import com.kakaomobility.knsdk.common.util.FloatPoint
+import com.kakaomobility.knsdk.map.knmaprenderer.objects.KNMapCameraUpdate
+import com.kakaomobility.knsdk.map.uicustomsupport.renewal.KNMapMarker
 import com.kakaomobility.knsdk.ui.view.KNNaviView
 import com.tmap.nda.databinding.ActivityKakaoNaviBinding
 import com.tmapmobility.tmap.tmapsdk.ui.util.TmapUISDK
@@ -72,6 +75,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // v14.2: MapActivity와 동일 - 항목을 골라 안내를 시작하려 할 때, 배경으로 돌던
     // 나머지 목록 계산들을 그만두게 하는 세대 카운터(재억 아이디어). #문제시 원복
     private var etaQueueGeneration = 0
+    // v19.3.72: 신규기능(경로 선택 팝업에 목적지 핀 표시, 재억 요청 2026-09-18) - 지금
+    // 찍혀있는 목적지 핀을 기억해뒀다가 팝업이 닫힐 때 지우기 위한 참조.
+    private var destinationPinMarker: KNMapMarker? = null
     private val originalTopMargins = mutableMapOf<Int, Int>()
     private val originalBottomMargins = mutableMapOf<Int, Int>()
 
@@ -342,7 +348,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         setupContentAndStart(
             destName,
             destLat,
-            destLon
+            destLon,
+            routePriorityName
         )
     } else {
         val errorMessage = message ?: "알 수 없는 오류"
@@ -363,7 +370,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 }
     }
 
-    private fun setupContentAndStart(destName: String, destLat: Double, destLon: Double) {
+    private fun setupContentAndStart(destName: String, destLat: Double, destLon: Double, routePriorityName: String?) {
         binding = ActivityKakaoNaviBinding.inflate(layoutInflater)
         setContentView(binding.root)
         inflatedOrientation = resources.configuration.orientation
@@ -622,6 +629,17 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             KNRoutePriority.KNRoutePriority_Recommand,
             KNRouteAvoidOption.KNRouteAvoidOption_None.value
         )
+        // v: 재억 제보 - "고정/이동식/구간단속 카메라 근처에서 10% 안 넘었는데도 계속
+        // 경고음이 운다"는 건 우리 코드가 아니라 카카오 SDK 자체 판단 함수
+        // (KNGuidance.judgeOverSpeedAlert, initWithGuidance가 내부적으로 등록)가 화면에
+        // 안 보이는 "그 카메라 하나에 박혀있는 카카오 자체 DB상의 제한속도"를 기준으로
+        // 10%를 계산해서 생기는 불일치였음(classes.jar를 javap로 까서 확인 - 우리
+        // SdiDataRepository 값과는 전혀 무관). 우리가 손댈 수 없는 값이라 기준을 맞출
+        // 방법이 없으므로, 카카오 자체 경고음은 완전히 꺼버리고 화면에 보이는 값을 그대로
+        // 쓰는 우리 자체 경고음(checkOverSpeedWarning, 로그도 다 남음) 하나로 통일함.
+        // initWithGuidance 호출 직후에 다시 세팅해야 카카오가 지 걸로 덮어쓴 걸 우리 걸로
+        // 다시 덮어쓸 수 있음. #문제시 원복
+        guidance.judgeOverSpeedAlert = { _, _, _, _, _ -> false }
 
         // v4.16: [볼륨API스캔]으로도 확인됐지만, 카카오모빌리티 공식 문서
         // (사용자 맞춤 설정하기)에 명시된 공개 API였음 - KNNaviView.sndVolume(Float,
@@ -655,7 +673,18 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             false
         }
         if (!resumedWithWaypoints) {
-            resolveCurrentPositionThenRequestRoute(destName, destLat, destLon)
+            // v19.3.72: 신규기능(재억 요청 2026-09-18) - "즐겨찾기/주변탐색/검색 등
+            // 어디서 들어오든 다 목적지 지도가 나와야 하는 거 아니냐"는 지적 - MapActivity가
+            // 방식(route_priority_name)을 미리 정해서 넘겨준 경우(경유지 재구성 등)만 그대로
+            // 바로 안내를 시작하고, 안 넘어온 "새로 목적지 고른" 경우는 여기서(idle map이
+            // 이미 초기화된 뒤라 핀을 찍을 지도가 있음) 핀 찍고 경로선택 팝업을 직접 띄움.
+            // 이러면 MapActivity 쪽 즐겨찾기/검색/주변탐색 등 모든 진입점이 이 화면으로만
+            // 넘어오게 통일해두면 자동으로 지도 미리보기가 붙게 됨. #문제시 원복
+            if (routePriorityName != null) {
+                resolveCurrentPositionThenRequestRoute(destName, destLat, destLon)
+            } else {
+                showRoutePriorityDialog(HistoryEntry(destName, "", destLat, destLon))
+            }
         }
     }
 
@@ -2579,6 +2608,35 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         return true
     }
 
+    // v19.3.72: 신규기능(재억 요청 2026-09-18) - 검색 결과를 고르면 추천/고속/무료
+    // 팝업이 뜨기 전에, 그 목적지 위치에 지도 핀을 찍고 카메라를 그쪽으로 이동시켜
+    // "여기 맞아?" 확인할 수 있게 함. 카카오 SDK(KNMapView)가 addMarker/moveCamera를
+    // 공개 API로 제공해서 가능(aar 안에서 확인). 좌표는 다른 곳과 동일하게
+    // KNSDK.convertWGS84ToKATEC로 변환. #문제시 원복
+    private fun showDestinationPinOnMap(lat: Double, lon: Double) {
+        try {
+            val mapView = naviView.mapComponent.mapView ?: return
+            val katec = KNSDK.convertWGS84ToKATEC(lon, lat)
+            val point = FloatPoint(katec.x.toFloat(), katec.y.toFloat())
+            val marker = KNMapMarker(point)
+            mapView.addMarker(marker)
+            destinationPinMarker = marker
+            mapView.moveCamera(KNMapCameraUpdate.Creator.targetTo(point), true, false)
+        } catch (e: Exception) {
+            NavLogger.e(this, "[목적지핀] 표시 실패: ${e.message}")
+        }
+    }
+
+    private fun clearDestinationPin() {
+        val marker = destinationPinMarker ?: return
+        destinationPinMarker = null
+        try {
+            naviView.mapComponent.mapView?.removeMarker(marker)
+        } catch (e: Exception) {
+            NavLogger.e(this, "[목적지핀] 제거 실패: ${e.message}")
+        }
+    }
+
     // 안내 중 경유지 추가 - 기존 경유지는 그대로 두고 맨 뒤에 이어붙임. #문제시 원복
     // v: 재억 요청(2026-09-02) - "경유지로 추가할 때는 저장된 방식이 있어도 그냥 물어보게
     // 할 수 있나?" -> 가능. 즐겨찾기에 저장된 경로 방식은 "그 목적지로 새로 갈 때" 쓰라고
@@ -2601,7 +2659,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // AlertDialog는 setMessage()와 setItems()를 동시에 지원하지 않음 - 메시지가
         // 설정돼 있으면 목록 영역이 아예 안 그려짐. 그래서 제목/메시지/취소만 보였던 것.
         // 안내 문구를 제목에 합치고 setItems만 남겨서 목록이 실제로 표시되게 함. #문제시 원복
-        android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
+        // v19.3.72: 신규기능(재억 요청 2026-09-18) - 경유지 추가할 때도 다른 진입점과
+        // 동일하게, 고른 경유지 위치를 팝업 뜨는 동안 지도에 핀으로 보여줌. #문제시 원복
+        showDestinationPinOnMap(picked.lat, picked.lon)
+        val waypointDialog = android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
             .setTitle("'${picked.name}' 경유지로 추가\n어떤 방식으로 갈까요? (경로 전체에 적용됩니다)")
             .setItems(optionLabels) { _, which ->
                 applyRouteOption(optionPriorities[which], optionAvoidOptions[which])
@@ -2609,7 +2670,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 rebuildRouteWithWaypoints(activeWaypoints + picked, "경유지추가", addedName = picked.name)
             }
             .setNegativeButton("취소", null)
-            .show()
+            .create()
+        waypointDialog.setOnDismissListener { clearDestinationPin() }
+        waypointDialog.show()
     }
 
     private fun showInPlaceSearchDialog() {
@@ -2671,6 +2734,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
         // v14.2: MapActivity와 동일 - 배경 계산 그만두기(재억 아이디어). #문제시 원복
         etaQueueGeneration++
+        // v19.3.72: 신규기능(재억 요청 2026-09-18) - 팝업에서 방식을 고르기 전에, 지금
+        // 고른 목적지가 실제로 지도 어디인지 먼저 핀으로 보여줌. saveToSlot으로 "이동방식만
+        // 저장"하러 들어온 경우는 실제로 그 목적지로 가는 게 아니라서 핀을 찍지 않음. #문제시 원복
+        if (saveToSlot == null) {
+            showDestinationPinOnMap(picked.lat, picked.lon)
+        }
         val optionLabels = listOf("추천 경로", "고속도로 우선", "무료도로 우선")
         val optionPriorities = listOf(
             KNRoutePriority.KNRoutePriority_Recommand,
@@ -2723,6 +2792,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 .setView(listView)
                 .setNegativeButton("취소", null)
                 .create()
+            // v19.3.72: 취소를 누르든 방식을 고르든, 팝업이 닫히면 찍어둔 목적지 핀도
+            // 같이 지움(재억 요청 2026-09-18). #문제시 원복
+            routeDialog.setOnDismissListener { clearDestinationPin() }
             listView.setOnItemClickListener { _, _, position, _ ->
                 routeDialog.dismiss()
                 goDirectly(position)
@@ -2733,6 +2805,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
         val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
         if (curLat == null || curLon == null) {
+            clearDestinationPin()
             goDirectly(0)
             return
         }

@@ -1588,6 +1588,17 @@ class MapActivity : AppCompatActivity() {
     // 자체가 없는 구간) 굳이 안 물어보고 바로 추천 경로로 감. 그래서 팝업을 미리 띄우지
     // 않고, 3개 다 계산이 끝날 때까지 조용히 기다렸다가 판단함. #문제시 원복
     private fun showRoutePriorityDialog(picked: HistoryEntry, saveToSlot: String? = null) {
+        // v19.3.72: 신규기능(재억 요청 2026-09-18) - "즐겨찾기든 주변탐색이든 경유지
+        // 추가든 어디서든 목적지 지도가 나와야 하는 거 아니냐"는 지적. 티맵 화면(여기)엔
+        // 카카오 지도 자체가 아직 없어서 핀을 찍을 데가 없었음 - "이동방식 저장" 전용
+        // 메뉴(saveToSlot != null, 실제로 그 목적지로 가는 게 아님)만 빼고, 실제로 길안내를
+        // 시작하는 경우는 여기서 팝업을 안 띄우고 바로 카카오 화면(KakaoNaviActivity)을
+        // 열어서, 그 화면이 이미 초기화해둔 지도 위에 핀을 찍고 팝업을 띄우도록 넘김
+        // (route_priority_name을 안 넘기면 KakaoNaviActivity가 알아서 그렇게 함). #문제시 원복
+        if (saveToSlot == null) {
+            startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon)
+            return
+        }
         // v14.2: 재억 아이디어 - 항목을 골라서 여기로 들어온 순간, 배경에서 돌던 나머지
         // 목록 계산들은 더 안 늘어나게 멈춤(위 etaQueueGeneration 설명 참고). #문제시 원복
         etaQueueGeneration++
