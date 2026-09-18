@@ -2814,7 +2814,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             android.widget.LinearLayout.LayoutParams.MATCH_PARENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { bottomMargin = dp(14) })
 
-        val metaRow = android.widget.LinearLayout(this).apply {
+        // v19.3.76: 재억 실기기 제보(세로모드) - distText가 metaRow 안에서 weight로 남는
+        // 폭만 억지로 나눠 받다 보니, 화면이 좁아지면(세로모드) 그 남는 폭이 글자 하나보다도
+        // 작아져서 "통행료 8,200원"이 한 글자씩 세로로 쪼개져 보였음. 시간 줄과 통행료 줄을
+        // 아예 분리된 두 줄로 나눠서, 어떤 화면 폭에서도 각자 필요한 만큼만 차지하고 줄바꿈
+        // 없이 한 줄로 표시되게 함. #문제시 원복
+        val metaCol = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+        }
+        val timeRow = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
         }
@@ -2822,23 +2830,25 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             setTextColor(android.graphics.Color.WHITE)
             textSize = 22f
             setTypeface(null, android.graphics.Typeface.BOLD)
+            maxLines = 1
         }
         etaText = android.widget.TextView(this).apply {
             setTextColor(android.graphics.Color.parseColor("#FFD54F"))
             textSize = 13f
             setPadding(dp(8), 0, 0, 0)
+            maxLines = 1
         }
         distText = android.widget.TextView(this).apply {
             setTextColor(android.graphics.Color.parseColor("#FFB74D"))
-            textSize = 12f
-            gravity = android.view.Gravity.END
+            textSize = 13f
+            setPadding(0, dp(4), 0, 0)
+            maxLines = 1
         }
-        metaRow.addView(timeText)
-        metaRow.addView(etaText)
-        metaRow.addView(distText, android.widget.LinearLayout.LayoutParams(
-            0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
-        ))
-        card.addView(metaRow, android.widget.LinearLayout.LayoutParams(
+        timeRow.addView(timeText)
+        timeRow.addView(etaText)
+        metaCol.addView(timeRow)
+        metaCol.addView(distText)
+        card.addView(metaCol, android.widget.LinearLayout.LayoutParams(
             android.widget.LinearLayout.LayoutParams.MATCH_PARENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { bottomMargin = dp(16) })
 
