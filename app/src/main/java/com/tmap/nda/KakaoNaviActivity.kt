@@ -78,6 +78,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // v19.3.72: 신규기능(경로 선택 팝업에 목적지 핀 표시, 재억 요청 2026-09-18) - 지금
     // 찍혀있는 목적지 핀을 기억해뒀다가 팝업이 닫힐 때 지우기 위한 참조.
     private var destinationPinMarker: KNMapMarker? = null
+    // v19.3.78: 재억 실기기 제보 - 경로선택 카드가 떠있는 상태(완료/취소 전)에서 경유지 등
+    // 다른 목적지를 또 고르면, showRouteChoicePanel()이 매번 새 카드를 만들어서 root에
+    // 추가만 하고 이전 카드는 안 지워서 두 카드가 겹쳐 보였음. 지금 떠있는 카드를 기억해두고,
+    // 새 카드를 띄우기 전에 먼저 이전 카드를 지우도록 함. #문제시 원복
+    private var activeRouteChoicePanel: View? = null
+    // v19.3.78: 이전 카드를 지울 때, 그 카드의 자동시작 카운트다운도 같이 멈춰야 함.
+    // 안 멈추면 카드는 지워졌는데 타이머만 뒤에서 계속 돌다가, 시간이 다 되면 이미 지운
+    // (엉뚱한) 예전 목적지로 안내가 시작돼버림. #문제시 원복
+    private var activeRouteChoicePanelCancel: (() -> Unit)? = null
     // v19.3.72: 재억이 준 CarrotNavi 2.2.0 원본 소스(KakaoMapActivity.kt)에서 확인한 정석
     // 방식 - 경로 미리보기 중엔 지도 모드를 Top(진북고정 2D)으로 바꿔서 자동 추적을 잠깐
     // 멈추고, 끝나면 원래 모드로 되돌림. 이전에 썼던 "위치 갱신 자체를 끊는" 방식보다
@@ -2673,7 +2682,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         routesArr: Array<Any?>,
         startLat: Double,
         startLon: Double,
-        goDirectly: (Int) -> Unit
+        goDirectly: (Int) -> Unit,
+        // v19.3.78: 재억 요청 - 경유지 추가 흐름도 이 카드를 그대로 재사용하게 되면서,
+        // "안내 시작" 버튼 문구와 위쪽 라벨을 상황에 맞게 바꿀 수 있게 함. #문제시 원복
+        startButtonLabel: String = "안내 시작",
+        topLabel: String? = null
     ): () -> Unit {
         val density = resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
@@ -2700,7 +2713,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         fun removePanel() {
             panelView?.let { root.removeView(it) }
             panelView = null
+            activeRouteChoicePanel = null
+            activeRouteChoicePanelCancel = null
         }
+
+        // v19.3.78: 새 카드를 만들기 전에, 아직 안 지워진 이전 카드가 있으면 먼저 지우고
+        // 그 카드의 카운트다운 타이머도 같이 멈춤. (이전 카드 위치를 그대로 이어받게
+        // 해봤는데, 카드가 화면에 자리잡기도 전에 위치값을 읽어버려서 오히려 왼쪽 위로
+        // 튀는 문제가 생겨 그 부분은 뺌 - 재억 확인) #문제시 원복
+        activeRouteChoicePanelCancel?.invoke()
+        activeRouteChoicePanel?.let { root.removeView(it) }
 
         // v19.3.74: 신규기능(재억 요청 2026-09-18) - 티맵 순정 화면처럼, 이 패널이 뜬
         // 채로 아무것도 안 누르면 일정 시간 뒤 자동으로 안내가 시작되게 함(티맵은 15초,
@@ -2767,6 +2789,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             setPadding(dp(20), dp(18), dp(20), dp(16))
         }
 
+        if (topLabel != null) {
+            card.addView(android.widget.TextView(this).apply {
+                text = topLabel
+                setTextColor(android.graphics.Color.parseColor("#FFD54F"))
+                textSize = 12f
+                setPadding(0, 0, 0, dp(4))
+            })
+        }
         card.addView(android.widget.TextView(this).apply {
             text = picked.name
             setTextColor(android.graphics.Color.WHITE)
@@ -2884,7 +2914,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
         }
         val startBtn = android.widget.TextView(this).apply {
-            text = "안내 시작"
+            text = startButtonLabel
             gravity = android.view.Gravity.CENTER
             setTextColor(android.graphics.Color.parseColor("#212121"))
             setTypeface(null, android.graphics.Typeface.BOLD)
@@ -2913,7 +2943,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         startClick()
                         return
                     }
-                    startBtn.text = "안내 시작 ($secondsLeft)"
+                    startBtn.text = "$startButtonLabel ($secondsLeft)"
                     secondsLeft--
                     countdownHandler.postDelayed(this, 1000L)
                 }
@@ -2933,6 +2963,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
         root.addView(card, frameParams)
         panelView = card
+        activeRouteChoicePanel = card
+        activeRouteChoicePanelCancel = { stopCountdown() }
         // v19.3.77: 재억 요청 - 이 카드도 다른 플로팅 패널들처럼 손으로 끌어서 옮길 수
         // 있게. 카드 전체가 아니라 카드의 빈 배경(제목/주소 위) 부분만 터치를 받게
         // 해뒀으니, 탭/취소/안내시작 버튼은 자기 클릭을 그대로 가져감(부모 OnTouchListener는
@@ -2999,33 +3031,48 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 참고(카카오 SDK 한계): 경로 방식은 guideNewDestinations(trip, priority, avoidOption)처럼
     // **경로 전체에 하나만** 지정할 수 있음. "A까지는 고속도로, B까지는 무료도로"처럼 구간별로
     // 다르게는 카카오가 지원하지 않아서, 여기서 고르는 값도 경로 전체에 적용됨. #문제시 원복
+    // v19.3.78: 신규기능(재억 요청 2026-09-18) - 경유지 추가할 때도 검색/즐겨찾기로 목적지
+    // 고를 때와 똑같이, 목록형 AlertDialog 대신 지도 위 지도+경로선택 카드(showRouteChoicePanel,
+    // 소요시간/통행료/자동시작 카운트다운/드래그 이동 다 포함)를 그대로 재사용. #문제시 원복
     private fun addWaypointToActiveGuidance(picked: HistoryEntry) {
-        val optionLabels = arrayOf("추천 경로", "고속도로 우선", "무료도로 우선")
+        val optionLabels = listOf("추천 경로", "고속도로 우선", "무료도로 우선")
         val optionPriorities = listOf(
             KNRoutePriority.KNRoutePriority_Recommand,
             KNRoutePriority.KNRoutePriority_HighWay,
             KNRoutePriority.KNRoutePriority_Recommand
         )
         val optionAvoidOptions = listOf(0, 0, KNRouteAvoidOption.KNRouteAvoidOption_Fare.value)
-        // v: 재억 재제보(2026-09-05, 실기기 사진으로 확인) - "경유지 추가할 때 추천/고속/
-        // 무료 목록이 안 보이고 취소 버튼만 덩그러니 뜬다"의 진짜 원인. 안드로이드
-        // AlertDialog는 setMessage()와 setItems()를 동시에 지원하지 않음 - 메시지가
-        // 설정돼 있으면 목록 영역이 아예 안 그려짐. 그래서 제목/메시지/취소만 보였던 것.
-        // 안내 문구를 제목에 합치고 setItems만 남겨서 목록이 실제로 표시되게 함. #문제시 원복
-        // v19.3.72: 신규기능(재억 요청 2026-09-18) - 경유지 추가할 때도 다른 진입점과
-        // 동일하게, 고른 경유지 위치를 팝업 뜨는 동안 지도에 핀으로 보여줌. #문제시 원복
+
         showDestinationPinOnMap(picked.lat, picked.lon)
-        val waypointDialog = android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
-            .setTitle("'${picked.name}' 경유지로 추가\n어떤 방식으로 갈까요? (경로 전체에 적용됩니다)")
-            .setItems(optionLabels) { _, which ->
-                applyRouteOption(optionPriorities[which], optionAvoidOptions[which])
-                NavLogger.d(this, "[경유지추가] 경로 방식 선택: ${optionLabels[which]}")
-                rebuildRouteWithWaypoints(activeWaypoints + picked, "경유지추가", addedName = picked.name)
+
+        fun goDirectly(index: Int) {
+            applyRouteOption(optionPriorities[index], optionAvoidOptions[index])
+            NavLogger.d(this, "[경유지추가] 경로 방식 선택: ${optionLabels[index]}")
+            rebuildRouteWithWaypoints(activeWaypoints + picked, "경유지추가", addedName = picked.name)
+        }
+
+        val (curLat, curLon) = resolveCurrentWgs84LatLonForSearch()
+        if (curLat == null || curLon == null) {
+            clearDestinationPin()
+            goDirectly(0)
+            return
+        }
+
+        val minutesArr = arrayOfNulls<Int>(3)
+        val costArr = arrayOfNulls<Int>(3)
+        val routesArr = arrayOfNulls<Any>(3)
+        val refresh = showRouteChoicePanel(picked, optionLabels, minutesArr, costArr, routesArr, curLat, curLon, ::goDirectly, startButtonLabel = "경유지 추가", topLabel = "경유지로 추가")
+        KakaoSdkState.computeEtaForOptions(
+            this, curLat, curLon, picked.lat, picked.lon,
+            options = optionPriorities.zip(optionAvoidOptions)
+        ) { index, minutes, _, tollCostWon, route ->
+            runOnUiThread {
+                minutesArr[index] = minutes
+                costArr[index] = tollCostWon
+                routesArr[index] = route
+                refresh()
             }
-            .setNegativeButton("취소", null)
-            .create()
-        waypointDialog.setOnDismissListener { clearDestinationPin() }
-        waypointDialog.show()
+        }
     }
 
     private fun showInPlaceSearchDialog() {
