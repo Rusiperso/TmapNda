@@ -2933,6 +2933,31 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
         root.addView(card, frameParams)
         panelView = card
+        // v19.3.77: 재억 요청 - 이 카드도 다른 플로팅 패널들처럼 손으로 끌어서 옮길 수
+        // 있게. 카드 전체가 아니라 카드의 빈 배경(제목/주소 위) 부분만 터치를 받게
+        // 해뒀으니, 탭/취소/안내시작 버튼은 자기 클릭을 그대로 가져감(부모 OnTouchListener는
+        // 자식이 소비하지 않은 터치에만 반응함). 화면 밖으로 안 나가게 root 크기 안으로
+        // 클램프. 위치는 저장하지 않음 - 팝업이 뜰 때마다 매번 새로 생기는 일회성 카드라
+        // 다음 목적지 팝업에서는 항상 원래 자리에서 다시 시작. #문제시 원복
+        var dragDX = 0f
+        var dragDY = 0f
+        card.setOnTouchListener { _, event ->
+            when (event.action) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    dragDX = card.x - event.rawX
+                    dragDY = card.y - event.rawY
+                    true
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val maxX = (root.width - card.width).coerceAtLeast(0).toFloat()
+                    val maxY = (root.height - card.height).coerceAtLeast(0).toFloat()
+                    card.x = (event.rawX + dragDX).coerceIn(0f, maxX)
+                    card.y = (event.rawY + dragDY).coerceIn(0f, maxY)
+                    true
+                }
+                else -> false
+            }
+        }
         updateSelection()
         // v19.3.74: 패널이 처음 뜬 시점에만 카운트다운 시작(ETA 값이 나중에 도착할 때마다
         // updateSelection이 다시 불려도 여기선 재시작 안 함 - 탭을 직접 누를 때만 리셋됨). #문제시 원복
