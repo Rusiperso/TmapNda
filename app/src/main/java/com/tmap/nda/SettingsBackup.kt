@@ -110,18 +110,35 @@ object SettingsBackup {
         return count
     }
 
-    /** 지금 설정을 JSON 파일로 저장하고, 그 파일을 공유(이메일/드라이브 등)할 수 있는 Intent를 돌려줌. */
+    /**
+     * 지금 설정을 JSON 파일로 저장하고, 그 파일을 공유(이메일/드라이브 등)할 수 있는 Intent를 돌려줌.
+     * v: 재억 요청(2026-09-18) - "로컬저장"으로 다운로드 폴더에 저장해둔 백업 파일을 공유할 때도
+     * 자동으로 첨부되면 좋겠다는 요청 - 공유 직전에 로컬 백업 파일을 최신 내용으로 갱신해두고,
+     * 그 파일(다운로드 폴더의 TmapNda_BackUp.json)을 그대로 첨부해서 공유하도록 변경.
+     * 실패 시(권한 문제 등) 기존처럼 앱 내부 캐시 파일을 만들어 첨부하는 방식으로 대체. #문제시 원복
+     */
     fun exportAndShare(context: Context): Intent? {
+        val localUri = try {
+            if (exportToLocalDownloads(context)) {
+                val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                prefs.getString("local_backup_uri", null)?.let { android.net.Uri.parse(it) }
+            } else null
+        } catch (e: Exception) {
+            null
+        }
+
         return try {
-            val root = JSONObject()
-            root.put(FORMAT_VERSION_MARKER, CURRENT_FORMAT_VERSION)
-            root.put(PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)))
-            root.put(QUICKSLOTS_PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(QUICKSLOTS_PREFS_NAME, Context.MODE_PRIVATE)))
+            val uri = localUri ?: run {
+                val root = JSONObject()
+                root.put(FORMAT_VERSION_MARKER, CURRENT_FORMAT_VERSION)
+                root.put(PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)))
+                root.put(QUICKSLOTS_PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(QUICKSLOTS_PREFS_NAME, Context.MODE_PRIVATE)))
 
-            val file = backupFile(context)
-            file.writeText(root.toString(2))
+                val file = backupFile(context)
+                file.writeText(root.toString(2))
+                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            }
 
-            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             Intent(Intent.ACTION_SEND).apply {
                 type = "application/json"
                 putExtra(Intent.EXTRA_STREAM, uri)
