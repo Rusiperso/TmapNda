@@ -1,5 +1,6 @@
 package com.tmap.nda
 
+import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
@@ -187,31 +188,40 @@ object SettingsBackup {
             val fileName = "TmapNda_BackUp.json"
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // 같은 이름으로 insert()만 하면 MediaStore가 덮어쓰는 대신 "TmapNda_BackUp (1).json"
-                // 처럼 새 파일을 또 만들어버림 - 먼저 같은 이름의 기존 항목을 찾아 지운 뒤 새로 만들어야
-                // 진짜 덮어쓰기가 됨. #문제시 원복
-                val existing = context.contentResolver.query(
-                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                    arrayOf(MediaStore.Downloads._ID),
-                    "${MediaStore.Downloads.DISPLAY_NAME}=? AND ${MediaStore.Downloads.RELATIVE_PATH}=?",
-                    arrayOf(fileName, Environment.DIRECTORY_DOWNLOADS + "/"),
-                    null
-                )
-                existing?.use { cursor ->
-                    val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID)
-                    while (cursor.moveToNext()) {
-                        val existingUri = ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cursor.getLong(idColumn))
-                        context.contentResolver.delete(existingUri, null, null)
+                // v: 재억 재제보(2026-09-18, 6차/최종) - 로그로 확인한 진짜 원인: 이 앱은
+                // 매니페스트에 저장소 읽기 권한이 아예 없어서, MediaStore.Downloads를
+                // "조회(query)"하는 것 자체가 항상 0건으로 나오고 있었음(자기 앱이 만든
+                // 파일조차 목록에 안 잡힘 - 다운로드 폴더 전체 개수를 찍어봐도 0). 그러니
+                // "기존 파일을 찾아서" 지우거나 재사용하는 방식은 애초에 성립 불가능했던
+                // 것 - 권한을 새로 요청하는 대신, 파일을 만들 때 그 URI를 우리 앱
+                // SharedPreferences에 직접 저장해두고, 다음번엔 조회 없이 그 URI로 바로
+                // 덮어쓰기(openOutputStream(uri,"wt"))만 시도하는 방식으로 바꿈 - 이러면
+                // 저장소 조회 권한이 없어도 상관없음(자기가 만든 파일은 그 URI로 직접
+                // 열고 쓰는 것 자체는 권한 없이도 됨). #문제시 원복
+                val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val savedUriString = prefs.getString("local_backup_uri", null)
+                var wroteToExisting = false
+                if (savedUriString != null) {
+                    try {
+                        val savedUri = android.net.Uri.parse(savedUriString)
+                        context.contentResolver.openOutputStream(savedUri, "wt")?.use { it.write(bytes) }
+                        wroteToExisting = true
+                        NavLogger.d(context, "[설정백업] 기존 백업 파일에 덮어씀: $savedUriString")
+                    } catch (e: Exception) {
+                        // 사용자가 그 사이 파일을 지웠거나 URI가 더 이상 유효하지 않은 경우 - 새로 만듦
+                        NavLogger.d(context, "[설정백업] 저장해둔 백업 URI가 더 이상 유효하지 않음(${e.message}) - 새로 만듦")
                     }
                 }
-                val values = ContentValues().apply {
-                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-                    put(MediaStore.Downloads.MIME_TYPE, "application/json")
-                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                if (!wroteToExisting) {
+                    val values = ContentValues().apply {
+                        put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                        put(MediaStore.Downloads.MIME_TYPE, "application/json")
+                        put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                    }
+                    val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return false
+                    context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) } ?: return false
+                    prefs.edit().putString("local_backup_uri", uri.toString()).apply()
                 }
-                val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                    ?: return false
-                context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) } ?: return false
             } else {
                 @Suppress("DEPRECATION")
                 val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)

@@ -2702,6 +2702,20 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             panelView = null
         }
 
+        // v19.3.74: 신규기능(재억 요청 2026-09-18) - 티맵 순정 화면처럼, 이 패널이 뜬
+        // 채로 아무것도 안 누르면 일정 시간 뒤 자동으로 안내가 시작되게 함(티맵은 15초,
+        // 재억 요청대로 10초로). 탭을 눌러 방식을 바꾸면 그 사이엔 급하게 시작되면 안
+        // 되니 다시 10초로 리셋됨. #문제시 원복
+        val countdownHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        var countdownRunnable: Runnable? = null
+        lateinit var startClick: () -> Unit
+        lateinit var startCountdown: () -> Unit
+
+        fun stopCountdown() {
+            countdownRunnable?.let { countdownHandler.removeCallbacks(it) }
+            countdownRunnable = null
+        }
+
         // v19.3.72: 재억 요청(2026-09-18) - "전체 경로를 화면에 자동으로 맞추기"는
         // 완전히 폐기함. fitTo/거리기반 zoomTo 둘 다 카카오 비공식 API 특성상 예측 가능한
         // 결과를 못 만들어서(로그로 여러 번 확인) 계속 튀는 값이 나왔음. 이제 목적지
@@ -2786,6 +2800,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 setOnClickListener {
                     selectedIndex = i
                     updateSelection()
+                    startCountdown()
                 }
             }
             val lp = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -2840,6 +2855,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
             isClickable = true
             setOnClickListener {
+                stopCountdown()
                 removePanel()
                 clearDestinationPin()
                 // v19.3.72: 재억 요청(2026-09-18) - "취소 누르면 다시 티맵으로 돌아오기".
@@ -2867,11 +2883,31 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 cornerRadius = dp(12).toFloat()
             }
             isClickable = true
-            setOnClickListener {
-                removePanel()
-                clearDestinationPin()
-                goDirectly(selectedIndex)
+        }
+        startClick = {
+            stopCountdown()
+            removePanel()
+            clearDestinationPin()
+            goDirectly(selectedIndex)
+        }
+        startBtn.setOnClickListener { startClick() }
+
+        startCountdown = {
+            stopCountdown()
+            var secondsLeft = 10
+            val runnable = object : Runnable {
+                override fun run() {
+                    if (secondsLeft <= 0) {
+                        startClick()
+                        return
+                    }
+                    startBtn.text = "안내 시작 ($secondsLeft)"
+                    secondsLeft--
+                    countdownHandler.postDelayed(this, 1000L)
+                }
             }
+            countdownRunnable = runnable
+            countdownHandler.post(runnable)
         }
         btnRow.addView(cancelBtn, android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         btnRow.addView(startBtn, android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(10) })
@@ -2886,6 +2922,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         root.addView(card, frameParams)
         panelView = card
         updateSelection()
+        // v19.3.74: 패널이 처음 뜬 시점에만 카운트다운 시작(ETA 값이 나중에 도착할 때마다
+        // updateSelection이 다시 불려도 여기선 재시작 안 함 - 탭을 직접 누를 때만 리셋됨). #문제시 원복
+        startCountdown()
         return ::updateSelection
     }
 
