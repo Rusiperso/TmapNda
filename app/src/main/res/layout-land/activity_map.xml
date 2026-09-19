@@ -269,7 +269,11 @@
             <View android:layout_width="8dp" android:layout_height="0dp"/>
 
             <!-- 상태 -->
+            <!-- v: 재억 재제보(2026-09-19, 세로모드 즐겨찾기 버튼 크기 뻥튀기) - id를 직접
+                 붙여서 QuickIconGrid가 부모 단계 세기 대신 이 id로 바로 찾게 함(세로모드
+                 레이아웃 쪽 자세한 사정은 그쪽 파일 주석 참고). #문제시 원복 -->
             <LinearLayout
+                android:id="@+id/llStatusChip"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"

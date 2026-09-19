@@ -382,7 +382,14 @@
             <View android:layout_width="8dp" android:layout_height="0dp"/>
 
             <!-- 상태 -->
+            <!-- v: 재억 재제보(2026-09-19, 세로모드 즐겨찾기 버튼이 상단바 전체 너비로
+                 뻥튀기됨) - QuickIconGrid가 이 칩 크기를 tvConnectionStatus에서 부모를
+                 두 단계 타고 올라가서 찾고 있었는데, 가로모드 레이아웃엔 감싸는 단계가
+                 하나 더 있어서 우연히 맞았을 뿐이고 세로모드는 한 단계 부족해서 상단바
+                 전체(llTopBarRow 내용물)를 가리켜버렸음. id를 직접 붙여서 더 이상 구조에
+                 의존하지 않게 함. #문제시 원복 -->
             <LinearLayout
+                android:id="@+id/llStatusChip"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"

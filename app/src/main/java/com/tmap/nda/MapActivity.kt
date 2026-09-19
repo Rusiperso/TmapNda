@@ -546,7 +546,11 @@ class MapActivity : AppCompatActivity() {
             val quickItems = ArrayList<QuickIconGrid.Item>()
             binding.btnFavorites?.let { btn -> quickItems.add(QuickIconGrid.Item(btn, "btnFavorites", 0) { btn.performClick() }) }
             binding.btnNearbyCategory?.let { btn -> quickItems.add(QuickIconGrid.Item(btn, "btnNearbyCategory", 1) { btn.performClick() }) }
-            if (quickItems.isNotEmpty()) QuickIconGrid.setup(this, quickItems, binding.tvConnectionStatus?.parent?.parent as? View)
+            // v: 재억 재제보(2026-09-19) - "부모의 부모"로 상태 칩을 찾던 방식이 세로모드
+            // 레이아웃 구조 차이 때문에 상단바 전체를 가리켜버려서 즐겨찾기 버튼이
+            // 뻥튀기되는 문제가 있었음. 레이아웃에 직접 id(llStatusChip)를 붙여서
+            // 구조 변화에 안전하게 만듦. #문제시 원복
+            if (quickItems.isNotEmpty()) QuickIconGrid.setup(this, quickItems, binding.llStatusChip)
         }
         binding.btnNearbyCategory?.let { btn ->
             btn.post {
