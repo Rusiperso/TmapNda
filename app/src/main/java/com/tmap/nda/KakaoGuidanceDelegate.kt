@@ -356,10 +356,6 @@ class KakaoGuidanceDelegate(
                 }
             }
             if (pois == null) return null
-            if (pois.size < 3) {
-                NavLogger.dIfChanged(context, "다음정차지진단", "[다음정차지][진단] pois.size=${pois.size} (3 미만 - 경유지 없음으로 판단)")
-                return null // 출발/도착 2개뿐이면 경유지 없음 - 기존 동작 유지
-            }
 
             // 경유지 이름 목록: trip 객체에서 "via"가 들어간 게터를 찾아 KNPOI 리스트를
             // 얻고, 각 항목의 getName()을 시도. 순서가 요청한 순서와 같다고 가정. #문제시 원복
@@ -373,6 +369,22 @@ class KakaoGuidanceDelegate(
                     } catch (e: Exception) { null }
                 }
             } catch (e: Exception) { null }
+
+            // v: 재억 재제보(2026-09-19, "봇들마을 6단지"만 목적지로 찍었는데 계기판에
+            // 엉뚱한 산업단지명이 뜸) - pois.size(3 이상이면 경유지 있음)만 보고 판단했더니,
+            // 경유지를 안 넣었는데도 SDK가 톨게이트/분기점 등으로 pois를 3개 이상 돌려줄
+            // 때 "경유지 있음"으로 착각해서 아직 도착 전인 중간 지점 이름을 최종
+            // 목적지명 대신 보여줬음. 이제 trip의 실제 경유지 목록(viaNames)이 비어있으면
+            // pois 개수와 상관없이 무조건 "경유지 없음"으로 확정 - 목적지 하나일 땐
+            // 항상 최종 목적지명만 표시됨. #문제시 원복
+            if (viaNames.isNullOrEmpty()) {
+                NavLogger.dIfChanged(context, "다음정차지진단", "[다음정차지][진단] viaNames 비어있음 (pois.size=${pois.size}) - 경유지 없음으로 확정")
+                return null
+            }
+            if (pois.size < 3) {
+                NavLogger.dIfChanged(context, "다음정차지진단", "[다음정차지][진단] pois.size=${pois.size} (3 미만 - 경유지 없음으로 판단)")
+                return null // 출발/도착 2개뿐이면 경유지 없음 - 기존 동작 유지
+            }
 
             if (shouldLog) {
                 val distList = pois.mapIndexed { i, p -> if (p == null) "$i=null" else "$i=${findGetterInt(p, "DistFromS")}" }
