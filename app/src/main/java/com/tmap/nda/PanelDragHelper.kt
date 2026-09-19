@@ -711,8 +711,8 @@ object PanelDragHelper {
             setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "길안내 음량"
             setTextColor(android.graphics.Color.WHITE)
-            textSize = 15f
-            setPadding(40, 20, 40, 10)
+            textSize = 14f
+            setPadding(40, 8, 40, 2)
         }
         // v: 재억 요청(2026-08-25) - 물리 볼륨버튼으로 실시간 조절/동기화가 되므로 슬라이더
         // 제거. "길안내 음량" 제목만 남기고 그 아래 안내 문구로 대체. #문제시 원복
@@ -720,8 +720,8 @@ object PanelDragHelper {
             setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "차량/헤드유닛 물리 볼륨버튼으로 조절하세요"
             setTextColor(android.graphics.Color.parseColor("#999999"))
-            textSize = 13f
-            setPadding(40, 0, 40, 10)
+            textSize = 12f
+            setPadding(40, 0, 40, 4)
         }
         val container = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.VERTICAL
@@ -784,21 +784,21 @@ object PanelDragHelper {
             setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "차종 · 연료 설정"
             setTextColor(android.graphics.Color.WHITE)
-            textSize = 15f
-            setPadding(40, 20, 40, 6)
+            textSize = 14f
+            setPadding(40, 10, 40, 2)
         }
         val carFuelHintText = android.widget.TextView(context).apply {
             setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "카카오 경로 계산과 주유소 안내에 사용돼요"
             setTextColor(android.graphics.Color.parseColor("#999999"))
-            textSize = 13f
-            setPadding(40, 0, 40, 10)
+            textSize = 12f
+            setPadding(40, 0, 40, 4)
         }
         val carFuelValueText = android.widget.TextView(context).apply {
             setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "${CarFuelSettings.CAR_TYPE_LABELS[selectedCarType]} · ${CarFuelSettings.CAR_FUEL_LABELS[selectedCarFuel]}"
             setTextColor(android.graphics.Color.WHITE)
-            textSize = 14f
+            textSize = 13f
             layoutParams = android.widget.LinearLayout.LayoutParams(
                 0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
             )
@@ -832,17 +832,17 @@ object PanelDragHelper {
         val carFuelRow = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(40, 0, 40, 10)
+            setPadding(40, 0, 40, 4)
             addView(carFuelValueText)
             addView(carFuelChangeButton)
         }
         // v: 재억 요청(2026-09-15) - 하이패스 차량이면 통행료가 하이패스 요금 기준으로
         // 계산되게. KNRouteConfiguration.useHipass 그대로 연결. #문제시 원복
         val useHipassCheckBox = android.widget.Switch(context).apply {
-            text = "하이패스 장착 (통행료를 하이패스 요금으로 계산)"
+            text = "하이패스 장착 (통행료 하이패스 요금 적용)"
             isChecked = CarFuelSettings.getUseHipass(context)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 6)
         }
         etcItems.add(carFuelSectionTitle)
         etcItems.add(carFuelHintText)
@@ -856,19 +856,19 @@ object PanelDragHelper {
             setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "설정 백업/복원"
             setTextColor(android.graphics.Color.WHITE)
-            textSize = 15f
-            setPadding(40, 20, 40, 6)
+            textSize = 14f
+            setPadding(40, 10, 40, 2)
         }
         val backupHintText = android.widget.TextView(context).apply {
             setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
-            text = "즐겨찾기·API 키·화면 설정을 파일로 저장해두면 나중에 다시 불러올 수 있습니다."
+            text = "즐겨찾기·API 키·화면 설정을 파일로 저장/복원"
             setTextColor(android.graphics.Color.parseColor("#999999"))
-            textSize = 13f
-            setPadding(40, 0, 40, 10)
+            textSize = 12f
+            setPadding(40, 0, 40, 4)
         }
         val backupButtonRow = android.widget.LinearLayout(context).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
-            setPadding(40, 0, 40, 10)
+            setPadding(40, 0, 40, 4)
         }
         val backupButton = android.widget.Button(context).apply {
             text = "백업(공유)"
@@ -901,7 +901,7 @@ object PanelDragHelper {
             }
         }
         val restoreButton = android.widget.Button(context).apply {
-            text = "복원(파일선택)"
+            text = "복원"
             layoutParams = android.widget.LinearLayout.LayoutParams(
                 0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
             )
@@ -1090,7 +1090,7 @@ object PanelDragHelper {
         PopupCard.pendingEmbeddedHost = null
         if (host != null) {
             host.showSubPage(
-                customTitle, twoPane, maxDp = 420, reserveDp = 170, widthDp = 600,
+                customTitle, twoPane, maxDp = 480, reserveDp = 150, widthDp = 600,
                 buttons = listOf(
                     PopupCard.SubButton("취소") { host.back() },
                     PopupCard.SubButton("저장", primary = true) {

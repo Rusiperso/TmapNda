@@ -385,18 +385,35 @@ object PopupCard {
             closeFn = null
         }
 
-        private fun resizeCard(widthPx: Int) {
+        // 설정 화면으로 들어가기 직전 메뉴 카드 자리. 돌아올 때 그 자리로 되돌려서, 설정을 눌렀다
+        // 나올 때마다 카드가 옆으로 밀려 있던 문제를 막음. #문제시 원복
+        private var menuX: Float? = null
+        private var menuY: Float? = null
+
+        private fun resizeCard(widthPx: Int, restore: Boolean = false) {
             val lp = card.layoutParams
             if (lp != null && lp.width != widthPx) {
                 lp.width = widthPx
                 card.layoutParams = lp
             }
-            card.post {
+            // 폭이 바뀌면 오른쪽 기준으로 늘어나 카드가 왼쪽으로 밀리므로, 레이아웃이 끝난 뒤
+            // 메뉴가 있던 왼쪽 끝 자리로 다시 맞춤(화면 밖으로는 안 나가게 보정).
+            val tx = menuX
+            val ty = menuY
+            val apply = {
                 val maxX = (root.width - card.width).coerceAtLeast(0).toFloat()
                 val maxY = (root.height - card.height).coerceAtLeast(0).toFloat()
-                if (card.x > maxX) card.x = maxX
-                if (card.y > maxY) card.y = maxY
+                card.x = (tx ?: card.x).coerceIn(0f, maxX)
+                card.y = (ty ?: card.y).coerceIn(0f, maxY)
             }
+            card.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
+                override fun onGlobalLayout() {
+                    card.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                    apply()
+                }
+            })
+            card.requestLayout()
+            if (restore) { menuX = null; menuY = null }
         }
 
         /** 카드 안을 하위 화면으로 바꿈. 제목 자리에는 titleView, 아래에는 content와 버튼들이 들어감. */
@@ -408,6 +425,10 @@ object PopupCard {
             widthDp: Int,
             buttons: List<SubButton>
         ) {
+            if (backBtn.visibility != View.VISIBLE) {
+                menuX = card.x
+                menuY = card.y
+            }
             (titleView.parent as? ViewGroup)?.removeView(titleView)
             titleHolder.removeAllViews()
             titleHolder.addView(titleView)
@@ -443,7 +464,7 @@ object PopupCard {
             titleHolder.addView(menuTitle)
             body.removeAllViews()
             body.addView(menuBody)
-            resizeCard(menuWidth)
+            resizeCard(menuWidth, restore = true)
         }
     }
 
