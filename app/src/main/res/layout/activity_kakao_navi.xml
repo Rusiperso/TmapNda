@@ -884,6 +884,42 @@
             android:includeFontPadding="false"/>
     </LinearLayout>
 
+    <!-- v19.3.80: 재억 요청 - 검색이력 창 안의 좁은 즐겨찾기 줄을 빼서 주변/경유지처럼 끌어 옮길 수 있는 아이콘으로. #문제시 원복 -->
+    <LinearLayout
+        android:id="@+id/btnFavorites"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:layout_gravity="top|start"
+        android:layout_marginTop="56dp"
+        android:layout_marginStart="126dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="@drawable/shape_rounded_gray"
+        android:contentDescription="즐겨찾기"
+        android:tooltipText="즐겨찾기"
+        android:elevation="20dp"
+        android:clickable="true"
+        android:focusable="true">
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="❤️"
+            android:textSize="18sp"
+            android:includeFontPadding="false"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="즐겨찾기"
+            android:textColor="#FFFFFF"
+            android:textSize="7sp"
+            android:shadowColor="#FF000000"
+            android:shadowDx="0"
+            android:shadowDy="0"
+            android:shadowRadius="4.5"
+            android:includeFontPadding="false"/>
+    </LinearLayout>
+
     <LinearLayout
         android:id="@+id/btnAddWaypoint"
         android:layout_width="50dp"

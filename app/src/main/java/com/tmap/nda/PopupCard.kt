@@ -478,11 +478,11 @@ object PopupCard {
         fun addGrid(items: List<Pair<TextView, String>>, cols: Int, isDanger: Boolean) {
             items.chunked(cols).forEach { rowItems ->
                 val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
-                for (i in 0 until cols) {
-                    val entry = rowItems.getOrNull(i)
-                    val cell: View = if (entry == null) {
-                        android.widget.Space(activity)
-                    } else {
+                // 마지막 줄처럼 항목이 3개보다 적은 줄은 빈 칸을 남기지 않고 그 줄 항목들이 카드
+                // 폭 전체를 나눠 갖게 함(재억 요청). #문제시 원복
+                for (i in rowItems.indices) {
+                    val entry = rowItems[i]
+                    val cell: View = run {
                         val src = entry.first
                         TextView(activity).apply {
                             text = src.text

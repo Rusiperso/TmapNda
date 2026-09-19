@@ -456,6 +456,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 PanelDragHelper.forceToFront(btn)
             }
         }
+        binding.btnFavorites?.let { btn ->
+            btn.setOnClickListener { showFavoritesCard() }
+            PanelDragHelper.makeLongPressDraggable(this, btn, "btnFavorites", isLandscape) {
+                btn.performClick()
+            }
+            btn.post {
+                PanelDragHelper.restorePosition(this, btn, "btnFavorites", isLandscape, emptyList())
+                PanelDragHelper.forceToFront(btn)
+            }
+        }
         binding.btnCancelWaypoint?.let { btn ->
             PanelDragHelper.makeLongPressDraggable(this, btn, "btnCancelWaypoint", isLandscape) {
                 btn.performClick()
@@ -2136,6 +2146,57 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
 
+        val titleView = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setBackgroundResource(R.drawable.bg_dialog_title_top_rounded)
+            setPadding(24, 24, 24, 20)
+            addView(android.widget.TextView(this@KakaoNaviActivity).apply {
+                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
+                text = "검색 이력 전체"
+                textSize = 18f
+                setTextColor(android.graphics.Color.WHITE)
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                )
+            })
+        }
+
+        // v19.3.79: 재억 요청 - 검색이력 창도 다른 팝업들과 같은 카드 형식으로. #문제시 원복
+        dialog = PopupCard.CardDialog(this, binding.root as ViewGroup).apply {
+            setCustomTitle(titleView)
+            setContent(listView)
+            setButton(PopupCard.CardDialog.BUTTON_POSITIVE, "전체 삭제", destructive = true) {
+                android.app.AlertDialog.Builder(this@KakaoNaviActivity, R.style.RoundedDialogTheme)
+                    .setTitle("검색 이력 전체 삭제")
+                    .setMessage("검색 이력을 전부 삭제할까요?")
+                    .setPositiveButton("삭제") { _, _ ->
+                        SearchHistoryStore.clear(this@KakaoNaviActivity)
+                        renderRecentDestinationsPanel()
+                    }
+                    .setNegativeButton("취소", null)
+                    .show()
+                    .let { PanelDragHelper.tintDestructivePositiveButton(it) }
+            }
+            setButton(PopupCard.CardDialog.BUTTON_NEGATIVE, "닫기")
+        }
+
+        listView.setOnItemClickListener { _, _, position, _ ->
+            val picked = history[position]
+            dialog.dismiss()
+            // v2.5: 재검색이 아니라 저장된 좌표로 바로 길안내 시작
+            // v4.17: 다시 탭해도 최신순 맨 위로 올라오게. #문제시 원복
+            // v13.6: MapActivity와 동일 - 최근검색 항목도 경로 선택 팝업을 거치도록 함. #문제시 원복
+            SearchHistoryStore.save(this, picked)
+            showRoutePriorityDialog(picked)
+        }
+        dialog.show()
+    }
+
+    // v19.3.80: 재억 요청 - 검색이력 창 제목 옆의 좁은 즐겨찾기 줄을 떼어내서, 끌어 옮길 수
+    // 있는 "즐겨찾기" 아이콘을 누르면 뜨는 카드로 분리. #문제시 원복
+    private fun showFavoritesCard() {
+        lateinit var dialog: PopupCard.CardDialog
         // v11.3: MapActivity와 동일 - 집/회사/즐겨찾기1/2/3 다섯 칸 빠른등록 아이콘 행. #문제시 원복
         fun buildQuickSlotButton(slot: String, emoji: String): Pair<View, android.widget.TextView> {
             val etaText = android.widget.TextView(this).apply {
@@ -2206,15 +2267,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             .map { slot -> slot to buildQuickSlotButton(slot, "\u2764\uFE0F") }
         // v11.9: MapActivity와 동일 - 집/회사는 상단바로 빠져서 즐겨찾기 3칸만 남음,
         // 제목과 같은 줄 오른쪽에 고정폭으로 배치(재억 요청). #문제시 원복
-        val quickSlotRow = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            quickSlotButtons.forEach { (_, pair) ->
-                pair.first.layoutParams = android.widget.LinearLayout.LayoutParams(130, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    marginStart = 8
-                }
-                addView(pair.first)
-            }
-        }
         // v11.4: MapActivity와 동일 - 팝업이 뜨자마자 등록된 칸들만 조용히 카카오
         // 경로계산을 돌려서 "OO분"으로 채움(재억 요청). #문제시 원복
         // v14.1: MapActivity와 동일 - 세 군데(즐겨찾기/이력/검색결과)를 전부 "동시 최대
@@ -2268,58 +2320,27 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
         quickSlotEntries.indices.forEach { quickSlotPendingQueue.addLast(it) }
         quickSlotPump()
-        val titleView = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setBackgroundResource(R.drawable.bg_dialog_title_top_rounded)
-            setPadding(24, 24, 24, 20)
-            addView(android.widget.TextView(this@KakaoNaviActivity).apply {
-                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
-                text = "검색 이력 전체"
-                textSize = 18f
-                setTextColor(android.graphics.Color.WHITE)
-                layoutParams = android.widget.LinearLayout.LayoutParams(
-                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
-                )
-            })
-            // v: 재억 요청(2026-09-02) - MapActivity와 동일 - 즐겨찾기 최대 10칸이 한 줄에
-            // 안 들어가므로 가로 스크롤로 감쌈. #문제시 원복
-            addView(android.widget.HorizontalScrollView(this@KakaoNaviActivity).apply {
-                isHorizontalScrollBarEnabled = false
-                addView(quickSlotRow)
-                layoutParams = android.widget.LinearLayout.LayoutParams(
-                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 2f
-                )
-            })
-        }
-
-        // v19.3.79: 재억 요청 - 검색이력 창도 다른 팝업들과 같은 카드 형식으로. #문제시 원복
-        dialog = PopupCard.CardDialog(this, binding.root as ViewGroup).apply {
-            setCustomTitle(titleView)
-            setContent(listView)
-            setButton(PopupCard.CardDialog.BUTTON_POSITIVE, "전체 삭제", destructive = true) {
-                android.app.AlertDialog.Builder(this@KakaoNaviActivity, R.style.RoundedDialogTheme)
-                    .setTitle("검색 이력 전체 삭제")
-                    .setMessage("검색 이력을 전부 삭제할까요?")
-                    .setPositiveButton("삭제") { _, _ ->
-                        SearchHistoryStore.clear(this@KakaoNaviActivity)
-                        renderRecentDestinationsPanel()
-                    }
-                    .setNegativeButton("취소", null)
-                    .show()
-                    .let { PanelDragHelper.tintDestructivePositiveButton(it) }
+        val cols = 4
+        val grid = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.VERTICAL }
+        quickSlotButtons.chunked(cols).forEachIndexed { r, rowItems ->
+            val row = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL }
+            for (i in 0 until cols) {
+                val cell = rowItems.getOrNull(i)?.second?.first ?: android.widget.Space(this)
+                cell.layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginEnd = if (i < cols - 1) PopupCard.dp(this@KakaoNaviActivity, 8) else 0
+                }
+                row.addView(cell)
             }
-            setButton(PopupCard.CardDialog.BUTTON_NEGATIVE, "닫기")
+            grid.addView(row, android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { if (r > 0) topMargin = PopupCard.dp(this@KakaoNaviActivity, 8) })
         }
-
-        listView.setOnItemClickListener { _, _, position, _ ->
-            val picked = history[position]
-            dialog.dismiss()
-            // v2.5: 재검색이 아니라 저장된 좌표로 바로 길안내 시작
-            // v4.17: 다시 탭해도 최신순 맨 위로 올라오게. #문제시 원복
-            // v13.6: MapActivity와 동일 - 최근검색 항목도 경로 선택 팝업을 거치도록 함. #문제시 원복
-            SearchHistoryStore.save(this, picked)
-            showRoutePriorityDialog(picked)
+        val scroll = android.widget.ScrollView(this).apply { addView(grid) }
+        dialog = PopupCard.CardDialog(this, binding.root as ViewGroup).apply {
+            setTitle("즐겨찾기")
+            // 즐겨찾기 줄 수에 맞춰 카드 높이를 딱 맞게(빈 공간 제거). #문제시 원복
+            setContent(scroll, maxDp = ((quickSlotButtons.size + 3) / 4).coerceAtLeast(1) * 70 + (((quickSlotButtons.size + 3) / 4).coerceAtLeast(1) - 1) * 8 + 8, reserveDp = 160)
+            setButton(PopupCard.CardDialog.BUTTON_NEGATIVE, "닫기")
         }
         dialog.show()
     }
@@ -2765,6 +2786,56 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
+    // v19.3.80: 재억 요청(2026-09-19) - 출발~목적지 전체가 화면 중앙에 꽉 차게 보이도록
+    // 카메라를 맞춤. fitTo/거리 계산은 카카오 내부 규칙을 몰라 어제 계속 어긋났으니, 대신
+    // "카메라를 움직이고 → 두 점이 화면 어디 찍히는지(katecToScreen) 실측 → 줌 보정"을
+    // 몇 번 반복해서 실제 화면 기준으로 맞춤. #문제시 원복
+    private fun fitViewToEndpoints(
+        startLat: Double, startLon: Double, goalLat: Double, goalLon: Double,
+        stillActive: () -> Boolean
+    ) {
+        try {
+            val mapView = naviView.mapComponent.mapView ?: return
+            val a = KNSDK.convertWGS84ToKATEC(startLon, startLat)
+            val b = KNSDK.convertWGS84ToKATEC(goalLon, goalLat)
+            val center = FloatPoint(((a.x + b.x) / 2.0).toFloat(), ((a.y + b.y) / 2.0).toFloat())
+            val pa = FloatPoint(a.x.toFloat(), a.y.toFloat())
+            val pb = FloatPoint(b.x.toFloat(), b.y.toFloat())
+            val handler = android.os.Handler(android.os.Looper.getMainLooper())
+            // 실측 결과 zoom 값은 "확대 단계"가 아니라 화면 1픽셀당 길이 같은 값이어서,
+            // 두 점 사이 화면 거리가 zoom에 정확히 반비례함(zoom 1→93435px, 2→46717px,
+            // 8→11679px). 그래서 새 zoom = 현재 zoom ÷ (필요 배율)로 한 번에 계산. #문제시 원복
+            fun apply(zoom: Float?) {
+                var u = KNMapCameraUpdate.Creator.targetTo(center)
+                    .anchorTo(FloatPoint(0.5f, 0.5f)).tiltTo(0f).bearingTo(0f)
+                if (zoom != null) u = u.zoomTo(zoom)
+                mapView.moveCamera(u, false, false)
+            }
+            fun step(n: Int) {
+                if (!stillActive()) return
+                val w = mapView.width.toDouble()
+                val h = mapView.height.toDouble()
+                if (w < 10 || h < 10) { if (n < 8) handler.postDelayed({ step(n + 1) }, 150); return }
+                val sa = mapView.katecToScreen(pa)
+                val sb = mapView.katecToScreen(pb)
+                val sx = Math.abs(sa.x - sb.x).toDouble()
+                val sy = Math.abs(sa.y - sb.y).toDouble()
+                val tw = w * 0.70
+                val th = h * 0.55
+                val scale = minOf(if (sx < 1) 1e9 else tw / sx, if (sy < 1) 1e9 else th / sy)
+                val zoom = mapView.zoom
+                NavLogger.d(this, "[전체경로맞춤] n=$n zoom=$zoom span=(${sx.toInt()},${sy.toInt()}) view=(${w.toInt()},${h.toInt()}) scale=$scale")
+                if (n >= 5 || Math.abs(Math.log(scale)) < 0.06) return
+                apply((zoom / scale).toFloat().coerceAtLeast(0.5f))
+                handler.postDelayed({ step(n + 1) }, 200)
+            }
+            apply(null)
+            handler.postDelayed({ step(0) }, 250)
+        } catch (e: Exception) {
+            NavLogger.e(this, "[전체경로맞춤] 실패: ${e.message}")
+        }
+    }
+
     // v19.3.72: 신규기능(재억 요청 2026-09-18) - "목적지 고르면 지도 위에 핀 찍고, 그
     // 아래에 우리 앱 기존 다이얼로그 스타일(반투명 검정 카드 #28282C 70%, 20dp 라운드,
     // 골드 강조색)로 경로 선택 카드가 뜨게" 만든 새 오버레이. AlertDialog 목록 대신
@@ -2839,7 +2910,18 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // 핀(showDestinationPinOnMap에서 이미 안정적으로 찍고 카메라도 그쪽으로 이동시켜
         // "여기 맞아?" 확인하는 기능)만 남기고, 경로 전체를 화면에 맞추는 시도는 하지
         // 않음 - 필요하면 사용자가 손으로 확대/축소. #문제시 원복
-        fun drawRouteAndFit() {}
+        // v19.3.80: 재억 요청 - 경로선은 다시 그려주되(카메라는 안 건드림), 화면 맞춤은 위
+        // fitViewToEndpoints가 따로 담당. 선택한 탭의 경로가 아직 계산 전이면 그리지 않음. #문제시 원복
+        fun drawRouteAndFit() {
+            try {
+                val route = routesArr.getOrNull(selectedIndex) as? com.kakaomobility.knsdk.trip.kntrip.knroute.KNRoute ?: return
+                val mv = naviView.mapComponent.mapView ?: return
+                mv.removeRoutesAll()
+                mv.setRoute(route)
+            } catch (e: Exception) {
+                NavLogger.e(this, "[경로선] 표시 실패: ${e.message}")
+            }
+        }
 
         fun updateSelection() {
             tabViews.forEachIndexed { i, tv ->
@@ -3062,6 +3144,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         activeRouteChoicePanelCancel = { stopCountdown() }
         attachPopupCardDrag(card, root)
         updateSelection()
+        // v19.3.80: 패널이 뜬 뒤 화면 크기가 잡히면 출발~목적지 전체를 중앙에 맞춤. #문제시 원복
+        card.post {
+            fitViewToEndpoints(startLat, startLon, picked.lat, picked.lon) { activeRouteChoicePanel === card }
+        }
         // v19.3.74: 패널이 처음 뜬 시점에만 카운트다운 시작(ETA 값이 나중에 도착할 때마다
         // updateSelection이 다시 불려도 여기선 재시작 안 함 - 탭을 직접 누를 때만 리셋됨). #문제시 원복
         startCountdown()

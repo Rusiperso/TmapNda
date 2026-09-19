@@ -539,6 +539,16 @@ class MapActivity : AppCompatActivity() {
         // 하던 동작(주변 카테고리 검색)이 그대로 나가야 해서, onTap에서 버튼 자신의
         // performClick()을 호출 - 실제 클릭 리스너는 setupNearbyCategoryButton()에서
         // 따로 등록되니 그게 그대로 실행됨. #문제시 원복
+        binding.btnFavorites?.let { btn ->
+            btn.setOnClickListener { showFavoritesCard() }
+            PanelDragHelper.makeLongPressDraggable(this, btn, "btnFavorites", isLandscape) {
+                btn.performClick()
+            }
+            btn.post {
+                PanelDragHelper.restorePosition(this, btn, "btnFavorites", isLandscape, emptyList())
+                PanelDragHelper.forceToFront(btn)
+            }
+        }
         binding.btnNearbyCategory?.let { btn ->
             PanelDragHelper.makeLongPressDraggable(this, btn, "btnNearbyCategory", isLandscape) {
                 btn.performClick()
@@ -1303,6 +1313,64 @@ class MapActivity : AppCompatActivity() {
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
 
+        val titleView = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setBackgroundResource(R.drawable.bg_dialog_title_top_rounded)
+            setPadding(24, 24, 24, 20)
+            addView(android.widget.TextView(this@MapActivity).apply {
+                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
+                text = "검색 이력 전체"
+                textSize = 18f
+                setTextColor(android.graphics.Color.WHITE)
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                )
+            })
+        }
+
+        // v19.3.79: 재억 요청 - 검색이력 창도 다른 팝업들과 같은 카드 형식으로. #문제시 원복
+        dialog = PopupCard.CardDialog(this, findViewById<android.view.ViewGroup>(android.R.id.content)).apply {
+            setCustomTitle(titleView)
+            setContent(listView)
+            setButton(PopupCard.CardDialog.BUTTON_POSITIVE, "전체 삭제", destructive = true) {
+                android.app.AlertDialog.Builder(this@MapActivity, R.style.RoundedDialogTheme)
+                    .setTitle("검색 이력 전체 삭제")
+                    .setMessage("검색 이력을 전부 삭제할까요?")
+                    .setPositiveButton("삭제") { _, _ -> clearSearchHistory() }
+                    .setNegativeButton("취소", null)
+                    .show()
+                    .let { PanelDragHelper.tintDestructivePositiveButton(it) }
+            }
+            setButton(PopupCard.CardDialog.BUTTON_NEGATIVE, "닫기") {
+                // v2.6에서 고친 것과 동일: 닫을 때 포커스를 유지하고 키보드를 명시적으로
+                // 다시 띄워줌 (검색창 탭 -> 이 다이얼로그가 뜨는 경로에서 닫으면 키보드가
+                // 안 뜨던 문제 재발 방지). #문제시 원복
+                binding.etDestination?.requestFocus()
+                binding.etDestination?.post {
+                    val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                    imm.showSoftInput(binding.etDestination, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+                }
+            }
+        }
+
+        listView.setOnItemClickListener { _, _, position, _ ->
+            val picked = history[position]
+            dialog.dismiss()
+            // v2.1: 재검색이 아니라 저장된 좌표로 바로 길안내 시작 (4번)
+            // v4.17: 다시 탭해도 최신순 맨 위로 올라오게. #문제시 원복
+            // v13.6: 재억 지적 - 최근검색 항목도 즐겨찾기와 동일하게 매번 "추천/고속도로/
+            // 무료도로" 경로 선택 팝업을 거치도록 함(예전엔 그냥 추천으로 바로 안내 시작했음). #문제시 원복
+            saveSearchHistory(picked)
+            showRoutePriorityDialog(picked)
+        }
+        dialog.show()
+    }
+
+    // v19.3.80: 재억 요청 - 검색이력 창 제목 옆의 좁은 즐겨찾기 줄을 떼어내서, 끌어 옮길 수
+    // 있는 "즐겨찾기" 아이콘을 누르면 뜨는 카드로 분리. #문제시 원복
+    private fun showFavoritesCard() {
+        lateinit var dialog: PopupCard.CardDialog
         // v11.3: 집/회사/즐겨찾기1/2/3 다섯 칸 빠른등록 아이콘 행 - 짧게 누르면 등록 안
         // 됐을 땐 검색해서 등록+바로 안내, 등록 됐으면 바로 안내. 길게 누르면 이미
         // 등록돼 있어도 무시하고 다시 검색해서 덮어씀. 글자 라벨 없이 아이콘만.
@@ -1380,15 +1448,6 @@ class MapActivity : AppCompatActivity() {
         // v11.9: 집/회사는 상단바 고정 버튼으로 빠져서 여기 팝업엔 즐겨찾기 3칸만 남음.
         // 카드 하나당 너비를 고정폭(52dp)으로 줄여서, 제목("검색 이력 전체")과 같은 줄
         // 오른쪽에 나란히 놓이도록 함(재억 요청). #문제시 원복
-        val quickSlotRow = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            quickSlotButtons.forEach { (_, pair) ->
-                pair.first.layoutParams = android.widget.LinearLayout.LayoutParams(130, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    marginStart = 8
-                }
-                addView(pair.first)
-            }
-        }
         // v11.4: 팝업이 뜨자마자, 등록된 칸들만 조용히 카카오 경로계산을 돌려서
         // "OO분"으로 채움. 계산 중엔 "…", 실패하면 빈 칸으로 둠(재억 요청). #문제시 원복
         // v14.1: 재억 지적(로그+스샷으로 재확인) - 세 군데(즐겨찾기/이력/검색결과)를 전부
@@ -1446,67 +1505,27 @@ class MapActivity : AppCompatActivity() {
         }
         quickSlotEntries.indices.forEach { quickSlotPendingQueue.addLast(it) }
         quickSlotPump()
-        // v11.9: 제목("검색 이력 전체")과 즐겨찾기 3칸을 같은 줄 좌우로 배치(재억 요청). #문제시 원복
-        val titleView = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setBackgroundResource(R.drawable.bg_dialog_title_top_rounded)
-            setPadding(24, 24, 24, 20)
-            addView(android.widget.TextView(this@MapActivity).apply {
-                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
-                text = "검색 이력 전체"
-                textSize = 18f
-                setTextColor(android.graphics.Color.WHITE)
-                layoutParams = android.widget.LinearLayout.LayoutParams(
-                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
-                )
-            })
-            // v: 재억 요청(2026-09-02) - 즐겨찾기가 최대 10칸까지 늘어나면서 한 줄에 다
-            // 안 들어감(칸당 고정폭 130px). 가로 스크롤로 감싸서 개수와 무관하게 항상
-            // 전부 접근 가능하게 함. 5칸 이하일 땐 예전과 똑같이 보임. #문제시 원복
-            addView(android.widget.HorizontalScrollView(this@MapActivity).apply {
-                isHorizontalScrollBarEnabled = false
-                addView(quickSlotRow)
-                layoutParams = android.widget.LinearLayout.LayoutParams(
-                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 2f
-                )
-            })
-        }
-
-        // v19.3.79: 재억 요청 - 검색이력 창도 다른 팝업들과 같은 카드 형식으로. #문제시 원복
-        dialog = PopupCard.CardDialog(this, findViewById<android.view.ViewGroup>(android.R.id.content)).apply {
-            setCustomTitle(titleView)
-            setContent(listView)
-            setButton(PopupCard.CardDialog.BUTTON_POSITIVE, "전체 삭제", destructive = true) {
-                android.app.AlertDialog.Builder(this@MapActivity, R.style.RoundedDialogTheme)
-                    .setTitle("검색 이력 전체 삭제")
-                    .setMessage("검색 이력을 전부 삭제할까요?")
-                    .setPositiveButton("삭제") { _, _ -> clearSearchHistory() }
-                    .setNegativeButton("취소", null)
-                    .show()
-                    .let { PanelDragHelper.tintDestructivePositiveButton(it) }
-            }
-            setButton(PopupCard.CardDialog.BUTTON_NEGATIVE, "닫기") {
-                // v2.6에서 고친 것과 동일: 닫을 때 포커스를 유지하고 키보드를 명시적으로
-                // 다시 띄워줌 (검색창 탭 -> 이 다이얼로그가 뜨는 경로에서 닫으면 키보드가
-                // 안 뜨던 문제 재발 방지). #문제시 원복
-                binding.etDestination?.requestFocus()
-                binding.etDestination?.post {
-                    val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
-                    imm.showSoftInput(binding.etDestination, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+        val cols = 4
+        val grid = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.VERTICAL }
+        quickSlotButtons.chunked(cols).forEachIndexed { r, rowItems ->
+            val row = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL }
+            for (i in 0 until cols) {
+                val cell = rowItems.getOrNull(i)?.second?.first ?: android.widget.Space(this)
+                cell.layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginEnd = if (i < cols - 1) PopupCard.dp(this@MapActivity, 8) else 0
                 }
+                row.addView(cell)
             }
+            grid.addView(row, android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { if (r > 0) topMargin = PopupCard.dp(this@MapActivity, 8) })
         }
-
-        listView.setOnItemClickListener { _, _, position, _ ->
-            val picked = history[position]
-            dialog.dismiss()
-            // v2.1: 재검색이 아니라 저장된 좌표로 바로 길안내 시작 (4번)
-            // v4.17: 다시 탭해도 최신순 맨 위로 올라오게. #문제시 원복
-            // v13.6: 재억 지적 - 최근검색 항목도 즐겨찾기와 동일하게 매번 "추천/고속도로/
-            // 무료도로" 경로 선택 팝업을 거치도록 함(예전엔 그냥 추천으로 바로 안내 시작했음). #문제시 원복
-            saveSearchHistory(picked)
-            showRoutePriorityDialog(picked)
+        val scroll = android.widget.ScrollView(this).apply { addView(grid) }
+        dialog = PopupCard.CardDialog(this, findViewById<android.view.ViewGroup>(android.R.id.content)).apply {
+            setTitle("즐겨찾기")
+            // 즐겨찾기 줄 수에 맞춰 카드 높이를 딱 맞게(빈 공간 제거). #문제시 원복
+            setContent(scroll, maxDp = ((quickSlotButtons.size + 3) / 4).coerceAtLeast(1) * 70 + (((quickSlotButtons.size + 3) / 4).coerceAtLeast(1) - 1) * 8 + 8, reserveDp = 160)
+            setButton(PopupCard.CardDialog.BUTTON_NEGATIVE, "닫기")
         }
         dialog.show()
     }
