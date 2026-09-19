@@ -1014,6 +1014,13 @@ class KakaoGuidanceDelegate(
             "KNRGCode_LeftTurn", "KNRGCode_UnprotectedLeftTurn" -> 12
             "KNRGCode_RightTurn" -> 13
             "KNRGCode_UTurn" -> 14
+            // v: 재억 요청(2026-09-19) - "좌/우회전은 화살표 뜨는데 직진만 안 뜬다"는
+            // 지적으로 추가. 카카오 SDK 실제 enum 값을 확보 못 해서 이름 추측(가장 흔한
+            // 패턴)으로 우선 넣었고, 실기기 로그의 "[카카오 회전코드 수집] 미매핑" 줄에
+            // 여전히 못 보던 이름이 찍히면 그게 진짜 이름이니 그걸로 교체해야 함. openpilot
+            // (carrot_serv.py turn_type_mapping, xTurnInfo=9)에 새로 추가한 직진 아이콘과
+            // 짝을 이룸. #문제시 원복
+            "KNRGCode_Straight", "KNRGCode_StraightDirection", "KNRGCode_GoStraight" -> 11
             // 도착
             "KNRGCode_Goal" -> 201
             // v: 재억 재지적(2026-08-29) - "대안경로 오감지는 내가 수정했으니까 없애버려"
@@ -1051,6 +1058,12 @@ class KakaoGuidanceDelegate(
                         com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_NW -> 140  // 로터리 좌측 완만
                         else -> 142                                        // 로터리 직진(N 등)
                     }
+                }
+                // v: 재억 요청(2026-09-19) - 위의 정확한 이름 매칭 3개가 실제 SDK 값과
+                // 다를 경우를 대비한 안전망. 이름에 "straight"가 들어가면(대소문자 무관)
+                // 직진으로 간주해 11로 보냄. #문제시 원복
+                if (name.contains("straight", ignoreCase = true)) {
+                    return 11
                 }
                 if (System.currentTimeMillis() - lastUnmappedTurnTypeLogTime > 15000L) {
                     lastUnmappedTurnTypeLogTime = System.currentTimeMillis()

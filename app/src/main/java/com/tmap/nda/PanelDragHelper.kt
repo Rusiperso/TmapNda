@@ -465,7 +465,7 @@ object PanelDragHelper {
             // v: 재억 요청 - 기본값을 켜짐으로 변경(기존 false -> true)
             isChecked = pref.getBoolean("over_speed_warning_enabled", true)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 30, 40, 30)
+            setPadding(40, 16, 40, 12)
         }
         val disableMobileCamCheckBox = android.widget.Switch(context).apply {
             text = "이동식카메라 감속"
@@ -473,7 +473,7 @@ object PanelDragHelper {
             // 화면에는 반전해서 보여줌(스위치 켜짐 = 감속 기능이 켜짐)
             isChecked = !pref.getBoolean("mobile_cam_slowdown_disabled", false)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 12)
         }
         // v4.0: 상단바 이벤트(카메라/구간단속/방지턱) 표시 켜고 끄기 - 모바일 화면은
         // 좁아서 부담스러울 수 있어 옵션으로 제공 (사용자 지적 6번). #문제시 원복
@@ -481,7 +481,7 @@ object PanelDragHelper {
             text = "상단바에 이벤트(카메라/구간단속/방지턱) 표시"
             isChecked = pref.getBoolean("topbar_event_enabled", true)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 12)
         }
         // v4.13: 차선 안내(추천 차선 하이라이트) 오버레이 켜고 끄기 - 사용자 요청 3번.
         // v5.4: Tmap 쪽에서 켜고/끄기, 카카오 쪽에서 켜고/끄기를 각각 독립적으로 할 수
@@ -494,7 +494,7 @@ object PanelDragHelper {
             text = "차선 안내 오버레이 표시 (Tmap 화면 한정)"
             isChecked = pref.getBoolean("lane_overlay_tmap_enabled", true)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 12)
         }
         // v: 재억 요청(2026-09-15) - 사고/공사구간, 긴급차량 접근 자동 알림 표시 켜고 끄기.
         // #문제시 원복
@@ -502,13 +502,13 @@ object PanelDragHelper {
             text = "사고/공사구간 알림 표시"
             isChecked = pref.getBoolean("accident_alert_enabled", true)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 12)
         }
         val emergencyAlertCheckBox = android.widget.Switch(context).apply {
             text = "긴급차량 접근 알림 표시"
             isChecked = pref.getBoolean("emergency_alert_enabled", true)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 12)
         }
         // v: 재억 요청(2026-09-15) - 스쿨존(어린이보호구역) 회피. 추천/고속도로/무료도로
         // 중 뭘 고르든 항상 같이 적용됨(RouteAvoidSettings에서 avoidOption에 비트로 더해줌). #문제시 원복
@@ -516,7 +516,7 @@ object PanelDragHelper {
             text = "스쿨존(어린이보호구역) 회피"
             isChecked = RouteAvoidSettings.getAvoidSchoolZone(context)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 12)
         }
         // v5.2: 초기 설정화면(MainActivity)에 있던 항목을 여기로 이동 - 매번 앱 처음 켤 때만
         // 보이는 화면이라 여기 있을 이유가 없었음(사용자 지적). SharedPreferences 키는
@@ -525,14 +525,14 @@ object PanelDragHelper {
             text = "1000m 이상일 때 km 단위로 거리 표시"
             isChecked = pref.getBoolean("USE_KM_DISTANCE_FORMAT", true)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 12)
         }
         // v: 신규기능(미니 플레이어) - 재억 요청(2026-08-28). 기본값 켜짐(true). #문제시 원복
         val showMiniPlayerCheckBox = android.widget.Switch(context).apply {
             text = "미니 플레이어 표시 (지금 재생 중인 음악)"
             isChecked = pref.getBoolean(com.tmap.nda.miniplayer.MiniPlayerManager.PREF_KEY_ENABLED, true)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 12)
         }
         // v19.3.44: 재억 요청 - 상단바 표시/숨김 플로팅 버튼을 기본적으로 안 보이게 해두고,
         // 필요한 사람만 여기서 켜서 쓰게 함. 기본값 꺼짐(false). #문제시 원복
@@ -540,7 +540,7 @@ object PanelDragHelper {
             text = "상단바 표시/숨김 플로팅 버튼 보이기"
             isChecked = pref.getBoolean("show_toggle_top_panel_button", false)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 12)
         }
         // v: 재억 요청(2026-09-15) - 차량 USB(AA 액세서리 모드) 연결시 폰 화면을 검게
         // 덮는 기능. 엔미러 안 쓰는 사람에게도 적용될 수 있어서 기본값 꺼짐(false),
@@ -549,14 +549,14 @@ object PanelDragHelper {
             text = "차량 연결시 폰 화면 블랙 처리"
             isChecked = pref.getBoolean("black_screen_on_usb_connect", false)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 12)
         }
         val unlockMapTouchCheckBox = if (touchLockOverlay != null) {
             android.widget.Switch(context).apply {
                 text = "티맵 터치 잠금 해제 (핀치줌/드래그 허용)"
                 isChecked = pref.getBoolean("map_touch_unlocked", false)
                 setTextColor(android.graphics.Color.WHITE)
-                setPadding(40, 0, 40, 30)
+                setPadding(40, 0, 40, 12)
             }
         } else null
 
@@ -566,7 +566,7 @@ object PanelDragHelper {
             text = "목적지 근처 도착 알림 (소리+진동)"
             isChecked = pref.getBoolean("arrival_radius_alert_enabled", true)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 12)
         }
 
         // v: 신규기능(경유지/카테고리 버튼 표시) - 재억 요청으로 켜고 끄는 옵션 추가.
@@ -577,13 +577,13 @@ object PanelDragHelper {
             text = "경유지 버튼 표시"
             isChecked = pref.getBoolean("show_waypoint_button", true)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 12)
         }
         val showCategoryButtonCheckBox = android.widget.Switch(context).apply {
             text = "카테고리 버튼 표시"
             isChecked = pref.getBoolean("show_category_button", true)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 12)
         }
         // v: 신규기능(경유지 취소 버튼) - 재억 요청으로 켜고끄기 옵션 추가. 꺼두면 경유지가
         // 있어도 취소 버튼 자체가 안 뜸. #문제시 원복
@@ -591,7 +591,7 @@ object PanelDragHelper {
             text = "경유지 취소 버튼 표시"
             isChecked = pref.getBoolean("show_cancel_waypoint_button", true)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 12)
         }
 
         // v8.7: v8.5 조사로 확인된 Tmap MapLayerType(Default/Aerial) API를 사용자가 켜고 끌 수
@@ -600,7 +600,7 @@ object PanelDragHelper {
             text = "티맵 위성지도 보기"
             isChecked = pref.getBoolean("tmap_satellite_view_enabled", false)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 12)
         }
 
         // v9.2: 재억 요청 - 도로 위 초록/주황/빨강 실시간 정체 표시 켜고 끄기. SDK 안에 실제
@@ -610,7 +610,7 @@ object PanelDragHelper {
             text = "티맵 교통 정보 (도로 정체 색깔 표시)"
             isChecked = pref.getBoolean("tmap_traffic_info_enabled", true)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 12)
         }
 
         // v: 신규기능(재억 요청) - 콤마 화면에 카카오 경로선을 표시할지 켜고 끄는 토글.
@@ -619,7 +619,7 @@ object PanelDragHelper {
             text = "경로선 콤마 화면에 표시"
             isChecked = pref.getBoolean("route_line_display_enabled", false)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 12)
         }
 
         // v: 재억 요청(2026-09-02) - "카카오 길안내를 기반으로 카메라를 매칭하고 싶다".
@@ -633,7 +633,7 @@ object PanelDragHelper {
             text = "카카오 안내 중 카메라는 카카오 것만 사용"
             isChecked = pref.getBoolean("kakao_only_sdi_when_guiding", false)
             setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 30)
+            setPadding(40, 0, 40, 12)
         }
 
         // v13.0-4: 재억 요청 - 즐겨찾기 5칸이 다 필요없는 사람도 있어서, 표시 개수를

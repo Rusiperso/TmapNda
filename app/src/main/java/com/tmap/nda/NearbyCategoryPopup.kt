@@ -176,9 +176,9 @@ object NearbyCategoryPopup {
             addView(rightList)
         }
 
-        // v: 재억 요청(2026-09-19) - 결과가 여러 페이지일 때 아래쪽 "이전 1/5 다음"을
-        // 누르며 넘기는 대신, 카테고리 버튼(주차장 등) 오른편에 페이지 번호(1 2 3 4 5)를
-        // 세로로 늘어놓고 바로 원하는 페이지로 누를 수 있게 함. #문제시 원복
+        // v: 재억 재제보(2026-09-19, "주차장 오른쪽 아니라 저 펜이 가리키는 빈 공간 쪽")
+        // - 카테고리 버튼과 결과 목록 사이가 아니라, 결과 목록의 오른쪽 빈 공간(항목이
+        // 적을 때 비어 보이던 자리)에 페이지 번호(1 2 3 4 5)를 세로로 놓음. #문제시 원복
         val pageNumList = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -186,8 +186,8 @@ object NearbyCategoryPopup {
         }
 
         root.addView(leftScroll)
-        root.addView(pageNumList)
         root.addView(rightScroll)
+        root.addView(pageNumList)
 
         // v19.3.79: 재억 요청 - AlertDialog 대신 다른 팝업들과 같은 반투명 카드로 바꿈. 아래쪽
         // 코드가 dialog.setTitle/dismiss/show를 그대로 쓰도록 같은 이름의 함수를 가진 껍데기로
