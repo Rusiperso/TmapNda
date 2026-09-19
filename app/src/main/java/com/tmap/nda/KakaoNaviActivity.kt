@@ -1580,14 +1580,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         binding.btnMoreMenu?.setOnClickListener { anchorView ->
             NavLogger.d(this, "[더보기메뉴] 버튼 클릭됨(카카오화면)")
             val panel = binding.svSecondaryPanel ?: return@setOnClickListener
-            if (panel.visibility == View.VISIBLE) {
-                panel.visibility = View.GONE
-            } else {
-                panel.visibility = View.VISIBLE
-                panel.post {
-                    PanelDragHelper.positionPopupNearAnchor(binding.root, anchorView, panel)
-                }
-            }
+            // v19.3.79: 재억 요청 - 메뉴도 다른 팝업들과 같은 카드 형식으로. 기존 세로 목록
+            // 패널은 숨겨둔 채 그 안의 버튼들을 읽어서 카드로 보여주고, 누르면 원래 버튼의
+            // 클릭을 대신 실행함. #문제시 원복
+            panel.visibility = View.GONE
+            PopupCard.showMenuFromPanel(this, binding.root as ViewGroup, panel as ViewGroup)
         }
 
         // v3.8: 티맵 화면과 동일한 동작 - 업데이트확인/도움말은 화면과 무관한 앱 전체
@@ -1791,14 +1788,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 모음. 이미 카테고리 검색 결과 선택에 쓰던 확인창(경유지 추가 / 새 목적지)과 같은
     // 방식이고, 안내 중이 아닐 땐 예전과 완전히 동일하게 바로 안내를 시작함. #문제시 원복
     private fun handleQuickSlotTap(existing: HistoryEntry) {
-        if (currentDestName.isNotBlank() && KakaoRouteDataRepository.isFresh()) {
-            android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
-                .setTitle("경유지로 추가할까요?")
-                .setMessage("'${existing.name}'을(를) 지금 안내(${currentDestName})의 경유지로 추가할까요, 아니면 새 목적지로 바꿀까요?")
-                .setPositiveButton("경유지 추가") { _, _ -> addWaypointToActiveGuidance(existing) }
-                .setNegativeButton("새 목적지로") { _, _ -> startGuidanceToQuickSlot(existing) }
-                .setNeutralButton("취소", null)
-                .show()
+        if (isGuidanceRunningNow()) {
+            PopupCard.showChoice(
+                this, binding.root as ViewGroup, "경유지 추가", "경유지로 추가할까요?",
+                "'${existing.name}'을(를) 지금 안내(${currentDestName})의 경유지로 추가할까요, 아니면 새 목적지로 바꿀까요?",
+                listOf(
+                    PopupCard.Option("경유지 추가", true) { addWaypointToActiveGuidance(existing) },
+                    PopupCard.Option("새 목적지로") { startGuidanceToQuickSlot(existing) }
+                )
+            )
         } else {
             startGuidanceToQuickSlot(existing)
         }
@@ -1886,7 +1884,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 }
             }
             rowContainer.addView(tv)
-            if (currentDestName.isNotBlank()) {
+            if (isGuidanceRunningNow()) {
                 val addBtn = android.widget.TextView(this).apply {
                     setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = "추가"
@@ -1951,7 +1949,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             return
         }
 
-        lateinit var dialog: android.app.AlertDialog
+        lateinit var dialog: PopupCard.CardDialog
         lateinit var listView: android.widget.ListView
         // v13.9: MapActivity와 동일 - 시간 계산으로 줄 높이가 바뀌면서 목록이 다시
         // 그려지고, 다시 그려질 때마다 계산을 새로 시작하는 게 끝없이 반복되던 문제
@@ -2295,23 +2293,24 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             })
         }
 
-        dialog = android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
-            .setCustomTitle(titleView)
-            .setView(listView)
-            .setPositiveButton("전체 삭제") { _, _ ->
-                android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
+        // v19.3.79: 재억 요청 - 검색이력 창도 다른 팝업들과 같은 카드 형식으로. #문제시 원복
+        dialog = PopupCard.CardDialog(this, binding.root as ViewGroup).apply {
+            setCustomTitle(titleView)
+            setContent(listView)
+            setButton(PopupCard.CardDialog.BUTTON_POSITIVE, "전체 삭제", destructive = true) {
+                android.app.AlertDialog.Builder(this@KakaoNaviActivity, R.style.RoundedDialogTheme)
                     .setTitle("검색 이력 전체 삭제")
                     .setMessage("검색 이력을 전부 삭제할까요?")
                     .setPositiveButton("삭제") { _, _ ->
-                        SearchHistoryStore.clear(this)
+                        SearchHistoryStore.clear(this@KakaoNaviActivity)
                         renderRecentDestinationsPanel()
                     }
                     .setNegativeButton("취소", null)
                     .show()
                     .let { PanelDragHelper.tintDestructivePositiveButton(it) }
             }
-            .setNegativeButton("닫기", null)
-            .create()
+            setButton(PopupCard.CardDialog.BUTTON_NEGATIVE, "닫기")
+        }
 
         listView.setOnItemClickListener { _, _, position, _ ->
             val picked = history[position]
@@ -2323,8 +2322,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             showRoutePriorityDialog(picked)
         }
         dialog.show()
-        PanelDragHelper.tintDestructivePositiveButton(dialog)
-        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog_212121_rounded)
     }
 
     // v1.6: 검색 버튼 누르면 화면이 티맵으로 나갔다 다시 들어오던 문제 - 굳이 MapActivity로
@@ -2477,14 +2474,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             // v: 재억 재지적(2026-08-28) - 카테고리(주변) 검색 결과를 골랐을 때도 팝업 없이
             // 곧바로 안내가 시작되고 있었음. #문제시 원복
             NearbyCategoryPopup.show(this, searchHttpClient, restKey, curLat, curLon, lastKnownBearing) { picked ->
-                if (currentDestName.isNotBlank()) {
-                    android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
-                        .setTitle("경유지로 추가할까요?")
-                        .setMessage("'${picked.name}'을(를) 지금 안내(${currentDestName})의 경유지로 추가할까요, 아니면 새 목적지로 바꿀까요?")
-                        .setPositiveButton("경유지 추가") { _, _ -> addWaypointToActiveGuidance(picked) }
-                        .setNegativeButton("새 목적지로") { _, _ -> showRoutePriorityDialog(picked) }
-                        .setNeutralButton("취소", null)
-                        .show()
+                if (isGuidanceRunningNow()) {
+                    PopupCard.showChoice(
+                        this, binding.root as ViewGroup, "경유지 추가", "경유지로 추가할까요?",
+                        "'${picked.name}'을(를) 지금 안내(${currentDestName})의 경유지로 추가할까요, 아니면 새 목적지로 바꿀까요?",
+                        listOf(
+                            PopupCard.Option("경유지 추가", true) { addWaypointToActiveGuidance(picked) },
+                            PopupCard.Option("새 목적지로") { showRoutePriorityDialog(picked) }
+                        )
+                    )
                 } else {
                     showRoutePriorityDialog(picked)
                 }
@@ -2506,25 +2504,122 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         } else {
             arrayOf("음성으로 찾기", "텍스트로 찾기")
         }
-        android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
-            .setTitle("경유지 검색 방법")
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> startVoiceSearch()
-                    1 -> showInPlaceSearchDialog()
-                    2 -> {
-                        // v: 재억 요청(2026-08-29) - 이 경로(최근검색 더보기)는 pickEntry를
-                        // 안 거치고 목록의 전용 "경로추가" 버튼으로 바로 처리되니, 여기서
-                        // 플래그를 안 꺼주면 나중에 무관한 음성/텍스트 검색까지 경유지
-                        // 모드로 잘못 처리될 수 있음. #문제시 원복
-                        pendingWaypointAddition = false
-                        showFullSearchHistoryDialog()
+        // v19.3.79: 재억 요청 - 목록형 AlertDialog 대신, 목적지 정보 팝업과 같은 반투명 카드
+        // 스타일(같은 위치·드래그 이동·위치 자동저장 공유)로 바꿈. 바깥을 눌러 닫는 개념이
+        // 없어져서, 어떤 방식으로 닫히든 취소 버튼 하나로 pendingWaypointAddition을 정리함. #문제시 원복
+        val density = resources.displayMetrics.density
+        fun dp(v: Int) = (v * density).toInt()
+        val root = binding.root as ViewGroup
+        activeChoiceCard?.let { root.removeView(it) }
+        activeChoiceScrim?.let { root.removeView(it) }
+
+        // v19.3.79: 재억 요청 - 카드 바깥 아무 곳이나 눌러도 닫히게(취소와 동일). 카드 뒤에
+        // 화면 전체를 덮는 투명한 뷰를 깔아서 바깥 터치를 받음. #문제시 원복
+        val scrim = View(this).apply { isClickable = true }
+        root.addView(scrim, android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+        activeChoiceScrim = scrim
+
+        val card = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(android.graphics.Color.parseColor("#B328282C"))
+                cornerRadius = dp(20).toFloat()
+            }
+            setPadding(dp(20), dp(18), dp(20), dp(16))
+        }
+        fun closeCard() {
+            root.removeView(card)
+            root.removeView(scrim)
+            if (activeChoiceCard === card) activeChoiceCard = null
+            if (activeChoiceScrim === scrim) activeChoiceScrim = null
+        }
+        scrim.setOnClickListener {
+            closeCard()
+            pendingWaypointAddition = false
+        }
+        card.addView(android.widget.TextView(this).apply {
+            text = "경유지 추가"
+            setTextColor(android.graphics.Color.parseColor("#FFD54F"))
+            textSize = 12f
+            setPadding(0, 0, 0, dp(4))
+        })
+        card.addView(android.widget.TextView(this).apply {
+            text = "경유지 검색 방법"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 17f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(0, 0, 0, dp(14))
+        })
+        items.forEachIndexed { which, label ->
+            card.addView(android.widget.TextView(this).apply {
+                text = label
+                gravity = android.view.Gravity.CENTER
+                textSize = 14f
+                setPadding(0, dp(13), 0, dp(13))
+                if (which == 0) {
+                    setTextColor(android.graphics.Color.parseColor("#212121"))
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                } else {
+                    setTextColor(android.graphics.Color.parseColor("#DDDDDD"))
+                }
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(android.graphics.Color.parseColor(if (which == 0) "#FFD54F" else "#1AFFFFFF"))
+                    cornerRadius = dp(12).toFloat()
+                }
+                isClickable = true
+                setOnClickListener {
+                    closeCard()
+                    when (which) {
+                        0 -> startVoiceSearch()
+                        1 -> showInPlaceSearchDialog()
+                        2 -> {
+                            // v: 재억 요청(2026-08-29) - 이 경로(최근검색 더보기)는 pickEntry를
+                            // 안 거치고 목록의 전용 "경로추가" 버튼으로 바로 처리되니, 여기서
+                            // 플래그를 안 꺼주면 나중에 무관한 음성/텍스트 검색까지 경유지
+                            // 모드로 잘못 처리될 수 있음. #문제시 원복
+                            pendingWaypointAddition = false
+                            showFullSearchHistoryDialog()
+                        }
                     }
                 }
+            }, android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(8) })
+        }
+        card.addView(android.widget.TextView(this).apply {
+            text = "취소"
+            gravity = android.view.Gravity.CENTER
+            setTextColor(android.graphics.Color.parseColor("#DDDDDD"))
+            textSize = 14f
+            setPadding(0, dp(13), 0, dp(13))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(android.graphics.Color.parseColor("#1AFFFFFF"))
+                cornerRadius = dp(12).toFloat()
             }
-            .setNegativeButton("취소") { _, _ -> pendingWaypointAddition = false }
-            .show()
+            isClickable = true
+            setOnClickListener {
+                closeCard()
+                pendingWaypointAddition = false
+            }
+        })
+
+        val cardWidth = minOf(dp(360), (resources.displayMetrics.widthPixels * 0.42).toInt())
+        val frameParams = android.widget.FrameLayout.LayoutParams(cardWidth, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT).apply {
+            gravity = android.view.Gravity.TOP or android.view.Gravity.START
+            marginStart = dp(170)
+            topMargin = dp(76)
+        }
+        root.addView(card, frameParams)
+        activeChoiceCard = card
+        attachPopupCardDrag(card, root)
     }
+
+    private var activeChoiceCard: View? = null
+    private var activeChoiceScrim: View? = null
 
     // v: 재억 요청(2026-09-02) - 경유지 여러 개 지원. 예전엔 "경유지 추가"와 "경유지 취소"가
     // 거의 똑같은 코드를 각자 들고 있으면서 via 목록만 (새 경유지 1개) / (비움)으로 달랐고,
@@ -2965,37 +3060,26 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         panelView = card
         activeRouteChoicePanel = card
         activeRouteChoicePanelCancel = { stopCountdown() }
-        // v19.3.77: 재억 요청 - 이 카드도 다른 플로팅 패널들처럼 손으로 끌어서 옮길 수
-        // 있게. 카드 전체가 아니라 카드의 빈 배경(제목/주소 위) 부분만 터치를 받게
-        // 해뒀으니, 탭/취소/안내시작 버튼은 자기 클릭을 그대로 가져감(부모 OnTouchListener는
-        // 자식이 소비하지 않은 터치에만 반응함). 화면 밖으로 안 나가게 root 크기 안으로
-        // 클램프. 위치는 저장하지 않음 - 팝업이 뜰 때마다 매번 새로 생기는 일회성 카드라
-        // 다음 목적지 팝업에서는 항상 원래 자리에서 다시 시작. #문제시 원복
-        var dragDX = 0f
-        var dragDY = 0f
-        card.setOnTouchListener { _, event ->
-            when (event.action) {
-                android.view.MotionEvent.ACTION_DOWN -> {
-                    dragDX = card.x - event.rawX
-                    dragDY = card.y - event.rawY
-                    true
-                }
-                android.view.MotionEvent.ACTION_MOVE -> {
-                    val maxX = (root.width - card.width).coerceAtLeast(0).toFloat()
-                    val maxY = (root.height - card.height).coerceAtLeast(0).toFloat()
-                    card.x = (event.rawX + dragDX).coerceIn(0f, maxX)
-                    card.y = (event.rawY + dragDY).coerceIn(0f, maxY)
-                    true
-                }
-                else -> false
-            }
-        }
+        attachPopupCardDrag(card, root)
         updateSelection()
         // v19.3.74: 패널이 처음 뜬 시점에만 카운트다운 시작(ETA 값이 나중에 도착할 때마다
         // updateSelection이 다시 불려도 여기선 재시작 안 함 - 탭을 직접 누를 때만 리셋됨). #문제시 원복
         startCountdown()
         return ::updateSelection
     }
+
+    // v19.3.79: 재억 요청 - 팝업 카드를 끌어서 옮겨놓으면 위치를 자동 저장(공용 PopupCard). #문제시 원복
+    private fun attachPopupCardDrag(card: View, root: ViewGroup) {
+        PopupCard.attachDrag(this, card, root, "kakaoPopupCard")
+    }
+
+    // v19.3.79: 재억 제보 - 안내 종료 후 새 목적지를 찾는데 "경유지로 추가할까요?"가 뜸.
+    // 원인: 카카오 화면은 열리는 순간 currentDestName이 채워지기 때문에, 이 값만 보고
+    // "안내 중"으로 착각하는 곳(주변검색 결과, 최근목적지 "추가" 칩)이 있었음. 실제로 안내가
+    // 돌아가고 있는지(KakaoRouteDataRepository)까지 같이 확인. 터널 등으로 갱신이 잠깐
+    // 끊겨도 안내 중으로 보도록 여유(30초)를 둠 - 안내가 끝나면 reset()으로 바로 꺼짐. #문제시 원복
+    private fun isGuidanceRunningNow(): Boolean =
+        currentDestName.isNotBlank() && KakaoRouteDataRepository.isFresh(30_000L)
 
     private fun clearDestinationPin() {
         kakaoGuidanceDelegate?.suppressLocationForward = false
@@ -3539,12 +3623,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
 
-        val pickDialog = android.app.AlertDialog.Builder(this@KakaoNaviActivity, R.style.RoundedDialogTheme)
-            .setView(listView)
-            .setNegativeButton("취소", null)
-            .setNeutralButton("이전", null)
-            .setPositiveButton("다음", null)
-            .create()
+        // v19.3.79: 재억 요청 - 검색결과 목록도 카드 형식으로. 이전/다음은 눌러도 안 닫힘. #문제시 원복
+        val pickDialog = PopupCard.CardDialog(this@KakaoNaviActivity, binding.root as ViewGroup).apply {
+            setContent(listView)
+            setButton(PopupCard.CardDialog.BUTTON_NEGATIVE, "취소")
+            setButton(PopupCard.CardDialog.BUTTON_NEUTRAL, "이전", autoClose = false)
+            setButton(PopupCard.CardDialog.BUTTON_POSITIVE, "다음", autoClose = false)
+        }
 
         fun pickEntry(picked: HistoryEntry) {
             pickDialog.dismiss()

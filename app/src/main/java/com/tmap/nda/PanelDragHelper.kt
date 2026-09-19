@@ -727,50 +727,14 @@ object PanelDragHelper {
             orientation = android.widget.LinearLayout.VERTICAL
         }
 
-        // v: 재억 요청(2026-08-26) - 항목이 많아져서 쭉 나열하지 말고 4개 그룹(안전운전
-        // 알림/화면 표시/버튼 표시)으로 묶어서 아코디언(눌러야 펼쳐짐)으로 정리. 즐겨찾기
-        // 개수와 길안내 음량은 그룹 밖에 항상 보이게 둠. 각 그룹 안은 글자 길이 짧은 순
-        // -> 긴 순 정렬 유지. #문제시 원복
+        // v: 재억 요청(2026-08-26) - 항목이 많아져서 4개 그룹으로 묶음(당시엔 아코디언).
+        // v19.3.79: 재억 요청 - 아코디언 대신 주변탐색처럼 왼쪽에서 그룹을 고르면 오른쪽에 그
+        // 그룹 항목이 나오는 2단 카드로 바꿈. 그룹별 항목만 여기서 모아두고 화면은 맨 아래에서
+        // 만듦. 예전에 그룹 밖에 따로 빠져 있던 즐겨찾기 개수/음량/차종·연료/백업 항목은 "기타 설정"
+        // 그룹으로 묶음. 각 그룹 안은 글자 길이 짧은 순 -> 긴 순 정렬 유지. #문제시 원복
+        val settingGroups = LinkedHashMap<String, List<View>>()
         fun addAccordionGroup(title: String, items: List<View>) {
-            var expanded = false
-            val headerRow = android.widget.LinearLayout(context).apply {
-                orientation = android.widget.LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(40, 24, 40, 24)
-                setBackgroundColor(android.graphics.Color.parseColor("#B328282C"))
-            }
-            val headerText = android.widget.TextView(context).apply {
-                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
-                text = title
-                setTextColor(android.graphics.Color.parseColor("#8AB4FF"))
-                textSize = 14f
-                layoutParams = android.widget.LinearLayout.LayoutParams(
-                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
-                )
-            }
-            val chevron = android.widget.TextView(context).apply {
-                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
-                text = "▾"
-                setTextColor(android.graphics.Color.parseColor("#8AB4FF"))
-                textSize = 14f
-            }
-            headerRow.addView(headerText)
-            headerRow.addView(chevron)
-            val itemsContainer = android.widget.LinearLayout(context).apply {
-                orientation = android.widget.LinearLayout.VERTICAL
-                visibility = View.GONE
-                // v: 재억 지적(2026-08-26) - 그룹 펼쳤을 때 첫 항목이 헤더 바로 아래 딱 붙어서
-                // 잘려 보이는 것처럼 답답해 보였음. 위쪽 여백 추가. #문제시 원복
-                setPadding(0, 16, 0, 0)
-                items.forEach { addView(it) }
-            }
-            headerRow.setOnClickListener {
-                expanded = !expanded
-                itemsContainer.visibility = if (expanded) View.VISIBLE else View.GONE
-                chevron.text = if (expanded) "▴" else "▾"
-            }
-            container.addView(headerRow)
-            container.addView(itemsContainer)
+            settingGroups[title] = items
         }
 
         addAccordionGroup("안전운전 알림", listOf(
@@ -804,16 +768,11 @@ object PanelDragHelper {
 
         // v: 재억 요청(2026-08-26) - 즐겨찾기 개수/길안내 음량은 아코디언 안에 넣지 않고
         // 항상 바로 보이게 그룹들 아래에 고정 배치. #문제시 원복
-        val divider = View(context).apply {
-            setBackgroundColor(android.graphics.Color.parseColor("#333333"))
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 2
-            ).apply { topMargin = 10 }
-        }
-        container.addView(divider)
-        container.addView(favoriteCountRow)
-        container.addView(volumeSectionTitle)
-        container.addView(volumeHintText)
+        // v19.3.79: 이제 "기타 설정" 그룹 안에 같이 들어감(맨 아래에서 등록).
+        val etcItems = ArrayList<View>()
+        etcItems.add(favoriteCountRow)
+        etcItems.add(volumeSectionTitle)
+        etcItems.add(volumeHintText)
 
         // v: 재억 요청(2026-09-15) - 카카오 경로 계산에 쓸 차종/연료를 한 번 골라두면
         // 계속 그 값으로 경로가 계산되게(주유소 안내도 같은 연료 기준을 따라감). 값 자체는
@@ -885,10 +844,10 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 30)
         }
-        container.addView(carFuelSectionTitle)
-        container.addView(carFuelHintText)
-        container.addView(carFuelRow)
-        container.addView(useHipassCheckBox)
+        etcItems.add(carFuelSectionTitle)
+        etcItems.add(carFuelHintText)
+        etcItems.add(carFuelRow)
+        etcItems.add(useHipassCheckBox)
 
         // v19.3.32: 재억 요청 - 설정 백업/복원. 공유 방식으로 내보내서 재억이 원하는 곳
         // (구글 드라이브/이메일/카카오톡 나에게 보내기 등)에 알아서 보관하게 하고,
@@ -951,20 +910,125 @@ object PanelDragHelper {
         backupButtonRow.addView(backupLocalButton)
         backupButtonRow.addView(backupButton)
         backupButtonRow.addView(restoreButton)
-        container.addView(backupSectionTitle)
-        container.addView(backupHintText)
-        container.addView(backupButtonRow)
-        // v15.3: 설정 항목이 많아져서 다이얼로그 세로 길이가 화면을 넘길 수 있으므로
-        // ScrollView로 감쌈. AlertDialog는 setView(content)의 버튼 줄을 항상 콘텐츠
-        // 바깥에 별도로 그리기 때문에, 콘텐츠만 스크롤되고 취소/저장 버튼은 화면에
-        // 고정된 채로 유지됨. #문제시 원복
-        val scrollableContainer = android.widget.ScrollView(context).apply {
-            addView(container)
+        etcItems.add(backupSectionTitle)
+        etcItems.add(backupHintText)
+        etcItems.add(backupButtonRow)
+        addAccordionGroup("기타 설정", etcItems)
+
+        // v19.3.79: 재억 요청 - 설정 창을 카드형 2단(왼쪽: 그룹 고르기 / 오른쪽: 그 그룹 항목)으로.
+        // 켜진 스위치는 노란색으로 보이게 색을 입힘. 저장/취소 동작은 그대로. 바깥을 눌러
+        // 닫으면 취소와 같음(저장 안 된 변경은 버려짐). #문제시 원복
+        val gold = android.graphics.Color.parseColor("#FFD54F")
+        val switchStates = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
+        settingGroups.values.flatten().forEach { v ->
+            if (v is android.widget.Switch) {
+                // 켬: 초록 + 흰 손잡이 / 끔: 회색 + 연회색 손잡이(어두운 카드 위에서 잘 보이게, 재억 요청).
+                // 기본 스위치는 트랙이 30% 투명으로 그려져 색을 입혀도 희미해서, 트랙/손잡이를
+                // 직접 그려서 진하게 나오게 함. #문제시 원복
+                val dens = context.resources.displayMetrics.density
+                fun pill(color: String) = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(android.graphics.Color.parseColor(color))
+                    cornerRadius = 13 * dens
+                    setSize((46 * dens).toInt(), (26 * dens).toInt())
+                }
+                fun dot(color: String): android.graphics.drawable.Drawable =
+                    android.graphics.drawable.InsetDrawable(
+                        android.graphics.drawable.GradientDrawable().apply {
+                            shape = android.graphics.drawable.GradientDrawable.OVAL
+                            setColor(android.graphics.Color.parseColor(color))
+                            setSize((22 * dens).toInt(), (22 * dens).toInt())
+                        }, (2 * dens).toInt()
+                    )
+                v.trackTintList = null
+                v.thumbTintList = null
+                v.trackDrawable = android.graphics.drawable.StateListDrawable().apply {
+                    addState(intArrayOf(android.R.attr.state_checked), pill("#34C759"))
+                    addState(intArrayOf(), pill("#636366"))
+                }
+                v.thumbDrawable = android.graphics.drawable.StateListDrawable().apply {
+                    addState(intArrayOf(android.R.attr.state_checked), dot("#FFFFFF"))
+                    addState(intArrayOf(), dot("#E5E5EA"))
+                }
+            }
         }
-        android.app.AlertDialog.Builder(context, R.style.RoundedDialogTheme)
-            .setTitle("앱 설정")
-            .setView(scrollableContainer)
-            .setPositiveButton("저장") { _, _ ->
+
+        val headerLabel = android.widget.TextView(context).apply {
+            text = "설정"
+            setTextColor(gold)
+            textSize = 12f
+        }
+        val headerTitle = android.widget.TextView(context).apply {
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 17f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(PopupCard.dp(context, 8), 0, 0, 0)
+        }
+        val customTitle = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            addView(headerLabel)
+            addView(headerTitle)
+        }
+
+        val leftList = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+        }
+        val leftScroll = android.widget.ScrollView(context).apply {
+            addView(leftList)
+        }
+        val rightList = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+        }
+        val rightScroll = android.widget.ScrollView(context).apply {
+            addView(rightList)
+        }
+        val twoPane = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            addView(leftScroll, android.widget.LinearLayout.LayoutParams(
+                PopupCard.dp(context, 136), android.widget.LinearLayout.LayoutParams.MATCH_PARENT
+            ))
+            addView(rightScroll, android.widget.LinearLayout.LayoutParams(
+                0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f
+            ).apply { marginStart = PopupCard.dp(context, 12) })
+        }
+
+        var selectedGroup = settingGroups.keys.first()
+        fun renderGroups() {
+            headerTitle.text = selectedGroup
+            leftList.removeAllViews()
+            settingGroups.keys.forEach { title ->
+                val selected = title == selectedGroup
+                leftList.addView(android.widget.TextView(context).apply {
+                    text = title
+                    textSize = 15f
+                    setPadding(PopupCard.dp(context, 14), PopupCard.dp(context, 12), PopupCard.dp(context, 14), PopupCard.dp(context, 12))
+                    if (selected) {
+                        setTextColor(android.graphics.Color.parseColor("#212121"))
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                    } else {
+                        setTextColor(android.graphics.Color.WHITE)
+                    }
+                    background = PopupCard.roundedFill(context, if (selected) "#FFD54F" else "#1AFFFFFF")
+                    isClickable = true
+                    setOnClickListener {
+                        selectedGroup = title
+                        renderGroups()
+                    }
+                }, android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = PopupCard.dp(context, 6) })
+            }
+            rightList.removeAllViews()
+            settingGroups[selectedGroup]?.forEach { v ->
+                (v.parent as? android.view.ViewGroup)?.removeView(v)
+                rightList.addView(v)
+            }
+            rightScroll.scrollTo(0, 0)
+        }
+        renderGroups()
+
+        val doSave: () -> Unit = {
                 CarFuelSettings.save(context, selectedCarType, selectedCarFuel, useHipassCheckBox.isChecked)
                 pref.edit()
                     .putBoolean("over_speed_warning_enabled", checkBox.isChecked)
@@ -1018,7 +1082,30 @@ object PanelDragHelper {
                 android.widget.Toast.makeText(context, "저장됨", android.widget.Toast.LENGTH_SHORT).show()
                 onSaved?.invoke()
             }
-            .setNegativeButton("취소", null)
-            .show()
+
+        // v19.3.79: 재억 요청 - 메뉴 카드에서 "설정"을 눌렀으면 별도 창을 띄우지 않고 그 카드 안에서
+        // 화면이 바뀜(왼쪽 위 ← 로 메뉴 복귀, 저장하면 카드 전체 닫힘). 다른 경로로 열렸을 땐
+        // 예전처럼 독립된 카드로 뜸. #문제시 원복
+        val host = PopupCard.pendingEmbeddedHost
+        PopupCard.pendingEmbeddedHost = null
+        if (host != null) {
+            host.showSubPage(
+                customTitle, twoPane, maxDp = 420, reserveDp = 170, widthDp = 600,
+                buttons = listOf(
+                    PopupCard.SubButton("취소") { host.back() },
+                    PopupCard.SubButton("저장", primary = true) {
+                        doSave()
+                        host.close()
+                    }
+                )
+            )
+        } else {
+            val settingsDialog = PopupCard.CardDialog(context, context.findViewById(android.R.id.content))
+            settingsDialog.setCustomTitle(customTitle)
+            settingsDialog.setContent(twoPane, maxDp = 420, reserveDp = 170)
+            settingsDialog.setButton(PopupCard.CardDialog.BUTTON_NEGATIVE, "취소")
+            settingsDialog.setButton(PopupCard.CardDialog.BUTTON_POSITIVE, "저장", primary = true) { doSave() }
+            settingsDialog.show()
+        }
     }
 }

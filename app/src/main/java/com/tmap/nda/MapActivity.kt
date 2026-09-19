@@ -779,14 +779,11 @@ class MapActivity : AppCompatActivity() {
         binding.btnMoreMenu?.setOnClickListener { anchorView ->
             NavLogger.d(this, "[더보기메뉴] 버튼 클릭됨(Tmap화면)")
             val panel = binding.svSecondaryPanel ?: return@setOnClickListener
-            if (panel.visibility == View.VISIBLE) {
-                panel.visibility = View.GONE
-            } else {
-                panel.visibility = View.VISIBLE
-                panel.post {
-                    PanelDragHelper.positionPopupNearAnchor(binding.root, anchorView, panel)
-                }
-            }
+            // v19.3.79: 재억 요청 - 메뉴도 다른 팝업들과 같은 카드 형식으로. 기존 세로 목록
+            // 패널은 숨겨둔 채 그 안의 버튼들을 읽어서 카드로 보여주고, 누르면 원래 버튼의
+            // 클릭을 대신 실행함. #문제시 원복
+            panel.visibility = View.GONE
+            PopupCard.showMenuFromPanel(this, findViewById<android.view.ViewGroup>(android.R.id.content), panel as android.view.ViewGroup)
         }
         binding.btnOpenSearch?.setOnClickListener {
             // 좌측 HUD 패널에 최근 검색 이력이 항상 보이도록 바뀌어서, 팝업 이력을
@@ -921,18 +918,19 @@ class MapActivity : AppCompatActivity() {
         val guidingNow = KakaoRouteDataRepository.isFresh()
         val destName = KakaoRouteDataRepository.destinationName
         if (guidingNow) {
-            android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
-                .setTitle("경유지로 추가할까요?")
-                .setMessage("'${existing.name}'을(를) 지금 안내($destName)의 경유지로 추가할까요, 아니면 새 목적지로 바꿀까요?")
-                .setPositiveButton("경유지 추가") { _, _ ->
-                    PendingWaypointRequest.put(existing)
-                    NavLogger.d(this, "[경유지추가][티맵화면] '${existing.name}' 요청 남기고 카카오 안내 화면으로 복귀")
-                    Toast.makeText(this, "'${existing.name}' 경유지로 추가 중...", Toast.LENGTH_SHORT).show()
-                    finish()
-                }
-                .setNegativeButton("새 목적지로") { _, _ -> startGuidanceToQuickSlot(existing) }
-                .setNeutralButton("취소", null)
-                .show()
+            PopupCard.showChoice(
+                this, findViewById<android.view.ViewGroup>(android.R.id.content), "경유지 추가", "경유지로 추가할까요?",
+                "'${existing.name}'을(를) 지금 안내($destName)의 경유지로 추가할까요, 아니면 새 목적지로 바꿀까요?",
+                listOf(
+                    PopupCard.Option("경유지 추가", true) {
+                        PendingWaypointRequest.put(existing)
+                        NavLogger.d(this, "[경유지추가][티맵화면] '${existing.name}' 요청 남기고 카카오 안내 화면으로 복귀")
+                        Toast.makeText(this, "'${existing.name}' 경유지로 추가 중...", Toast.LENGTH_SHORT).show()
+                        finish()
+                    },
+                    PopupCard.Option("새 목적지로") { startGuidanceToQuickSlot(existing) }
+                )
+            )
         } else {
             startGuidanceToQuickSlot(existing)
         }
@@ -1125,7 +1123,7 @@ class MapActivity : AppCompatActivity() {
             return
         }
 
-        lateinit var dialog: android.app.AlertDialog
+        lateinit var dialog: PopupCard.CardDialog
         lateinit var listView: android.widget.ListView
         // v13.9: 재억 지적(영상으로 확인) - 시간이 계산되면서 줄 높이가 바뀌고, 그
         // 높이 변화 때문에 목록이 다시 그려지고, 다시 그려질 때 "검색 중"으로 되돌아가서
@@ -1475,11 +1473,12 @@ class MapActivity : AppCompatActivity() {
             })
         }
 
-        dialog = android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
-            .setCustomTitle(titleView)
-            .setView(listView)
-            .setPositiveButton("전체 삭제") { _, _ ->
-                android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
+        // v19.3.79: 재억 요청 - 검색이력 창도 다른 팝업들과 같은 카드 형식으로. #문제시 원복
+        dialog = PopupCard.CardDialog(this, findViewById<android.view.ViewGroup>(android.R.id.content)).apply {
+            setCustomTitle(titleView)
+            setContent(listView)
+            setButton(PopupCard.CardDialog.BUTTON_POSITIVE, "전체 삭제", destructive = true) {
+                android.app.AlertDialog.Builder(this@MapActivity, R.style.RoundedDialogTheme)
                     .setTitle("검색 이력 전체 삭제")
                     .setMessage("검색 이력을 전부 삭제할까요?")
                     .setPositiveButton("삭제") { _, _ -> clearSearchHistory() }
@@ -1487,7 +1486,7 @@ class MapActivity : AppCompatActivity() {
                     .show()
                     .let { PanelDragHelper.tintDestructivePositiveButton(it) }
             }
-            .setNegativeButton("닫기") { _, _ ->
+            setButton(PopupCard.CardDialog.BUTTON_NEGATIVE, "닫기") {
                 // v2.6에서 고친 것과 동일: 닫을 때 포커스를 유지하고 키보드를 명시적으로
                 // 다시 띄워줌 (검색창 탭 -> 이 다이얼로그가 뜨는 경로에서 닫으면 키보드가
                 // 안 뜨던 문제 재발 방지). #문제시 원복
@@ -1497,7 +1496,7 @@ class MapActivity : AppCompatActivity() {
                     imm.showSoftInput(binding.etDestination, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
                 }
             }
-            .create()
+        }
 
         listView.setOnItemClickListener { _, _, position, _ ->
             val picked = history[position]
@@ -1510,9 +1509,6 @@ class MapActivity : AppCompatActivity() {
             showRoutePriorityDialog(picked)
         }
         dialog.show()
-        PanelDragHelper.tintDestructivePositiveButton(dialog)
-        // 다이얼로그 창 배경 자체도 명시적으로 지정 (테마 상속으로 까맣게 뜨는 것 방지)
-        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog_212121_rounded)
     }
 
     // v2.1: 인라인 리스트(lvSearchResults) 대신 카카오 화면과 동일한 팝업 다이얼로그 방식으로
@@ -1529,10 +1525,11 @@ class MapActivity : AppCompatActivity() {
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
 
-        val dialog = android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
-            .setTitle("최근 검색")
-            .setView(listView)
-            .setNegativeButton("닫기") { _, _ ->
+        // v19.3.79: 재억 요청 - 최근 검색 창도 카드 형식으로. #문제시 원복
+        val dialog = PopupCard.CardDialog(this, findViewById<android.view.ViewGroup>(android.R.id.content)).apply {
+            setTitle("최근 검색")
+            setContent(listView)
+            setButton(PopupCard.CardDialog.BUTTON_NEGATIVE, "닫기") {
                 // v2.6: clearFocus()가 소프트키보드까지 같이 닫아버려서, 다이얼로그를 닫은
                 // 뒤 텍스트를 입력하려 해도 키보드가 안 뜨는 버그가 있었음(사용자 제보: 음성검색
                 // 취소 후 텍스트 입력하려는데 이 다이얼로그가 막고, 닫으면 키보드까지 닫혀서
@@ -1543,7 +1540,7 @@ class MapActivity : AppCompatActivity() {
                     imm.showSoftInput(binding.etDestination, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
                 }
             }
-            .create()
+        }
         listView.setOnItemClickListener { _, _, position, _ ->
             val picked = history[position]
             dialog.dismiss()
@@ -1552,7 +1549,6 @@ class MapActivity : AppCompatActivity() {
             startKakaoOverlayGuidance(picked.name, picked.lat, picked.lon)
         }
         dialog.show()
-        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog_212121_rounded)
     }
 
     // v1.7: 검색결과/이력 목록에 android.R.layout.simple_list_item_1을 그대로 쓰면 앱 기본
@@ -2518,12 +2514,13 @@ class MapActivity : AppCompatActivity() {
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
 
-        val dialog = android.app.AlertDialog.Builder(this@MapActivity, R.style.RoundedDialogTheme)
-            .setView(listView)
-            .setNegativeButton("취소", null)
-            .setNeutralButton("이전", null)
-            .setPositiveButton("다음", null)
-            .create()
+        // v19.3.79: 재억 요청 - 검색결과 목록도 카드 형식으로. 이전/다음은 눌러도 안 닫힘. #문제시 원복
+        val dialog = PopupCard.CardDialog(this@MapActivity, findViewById<android.view.ViewGroup>(android.R.id.content)).apply {
+            setContent(listView)
+            setButton(PopupCard.CardDialog.BUTTON_NEGATIVE, "취소")
+            setButton(PopupCard.CardDialog.BUTTON_NEUTRAL, "이전", autoClose = false)
+            setButton(PopupCard.CardDialog.BUTTON_POSITIVE, "다음", autoClose = false)
+        }
 
         fun pickEntry(picked: HistoryEntry) {
             didPickEntry = true
@@ -2669,7 +2666,6 @@ class MapActivity : AppCompatActivity() {
         }
 
         dialog.show()
-        dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog_212121_rounded)
         // v11.3: 목록에서 아무것도 안 고르고 "취소" 누르거나 다이얼로그 밖을 눌러서 닫아도
         // 상태 표시줄에 "검색 결과 45건 - 목적지를 선택하세요"가 그대로 남아있던 문제
         // (재억 지적) - 다이얼로그가 닫힐 때, 실제로 목적지를 고른 게 아니면 상태

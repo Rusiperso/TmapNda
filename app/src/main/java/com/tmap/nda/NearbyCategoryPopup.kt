@@ -145,11 +145,15 @@ object NearbyCategoryPopup {
             projectOntoRoute(curLat, curLon, routeCoordsSnapshot)
         } else null
 
+        // v19.3.79: 재억 요청 - 화면이 낮으면(가로모드 등) 340dp 목록이 카드를 화면 밖으로
+        // 밀어내므로, 화면 높이에 맞춰 목록 높이를 줄임. #문제시 원복
+        val listAreaHeight = minOf(dp(context, 420), context.resources.displayMetrics.heightPixels - dp(context, 140))
+            .coerceAtLeast(dp(context, 150))
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(context, 340)
+                listAreaHeight
             )
         }
 
@@ -157,10 +161,10 @@ object NearbyCategoryPopup {
         // 폭/패딩/글자크기 다 키움(96dp->120dp, 패딩 12dp->16dp, 14sp->16sp). #문제시 원복
         val leftList = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(dp(context, 120), LinearLayout.LayoutParams.MATCH_PARENT)
+            layoutParams = LinearLayout.LayoutParams(dp(context, 136), LinearLayout.LayoutParams.MATCH_PARENT)
         }
         val leftScroll = ScrollView(context).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(context, 120), LinearLayout.LayoutParams.MATCH_PARENT)
+            layoutParams = LinearLayout.LayoutParams(dp(context, 136), LinearLayout.LayoutParams.MATCH_PARENT)
             addView(leftList)
         }
 
@@ -175,11 +179,58 @@ object NearbyCategoryPopup {
         root.addView(leftScroll)
         root.addView(rightScroll)
 
-        val dialog = AlertDialog.Builder(context, R.style.RoundedDialogTheme)
-            .setTitle("주변 검색")
-            .setView(root)
-            .setNegativeButton("닫기", null)
-            .create()
+        // v19.3.79: 재억 요청 - AlertDialog 대신 다른 팝업들과 같은 반투명 카드로 바꿈. 아래쪽
+        // 코드가 dialog.setTitle/dismiss/show를 그대로 쓰도록 같은 이름의 함수를 가진 껍데기로
+        // 감쌈. 카드는 끌어서 옮길 수 있고(위치 자동저장), 바깥을 누르면 닫힘. #문제시 원복
+        val dialog = object {
+            private val activity = context as android.app.Activity
+            private val headerTitle = TextView(context).apply {
+                setTextColor(android.graphics.Color.WHITE)
+                textSize = 17f
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                setPadding(dp(context, 8), 0, 0, 0)
+            }
+            private var closeFn: (() -> Unit)? = null
+
+            fun setTitle(t: String) {
+                headerTitle.text = t.substringAfter(" - ", "")
+            }
+
+            fun dismiss() {
+                closeFn?.invoke()
+                closeFn = null
+            }
+
+            fun show() {
+                val card = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = PopupCard.newCardBackground(context)
+                    setPadding(dp(context, 18), dp(context, 16), dp(context, 18), dp(context, 14))
+                }
+                card.addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, 0, 0, dp(context, 10))
+                    addView(TextView(context).apply {
+                        text = "주변 검색"
+                        setTextColor(android.graphics.Color.parseColor("#FFD54F"))
+                        textSize = 12f
+                    })
+                    addView(headerTitle)
+                })
+                card.addView(root)
+                card.addView(PopupCard.makeButton(context, "닫기", false) { dismiss() },
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = dp(context, 12) })
+                val screenW = context.resources.displayMetrics.widthPixels
+                val width = minOf(dp(context, 760), (screenW * 0.96).toInt())
+                closeFn = PopupCard.present(
+                    activity, activity.findViewById(android.R.id.content), card, width,
+                    "nearbyCard", true
+                ) { closeFn = null }
+            }
+        }
 
         // v: 재억 요청(2026-08-25) - 팝업 제목에 지금 선택된 카테고리를 같이 표시.
         // 마지막으로 선택한 카테고리도 기억해서 다음에 열 때 그걸로 바로 검색(유종처럼). #문제시 원복
@@ -517,7 +568,14 @@ object NearbyCategoryPopup {
             }
         }
 
+        // v19.3.79: 왼쪽 목록에서 지금 고른 카테고리를 노란 칩으로 표시하려고, 고를 때마다
+        // 왼쪽 목록을 다시 그림(renderLeftList는 아래에 정의돼서 이 변수로 연결). #문제시 원복
+        var currentSelectedLabel: String? = null
+        var refreshLeftList: () -> Unit = {}
+
         fun runSearch(item: CategoryItem) {
+            currentSelectedLabel = item.label
+            refreshLeftList()
             setTitleFor(item.label)
             saveLastCategory(item.label)
             when (item.label) {
@@ -535,45 +593,137 @@ object NearbyCategoryPopup {
         val lastCategoryLabel = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             .getString(PREF_LAST_CATEGORY, null)
 
-        // v: 재억 요청(2026-09-05) - 왼쪽 카테고리 목록을 사용자가 저장해둔 순서로 그리고,
-        // 항목을 길게 누르면 "위로/아래로"로 순서를 바꿀 수 있게 함. 바꾼 순서는 바로
-        // 저장되고 목록도 즉시 다시 그려짐. #문제시 원복
+        // v: 재억 요청(2026-09-05) - 왼쪽 카테고리 목록을 사용자가 저장해둔 순서로 그림.
+        // v19.3.79: 재억 요청 - 길게 눌러 "위로/아래로" 메뉴를 고르던 방식을, 길게 누른 채
+        // 끌어서 원하는 자리에 놓는 방식으로 바꿈. 놓는 순간 새 순서가 저장되고, 위/아래 가장자리
+        // 근처로 끌면 목록이 저절로 스크롤됨. 고른 카테고리는 노란 칩으로 표시. #문제시 원복
         var currentOrder = orderedCategories(context).toMutableList()
+        val dragHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        val rowGap = dp(context, 6)
 
-        fun renderLeftList(selectedLabel: String?) {
+        fun renderLeftList() {
             leftList.removeAllViews()
-            currentOrder.forEachIndexed { index, item ->
+            currentOrder.forEach { item ->
+                val selected = item.label == currentSelectedLabel
                 val row = makeRow(context, item.label, null, true, 16f) { runSearch(item) }
-                row.setOnLongClickListener {
-                    val moveOptions = mutableListOf<String>()
-                    if (index > 0) moveOptions.add("위로")
-                    if (index < currentOrder.size - 1) moveOptions.add("아래로")
-                    if (index > 0) moveOptions.add("맨 위로")
-                    if (index < currentOrder.size - 1) moveOptions.add("맨 아래로")
-                    if (moveOptions.isEmpty()) return@setOnLongClickListener true
-                    AlertDialog.Builder(context, R.style.RoundedDialogTheme)
-                        .setTitle("'${item.label}' 위치 바꾸기")
-                        .setItems(moveOptions.toTypedArray()) { _, which ->
-                            val moved = currentOrder.removeAt(index)
-                            val newIndex = when (moveOptions[which]) {
-                                "위로" -> index - 1
-                                "아래로" -> index + 1
-                                "맨 위로" -> 0
-                                else -> currentOrder.size
-                            }
-                            currentOrder.add(newIndex.coerceIn(0, currentOrder.size), moved)
-                            saveCategoryOrder(context, currentOrder)
-                            renderLeftList(selectedLabel)
-                        }
-                        .setNegativeButton("취소", null)
-                        .show()
-                    true
+                row.tag = item
+                row.background = PopupCard.roundedFill(context, if (selected) "#FFD54F" else "#1AFFFFFF")
+                ((row as? LinearLayout)?.getChildAt(0) as? TextView)?.apply {
+                    setShadowLayer(0f, 0f, 0f, 0)
+                    if (selected) {
+                        setTextColor(android.graphics.Color.parseColor("#212121"))
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                    }
                 }
-                leftList.addView(row)
+                row.setPadding(dp(context, 14), dp(context, 12), dp(context, 14), dp(context, 12))
+
+                val touchSlop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+                var dragging = false
+                var downRawY = 0f
+                var lastRawY = 0f
+                var downScrollY = 0
+                var origIdx = 0
+                var targetIdx = 0
+                var longPress: Runnable? = null
+                var autoScroll: Runnable? = null
+
+                fun stride() = row.height + rowGap
+
+                fun updateDrag() {
+                    val count = leftList.childCount
+                    val translation = (lastRawY - downRawY) + (leftScroll.scrollY - downScrollY)
+                    row.translationY = translation
+                    targetIdx = Math.round((origIdx * stride() + translation) / stride()).coerceIn(0, count - 1)
+                    for (i in 0 until count) {
+                        if (i == origIdx) continue
+                        val shift = when {
+                            origIdx < targetIdx && i in (origIdx + 1)..targetIdx -> -stride()
+                            targetIdx < origIdx && i in targetIdx until origIdx -> stride()
+                            else -> 0
+                        }
+                        leftList.getChildAt(i).animate().translationY(shift.toFloat()).setDuration(90).start()
+                    }
+                }
+
+                row.setOnTouchListener { v, e ->
+                    when (e.actionMasked) {
+                        android.view.MotionEvent.ACTION_DOWN -> {
+                            dragging = false
+                            downRawY = e.rawY
+                            lastRawY = e.rawY
+                            longPress = Runnable {
+                                dragging = true
+                                origIdx = leftList.indexOfChild(row)
+                                targetIdx = origIdx
+                                downScrollY = leftScroll.scrollY
+                                v.isPressed = false
+                                v.parent?.requestDisallowInterceptTouchEvent(true)
+                                v.elevation = dp(context, 8).toFloat()
+                                v.animate().scaleX(1.05f).scaleY(1.05f).setDuration(100).start()
+                                val tick = object : Runnable {
+                                    override fun run() {
+                                        if (!dragging) return
+                                        val loc = IntArray(2)
+                                        leftScroll.getLocationOnScreen(loc)
+                                        val edge = dp(context, 40)
+                                        val dy = when {
+                                            lastRawY < loc[1] + edge -> -dp(context, 8)
+                                            lastRawY > loc[1] + leftScroll.height - edge -> dp(context, 8)
+                                            else -> 0
+                                        }
+                                        if (dy != 0) {
+                                            leftScroll.scrollBy(0, dy)
+                                            updateDrag()
+                                        }
+                                        dragHandler.postDelayed(this, 16)
+                                    }
+                                }
+                                autoScroll = tick
+                                dragHandler.post(tick)
+                            }
+                            dragHandler.postDelayed(longPress!!, 350)
+                            false
+                        }
+                        android.view.MotionEvent.ACTION_MOVE -> {
+                            if (!dragging) {
+                                if (Math.abs(e.rawY - downRawY) > touchSlop) {
+                                    longPress?.let { dragHandler.removeCallbacks(it) }
+                                }
+                                false
+                            } else {
+                                lastRawY = e.rawY
+                                updateDrag()
+                                true
+                            }
+                        }
+                        android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                            longPress?.let { dragHandler.removeCallbacks(it) }
+                            autoScroll?.let { dragHandler.removeCallbacks(it) }
+                            if (dragging) {
+                                dragging = false
+                                if (targetIdx != origIdx) {
+                                    val moved = currentOrder.removeAt(origIdx)
+                                    currentOrder.add(targetIdx, moved)
+                                    saveCategoryOrder(context, currentOrder)
+                                }
+                                renderLeftList()
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        else -> false
+                    }
+                }
+                leftList.addView(row, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = rowGap })
             }
         }
+        refreshLeftList = { renderLeftList() }
 
-        renderLeftList(lastCategoryLabel)
+        currentSelectedLabel = lastCategoryLabel
+        renderLeftList()
         val startItem = currentOrder.firstOrNull { it.label == lastCategoryLabel } ?: currentOrder.firstOrNull()
         startItem?.let { runSearch(it) } // 마지막 선택 카테고리(없으면 첫 카테고리) 기본 선택
 
