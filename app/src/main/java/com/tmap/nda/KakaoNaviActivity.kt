@@ -438,43 +438,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // invalidate()(PanelDragHelper.forceToFront)만으로 상단바 표시/숨김 어느 상태에서도,
         // 상단바와 겹치는 자리를 포함해 정상적으로 보이고 눌림. 그래서 충돌 회피로 막지 않고
         // 재억 요청대로 상단바 위로도 자유롭게 이동 가능하게 둠. #문제시 원복
-        binding.btnAddWaypoint?.let { btn ->
-            PanelDragHelper.makeLongPressDraggable(this, btn, "btnAddWaypoint", isLandscape) {
-                btn.performClick()
-            }
-            btn.post {
-                PanelDragHelper.restorePosition(this, btn, "btnAddWaypoint", isLandscape, emptyList())
-                PanelDragHelper.forceToFront(btn)
-            }
-        }
-        binding.btnNearbyCategory?.let { btn ->
-            PanelDragHelper.makeLongPressDraggable(this, btn, "btnNearbyCategory", isLandscape) {
-                btn.performClick()
-            }
-            btn.post {
-                PanelDragHelper.restorePosition(this, btn, "btnNearbyCategory", isLandscape, emptyList())
-                PanelDragHelper.forceToFront(btn)
-            }
-        }
-        binding.btnFavorites?.let { btn ->
-            btn.setOnClickListener { showFavoritesCard() }
-            PanelDragHelper.makeLongPressDraggable(this, btn, "btnFavorites", isLandscape) {
-                btn.performClick()
-            }
-            btn.post {
-                PanelDragHelper.restorePosition(this, btn, "btnFavorites", isLandscape, emptyList())
-                PanelDragHelper.forceToFront(btn)
-            }
-        }
-        binding.btnCancelWaypoint?.let { btn ->
-            PanelDragHelper.makeLongPressDraggable(this, btn, "btnCancelWaypoint", isLandscape) {
-                btn.performClick()
-            }
-            btn.post {
-                PanelDragHelper.restorePosition(this, btn, "btnCancelWaypoint", isLandscape, emptyList())
-                PanelDragHelper.forceToFront(btn)
-            }
-        }
+        // v19.3.80: 재억 요청 - 네 아이콘을 2줄x2칸 격자 + 크기 3단 + 살짝 끌어 이동 + 2초 꾹 크기
+        // 변경으로 통일(QuickIconGrid). 즐겨찾기/주변 위, 경유지/취소 아래. #문제시 원복
+        binding.btnFavorites?.setOnClickListener { showFavoritesCard() }
+        val quickItems = ArrayList<QuickIconGrid.Item>()
+        binding.btnFavorites?.let { btn -> quickItems.add(QuickIconGrid.Item(btn, "btnFavorites", 0) { btn.performClick() }) }
+        binding.btnNearbyCategory?.let { btn -> quickItems.add(QuickIconGrid.Item(btn, "btnNearbyCategory", 1) { btn.performClick() }) }
+        binding.btnAddWaypoint?.let { btn -> quickItems.add(QuickIconGrid.Item(btn, "btnAddWaypoint", 2) { btn.performClick() }) }
+        binding.btnCancelWaypoint?.let { btn -> quickItems.add(QuickIconGrid.Item(btn, "btnCancelWaypoint", 3) { btn.performClick() }) }
+        if (quickItems.isNotEmpty()) QuickIconGrid.setup(this, quickItems, binding.tvConnectionStatus?.parent?.parent as? View)
         // v19.3.37: 재억 요청 - Tmap 화면과 동일한 상단바 표시/숨김 플로팅 버튼. 카카오
         // SDK 자체가 화면이 좁을수록 왼쪽 안내 박스를 겹쳐 그리는 문제 대응 - 눌러서
         // 상단바를 통째로 치우고 지도한테 세로 공간을 최대한 양보. v19.3.37b: "UI 편집"
@@ -1691,7 +1663,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // VISIBLE 되는 시점마다 위치를 다시 복원. #문제시 원복
                 if (showCancelWaypointButton && activeWaypoints.isNotEmpty()) {
                     binding.btnCancelWaypoint?.post {
-                        PanelDragHelper.restorePosition(this, binding.btnCancelWaypoint!!, "btnCancelWaypoint", resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE, emptyList())
+                        QuickIconGrid.restore(this, binding.btnCancelWaypoint!!)
                     }
                 }
             }
@@ -1955,7 +1927,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private fun showFullSearchHistoryDialog() {
         var history = SearchHistoryStore.get(this)
         if (history.isEmpty()) {
-            Toast.makeText(this, "검색 이력이 없습니다", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "최근 목적지가 없습니다", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -2153,7 +2125,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             setPadding(24, 24, 24, 20)
             addView(android.widget.TextView(this@KakaoNaviActivity).apply {
                 setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
-                text = "검색 이력 전체"
+                text = "최근 목적지"
                 textSize = 18f
                 setTextColor(android.graphics.Color.WHITE)
                 layoutParams = android.widget.LinearLayout.LayoutParams(
@@ -2168,8 +2140,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             setContent(listView)
             setButton(PopupCard.CardDialog.BUTTON_POSITIVE, "전체 삭제", destructive = true) {
                 android.app.AlertDialog.Builder(this@KakaoNaviActivity, R.style.RoundedDialogTheme)
-                    .setTitle("검색 이력 전체 삭제")
-                    .setMessage("검색 이력을 전부 삭제할까요?")
+                    .setTitle("최근 목적지 전체 삭제")
+                    .setMessage("최근 목적지를 전부 삭제할까요?")
                     .setPositiveButton("삭제") { _, _ ->
                         SearchHistoryStore.clear(this@KakaoNaviActivity)
                         renderRecentDestinationsPanel()
@@ -2738,7 +2710,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     binding.btnCancelWaypoint?.visibility = if (showCancelBtn) View.VISIBLE else View.GONE
                     if (showCancelBtn) {
                         binding.btnCancelWaypoint?.post {
-                            PanelDragHelper.restorePosition(this, binding.btnCancelWaypoint!!, "btnCancelWaypoint", resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE, emptyList())
+                            QuickIconGrid.restore(this, binding.btnCancelWaypoint!!)
                         }
                     }
                 } catch (e: Exception) {
@@ -4029,7 +4001,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             binding.btnCancelWaypoint?.visibility = if (showCancelWaypointButton && activeWaypoints.isNotEmpty()) View.VISIBLE else View.GONE
             if (showCancelWaypointButton && activeWaypoints.isNotEmpty()) {
                 binding.btnCancelWaypoint?.post {
-                    PanelDragHelper.restorePosition(this, binding.btnCancelWaypoint!!, "btnCancelWaypoint", resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE, emptyList())
+                    QuickIconGrid.restore(this, binding.btnCancelWaypoint!!)
                 }
             }
         }

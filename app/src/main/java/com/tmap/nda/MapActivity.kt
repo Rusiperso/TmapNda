@@ -539,22 +539,17 @@ class MapActivity : AppCompatActivity() {
         // 하던 동작(주변 카테고리 검색)이 그대로 나가야 해서, onTap에서 버튼 자신의
         // performClick()을 호출 - 실제 클릭 리스너는 setupNearbyCategoryButton()에서
         // 따로 등록되니 그게 그대로 실행됨. #문제시 원복
-        binding.btnFavorites?.let { btn ->
-            btn.setOnClickListener { showFavoritesCard() }
-            PanelDragHelper.makeLongPressDraggable(this, btn, "btnFavorites", isLandscape) {
-                btn.performClick()
-            }
-            btn.post {
-                PanelDragHelper.restorePosition(this, btn, "btnFavorites", isLandscape, emptyList())
-                PanelDragHelper.forceToFront(btn)
-            }
+        // v19.3.80: 재억 요청 - 즐겨찾기/주변을 2줄x2칸 격자 + 크기 3단 + 살짝 끌어 이동 + 2초 꾹
+        // 크기 변경으로 통일(QuickIconGrid, 카카오 화면과 같은 규칙). #문제시 원복
+        binding.btnFavorites?.setOnClickListener { showFavoritesCard() }
+        run {
+            val quickItems = ArrayList<QuickIconGrid.Item>()
+            binding.btnFavorites?.let { btn -> quickItems.add(QuickIconGrid.Item(btn, "btnFavorites", 0) { btn.performClick() }) }
+            binding.btnNearbyCategory?.let { btn -> quickItems.add(QuickIconGrid.Item(btn, "btnNearbyCategory", 1) { btn.performClick() }) }
+            if (quickItems.isNotEmpty()) QuickIconGrid.setup(this, quickItems, binding.tvConnectionStatus?.parent?.parent as? View)
         }
         binding.btnNearbyCategory?.let { btn ->
-            PanelDragHelper.makeLongPressDraggable(this, btn, "btnNearbyCategory", isLandscape) {
-                btn.performClick()
-            }
             btn.post {
-                PanelDragHelper.restorePosition(this, btn, "btnNearbyCategory", isLandscape, emptyList())
                 // v19.3.42: 재억 실기기에서 실측 확인 - bringToFront() 단독으로는 실제로 다시
                 // 그려지지도 터치도 안 먹혀서(자세한 이유는 PanelDragHelper.forceToFront 주석
                 // 참고), requestLayout()+invalidate()까지 같이 하는 함수로 교체. 상단바와 겹치는
@@ -1129,7 +1124,7 @@ class MapActivity : AppCompatActivity() {
     private fun showFullSearchHistoryDialog() {
         var history = getSearchHistory()
         if (history.isEmpty()) {
-            Toast.makeText(this, "검색 이력이 없습니다", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "최근 목적지가 없습니다", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -1320,7 +1315,7 @@ class MapActivity : AppCompatActivity() {
             setPadding(24, 24, 24, 20)
             addView(android.widget.TextView(this@MapActivity).apply {
                 setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
-                text = "검색 이력 전체"
+                text = "최근 목적지"
                 textSize = 18f
                 setTextColor(android.graphics.Color.WHITE)
                 layoutParams = android.widget.LinearLayout.LayoutParams(
@@ -1335,8 +1330,8 @@ class MapActivity : AppCompatActivity() {
             setContent(listView)
             setButton(PopupCard.CardDialog.BUTTON_POSITIVE, "전체 삭제", destructive = true) {
                 android.app.AlertDialog.Builder(this@MapActivity, R.style.RoundedDialogTheme)
-                    .setTitle("검색 이력 전체 삭제")
-                    .setMessage("검색 이력을 전부 삭제할까요?")
+                    .setTitle("최근 목적지 전체 삭제")
+                    .setMessage("최근 목적지를 전부 삭제할까요?")
                     .setPositiveButton("삭제") { _, _ -> clearSearchHistory() }
                     .setNegativeButton("취소", null)
                     .show()

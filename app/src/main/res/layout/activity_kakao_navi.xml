@@ -321,8 +321,11 @@
                  v3.9: 남은 공간을 다 차지하던 걸(weight=1) 고정폭으로 줄임
                  (사용자: "목적지를 입력하세요를 목적지 검색으로 줄이라는게 아니라
                  그 칸 자체를 줄이자는 거") #문제시 원복 -->
+            <!-- v19.3.80: 재억 요청 - 평소엔 좁게, 검색어/음성검색 결과가 들어오면 글자 길이에 맞춰
+                 늘어남(최대폭까지, 넘으면 안에서 스크롤). 안내가 시작되면 코드가 글자를 비워서 다시
+                 좁아짐. #문제시 원복 -->
             <LinearLayout
-                android:layout_width="220dp"
+                android:layout_width="wrap_content"
                 android:layout_height="38dp"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
@@ -331,10 +334,11 @@
 
                 <EditText
                     android:id="@+id/etDestination"
-                    android:layout_width="0dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="match_parent"
-                    android:layout_weight="1"
-                    android:hint="목적지 검색"
+                    android:minWidth="60dp"
+                    android:maxWidth="260dp"
+                    android:hint="검색"
                     android:textColor="#FFFFFF"
                     android:shadowColor="#FF000000"
                     android:shadowDx="0"
