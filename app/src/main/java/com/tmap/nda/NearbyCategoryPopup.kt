@@ -176,7 +176,17 @@ object NearbyCategoryPopup {
             addView(rightList)
         }
 
+        // v: 재억 요청(2026-09-19) - 결과가 여러 페이지일 때 아래쪽 "이전 1/5 다음"을
+        // 누르며 넘기는 대신, 카테고리 버튼(주차장 등) 오른편에 페이지 번호(1 2 3 4 5)를
+        // 세로로 늘어놓고 바로 원하는 페이지로 누를 수 있게 함. #문제시 원복
+        val pageNumList = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(dp(context, 34), LinearLayout.LayoutParams.MATCH_PARENT)
+        }
+
         root.addView(leftScroll)
+        root.addView(pageNumList)
         root.addView(rightScroll)
 
         // v19.3.79: 재억 요청 - AlertDialog 대신 다른 팝업들과 같은 반투명 카드로 바꿈. 아래쪽
@@ -247,6 +257,7 @@ object NearbyCategoryPopup {
         // 페이지로 나눠서 "이전/다음" 버튼으로 넘겨보게 함(기존 목적지 검색과 동일 패턴). #문제시 원복
         fun <T> renderPaged(items: List<T>, page: Int, makeItemRow: (T) -> View, onPageChange: (Int) -> Unit) {
             rightList.removeAllViews()
+            pageNumList.removeAllViews()
             if (items.isEmpty()) {
                 rightList.addView(makeRow(context, "검색 결과 없음", null, false, 16f) {})
                 return
@@ -258,35 +269,27 @@ object NearbyCategoryPopup {
             val end = (start + pageSize).coerceAtMost(items.size)
             items.subList(start, end).forEach { rightList.addView(makeItemRow(it)) }
             if (totalPages > 1) {
-                val navRow = LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER
-                    setPadding(dp(context, 8), dp(context, 12), dp(context, 8), dp(context, 8))
+                for (p in 0 until totalPages) {
+                    val isCurrent = p == safePage
+                    pageNumList.addView(TextView(context).apply {
+                        text = "${p + 1}"
+                        textSize = 14f
+                        gravity = Gravity.CENTER
+                        setTextColor(if (isCurrent) android.graphics.Color.parseColor("#212121") else android.graphics.Color.WHITE)
+                        setTypeface(null, if (isCurrent) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+                        background = android.graphics.drawable.GradientDrawable().apply {
+                            shape = android.graphics.drawable.GradientDrawable.OVAL
+                            setColor(
+                                if (isCurrent) android.graphics.Color.parseColor("#FFD54F")
+                                else android.graphics.Color.parseColor("#33FFFFFF")
+                            )
+                        }
+                        if (!isCurrent) setOnClickListener { onPageChange(p) }
+                    }, LinearLayout.LayoutParams(dp(context, 28), dp(context, 28)).apply {
+                        topMargin = dp(context, 5)
+                        bottomMargin = dp(context, 5)
+                    })
                 }
-                navRow.addView(TextView(context).apply {
-                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
-                    text = "이전"
-                    textSize = 14f
-                    setTextColor(if (safePage > 0) android.graphics.Color.WHITE else android.graphics.Color.GRAY)
-                    setPadding(dp(context, 20), dp(context, 8), dp(context, 20), dp(context, 8))
-                    if (safePage > 0) setOnClickListener { onPageChange(safePage - 1) }
-                })
-                navRow.addView(TextView(context).apply {
-                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
-                    text = "${safePage + 1} / $totalPages"
-                    textSize = 14f
-                    setTextColor(android.graphics.Color.WHITE)
-                    setPadding(dp(context, 12), dp(context, 8), dp(context, 12), dp(context, 8))
-                })
-                navRow.addView(TextView(context).apply {
-                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
-                    text = "다음"
-                    textSize = 14f
-                    setTextColor(if (safePage < totalPages - 1) android.graphics.Color.WHITE else android.graphics.Color.GRAY)
-                    setPadding(dp(context, 20), dp(context, 8), dp(context, 20), dp(context, 8))
-                    if (safePage < totalPages - 1) setOnClickListener { onPageChange(safePage + 1) }
-                })
-                rightList.addView(navRow)
             }
         }
 
