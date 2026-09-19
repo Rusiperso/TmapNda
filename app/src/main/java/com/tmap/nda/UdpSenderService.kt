@@ -1331,6 +1331,11 @@ class UdpSenderService : Service() {
                             "카카오안내"
                         }
                         json.put("szTBTMainText", kakaoPrefix)
+                        // v: 재억 요청(2026-09-19) - 회전지점/고속도로 시설 목록을 콤마로도
+                        // 보냄(지금까지는 나브디/순정계기판에만 갔음). #문제시 원복
+                        if (kr.tbtListJson.isNotBlank()) {
+                            json.put("szTbtList", kr.tbtListJson)
+                        }
                         // v: 사용자 제안(2026-08-08) - "Tmap 우선순위 + 카카오 폴백"이라는
                         // 하이브리드 판단 자체가 문제였음. 실제 로그로 확인됨: safetyDistTrusted
                         // (카카오 SDK의 getRemainDist() 기반 검증)가 거의 항상 false로 나와서

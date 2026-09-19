@@ -20,7 +20,10 @@ data class KakaoRouteSnapshot(
     val nextTbtDist: Int,
     val nextRgCodeName: String,
     val nextDirectionAngle: Int,
-    val nextTbtMainText: String
+    val nextTbtMainText: String,
+    // v: 재억 요청(2026-09-19) - 앞으로 남은 회전지점/고속도로 시설 목록(JSON 배열
+    // 문자열). TbtListJson.build()가 만든 값을 그대로 담아 나브디/콤마 양쪽에 다 씀. #문제시 원복
+    val tbtListJson: String
 )
 
 /**
@@ -73,6 +76,8 @@ object KakaoRouteDataRepository {
     @Volatile var nextRgCodeName: String = ""
     @Volatile var nextDirectionAngle: Int = 0
     @Volatile var nextTbtMainText: String = ""
+    // v: 재억 요청(2026-09-19) - 회전지점/고속도로 시설 목록. #문제시 원복
+    @Volatile var tbtListJson: String = ""
 
     // 안전정보(스쿨존/구간단속 등) - v4.21: KNSafetyCode를 Tmap/openpilot nSdiType 스킴으로
     // 정확히 번역해서 채움(KakaoGuidanceDelegate.mapKakaoSafetyCodeToSdiType 참고).
@@ -134,6 +139,7 @@ object KakaoRouteDataRepository {
         nextRgCodeName = ""
         nextDirectionAngle = 0
         nextTbtMainText = ""
+        tbtListJson = ""
         notifyListeners(snapshot())
     }
 
@@ -158,7 +164,8 @@ object KakaoRouteDataRepository {
         nextTbtDist = nextTbtDist,
         nextRgCodeName = nextRgCodeName,
         nextDirectionAngle = nextDirectionAngle,
-        nextTbtMainText = nextTbtMainText
+        nextTbtMainText = nextTbtMainText,
+        tbtListJson = tbtListJson
     )
 
     /** v2.2: KakaoHudBridge(공식 KNSDK API 기반)가 값을 한 번에 반영하고 구독자에게 알림.
@@ -176,7 +183,8 @@ object KakaoRouteDataRepository {
         nextTbtDist: Int = 0,
         nextRgCodeName: String = "",
         nextDirectionAngle: Int = 0,
-        nextTbtMainText: String = ""
+        nextTbtMainText: String = "",
+        tbtListJson: String = ""
     ) {
         isActive = true
         lastUpdateTime = System.currentTimeMillis()
@@ -193,6 +201,7 @@ object KakaoRouteDataRepository {
         this.nextRgCodeName = nextRgCodeName
         this.nextDirectionAngle = nextDirectionAngle
         this.nextTbtMainText = nextTbtMainText
+        if (tbtListJson.isNotBlank()) this.tbtListJson = tbtListJson
         // v: 재억 요청(2026-08-22) - 안내 시작 직후 trip/goal이 아직 안 채워진 찰나에
         // destinationName이 "목적지"(기본값)로 초기화되면서, 그 사이 잠깐 도로명으로
         // 화면이 넘어가버리는 문제가 있었음. 새로 들어온 이름이 진짜 값(비어있지 않음)일

@@ -84,6 +84,10 @@ object KakaoHudBridge {
             nextDirection?.nodeName.orEmpty()
                 .ifBlank { nextDirection?.directionNames?.firstOrNull().orEmpty() }
 
+        // v: 재억 요청(2026-09-19) - 회전지점/고속도로 시설 목록을 한 번만 만들어서
+        // 콤마(publishGuidance)와 나브디/순정계기판(snapshot) 양쪽에 같이 씀. #문제시 원복
+        val tbtListJson = com.tmap.nda.nmirror.TbtListJson.build(routeGuide, currentLocation)
+
         KakaoRouteDataRepository.publishGuidance(
             tbtDist = turnDistance,
             tbtMainText = instruction,
@@ -97,7 +101,8 @@ object KakaoHudBridge {
             nextTbtDist = nextTurnDistance,
             nextRgCodeName = nextDirection?.rgCode?.name.orEmpty(),
             nextDirectionAngle = nextDirection?.directionAng ?: 0,
-            nextTbtMainText = nextInstruction
+            nextTbtMainText = nextInstruction,
+            tbtListJson = tbtListJson.orEmpty()
         )
 
         // v: 재억 제보(2026-09-03) - 순정 티맵으로 안내하면 차량 순정 계기판/HUD에 뜨는데
@@ -127,7 +132,7 @@ object KakaoHudBridge {
             nextTurnNodeName = nextDirection?.nodeName.orEmpty(),
             nextRgCodeName = nextDirection?.rgCode?.name.orEmpty(),
             nextDirectionAngle = nextDirection?.directionAng ?: 0,
-            highwayListJson = com.tmap.nda.nmirror.TbtListJson.build(routeGuide, currentLocation)
+            highwayListJson = tbtListJson
         )
 
         try {
