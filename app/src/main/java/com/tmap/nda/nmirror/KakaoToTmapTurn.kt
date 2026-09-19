@@ -116,4 +116,20 @@ internal object KakaoToTmapTurn {
             else -> SLIGHT_LEFT
         }
     }
+
+    // v: 재억 요청(2026-09-19) - "몇km 뒤 좌회전/우회전/직진/유턴" 목록(TbtListJson)에
+    // 일반도로 회전지점도 넣기 위해, 티맵 회전 번호를 사람이 읽는 한글 단어로 바꿔주는
+    // 함수. 목록 항목의 이름 글자에 이 단어를 직접 박아 넣을 거라, 나브디 쪽에서 화살표
+    // 아이콘을 못 그려줘도 최소한 글자로는 방향이 보이게 함. #문제시 원복
+    fun label(rgCodeName: String, directionAngle: Int): String = when (from(rgCodeName, directionAngle)) {
+        LEFT, SHARP_LEFT -> "좌회전"
+        RIGHT, SHARP_RIGHT -> "우회전"
+        SLIGHT_LEFT, KEEP_LEFT -> "좌측방향"
+        SLIGHT_RIGHT, KEEP_RIGHT -> "우측방향"
+        U_TURN -> "유턴"
+        ROTARY -> "회전교차로"
+        DEPART -> "출발"
+        ARRIVE -> "도착"
+        else -> "직진"
+    }
 }

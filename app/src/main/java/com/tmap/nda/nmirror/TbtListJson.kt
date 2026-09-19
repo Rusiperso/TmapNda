@@ -30,6 +30,7 @@ object TbtListJson {
     private const val TYPE_SA = 2
     private const val TYPE_IC = 3
     private const val TYPE_JC = 4
+    private const val TYPE_TURN = 5
 
     /** 화면에 쓰는 건 앞의 몇 개뿐이라 목록이 길어져도 앞부분만 보낸다. */
     private const val MAX_ITEMS = 10
@@ -37,17 +38,31 @@ object TbtListJson {
     fun build(routeGuide: Any?, currentLocation: Any?): String? {
         if (routeGuide == null || currentLocation == null) return null
         return try {
-            val hwInfo = invoke(routeGuide, "getHwInfo") ?: return null
-            val facilities = (asList(invoke(hwInfo, "getNearRgs")) + asList(invoke(hwInfo, "getNearSas")))
-                .filterNotNull()
-            if (facilities.isEmpty()) return null
+            val facilityItems = try {
+                val hwInfo = invoke(routeGuide, "getHwInfo")
+                if (hwInfo == null) emptyList() else {
+                    (asList(invoke(hwInfo, "getNearRgs")) + asList(invoke(hwInfo, "getNearSas")))
+                        .filterNotNull()
+                        .mapNotNull { toFacilityItem(it, currentLocation) }
+                }
+            } catch (e: Exception) { emptyList() }
 
-            val items = facilities
-                .mapNotNull { toItem(it, currentLocation) }
-                .distinctBy { it.type to it.name }
+            val turnItems = try {
+                turnPointItems(routeGuide, currentLocation)
+            } catch (e: Exception) {
+                NavLogger.dIfChanged(
+                    "회전지점목록오류",
+                    "[회전지점 목록] 못 만듦(${e.javaClass.simpleName} ${e.message}) - 이번엔 안 보냄"
+                )
+                emptyList()
+            }
+
+            val items = (facilityItems + turnItems)
+                .distinctBy { it.type to it.name to it.remainDistance }
                 .sortedBy { it.remainDistance }
                 .take(MAX_ITEMS)
             if (items.isEmpty()) return null
+
 
             val array = JSONArray()
             var previousDistance = 0
@@ -80,7 +95,7 @@ object TbtListJson {
 
     private data class Item(val type: Int, val name: String, val remainDistance: Int)
 
-    private fun toItem(facility: Any, currentLocation: Any): Item? {
+    private fun toFacilityItem(facility: Any, currentLocation: Any): Item? {
         val type = typeOf(facility) ?: return null
         val name = (invoke(facility, "getNodeName") as? String).orEmpty()
         if (name.isBlank()) return null
@@ -88,6 +103,57 @@ object TbtListJson {
         val distance = distanceTo(currentLocation, location) ?: return null
         if (distance <= 0) return null
         return Item(type, name, distance)
+    }
+
+    // v: 재억 요청(2026-09-19) - 일반도로 회전지점(좌회전/우회전/직진/유턴)도 이 목록에
+    // 같이 넣어달라는 요청. curDirection/nextDirection은 "지금"과 "바로 다음" 하나씩만
+    // 주는 단수 필드라 목록에 못 씀 - 전체 회전지점을 한꺼번에 주는 게터가 따로 있는지
+    // 확실치 않아, 이름에 "direction"이 들어가면서 목록(List)을 돌려주는 게터를 전부
+    // 찾아서 시도한다(실기기 로그로 어떤 이름이 맞는지 확인 예정). 못 찾으면 그냥
+    // 빈 목록 - 기존 고속도로 시설 목록은 그대로 영향 없음. #문제시 원복
+    private var directionListDiagLogged = false
+
+    private fun turnPointItems(routeGuide: Any, currentLocation: Any): List<Item> {
+        val candidates = routeGuide.javaClass.methods.filter {
+            it.parameterTypes.isEmpty() &&
+                it.name != "getCurDirection" && it.name != "getNextDirection" &&
+                it.name.lowercase().contains("direction")
+        }
+        for (m in candidates) {
+            val result = try { m.invoke(routeGuide) } catch (e: Exception) { null } ?: continue
+            val list = (result as? List<*>) ?: (result as? Array<*>)?.toList() ?: continue
+            if (list.isEmpty()) continue
+            val items = list.filterNotNull().mapNotNull { toTurnItem(it, currentLocation) }
+            if (items.isNotEmpty()) {
+                NavLogger.dIfChanged(
+                    "회전지점목록",
+                    "[회전지점 목록] ${m.name}()에서 ${items.size}개 찾음: " +
+                        items.joinToString(", ") { "${it.name} ${it.remainDistance}m" }
+                )
+                return items
+            }
+        }
+        if (!directionListDiagLogged) {
+            directionListDiagLogged = true
+            NavLogger.e(
+                "===== [회전지점목록API스캔] ${routeGuide.javaClass.name} - " +
+                    "\"direction\" 들어간 게터 후보: ${candidates.map { it.name }} - " +
+                    "전부 List/Array가 아니거나 비어있어서 못 씀 ====="
+            )
+        }
+        return emptyList()
+    }
+
+    private fun toTurnItem(direction: Any, currentLocation: Any): Item? {
+        val location = invoke(direction, "getLocation") ?: return null
+        val distance = distanceTo(currentLocation, location) ?: return null
+        if (distance <= 0) return null
+        val rgCodeName = invoke(direction, "getRgCode")?.let { enumName(it) }.orEmpty()
+        val angle = (invoke(direction, "getDirectionAng") as? Number)?.toInt() ?: 0
+        val turnLabel = KakaoToTmapTurn.label(rgCodeName, angle)
+        val nodeName = (invoke(direction, "getNodeName") as? String).orEmpty()
+        val name = if (nodeName.isBlank()) turnLabel else "$turnLabel $nodeName"
+        return Item(TYPE_TURN, name, distance)
     }
 
     /** KNHighwayRGType_TG / _SA / _IC / _JC 를 티맵 nTBTType 번호로. RA(회차로)는 대응이 없어 뺀다. */
@@ -113,7 +179,8 @@ object TbtListJson {
         TYPE_TG -> "톨게이트"
         TYPE_SA -> "휴게소"
         TYPE_IC -> "IC"
-        else -> "JC"
+        TYPE_JC -> "JC"
+        else -> "회전지점"
     }
 
     private fun invoke(target: Any?, name: String): Any? {
@@ -123,6 +190,10 @@ object TbtListJson {
         } ?: return null
         return method.invoke(target)
     }
+
+    /** 카카오의 rgCode는 코틀린 enum이라 getName()이 아니라 enum 표준 name()으로 값을 꺼내야 함. */
+    private fun enumName(target: Any): String? =
+        (invoke(target, "name") as? String) ?: (invoke(target, "getName") as? String)
 
     private fun asList(value: Any?): List<Any?> = (value as? List<*>) ?: emptyList()
 }
