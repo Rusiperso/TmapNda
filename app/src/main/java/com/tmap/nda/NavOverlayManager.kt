@@ -269,14 +269,12 @@ object NavOverlayManager {
         primaryIcon?.invalidate()
         primaryDistText?.text = formatDist(snapshot.tbtDist)
         primaryRoadText?.apply {
-            // v: 재억 재제보(2026-09-06, 로그로 확인) - 계기판은 "송암교차로"(다음 회전 지점),
-            // 오버레이는 "만세로"(지금 달리는 도로)를 보여줘서 여전히 달랐음. 직전 수정에서
-            // roadName을 쓰게 했는데, KakaoHudBridge가 그 필드를 currentRoad(현재 도로)로
-            // 덮어쓰고 있어서 엉뚱한 값이 들어간 것. 다음 회전 지점은 tbtMainText가 맞으므로
-            // 그걸 쓰되(로그의 road=송암교차로와 동일 소스), 계기판처럼 "방면"은 붙이지 않음.
-            // #문제시 원복
-            if (snapshot.tbtMainText.isNotBlank()) {
-                text = snapshot.tbtMainText
+            // v: 재억 재제보(2026-09-19) - "다음 회전 지점명"(tbtMainText) 대신 도착지
+            // 이름을 보여달라는 요청. 도착지명이 비어있을 때만 예전처럼 다음 회전 지점명으로
+            // 폴백. #문제시 원복
+            val label = snapshot.destinationName.ifBlank { snapshot.tbtMainText }
+            if (label.isNotBlank()) {
+                text = label
                 visibility = View.VISIBLE
             } else {
                 visibility = View.GONE
