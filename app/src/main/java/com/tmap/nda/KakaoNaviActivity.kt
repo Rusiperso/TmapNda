@@ -2828,6 +2828,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     ): () -> Unit {
         val density = resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
+        // v: 재억 재제보(2026-09-19) - "계산 중" 카운트다운 문제 수정용 추적 변수. #문제시 원복
+        var countdownStartedForIndex = -1
         val root = binding.root as ViewGroup
         // v19.3.72: 재억 요청(2026-09-18) - fitTo 자동 맞춤을 포기하고 거리 기반 줌
         // 계산으로 바꿨으니, 카드 위치가 지도 표시 영역 모양에 영향을 주는 이유가 없어짐.
@@ -2919,6 +2921,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             // 값이 도착하면(아래 refresh 참고) 다시 그려서 실제 값으로 바뀌게 함. #문제시 원복
             timeText.text = etaLine ?: "계산 중..."
             etaText.text = ""
+            // v: 재억 재제보(2026-09-19) - "계산 중..."인 동안에도 안내시작 카운트다운이
+            // 이미 돌고 있었음(패널 열리자마자 무조건 10초 시작). 이 탭의 실제 소요시간이
+            // 도착(minutes != null)했을 때 딱 한 번만 시작하도록 바꿈 - 계산 끝나기 전엔
+            // 카운트다운 자체를 시작 안 함. countdownStartedForIndex로 같은 탭에 대해
+            // 중복 시작 안 하게 막음(다른 탭 ETA가 나중에 도착해도 여기서 재시작 안 됨). #문제시 원복
+            if (minutes != null && countdownStartedForIndex != selectedIndex) {
+                countdownStartedForIndex = selectedIndex
+                startCountdown()
+            }
             val toll = costArr.getOrNull(selectedIndex)?.takeIf { it > 0 }
             distText.text = when {
                 minutes == null -> ""
@@ -2980,8 +2991,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 isClickable = true
                 setOnClickListener {
                     selectedIndex = i
+                    // v: 재억 재제보(2026-09-19, "계산 중일 때도 카운트가 이미 가고 있다") -
+                    // 탭을 누르면 그 탭의 계산이 아직 안 끝났어도 무조건 카운트다운을 다시
+                    // 시작했음. countdownStartedForIndex를 초기화해서, updateSelection()이
+                    // 실제로 그 탭의 소요시간(minutes)이 도착했을 때만 시작하도록 넘김. #문제시 원복
+                    countdownStartedForIndex = -1
                     updateSelection()
-                    startCountdown()
                 }
             }
             val lp = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -3120,9 +3135,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         card.post {
             fitViewToEndpoints(startLat, startLon, picked.lat, picked.lon) { activeRouteChoicePanel === card }
         }
-        // v19.3.74: 패널이 처음 뜬 시점에만 카운트다운 시작(ETA 값이 나중에 도착할 때마다
-        // updateSelection이 다시 불려도 여기선 재시작 안 함 - 탭을 직접 누를 때만 리셋됨). #문제시 원복
-        startCountdown()
+        // v19.3.74: 패널이 처음 뜬 시점에 카운트다운 시작 - 단, v19.3.89부터는 그 탭의
+        // 소요시간이 실제로 도착했을 때만 시작하도록 updateSelection() 안으로 옮김(바로 위
+        // updateSelection() 최초 호출에서 이미 시도됨. 아직 계산 중이면 여기선 아무 것도
+        // 안 하고, 나중에 refresh()로 값이 도착하면 그때 시작됨). #문제시 원복
         return ::updateSelection
     }
 
