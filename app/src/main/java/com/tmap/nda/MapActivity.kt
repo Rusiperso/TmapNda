@@ -991,6 +991,10 @@ class MapActivity : AppCompatActivity() {
                 val q = input.text.toString().trim()
                 if (q.isNotEmpty()) performDestinationSearch(q)
             }
+            // v: 재억 요청(2026-09-20) - 즐겨찾기 등록 검색도 카카오 화면처럼 음성으로 가능하게.
+            // 인식 결과는 voiceSearchLauncher -> performDestinationSearch -> pickEntry() 순으로
+            // 흐르고, 등록 대기 중인 칸(pendingQuickSlotRegistration)은 그대로 유지돼 그 칸에 저장됨. #문제시 원복
+            .setNeutralButton("음성으로 검색") { _, _ -> startVoiceSearch() }
             .setNegativeButton("취소", null)
             .show()
     }
@@ -1518,6 +1522,102 @@ class MapActivity : AppCompatActivity() {
             grid.addView(row, android.widget.LinearLayout.LayoutParams(
                 android.widget.LinearLayout.LayoutParams.MATCH_PARENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { if (r > 0) topMargin = PopupCard.dp(this@MapActivity, 8) })
+        }
+        // v: 재억 요청(2026-09-20) - 즐겨찾기 칸을 길게 누른 채 끌어서 순서를 바꿈. 놓은 자리에
+        // 가장 가까운 칸이 새 위치가 되고 나머지는 한 칸씩 밀림(저장 순서 갱신 후 카드 다시 그림).
+        // 끌지 않고 그냥 놓으면 예전처럼 길게 누르기 메뉴(다시 등록/삭제 등)가 뜸. #문제시 원복
+        val dragSlots = quickSlotButtons.map { it.first }
+        val dragCells = quickSlotButtons.map { it.second.first }
+        dragCells.forEachIndexed { idx, cell ->
+            val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop
+            var dragging = false
+            var downX = 0f
+            var downY = 0f
+            var moved = false
+            var target = idx
+            val handler = android.os.Handler(android.os.Looper.getMainLooper())
+            val startDrag = Runnable {
+                dragging = true
+                cell.cancelLongPress()
+                cell.isPressed = false
+                cell.parent?.requestDisallowInterceptTouchEvent(true)
+                cell.elevation = PopupCard.dp(this, 8).toFloat()
+                cell.animate().scaleX(1.08f).scaleY(1.08f).setDuration(100).start()
+            }
+            fun nearestCell(rawX: Float, rawY: Float): Int {
+                var best = idx
+                var bestDist = Float.MAX_VALUE
+                val loc = IntArray(2)
+                dragCells.forEachIndexed { i, c ->
+                    c.getLocationOnScreen(loc)
+                    val cx = loc[0] + c.width / 2f - c.translationX
+                    val cy = loc[1] + c.height / 2f - c.translationY
+                    val d = (cx - rawX) * (cx - rawX) + (cy - rawY) * (cy - rawY)
+                    if (d < bestDist) { bestDist = d; best = i }
+                }
+                return best
+            }
+            cell.setOnTouchListener { v, e ->
+                when (e.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        dragging = false
+                        moved = false
+                        downX = e.rawX
+                        downY = e.rawY
+                        handler.postDelayed(startDrag, 350L)
+                        false
+                    }
+                    android.view.MotionEvent.ACTION_MOVE -> {
+                        val dx = e.rawX - downX
+                        val dy = e.rawY - downY
+                        if (dragging) {
+                            if (Math.abs(dx) > slop || Math.abs(dy) > slop) moved = true
+                            v.translationX = dx
+                            v.translationY = dy
+                            val t = nearestCell(e.rawX, e.rawY)
+                            if (t != target) {
+                                dragCells.getOrNull(target)?.alpha = 1f
+                                target = t
+                                if (t != idx) dragCells[t].alpha = 0.45f
+                            }
+                            true
+                        } else {
+                            if (Math.abs(dx) > slop || Math.abs(dy) > slop) handler.removeCallbacks(startDrag)
+                            false
+                        }
+                    }
+                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                        handler.removeCallbacks(startDrag)
+                        if (dragging) {
+                            dragging = false
+                            dragCells.forEach { it.alpha = 1f }
+                            v.animate().scaleX(1f).scaleY(1f).translationX(0f).translationY(0f).setDuration(100).start()
+                            v.elevation = 0f
+                            if (e.actionMasked == android.view.MotionEvent.ACTION_UP) {
+                                if (!moved || target == idx) {
+                                    if (!moved) {
+                                        dialog.dismiss()
+                                        showQuickSlotLongPressMenu(dragSlots[idx])
+                                    }
+                                } else {
+                                    val list = dragSlots.map { QuickSlotStore.get(this, it) }.toMutableList()
+                                    NavLogger.d(this, "[즐겨찾기드래그] idx=$idx target=$target 이전=${list.map { it?.name }}")
+                                    val item = list.removeAt(idx)
+                                    list.add(target, item)
+                                    dragSlots.forEachIndexed { i, sl ->
+                                        val en = list[i]
+                                        if (en != null) QuickSlotStore.save(this, sl, en) else QuickSlotStore.delete(this, sl)
+                                    }
+                                    dialog.dismiss()
+                                    showFavoritesCard()
+                                }
+                            }
+                            true
+                        } else false
+                    }
+                    else -> false
+                }
+            }
         }
         val scroll = android.widget.ScrollView(this).apply { addView(grid) }
         dialog = PopupCard.CardDialog(this, findViewById<android.view.ViewGroup>(android.R.id.content)).apply {

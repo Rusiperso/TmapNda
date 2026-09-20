@@ -59,6 +59,8 @@ class KakaoGuidanceDelegate(
     // 아이콘이었을 가능성이 높음 - 실제 파란 화살표가 카메라 이동과 무관하게 항상 화면
     // 정중앙에 있었음). #문제시 원복
     var suppressLocationForward = false
+    private var lastProbeImg: Any? = null
+    private var lastProbeMulti: Any? = null
     private var lastLocationLogAt = 0L
 
     // ===== GuideStateDelegate =====
@@ -621,6 +623,35 @@ class KakaoGuidanceDelegate(
 
     // ===== RouteGuideDelegate =====
     override fun guidanceDidUpdateRouteGuide(guidance: KNGuidance, routeGuide: KNGuide_Route) {
+        // v19.3.80(조사용 로그): 안내 정보 안의 방향 이미지(imgDirection, 비트맵)와 주행 중 대안경로
+        // 정보(multiRouteInfo)가 실제로 오는지 확인. 이 콜백은 잦게 불려서 예전에 멈춤 문제가 있었으니,
+        // 이미지 객체가 바뀔 때만 크기를 로그로 남기고 파일 저장은 백그라운드에서 함. #문제시 원복
+        try {
+            val img = routeGuide.imgDirection
+            if (img !== lastProbeImg) {
+                lastProbeImg = img
+                val bmp = img?.directionImg
+                NavLogger.d(context, "[방향이미지] 수신 img=${img != null} bitmap=${bmp?.width}x${bmp?.height}")
+                if (bmp != null) {
+                    val copy = bmp.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
+                    Thread {
+                        try {
+                            val dir = java.io.File(context.getExternalFilesDir(null), "dirimg").apply { mkdirs() }
+                            java.io.FileOutputStream(java.io.File(dir, "dir_${System.currentTimeMillis()}.png")).use {
+                                copy.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                            }
+                        } catch (_: Exception) {}
+                    }.start()
+                }
+            }
+            val multi = routeGuide.multiRouteInfo
+            if (multi != null && multi !== lastProbeMulti) {
+                lastProbeMulti = multi
+                NavLogger.d(context, "[대안경로정보] 수신 direction=${multi.direction} ${multi}")
+            }
+        } catch (e: Exception) {
+            NavLogger.e(context, "[방향이미지] 조사 실패: ${e.message}")
+        }
         // v: 재억 제보(2026-08-22) - "티맵이 한 번씩 멈춰서 초기화면까지 나갔다 들어와야
         // 한다"는 문제의 진짜 원인으로 확정됨. 이 콜백은 회전 안내가 바뀔 때마다(교차로
         // 근처 등에서 꽤 잦음) 불리는데, 매번 아무 제한 없이 메인 스레드에서 객체 전체를

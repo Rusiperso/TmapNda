@@ -179,15 +179,15 @@ object NearbyCategoryPopup {
         // v: 재억 재제보(2026-09-19, "주차장 오른쪽 아니라 저 펜이 가리키는 빈 공간 쪽")
         // - 카테고리 버튼과 결과 목록 사이가 아니라, 결과 목록의 오른쪽 빈 공간(항목이
         // 적을 때 비어 보이던 자리)에 페이지 번호(1 2 3 4 5)를 세로로 놓음. #문제시 원복
+        // v: 재억 재재제보(2026-09-20, 펜으로 동그라미) - 세로 말고, 카드 맨 위 줄(제목 "편의점"
+        // 오른쪽 빈 자리)에 가로로 1 2 3 4 5를 놓음. #문제시 원복
         val pageNumList = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(dp(context, 34), LinearLayout.LayoutParams.MATCH_PARENT)
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
 
         root.addView(leftScroll)
         root.addView(rightScroll)
-        root.addView(pageNumList)
 
         // v19.3.79: 재억 요청 - AlertDialog 대신 다른 팝업들과 같은 반투명 카드로 바꿈. 아래쪽
         // 코드가 dialog.setTitle/dismiss/show를 그대로 쓰도록 같은 이름의 함수를 가진 껍데기로
@@ -227,6 +227,8 @@ object NearbyCategoryPopup {
                         textSize = 12f
                     })
                     addView(headerTitle)
+                    addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
+                    addView(pageNumList)
                 })
                 card.addView(root)
                 card.addView(PopupCard.makeButton(context, "닫기", false) { dismiss() },
@@ -286,8 +288,8 @@ object NearbyCategoryPopup {
                         }
                         if (!isCurrent) setOnClickListener { onPageChange(p) }
                     }, LinearLayout.LayoutParams(dp(context, 28), dp(context, 28)).apply {
-                        topMargin = dp(context, 5)
-                        bottomMargin = dp(context, 5)
+                        leftMargin = dp(context, 5)
+                        rightMargin = dp(context, 5)
                     })
                 }
             }

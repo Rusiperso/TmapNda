@@ -3987,7 +3987,30 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         return super.dispatchTouchEvent(ev)
     }
 
+    // v19.3.80(조사용 로그): 지도에서 주차장(실내 층별 지도) 데이터가 오는지 확인 - 지도를 움직여
+    // 큰 주차장/휴게소로 가면 카카오가 "포커스된 주차장" 목록을 이 받는이로 넘겨줌. #문제시 원복
+    private fun setupParkingLotProbe() {
+        try {
+            val mv = naviView.mapComponent.mapView ?: return
+            val props = mv.parkingLotProperties ?: return
+            props.isVisibleParkingLot = true
+            props.parkingLotReceiver = object : com.kakaomobility.knsdk.map.knmaploader.parking.idl.KNMapParkingLotReceiver {
+                override fun onReceiveFocusedParkingLots(
+                    mapView: com.kakaomobility.knsdk.map.knmapview.KNMapView?,
+                    parkingLots: List<com.kakaomobility.knsdk.map.knmaploader.parking.settings.deliver.KNMapParkingLot>
+                ) {
+                    NavLogger.d(this@KakaoNaviActivity, "[주차장] 수신 ${parkingLots.size}곳: " +
+                        parkingLots.joinToString { "${it.name}(id=${it.parkingLotId}, 층=${it.floors.size})" })
+                }
+            }
+            NavLogger.d(this, "[주차장] 조사 받는이 등록 완료")
+        } catch (e: Exception) {
+            NavLogger.e(this, "[주차장] 조사 등록 실패: ${e.message}")
+        }
+    }
+
     override fun onResume() {
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ setupParkingLotProbe() }, 3000L)
         super.onResume()
         NavLogger.d(this, "[lifecycle] onResume")
         // v: 재억 제보(2026-09-02) - 티맵 화면에서 즐겨찾기를 눌러 "경유지 추가"를 고른 경우,
