@@ -287,6 +287,104 @@ object PanelDragHelper {
         }
     }
 
+    // v: 재억 요청(2026-09-20) - "UI 편집" 모드를 없애고, 상단바를 꾹 눌러 끌면 바로 옮겨지게 함.
+    // 상단바 안의 버튼/스크롤이 터치를 먼저 가져가서 뷰 자체 리스너로는 안 되므로, 액티비티의
+    // dispatchTouchEvent 맨 앞에서 호출해 씀 - 상단바 안을 0.7초 가만히 누르고 있으면 그때부터
+    // 이동 모드(자식들에겐 취소 신호를 보내 버튼이 눌리지 않게 함). 손을 떼면 위/아래 가까운 가장자리에
+    // 붙고 위치가 저장됨(기존 restorePosition과 같은 키). #문제시 원복
+    class TopBarLongPressDrag(
+        private val context: Context,
+        private val panel: View,
+        private val keyPrefix: String,
+        private val isLandscape: Boolean,
+        private val onSettled: () -> Unit
+    ) {
+        private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        private val slop = 10f * panel.resources.displayMetrics.density
+        private var armed = false
+        private var dragging = false
+        private var downY = 0f
+        private var startY = 0f
+        private var lastEvent: MotionEvent? = null
+        private var superDispatch: ((MotionEvent) -> Boolean)? = null
+        private val fire = Runnable {
+            if (!armed) return@Runnable
+            dragging = true
+            lastEvent?.let { e ->
+                val cancel = MotionEvent.obtain(e)
+                cancel.action = MotionEvent.ACTION_CANCEL
+                superDispatch?.invoke(cancel)
+                cancel.recycle()
+            }
+            panel.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+            panel.animate().alpha(0.8f).setDuration(120).start()
+        }
+
+        private fun bounds(): Pair<Float, Float> {
+            val parent = panel.parent as? View
+            val insets = ViewCompat.getRootWindowInsets(panel)?.getInsets(WindowInsetsCompat.Type.systemBars())
+            val minY = (insets?.top ?: 0).toFloat()
+            val maxY = ((parent?.height ?: 0) - (insets?.bottom ?: 0) - panel.height).toFloat().coerceAtLeast(minY)
+            return minY to maxY
+        }
+
+        /** 이 터치를 이동 모드가 가져갔으면 true(호출한 쪽은 그대로 끝내야 함). */
+        fun dispatch(ev: MotionEvent, superDispatch: (MotionEvent) -> Boolean): Boolean {
+            this.superDispatch = superDispatch
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    val rect = android.graphics.Rect()
+                    val inside = panel.visibility == View.VISIBLE && panel.getGlobalVisibleRect(rect) &&
+                        rect.contains(ev.rawX.toInt(), ev.rawY.toInt())
+                    armed = inside
+                    dragging = false
+                    if (inside) {
+                        downY = ev.rawY
+                        startY = panel.y
+                        lastEvent?.recycle()
+                        lastEvent = MotionEvent.obtain(ev)
+                        handler.postDelayed(fire, 700L)
+                    }
+                    return false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (dragging) {
+                        val (minY, maxY) = bounds()
+                        panel.y = (startY + (ev.rawY - downY)).coerceIn(minY, maxY)
+                        return true
+                    }
+                    if (armed && kotlin.math.abs(ev.rawY - downY) > slop) {
+                        handler.removeCallbacks(fire)
+                        armed = false
+                    }
+                    lastEvent?.recycle()
+                    lastEvent = MotionEvent.obtain(ev)
+                    return false
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    handler.removeCallbacks(fire)
+                    armed = false
+                    if (!dragging) return false
+                    dragging = false
+                    panel.animate().alpha(1f).setDuration(120).start()
+                    val (minY, maxY) = bounds()
+                    val toTop = panel.y + panel.height / 2f < (minY + maxY + panel.height) / 2f
+                    val targetY = if (toTop) minY else maxY
+                    panel.y = targetY
+                    panel.x = 0f
+                    val suffix = if (isLandscape) "land" else "port"
+                    context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).edit()
+                        .putFloat("${keyPrefix}_x_${suffix}", 0f)
+                        .putFloat("${keyPrefix}_y_${suffix}", targetY)
+                        .apply()
+                    onSettled()
+                    return true
+                }
+            }
+            return false
+        }
+    }
+
     // v19.3.39: 재억 요청 - 상단바(llLeftHudPanel)는 폭이 화면 전체(match_parent)라 좌우로는
     // 움직일 데가 없고, 위/아래 딱 두 자리 중 하나로만 쓰이는 게 실제 사용 패턴("지도 한가운데
     // 걸쳐두고 쓸 사람은 없다"는 재억 지적). 그래서 자유 드래그 대신, "이동" 핸들을 누르면

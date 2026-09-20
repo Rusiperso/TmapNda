@@ -592,8 +592,12 @@ class MapActivity : AppCompatActivity() {
             )
         }
         // v3.9: Tmap/카카오 화면 동일 동작을 위해 공용 함수로 교체 (사용자: "기본 UI는 차등 두지 말 것")
-        binding.btnEditPanelPosition?.let {
-            PanelDragHelper.wireEditToggleButton(this, it, binding.svSecondaryPanel, binding.btnMoreMenu, binding.btnConfirmEditPosition, binding.llLeftHudPanel, binding.btnDragHandleTopBar)
+        // v: 재억 요청(2026-09-20) - "UI 편집" 모드 삭제. 상단바를 꾹 눌러 끌어서 옮기는 방식으로 대체. #문제시 원복
+        binding.btnEditPanelPosition?.visibility = View.GONE
+        binding.llLeftHudPanel?.let { panel ->
+            topBarDrag = PanelDragHelper.TopBarLongPressDrag(this, panel, "llLeftHudPanel", isLandscape) {
+                applyMapOffsetForBarPosition()
+            }
         }
 
         // Tmap 지도 터치 무력화: 화면/정보 표시는 그대로, 지도(NavigationFragment)로 가는
@@ -4247,7 +4251,10 @@ class MapActivity : AppCompatActivity() {
     // svSecondaryPanel 팝업이 바깥을 찍어도 안 닫히고 버튼을 다시 눌러야만 닫힘.
     // 지금까지 각 메뉴 버튼 클릭 시에만 GONE 처리했지 "바깥 탭"에 대한 처리가 아예
     // 없었음. 같은 dispatchTouchEvent 안에서 팝업 바깥 탭도 같이 처리. #문제시 원복
+    private var topBarDrag: PanelDragHelper.TopBarLongPressDrag? = null
+
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (topBarDrag?.dispatch(ev) { super@MapActivity.dispatchTouchEvent(it) } == true) return true
         if (ev.action == android.view.MotionEvent.ACTION_DOWN) {
             val panel = binding.svSecondaryPanel
             if (panel != null && panel.visibility == View.VISIBLE) {

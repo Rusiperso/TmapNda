@@ -387,7 +387,7 @@ object NearbyCategoryPopup {
                 val fullDist = if (dirLabel != null) "$distText · $dirLabel" else distText
                 val fuelLabel = OpinetHelper.FUEL_TYPES.firstOrNull { it.second == OpinetHelper.savedFuelType(context) }?.first ?: "가격"
                 val priceText = st.gasolinePrice?.let { "$fuelLabel ${it}원" }
-                makeGasRow(context, "${st.brandName} ${st.name}", fullDist, priceText) {
+                makeGasRow(context, "${st.brandName} ${st.name}".trim(), fullDist, priceText) {
                     dialog.dismiss()
                     onPick(HistoryEntry(st.name, "", st.lat, st.lon, st.distanceMeters))
                 }
@@ -426,7 +426,37 @@ object NearbyCategoryPopup {
                     val savedBrands = OpinetHelper.savedBrandFilter(context)
                     val filtered = if (savedBrands.isNullOrEmpty()) stations else stations.filter { it.brandCode in savedBrands }
                     NavLogger.d(context, "[오피넷] 주유소 검색 결과 ${stations.size}건 중 브랜드필터 후 ${filtered.size}건")
-                    (context as? android.app.Activity)?.runOnUiThread { renderGasStations(filtered) }
+                    // v: 재억 요청(2026-09-20) - 오피넷은 한 번에 12~16곳밖에 안 줘서(브랜드 필터 후엔 0~1곳)
+                    // 주유소만 1페이지로 끝났음. 카카오 주유소 검색(최대 75곳)을 같이 받아 합침 - 가격은
+                    // 오피넷에 있는 곳만 붙고, 80m 안에 오피넷 주유소가 있으면 같은 곳으로 보고 중복 제외.
+                    // 브랜드 필터가 켜져 있으면 카카오 쪽은 이름에 그 브랜드 글자가 있는 곳만 남김. #문제시 원복
+                    performCategorySearchShared(context, httpClient, restKey, "OL7", curLat, curLon) { kakaoHits ->
+                        val brandKeywords = mapOf(
+                            "SKE" to listOf("SK", "에스케이"), "GSC" to listOf("GS"),
+                            "HDO" to listOf("현대오일", "오일뱅크"), "SOL" to listOf("S-OIL", "에쓰오일", "S오일"),
+                            "RTX" to listOf("알뜰"), "NHO" to listOf("농협", "NH")
+                        )
+                        fun meters(la1: Double, lo1: Double, la2: Double, lo2: Double): Double {
+                            val dLat = Math.toRadians(la2 - la1)
+                            val dLon = Math.toRadians(lo2 - lo1)
+                            val h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                                Math.cos(Math.toRadians(la1)) * Math.cos(Math.toRadians(la2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2)
+                            return 6371000.0 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
+                        }
+                        val extra = kakaoHits.filter { hit ->
+                            val nearOpinet = stations.any { meters(it.lat, it.lon, hit.lat, hit.lon) < 80.0 }
+                            val brandOk = savedBrands.isNullOrEmpty() ||
+                                savedBrands.any { code -> brandKeywords[code]?.any { kw -> hit.name.contains(kw, ignoreCase = true) } == true }
+                            !nearOpinet && brandOk
+                        }.map { hit ->
+                            OpinetHelper.GasStation(
+                                name = hit.name, brandCode = "", brandName = "", distanceMeters = hit.distanceMeters ?: 0.0,
+                                gasolinePrice = null, dieselPrice = null, lat = hit.lat, lon = hit.lon
+                            )
+                        }
+                        NavLogger.d(context, "[오피넷] 카카오 주유소 ${kakaoHits.size}건 중 추가 ${extra.size}건 합침(가격 없음)")
+                        (context as? android.app.Activity)?.runOnUiThread { renderGasStations(filtered + extra) }
+                    }
                 }
             }
         }

@@ -1617,8 +1617,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             stopService(Intent(this, UdpSenderService::class.java))
             finishAffinity()
         }
-        binding.btnEditPanelPosition?.let {
-            PanelDragHelper.wireEditToggleButton(this, it, binding.svSecondaryPanel, binding.btnMoreMenu, binding.btnConfirmEditPosition, binding.llLeftHudPanel, binding.btnDragHandleTopBar)
+        // v: 재억 요청(2026-09-20) - "UI 편집" 모드 삭제(Tmap 화면과 동일). 상단바를 꾹 눌러 끌어서 옮김. #문제시 원복
+        binding.btnEditPanelPosition?.visibility = View.GONE
+        binding.llLeftHudPanel?.let { panel ->
+            topBarDrag = PanelDragHelper.TopBarLongPressDrag(this, panel, "llLeftHudPanel",
+                resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+                applyMapOffsetForBarPosition()
+            }
         }
         binding.btnParkedLocation?.setOnClickListener {
             binding.svSecondaryPanel?.visibility = View.GONE
@@ -3941,12 +3946,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // v4.15: "더보기"(btnMoreMenu) 눌러서 뜨는 svSecondaryPanel 팝업이 바깥을 찍어도
     // 안 닫히고 버튼을 다시 눌러야만 닫힘 - 각 메뉴 버튼 클릭 시에만 GONE 처리했지 "바깥
     // 탭"에 대한 처리가 없었음. PR#9 병합 때 이 블록이 실수로 같이 삭제됐었음 - 복원. #문제시 원복
+    private var topBarDrag: PanelDragHelper.TopBarLongPressDrag? = null
+
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
         // v: 재억 제보(2026-09-13, 크래시 로그) - 화면 회전으로 액티비티가 재구성되는
         // 타이밍에 이전 인스턴스로 터치 이벤트가 마저 전달되면서 binding이 아직
         // 초기화되기 전에 접근해 UninitializedPropertyAccessException으로 강제종료됨.
         // 그 타이밍의 터치는 어차피 곧 사라질 화면에 대한 것이니 그냥 무시. #문제시 원복
         if (!::binding.isInitialized) return super.dispatchTouchEvent(ev)
+        if (topBarDrag?.dispatch(ev) { super@KakaoNaviActivity.dispatchTouchEvent(it) } == true) return true
         if (ev.action == android.view.MotionEvent.ACTION_DOWN) {
             val panel = binding.svSecondaryPanel
             if (panel != null && panel.visibility == View.VISIBLE) {

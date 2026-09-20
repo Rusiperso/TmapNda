@@ -510,8 +510,10 @@ object PopupCard {
                             gravity = Gravity.CENTER
                             textSize = 14f
                             setPadding(dp(activity, 6), dp(activity, 13), dp(activity, 6), dp(activity, 13))
-                            setTextColor(Color.parseColor(if (isDanger) "#FF453A" else "#F2F2F7"))
-                            background = roundedFill(activity, if (isDanger) "#26FF453A" else "#1AFFFFFF")
+                            setTextColor(if (isDanger) Color.WHITE else Color.parseColor("#F2F2F7"))
+                            if (isDanger) setTypeface(null, Typeface.BOLD)
+                            // v: 재억 요청(2026-09-20) - 위험 버튼(로그 삭제/앱 종료)을 옅은 빨강 위 빨간 글씨에서 진한 빨강 배경 + 흰 글씨로 변경. #문제시 원복
+                            background = roundedFill(activity, if (isDanger) "#8A3A36" else "#1AFFFFFF")
                             isClickable = true
                             setOnClickListener {
                                 if (entry.second == "btnEditKey") {
