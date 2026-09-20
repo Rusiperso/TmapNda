@@ -4153,8 +4153,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // kakaoRoadLimitSpeed(카카오 전용, 실시간 채워지는 값)로 교체하고, 아직 한 번도
         // 못 채웠거나(조사 중인 리플렉션 게터가 안 맞음) 너무 오래됐으면 안전하게 판단을
         // 건너뜀(잘못된 숫자로 울리느니 조용한 게 낫다는 판단). #문제시 원복
-        if (!SdiDataRepository.isKakaoRoadLimitFresh()) return
-        val limit = SdiDataRepository.kakaoRoadLimitSpeed
+        // v: 재억 제보(2026-09-20 로그) - 카카오 SDK 위치정보엔 제한속도 항목이 없어 카카오 값이 한 번도
+        // 안 채워졌고, 그래서 이 화면 경고음이 통째로 안 울렸음. 카카오 값이 없으면 화면에 표시되는
+        // 제한속도(roadLimitSpeed)를 기준으로 삼고, 여전히 110% 초과일 때만 울림. #문제시 원복
+        val limit = if (SdiDataRepository.isKakaoRoadLimitFresh()) SdiDataRepository.kakaoRoadLimitSpeed else SdiDataRepository.roadLimitSpeed
         if (limit < 30 || speedKph <= 0) return
         val now = System.currentTimeMillis()
         // v: MapActivity와 동일한 진단 로그 - "65 주행 당시 limit이 실제로 몇이었는지"

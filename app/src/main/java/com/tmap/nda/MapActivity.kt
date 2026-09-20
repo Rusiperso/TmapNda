@@ -2032,7 +2032,12 @@ class MapActivity : AppCompatActivity() {
                 // 미디어 채널로 재생해서 실제로 같이 움직이게 함. #문제시 원복
                 val volumePercent = VolumeHelper.guideVolumePercent(this).coerceIn(1, 100)
                 AudioStreamDiagnostics.log(this, "경고음발생[Tmap화면]")
-                val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, volumePercent)
+                // v: 재억 제보(2026-09-20) - 티맵 화면에선 티맵 음성을 끄려고 미디어 음량을 0으로 눌러둬서
+                // 경고음이 "발생"으로 기록돼도 소리가 안 났음. 미디어 음량이 0이면 알람 채널로 대신 울림. #문제시 원복
+                val am = getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+                val toneStream = if (am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) == 0)
+                    android.media.AudioManager.STREAM_ALARM else android.media.AudioManager.STREAM_MUSIC
+                val tone = android.media.ToneGenerator(toneStream, volumePercent)
                 tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ tone.release() }, 500)
             } catch (e: Exception) {

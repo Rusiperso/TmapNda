@@ -767,6 +767,11 @@ class KakaoGuidanceDelegate(
                         // v: (2026-09-05) 우측분기도 위 진출 계열과 동일하게 16 비트 케이스가
                         // 로그에 16건 관측돼 함께 인정. #문제시 원복
                         turnCodeForLane == "KNRGCode_RightDirection" -> 32 or 16
+                        // v: 재억 요청(2026-09-20, 실기기 로그) - 고속도로 우측 갈아타기/진입(JC·IC)은
+                        // 매핑이 없어 직진(8)으로 처리돼 정작 가야 할 오른쪽 차로(16)가 추천에서 빠졌음.
+                        // 같은 순간 색깔 유도선 값도 그 16번 차로에만 붙어 있었음. #문제시 원복
+                        turnCodeForLane == "KNRGCode_ChangeRightHighway" || turnCodeForLane == "KNRGCode_RightInHighway" -> 32 or 16
+                        turnCodeForLane == "KNRGCode_ChangeLeftHighway" || turnCodeForLane == "KNRGCode_LeftInHighway" -> 2
                         turnCodeForLane != null && (turnCodeForLane.startsWith("KNRGCode_RoundaboutDirection") || turnCodeForLane.startsWith("KNRGCode_RotaryDirection")) ->
                             when (com.tmap.nda.navdy.KakaoToNavdyTurn.from(turnCodeForLane, directionAngleForLane)) {
                                 com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_NE, com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_E, com.tmap.nda.navdy.NavdyTurn.ROUNDABOUT_SE -> 32
