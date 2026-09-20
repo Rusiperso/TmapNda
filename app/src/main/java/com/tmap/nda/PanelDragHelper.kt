@@ -550,6 +550,7 @@ object PanelDragHelper {
         context: android.app.Activity,
         touchLockOverlay: View?,
         onRestoreRequested: (() -> Unit)? = null,
+        onDayNightChanged: (() -> Unit)? = null,
         onSaved: (() -> Unit)? = null
     ) {
         val pref = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
@@ -738,6 +739,8 @@ object PanelDragHelper {
         // -/+ 버튼으로 0~5까지 조절 가능하게 함. 집/회사는 상단바 고정이라 이 설정과
         // 무관하게 항상 보임. #문제시 원복
         // v: 재억 요청(2026-09-02) - 상한을 5 -> 10으로 확장(QuickSlotStore.MAX_FAVORITE_SLOTS). #문제시 원복
+        // 설정을 바꾸는 즉시 저장·반영(저장 버튼 없음). doSave가 아래에서 정의된 뒤 여기에 연결됨. #문제시 원복
+        var applyNow: () -> Unit = {}
         var favoriteCount = QuickSlotStore.favoriteCount(context)
         val favoriteCountValueText = android.widget.TextView(context).apply {
             setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
@@ -759,6 +762,7 @@ object PanelDragHelper {
                 if (favoriteCount > 0) {
                     favoriteCount--
                     favoriteCountValueText.text = favoriteCount.toString()
+                    applyNow()
                 }
             }
         }
@@ -774,6 +778,7 @@ object PanelDragHelper {
                 if (favoriteCount < QuickSlotStore.MAX_FAVORITE_SLOTS) {
                     favoriteCount++
                     favoriteCountValueText.text = favoriteCount.toString()
+                    applyNow()
                 }
             }
         }
@@ -830,6 +835,65 @@ object PanelDragHelper {
         // 그룹 항목이 나오는 2단 카드로 바꿈. 그룹별 항목만 여기서 모아두고 화면은 맨 아래에서
         // 만듦. 예전에 그룹 밖에 따로 빠져 있던 즐겨찾기 개수/음량/차종·연료/백업 항목은 "기타 설정"
         // 그룹으로 묶음. 각 그룹 안은 글자 길이 짧은 순 -> 긴 순 정렬 유지. #문제시 원복
+        // 지도 낮/밤: 자동(해 뜨고 지는 시각) / 항상 낮 / 항상 밤. 저장 버튼 때 함께 저장. #문제시 원복
+        var dayNightMode = DayNightHelper.mode(context)
+        val dayNightRow = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(40, 8, 40, 32)
+            addView(android.widget.TextView(context).apply {
+                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
+                text = "지도 밝기 (낮/밤)"
+                setTextColor(android.graphics.Color.WHITE)
+                textSize = 14f
+            })
+            addView(android.widget.TextView(context).apply {
+                setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
+                text = "누르면 바로 적용 · 자동은 해 뜨고 지는 시각에 맞춰 바뀜 (티맵 위성지도는 밤 모양이 없음)"
+                setTextColor(android.graphics.Color.parseColor("#999999"))
+                textSize = 12f
+                setPadding(0, 2, 0, 8)
+            })
+            val btnRow = android.widget.LinearLayout(context).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+            }
+            val options = listOf(
+                DayNightHelper.MODE_AUTO to "자동",
+                DayNightHelper.MODE_DAY to "항상 낮",
+                DayNightHelper.MODE_NIGHT to "항상 밤"
+            )
+            val buttons = ArrayList<Pair<String, android.widget.TextView>>()
+            fun refresh() {
+                buttons.forEach { (m, tv) ->
+                    val sel = m == dayNightMode
+                    tv.setTextColor(if (sel) android.graphics.Color.parseColor("#212121") else android.graphics.Color.WHITE)
+                    tv.setTypeface(null, if (sel) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+                    tv.background = PopupCard.roundedFill(context, if (sel) "#FFD54F" else "#1AFFFFFF")
+                }
+            }
+            options.forEachIndexed { i, (m, label) ->
+                val tv = android.widget.TextView(context).apply {
+                    text = label
+                    textSize = 14f
+                    gravity = android.view.Gravity.CENTER
+                    setPadding(0, PopupCard.dp(context, 10), 0, PopupCard.dp(context, 10))
+                    isClickable = true
+                    // 누르는 즉시 저장하고 지도에 반영(저장 버튼을 안 눌러도 됨)
+                    setOnClickListener {
+                        dayNightMode = m
+                        pref.edit().putString(DayNightHelper.KEY_MODE, m).apply()
+                        refresh()
+                        onDayNightChanged?.invoke()
+                    }
+                }
+                buttons.add(m to tv)
+                btnRow.addView(tv, android.widget.LinearLayout.LayoutParams(
+                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                ).apply { if (i > 0) marginStart = PopupCard.dp(context, 8) })
+            }
+            refresh()
+            addView(btnRow)
+        }
+
         val settingGroups = LinkedHashMap<String, List<View>>()
         fun addAccordionGroup(title: String, items: List<View>) {
             settingGroups[title] = items
@@ -849,6 +913,7 @@ object PanelDragHelper {
         ))
         addAccordionGroup("화면 표시", listOfNotNull(
             satelliteViewCheckBox,          // 티맵 위성지도 보기
+            dayNightRow,                    // 지도 밝기 (자동/항상 낮/항상 밤)
             routeLineDisplayCheckBox,       // 경로선 콤마 화면에 표시
             trafficInfoCheckBox,            // 티맵 교통 정보 (도로 정체 색깔 표시)
             distanceFormatKmCheckBox,       // 1000m 이상일 때 km 단위로 거리 표시
@@ -919,6 +984,7 @@ object PanelDragHelper {
                                 selectedCarFuel = fuelKeys[fuelWhich]
                                 carFuelValueText.text = "${CarFuelSettings.CAR_TYPE_LABELS[selectedCarType]} · ${CarFuelSettings.CAR_FUEL_LABELS[selectedCarFuel]}"
                                 fuelDialog.dismiss()
+                                applyNow()
                             }
                             .setNegativeButton("취소", null)
                             .show()
@@ -946,6 +1012,52 @@ object PanelDragHelper {
         etcItems.add(carFuelHintText)
         etcItems.add(carFuelRow)
         etcItems.add(useHipassCheckBox)
+
+        // 음성 보정: 폰이 자꾸 잘못 알아듣는 말을 직접 적어두는 표("틀린말=원래말" 한 줄에 하나).
+        // 설정 왼쪽 목록의 독립 그룹이고, 적는 즉시 저장·적용됨(저장 버튼 없음). #문제시 원복
+        val voiceFixTitle = android.widget.TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
+            text = "음성 명령 보정"
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 14f
+            setPadding(40, 10, 40, 2)
+        }
+        val voiceFixHint = android.widget.TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
+            text = "음성 명령을 자꾸 잘못 알아들으면 \"틀린말=원래말\"로 한 줄에 하나씩 적어두세요. 예: 경비실=경유지"
+            setTextColor(android.graphics.Color.parseColor("#999999"))
+            textSize = 12f
+            setPadding(40, 0, 40, 8)
+        }
+        val voiceFixInput = android.widget.EditText(context).apply {
+            setText(VoiceCorrections.getText(context))
+            hint = "경비실=경유지\n무료 돈=무료도로"
+            setTextColor(android.graphics.Color.WHITE)
+            setHintTextColor(android.graphics.Color.parseColor("#666666"))
+            textSize = 13f
+            minLines = 6
+            gravity = android.view.Gravity.TOP
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            background = PopupCard.roundedFill(context, "#1AFFFFFF")
+            setPadding(PopupCard.dp(context, 10), PopupCard.dp(context, 8), PopupCard.dp(context, 10), PopupCard.dp(context, 8))
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
+                override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    VoiceCorrections.setText(context, s?.toString() ?: "")
+                }
+            })
+        }
+        val voiceFixInputRow = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(40, 0, 40, 6)
+            addView(voiceFixInput, android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ))
+        }
+        addAccordionGroup("음성 보정", listOf(voiceFixTitle, voiceFixHint, voiceFixInputRow))
+
 
         // v19.3.32: 재억 요청 - 설정 백업/복원. 공유 방식으로 내보내서 재억이 원하는 곳
         // (구글 드라이브/이메일/카카오톡 나에게 보내기 등)에 알아서 보관하게 하고,
@@ -1151,6 +1263,7 @@ object PanelDragHelper {
                     .putBoolean("kakao_only_sdi_when_guiding", kakaoOnlySdiCheckBox.isChecked)
                     .putBoolean(com.tmap.nda.miniplayer.MiniPlayerManager.PREF_KEY_ENABLED, showMiniPlayerCheckBox.isChecked)
                     .putInt("quickslot_favorite_count", favoriteCount)
+                    .putString(DayNightHelper.KEY_MODE, dayNightMode)
                     .apply {
                         if (unlockMapTouchCheckBox != null) {
                             putBoolean("map_touch_unlocked", unlockMapTouchCheckBox.isChecked)
@@ -1164,22 +1277,30 @@ object PanelDragHelper {
                         touchLockOverlay.setOnTouchListener { _, _ -> true }
                     }
                 }
-                // v: 신규기능(미니 플레이어) - 켰는데 "알림 접근" 권한이 아직 없으면, 어디로 가서
-                // 허용해야 하는지 바로 안내. 권한 자체는 런타임 요청이 안 되는 특수권한이라 시스템
-                // 설정 화면으로 직접 보내야 함. #문제시 원복
-                if (showMiniPlayerCheckBox.isChecked && !com.tmap.nda.miniplayer.MiniPlayerManager.hasNotificationAccess(context)) {
-                    android.app.AlertDialog.Builder(context, R.style.RoundedDialogTheme)
-                        .setTitle("알림 접근 권한 필요")
-                        .setMessage("미니 플레이어가 지금 재생 중인 음악 정보를 읽으려면 '알림 접근' 권한이 필요합니다. 설정 화면에서 TmapNda를 찾아 허용해 주세요.")
-                        .setPositiveButton("설정으로 이동") { _, _ ->
-                            com.tmap.nda.miniplayer.MiniPlayerManager.openNotificationAccessSettings(context)
-                        }
-                        .setNegativeButton("나중에", null)
-                        .show()
-                }
-                android.widget.Toast.makeText(context, "저장됨", android.widget.Toast.LENGTH_SHORT).show()
                 onSaved?.invoke()
             }
+
+        // 스위치·즐겨찾기 개수·차종/연료를 바꾸는 즉시 저장하고 화면에 반영(저장 버튼 없음).
+        applyNow = doSave
+        settingGroups.values.flatten().forEach { v ->
+            if (v is android.widget.Switch) v.setOnCheckedChangeListener { _, _ -> doSave() }
+        }
+        // v: 신규기능(미니 플레이어) - 켰는데 "알림 접근" 권한이 아직 없으면, 어디로 가서
+        // 허용해야 하는지 바로 안내. 권한 자체는 런타임 요청이 안 되는 특수권한이라 시스템
+        // 설정 화면으로 직접 보내야 함. #문제시 원복
+        showMiniPlayerCheckBox.setOnCheckedChangeListener { _, checked ->
+            doSave()
+            if (checked && !com.tmap.nda.miniplayer.MiniPlayerManager.hasNotificationAccess(context)) {
+                android.app.AlertDialog.Builder(context, R.style.RoundedDialogTheme)
+                    .setTitle("알림 접근 권한 필요")
+                    .setMessage("미니 플레이어가 지금 재생 중인 음악 정보를 읽으려면 '알림 접근' 권한이 필요합니다. 설정 화면에서 TmapNda를 찾아 허용해 주세요.")
+                    .setPositiveButton("설정으로 이동") { _, _ ->
+                        com.tmap.nda.miniplayer.MiniPlayerManager.openNotificationAccessSettings(context)
+                    }
+                    .setNegativeButton("나중에", null)
+                    .show()
+            }
+        }
 
         // v19.3.79: 재억 요청 - 메뉴 카드에서 "설정"을 눌렀으면 별도 창을 띄우지 않고 그 카드 안에서
         // 화면이 바뀜(왼쪽 위 ← 로 메뉴 복귀, 저장하면 카드 전체 닫힘). 다른 경로로 열렸을 땐
@@ -1190,19 +1311,14 @@ object PanelDragHelper {
             host.showSubPage(
                 customTitle, twoPane, maxDp = 480, reserveDp = 150, widthDp = 600,
                 buttons = listOf(
-                    PopupCard.SubButton("취소") { host.back() },
-                    PopupCard.SubButton("저장", primary = true) {
-                        doSave()
-                        host.close()
-                    }
+                    PopupCard.SubButton("닫기", primary = true) { host.close() }
                 )
             )
         } else {
             val settingsDialog = PopupCard.CardDialog(context, context.findViewById(android.R.id.content))
             settingsDialog.setCustomTitle(customTitle)
             settingsDialog.setContent(twoPane, maxDp = 420, reserveDp = 170)
-            settingsDialog.setButton(PopupCard.CardDialog.BUTTON_NEGATIVE, "취소")
-            settingsDialog.setButton(PopupCard.CardDialog.BUTTON_POSITIVE, "저장", primary = true) { doSave() }
+            settingsDialog.setButton(PopupCard.CardDialog.BUTTON_POSITIVE, "닫기", primary = true)
             settingsDialog.show()
         }
     }

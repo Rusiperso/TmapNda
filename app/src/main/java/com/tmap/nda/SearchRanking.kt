@@ -28,7 +28,7 @@ object SearchRanking {
      * 카카오의 일반 키워드검색보다 종류 전용 검색(category.json)이 훨씬 정확하고 결과도
      * 안정적임. 재억이 자주 쓸 만한 종류만 우선 등록해둠 - 더 필요하면 추가 가능. #문제시 원복
      */
-    private val CATEGORY_KEYWORDS: Map<String, String> = mapOf(
+    val CATEGORY_KEYWORDS: Map<String, String> = mapOf(
         "편의점" to "CS2",
         "주유소" to "OL7",
         "충전소" to "OL7",

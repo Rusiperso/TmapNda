@@ -253,28 +253,73 @@ class MapActivity : AppCompatActivity() {
     private val voiceSearchLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        if (result.resultCode != RESULT_OK) voiceAssistant.cancelAnswer()
         if (result.resultCode == RESULT_OK) {
-            val spokenText = result.data
+            val spokenList = result.data
                 ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                ?.firstOrNull()
-                ?.trim()
-            if (!spokenText.isNullOrEmpty()) {
-                binding.etDestination?.setText(spokenText)
-                binding.etDestination?.setSelection(spokenText.length)
-                NavLogger.d(this, "음성검색 결과: $spokenText")
-                performDestinationSearch(spokenText)
+                ?.map { it.trim() }?.filter { it.isNotEmpty() }
+            if (!spokenList.isNullOrEmpty()) {
+                NavLogger.d(this, "음성검색 결과: ${spokenList.first()}")
+                voiceAssistant.handleAlternatives(spokenList)
             } else {
                 Toast.makeText(this, "음성 인식 결과가 없습니다.", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
+    private val voiceAssistant by lazy {
+        VoiceAssistant(this, object : VoiceAssistant.Host {
+            override fun currentLatLon() = resolveCurrentWgs84LatLon()
+            override fun search(query: String) {
+                binding.etDestination?.setText(query)
+                binding.etDestination?.setSelection(query.length)
+                performDestinationSearch(query)
+            }
+            override fun goFavorite(entry: HistoryEntry, priorityIndex: Int?, replace: Boolean) {
+                if (priorityIndex == null) {
+                    if (replace) startGuidanceToQuickSlot(entry) else handleQuickSlotTap(entry)
+                    return
+                }
+                val prioName = if (priorityIndex == 1) KNRoutePriority.KNRoutePriority_HighWay.name
+                else KNRoutePriority.KNRoutePriority_Recommand.name
+                val avoid = if (priorityIndex == 2) KNRouteAvoidOption.KNRouteAvoidOption_Fare.value else 0
+                startKakaoOverlayGuidance(entry.name, entry.lat, entry.lon, prioName, avoid)
+            }
+            override fun applyDayNight() = applyTmapDayNight()
+            override fun isMuted(): Boolean? = isTmapMuted
+            override fun launchRecognizer() = startVoiceSearch()
+            override fun currentBearing(): Float? = lastKnownBearing
+            override fun addWaypoint(entry: HistoryEntry) {
+                if (!KakaoRouteDataRepository.isFresh()) {
+                    Toast.makeText(this@MapActivity, "안내 중일 때만 경유지를 추가할 수 있어요", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                PendingWaypointRequest.put(entry)
+                NavLogger.d(this@MapActivity, "[경유지추가][티맵화면][음성] '${entry.name}' 요청 남기고 카카오 안내 화면으로 복귀")
+                Toast.makeText(this@MapActivity, "'${entry.name}' 경유지로 추가 중...", Toast.LENGTH_SHORT).show()
+                finish()
+            }
+            override fun applySettingSideEffects() {
+                applyTmapSatelliteViewSetting()
+                applyTmapTrafficInfoSetting()
+                val prefs = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                binding.btnNearbyCategory?.visibility =
+                    if (prefs.getBoolean("show_category_button", true)) View.VISIBLE else View.GONE
+                binding.btnToggleTopPanel?.visibility =
+                    if (prefs.getBoolean("show_toggle_top_panel_button", false)) View.VISIBLE else View.GONE
+                binding.flMiniPlayerContainer?.let { outer ->
+                    com.tmap.nda.miniplayer.MiniPlayerManager.refresh(
+                        this@MapActivity, outer,
+                        binding.ivMiniPlayerArt, binding.tvMiniPlayerTitle, binding.tvMiniPlayerArtist,
+                        binding.btnMiniPlayerPlayPause
+                    )
+                }
+            }
+        })
+    }
+
     private fun startVoiceSearch() {
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR")
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "목적지를 말씀하세요")
-        }
+        val intent = voiceAssistant.recognizerIntent()
         try {
             voiceSearchLauncher.launch(intent)
         } catch (e: Exception) {
@@ -871,6 +916,10 @@ class MapActivity : AppCompatActivity() {
         binding.btnHistoryTopBar?.setOnClickListener { showFullSearchHistoryDialog() }
         wireTopBarQuickSlotButton(binding.btnHomeQuickSlot, QuickSlotStore.SLOT_HOME)
         wireTopBarQuickSlotButton(binding.btnWorkQuickSlot, QuickSlotStore.SLOT_WORK)
+        // v: 재억 요청(2026-09-20) - 집/회사 칸 글자를 저장한 이름으로 표시. #문제시 원복
+        topBarSlotLabelListener = QuickSlotStore.watchTopBarLabels(
+            this, binding.root.findViewById(R.id.tvHomeSlotLabel), binding.root.findViewById(R.id.tvWorkSlotLabel)
+        )
         setupNearbyCategoryButton()
     }
 
@@ -1853,9 +1902,11 @@ class MapActivity : AppCompatActivity() {
     private fun showAppSettingsDialog() {
         PanelDragHelper.showAppSettingsDialog(
             this, binding.vTouchLockOverlay,
-            onRestoreRequested = { restoreBackupLauncher.launch("application/json") }
+            onRestoreRequested = { restoreBackupLauncher.launch("application/json") },
+            onDayNightChanged = { applyTmapDayNight() }
         ) {
             applyTmapSatelliteViewSetting()
+            applyTmapDayNight()
             applyTmapTrafficInfoSetting()
             // v: 재억 제보(2026-08-26) - 카테고리 버튼 표시를 꺼도 화면에서 바로 안 사라지던
             // 문제. 다른 설정들처럼 저장 즉시 반영. #문제시 원복
@@ -1889,6 +1940,43 @@ class MapActivity : AppCompatActivity() {
             NavLogger.d(this, "[티맵위성지도] 적용됨: $layerType")
         } catch (e: Exception) {
             NavLogger.e(this, "[티맵위성지도] 적용 예외: ${e.message}")
+        }
+    }
+
+    // 지도 낮/밤: 설정(자동/항상 낮/항상 밤)에 맞춰 티맵 SDK 밤 모드를 켜고 끔. 자동이면 해 뜨고
+    // 지는 시각 기준이라 5분마다 다시 확인하고, 바뀌었을 때만 SDK에 다시 알림. #문제시 원복
+    private var lastAppliedNight: Boolean? = null
+    private val dayNightTick = object : Runnable {
+        override fun run() {
+            if (isFinishing || isDestroyed) return
+            applyTmapDayNight(force = false)
+            window.decorView.postDelayed(this, 5 * 60 * 1000L)
+        }
+    }
+
+    private fun applyTmapDayNight(force: Boolean = true) {
+        try {
+            val night = DayNightHelper.isNight(this)
+            if (!force && night == lastAppliedNight) return
+            navigationFragment?.setNightModeSetting(
+                this,
+                if (night) com.tmapmobility.tmap.tmapsdk.ui.data.NightMode.ALWAYS_ON
+                else com.tmapmobility.tmap.tmapsdk.ui.data.NightMode.ALWAYS_OFF
+            )
+            // setNightModeSetting은 설정값만 저장하고 지도에는 바로 안 반영됨(SDK가 화면을 새로
+            // 만들 때만 다시 읽음). 지도에 즉시 반영하는 내부 함수 refreshNightMode를 리플렉션으로
+            // 호출해 방금 저장한 값이 바로 적용되게 함. #문제시 원복
+            navigationFragment?.let { frag ->
+                val m = frag.javaClass.getMethod(
+                    "access\$refreshNightMode",
+                    frag.javaClass, Context::class.java, java.lang.Boolean.TYPE
+                )
+                m.invoke(null, frag, this, false)
+            }
+            lastAppliedNight = night
+            NavLogger.d(this, "[티맵낮밤] 적용됨: ${if (night) "밤" else "낮"} (설정=${DayNightHelper.mode(this)})")
+        } catch (e: Exception) {
+            NavLogger.e(this, "[티맵낮밤] 적용 예외: ${e.message}")
         }
     }
 
@@ -3875,6 +3963,9 @@ class MapActivity : AppCompatActivity() {
         setupDestinationSearchUi()
         updateRecentSearchPanel()
         applyTmapSatelliteViewSetting()
+        applyTmapDayNight()
+        window.decorView.removeCallbacks(dayNightTick)
+        window.decorView.postDelayed(dayNightTick, 5 * 60 * 1000L)
         applyTmapTrafficInfoSetting()
 
         // v3.4: 스티어링휠 마이크 버튼 대응 - 헤드유닛이 음성비서 인텐트로 앱을 띄운
@@ -4252,6 +4343,7 @@ class MapActivity : AppCompatActivity() {
     // 지금까지 각 메뉴 버튼 클릭 시에만 GONE 처리했지 "바깥 탭"에 대한 처리가 아예
     // 없었음. 같은 dispatchTouchEvent 안에서 팝업 바깥 탭도 같이 처리. #문제시 원복
     private var topBarDrag: PanelDragHelper.TopBarLongPressDrag? = null
+    private var topBarSlotLabelListener: android.content.SharedPreferences.OnSharedPreferenceChangeListener? = null
 
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
         if (topBarDrag?.dispatch(ev) { super@MapActivity.dispatchTouchEvent(it) } == true) return true
@@ -4479,6 +4571,7 @@ class MapActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        try { voiceAssistant.shutdown() } catch (e: Exception) { }
         // v4.24: 이 로그가 그동안 없어서 "MapActivity가 백그라운드에서 OS에 의해
         // 강제 종료됐는지"를 로그로 직접 확인할 방법이 없었음(사용자: 카카오 화면 중
         // 카메라 감속 안 되던 문제 조사 때 아쉬웠던 부분) - 추가함. #문제시 원복

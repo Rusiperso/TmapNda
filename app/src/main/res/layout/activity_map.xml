@@ -554,10 +554,14 @@
                     android:src="@drawable/ic_home_quickslot"
                     android:importantForAccessibility="no"/>
                 <TextView
+                    android:id="@+id/tvHomeSlotLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="1dp"
                     android:text="집"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:maxWidth="34dp"
                     android:textColor="#FFFFFF"
                     android:textSize="8sp"
                     android:shadowColor="#FF000000"
@@ -585,10 +589,14 @@
                     android:src="@drawable/ic_work_quickslot"
                     android:importantForAccessibility="no"/>
                 <TextView
+                    android:id="@+id/tvWorkSlotLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="1dp"
                     android:text="회사"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:maxWidth="34dp"
                     android:textColor="#FFFFFF"
                     android:textSize="8sp"
                     android:shadowColor="#FF000000"

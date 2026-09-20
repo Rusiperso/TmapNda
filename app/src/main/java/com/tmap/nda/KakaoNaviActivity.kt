@@ -232,26 +232,66 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private val voiceSearchLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        if (result.resultCode != RESULT_OK) voiceAssistant.cancelAnswer()
         if (result.resultCode == RESULT_OK) {
-            val spokenText = result.data
+            val spokenList = result.data
                 ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                ?.firstOrNull()
-                ?.trim()
-            if (!spokenText.isNullOrEmpty()) {
-                NavLogger.d(this, "음성검색 결과: $spokenText")
-                performInPlaceSearch(spokenText)
+                ?.map { it.trim() }?.filter { it.isNotEmpty() }
+            if (!spokenList.isNullOrEmpty()) {
+                NavLogger.d(this, "음성검색 결과: ${spokenList.first()}")
+                voiceAssistant.handleAlternatives(spokenList)
             } else {
                 Toast.makeText(this, "음성 인식 결과가 없습니다.", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
+    private val voiceAssistant by lazy {
+        VoiceAssistant(this, object : VoiceAssistant.Host {
+            override fun currentLatLon() = resolveCurrentWgs84LatLonForSearch()
+            override fun search(query: String) = performInPlaceSearch(query)
+            override fun goFavorite(entry: HistoryEntry, priorityIndex: Int?, replace: Boolean) {
+                if (priorityIndex == null) {
+                    if (replace) startGuidanceToQuickSlot(entry) else handleQuickSlotTap(entry)
+                    return
+                }
+                val prio = if (priorityIndex == 1) KNRoutePriority.KNRoutePriority_HighWay
+                else KNRoutePriority.KNRoutePriority_Recommand
+                val avoid = if (priorityIndex == 2) KNRouteAvoidOption.KNRouteAvoidOption_Fare.value else 0
+                applyRouteOption(prio, avoid)
+                KakaoRouteDataRepository.reset()
+                activeWaypoints.clear()
+                syncWaypointsToIntent()
+                resolveCurrentPositionThenRequestRoute(entry.name, entry.lat, entry.lon, finishOnFailure = false)
+            }
+            override fun applyDayNight() = applyKakaoDayNight()
+            override fun isMuted(): Boolean? = kakaoMuted
+            override fun launchRecognizer() = startVoiceSearch()
+            override fun currentBearing(): Float? = lastKnownBearing
+            override fun addWaypoint(entry: HistoryEntry) = addWaypointToActiveGuidance(entry)
+            override fun addWaypointBySearch(query: String): Boolean {
+                pendingWaypointAddition = true
+                performInPlaceSearch(query)
+                return true
+            }
+            override fun applySettingSideEffects() {
+                val prefs = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                binding.btnAddWaypoint?.visibility = if (prefs.getBoolean("show_waypoint_button", true)) View.VISIBLE else View.GONE
+                binding.btnNearbyCategory?.visibility = if (prefs.getBoolean("show_category_button", true)) View.VISIBLE else View.GONE
+                binding.btnToggleTopPanel?.visibility = if (prefs.getBoolean("show_toggle_top_panel_button", false)) View.VISIBLE else View.GONE
+                binding.flMiniPlayerContainer?.let { outer ->
+                    com.tmap.nda.miniplayer.MiniPlayerManager.refresh(
+                        this@KakaoNaviActivity, outer,
+                        binding.ivMiniPlayerArt, binding.tvMiniPlayerTitle, binding.tvMiniPlayerArtist,
+                        binding.btnMiniPlayerPlayPause
+                    )
+                }
+            }
+        })
+    }
+
     private fun startVoiceSearch() {
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR")
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "목적지를 말씀하세요")
-        }
+        val intent = voiceAssistant.recognizerIntent()
         try {
             voiceSearchLauncher.launch(intent)
         } catch (e: Exception) {
@@ -389,6 +429,29 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 }
     }
 
+    // 지도 낮/밤: 설정(자동/항상 낮/항상 밤)에 맞춰 카카오 화면 밤 모드(useDarkMode)를 켜고 끔.
+    // 자동은 해 뜨고 지는 시각 기준이라 5분마다 다시 확인하고, 바뀌었을 때만 다시 적용. #문제시 원복
+    private var lastAppliedKakaoNight: Boolean? = null
+    private val kakaoDayNightTick = object : Runnable {
+        override fun run() {
+            if (isFinishing || isDestroyed) return
+            applyKakaoDayNight(force = false)
+            window.decorView.postDelayed(this, 5 * 60 * 1000L)
+        }
+    }
+
+    private fun applyKakaoDayNight(force: Boolean = true) {
+        try {
+            val night = DayNightHelper.isNight(this)
+            if (!force && night == lastAppliedKakaoNight) return
+            naviView.useDarkMode = night
+            lastAppliedKakaoNight = night
+            NavLogger.d(this, "[카카오낮밤] 적용됨: ${if (night) "밤" else "낮"} (설정=${DayNightHelper.mode(this)})")
+        } catch (e: Exception) {
+            NavLogger.e(this, "[카카오낮밤] 적용 예외: ${e.message}")
+        }
+    }
+
     private fun setupContentAndStart(destName: String, destLat: Double, destLon: Double, routePriorityName: String?) {
         binding = ActivityKakaoNaviBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -401,6 +464,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // 있었음. 기본값(KNSpeedOverDefault)이 너무 민감해서 나던 소리로 보여, 우리가 이미
         // 쓰고 있는 "제한속도 10% 초과" 기준과 맞춰 10%로 설정. #문제시 원복
         naviView.safetyCameraAlert = KNSpeedOverAlertOption.KNSpeedOver_10_PERCENT
+        applyKakaoDayNight()
+        window.decorView.removeCallbacks(kakaoDayNightTick)
+        window.decorView.postDelayed(kakaoDayNightTick, 5 * 60 * 1000L)
         setupWaypointAddButton()
         setupNearbyCategoryButton()
 
@@ -1637,8 +1703,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             // 다음 onResume(다른 화면 갔다 오기)에야 적용됐음. 저장 직후 바로 반영. #문제시 원복
             PanelDragHelper.showAppSettingsDialog(
                 this, null,
-                onRestoreRequested = { restoreBackupLauncher.launch("application/json") }
+                onRestoreRequested = { restoreBackupLauncher.launch("application/json") },
+                onDayNightChanged = { applyKakaoDayNight() }
             ) {
+                applyKakaoDayNight()
                 val showWaypointButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                     .getBoolean("show_waypoint_button", true)
                 val showCategoryButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
@@ -1717,6 +1785,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // v11.9: MapActivity와 동일 - 집/회사를 상단바 고정 버튼으로 뺌(재억 요청). #문제시 원복
         wireTopBarQuickSlotButton(binding.btnHomeQuickSlot, QuickSlotStore.SLOT_HOME)
         wireTopBarQuickSlotButton(binding.btnWorkQuickSlot, QuickSlotStore.SLOT_WORK)
+        // v: 재억 요청(2026-09-20) - 집/회사 칸 글자를 저장한 이름으로 표시. #문제시 원복
+        topBarSlotLabelListener = QuickSlotStore.watchTopBarLabels(
+            this, binding.root.findViewById(R.id.tvHomeSlotLabel), binding.root.findViewById(R.id.tvWorkSlotLabel)
+        )
 
         renderRecentDestinationsPanel()
     }
@@ -3947,6 +4019,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 안 닫히고 버튼을 다시 눌러야만 닫힘 - 각 메뉴 버튼 클릭 시에만 GONE 처리했지 "바깥
     // 탭"에 대한 처리가 없었음. PR#9 병합 때 이 블록이 실수로 같이 삭제됐었음 - 복원. #문제시 원복
     private var topBarDrag: PanelDragHelper.TopBarLongPressDrag? = null
+    private var topBarSlotLabelListener: android.content.SharedPreferences.OnSharedPreferenceChangeListener? = null
 
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
         // v: 재억 제보(2026-09-13, 크래시 로그) - 화면 회전으로 액티비티가 재구성되는
@@ -4301,6 +4374,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         super.onDestroy()
         // v4.24: MapActivity와 동일 이유로 추가. #문제시 원복
         NavLogger.d(this, "[KakaoNaviActivity lifecycle] onDestroy (isFinishing=$isFinishing, isChangingConfigurations=$isChangingConfigurations)")
+        try { voiceAssistant.shutdown() } catch (e: Exception) { }
         cancelNavNotification()
         hudPollHandler.removeCallbacksAndMessages(null)
         // v: 재억 요청(2026-09-02, A안) - 화면이 사라지면 카카오 음량 적용 함수도 해제.

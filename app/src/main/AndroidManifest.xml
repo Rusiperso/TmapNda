@@ -17,6 +17,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <!-- v: 배터리 최적화(Doze/앱 대기 모드) 예외를 요청하기 위한 권한. 지금까지 이걸 아예
          요청한 적이 없어서, 헤드유닛의 배터리 최적화 정책에 따라 UdpSenderService의
          백그라운드 네트워크(UDP)가 한동안 잘 되다가 조용히 조여질 수 있었음("연결 한 번
@@ -56,6 +57,15 @@
              nMirror가 열어둔 길안내 창구에 붙어야 하는데, Android 11+에서는 여기 적어두지
              않으면 그 앱이 설치돼 있어도 보이지 않아 연결 자체가 안 된다. #문제시 원복 -->
         <package android:name="com.aa.nmirror" />
+        <!-- 음성 명령 대답(날씨 등)을 폰 기본 음성 엔진(TTS)으로 읽어주려면 Android 11+에서 필요. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+        <!-- 음성 명령으로 "○○ 실행해줘" 할 때 설치된 앱을 이름으로 찾으려면 필요. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <!-- v: 재억 제보(2026-08-22) - 콤마로 경로선을 보내는 HTTP 채널(7713번 포트)이 로그상

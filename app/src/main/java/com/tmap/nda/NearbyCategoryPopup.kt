@@ -972,7 +972,7 @@ object NearbyCategoryPopup {
     // v: 재억 요청(2026-08-25) - 카테고리별로 검색 범위가 제각각이었던 걸 통일 -
     // 일반 카테고리(편의점/카페/약국 등)도 전기차충전소와 동일하게 최대 5페이지(75건)까지
     // 이어받음. #문제시 원복
-    private fun performCategorySearchShared(
+    fun performCategorySearchShared(
         context: Context,
         httpClient: OkHttpClient,
         restKey: String,

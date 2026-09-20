@@ -276,7 +276,7 @@
             <!-- 음소거 / 검색 -->
             <LinearLayout
                 android:id="@+id/btnKakaoMuteToggle"
-                android:layout_width="38dp"
+                android:layout_width="52dp"
                 android:layout_height="38dp"
                 android:layout_marginEnd="8dp"
                 android:orientation="vertical"
@@ -312,7 +312,7 @@
                  필드 안 아이콘은 최근검색으로 바꿈. #문제시 원복 -->
             <LinearLayout
                 android:id="@+id/btnOpenSearch"
-                android:layout_width="38dp"
+                android:layout_width="52dp"
                 android:layout_height="38dp"
                 android:layout_marginEnd="8dp"
                 android:orientation="vertical"
@@ -394,7 +394,7 @@
                  자체는 지금 크기(220dp 고정폭) 그대로 유지. #문제시 원복 -->
             <LinearLayout
                 android:id="@+id/btnHomeQuickSlot"
-                android:layout_width="38dp"
+                android:layout_width="52dp"
                 android:layout_height="38dp"
                 android:layout_marginEnd="8dp"
                 android:orientation="vertical"
@@ -410,10 +410,14 @@
                     android:src="@drawable/ic_home_quickslot"
                     android:importantForAccessibility="no"/>
                 <TextView
+                    android:id="@+id/tvHomeSlotLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="1dp"
                     android:text="집"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:maxWidth="48dp"
                     android:textColor="#FFFFFF"
                     android:textSize="8sp"
                     android:shadowColor="#FF000000"
@@ -425,7 +429,7 @@
 
             <LinearLayout
                 android:id="@+id/btnWorkQuickSlot"
-                android:layout_width="38dp"
+                android:layout_width="52dp"
                 android:layout_height="38dp"
                 android:layout_marginEnd="8dp"
                 android:orientation="vertical"
@@ -441,10 +445,14 @@
                     android:src="@drawable/ic_work_quickslot"
                     android:importantForAccessibility="no"/>
                 <TextView
+                    android:id="@+id/tvWorkSlotLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="1dp"
                     android:text="회사"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:maxWidth="48dp"
                     android:textColor="#FFFFFF"
                     android:textSize="8sp"
                     android:shadowColor="#FF000000"
@@ -458,7 +466,7 @@
                  바로 왼쪽에 배치, 나머지 순서는 그대로 유지 (재억 요청). #문제시 원복 -->
             <LinearLayout
                 android:id="@+id/btnShareLogTopBar"
-                android:layout_width="38dp"
+                android:layout_width="52dp"
                 android:layout_height="38dp"
                 android:layout_marginEnd="8dp"
                 android:orientation="vertical"
@@ -492,7 +500,7 @@
                  밀어내지 않게 함. #문제시 원복 -->
             <LinearLayout
                 android:id="@+id/btnMoreMenu"
-                android:layout_width="38dp"
+                android:layout_width="52dp"
                 android:layout_height="38dp"
                 android:layout_marginEnd="8dp"
                 android:orientation="vertical"

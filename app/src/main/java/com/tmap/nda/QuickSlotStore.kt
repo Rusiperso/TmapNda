@@ -40,6 +40,27 @@ object QuickSlotStore {
     private fun prefs(context: Context) =
         context.getSharedPreferences("TmapNdaQuickSlots", Context.MODE_PRIVATE)
 
+    /**
+     * v: 재억 요청(2026-09-20) - 상단바 집/회사 칸 글자를 등록해둔 장소 이름으로 보여줌(예: 집 -> 숙소).
+     * 등록 안 됐으면 기본 글자("집"/"회사") 그대로. 이름이 길면 칸 안에서 한 줄 말줄임(레이아웃). #문제시 원복
+     */
+    fun applyTopBarLabels(context: Context, homeLabel: android.widget.TextView?, workLabel: android.widget.TextView?) {
+        homeLabel?.text = get(context, SLOT_HOME)?.name?.takeIf { it.isNotBlank() } ?: "집"
+        workLabel?.text = get(context, SLOT_WORK)?.name?.takeIf { it.isNotBlank() } ?: "회사"
+    }
+
+    /** 즐겨찾기 저장소가 바뀔 때(등록/이름변경/삭제) 상단바 글자를 바로 다시 맞추는 리스너. 화면이 살아있는 동안 붙여둠. */
+    fun watchTopBarLabels(context: Context, homeLabel: android.widget.TextView?, workLabel: android.widget.TextView?): android.content.SharedPreferences.OnSharedPreferenceChangeListener {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == SLOT_HOME || key == SLOT_WORK) {
+                android.os.Handler(android.os.Looper.getMainLooper()).post { applyTopBarLabels(context, homeLabel, workLabel) }
+            }
+        }
+        prefs(context).registerOnSharedPreferenceChangeListener(listener)
+        applyTopBarLabels(context, homeLabel, workLabel)
+        return listener
+    }
+
     fun get(context: Context, slot: String): HistoryEntry? {
         val raw = prefs(context).getString(slot, null) ?: return null
         return try {
