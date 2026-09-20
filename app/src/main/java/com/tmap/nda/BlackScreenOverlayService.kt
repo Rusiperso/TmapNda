@@ -24,6 +24,10 @@ class BlackScreenOverlayService : Service() {
 
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
+    // v: 재억 제보(2026-09-20) - 위 검은 창(오버레이)은 엔미러가 폰 화면을 통째로 캡처할 때 같이
+    // 찍혀서 차량 인포화면도 까맣게 됐음. 루팅된 기기에선 SurfaceFlinger 색 변환(야간모드와
+    // 같은 출력 단계 곱셈)을 전부 0으로 놓아 폰 패널만 까맣게 하고, 캡처에는 영향이 없게 함
+    // (DHU로 확인: 폰은 까맣고 차 화면은 정상). 루트가 없으면 예전 오버레이 방식으로 폴백. #문제시 원복
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -35,8 +39,26 @@ class BlackScreenOverlayService : Service() {
         return START_NOT_STICKY
     }
 
+    private fun runRoot(cmd: String): Boolean = try {
+        val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", cmd))
+        proc.waitFor(4, java.util.concurrent.TimeUnit.SECONDS) && proc.exitValue() == 0
+    } catch (e: Exception) {
+        false
+    }
+
     private fun showOverlay() {
-        if (overlayView != null) return
+        if (overlayView != null || rootModeActive) return
+        // 색 변환(전부 0) + 앱 프로세스가 죽으면 자동으로 원래대로 돌리는 감시 프로세스(안전장치)
+        val zeros = "f 0 ".repeat(15) + "f 1"
+        val on = "touch $ROOT_FLAG; service call SurfaceFlinger 1015 i32 1 $zeros; " +
+            "nohup sh -c 'while [ -f $ROOT_FLAG ] && kill -0 ${android.os.Process.myPid()} 2>/dev/null; do sleep 2; done; " +
+            "service call SurfaceFlinger 1015 i32 0; rm -f $ROOT_FLAG' </dev/null >/dev/null 2>&1 &"
+        if (runRoot(on)) {
+            rootModeActive = true
+            showNotification()
+            NavLogger.d(this, "[화면블랙] 차량 연결 감지 - 폰 패널만 블랙(루트 색 변환, 차량 화면 영향 없음)")
+            return
+        }
         try {
             val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
             val view = View(this).apply { setBackgroundColor(Color.BLACK) }
@@ -59,7 +81,16 @@ class BlackScreenOverlayService : Service() {
         }
     }
 
+    private fun resetRootBlack() {
+        // 서비스가 시스템에 의해 종료됐다 다시 만들어져도(인스턴스가 바뀌어도) 해제되도록 앱 전체 상태로 관리
+        if (!rootModeActive) return
+        rootModeActive = false
+        runRoot("rm -f $ROOT_FLAG; service call SurfaceFlinger 1015 i32 0")
+        NavLogger.d(this, "[화면블랙] 차량 연결 해제 감지 - 폰 패널 블랙(루트 색 변환) 해제")
+    }
+
     private fun hideOverlay() {
+        resetRootBlack()
         val wm = windowManager
         val view = overlayView
         if (wm != null && view != null) {
@@ -99,5 +130,7 @@ class BlackScreenOverlayService : Service() {
         const val ACTION_HIDE = "com.tmap.nda.action.BLACK_SCREEN_HIDE"
         private const val CHANNEL_ID = "TmapNdaBlackScreenChannel"
         private const val NOTIFICATION_ID = 2
+        @Volatile private var rootModeActive = false
+        private const val ROOT_FLAG = "/data/local/tmp/tmapnda_black"
     }
 }

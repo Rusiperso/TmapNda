@@ -59,6 +59,7 @@ class KakaoGuidanceDelegate(
     // 아이콘이었을 가능성이 높음 - 실제 파란 화살표가 카메라 이동과 무관하게 항상 화면
     // 정중앙에 있었음). #문제시 원복
     var suppressLocationForward = false
+    private var lastRoadEventSig: String? = null
     private var lastProbeImg: Any? = null
     private var lastProbeMulti: Any? = null
     private var lastLocationLogAt = 0L
@@ -623,6 +624,25 @@ class KakaoGuidanceDelegate(
 
     // ===== RouteGuideDelegate =====
     override fun guidanceDidUpdateRouteGuide(guidance: KNGuidance, routeGuide: KNGuide_Route) {
+        // v19.3.95(조사용 로그): 안내 정보 안의 실시간 도로 이벤트(roadEvents - 사고/공사 등) 목록이
+        // 실제로 오는지, 어떤 제목/설명/종류로 오는지 확인. 목록 내용이 바뀔 때만 남김. #문제시 원복
+        try {
+            val events = routeGuide.roadEvents
+            val sig = events?.joinToString("|") { "${it.title}/${it.code}/${it.type}" } ?: ""
+            if (sig != lastRoadEventSig) {
+                lastRoadEventSig = sig
+                val myDist = KakaoRouteDataRepository.currentDistFromS
+                val fmt = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.KOREA)
+                NavLogger.d(context, "[도로이벤트] ${events?.size ?: 0}건" + (events?.joinToString(" || ", prefix = ": ") { ev ->
+                    val evDist = findGetterInt(ev.location, "DistFromS")
+                    val ahead = if (evDist > 0 && myDist > 0) "${evDist - myDist}m앞" else "위치?"
+                    "제목=${ev.title} 설명=${ev.desc} code=${ev.code} type=${ev.type} $ahead " +
+                        "시작=${ev.startTime?.time?.let { fmt.format(it) }} 종료=${ev.endTime?.time?.let { fmt.format(it) }}"
+                } ?: ""))
+            }
+        } catch (e: Exception) {
+            NavLogger.e(context, "[도로이벤트] 조사 실패: ${e.message}")
+        }
         // v19.3.80(조사용 로그): 안내 정보 안의 방향 이미지(imgDirection, 비트맵)와 주행 중 대안경로
         // 정보(multiRouteInfo)가 실제로 오는지 확인. 이 콜백은 잦게 불려서 예전에 멈춤 문제가 있었으니,
         // 이미지 객체가 바뀔 때만 크기를 로그로 남기고 파일 저장은 백그라운드에서 함. #문제시 원복
