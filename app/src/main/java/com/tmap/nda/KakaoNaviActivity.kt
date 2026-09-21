@@ -1793,7 +1793,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 Toast.makeText(this, "저장된 로그가 없어.", Toast.LENGTH_SHORT).show()
             } else {
                 val (shareIntent, paths) = result
-                shareLogLauncher.launch(android.content.Intent.createChooser(shareIntent, "로그 공유 (${paths.size}개 파일)"))
+                val emailIntent = NavLogger.resolveEmailIntent(this, shareIntent)
+                if (emailIntent == null) {
+                    Toast.makeText(this, "이메일 앱이 없어. Gmail 같은 이메일 앱을 설치하고 로그인한 뒤 다시 눌러줘.", Toast.LENGTH_LONG).show()
+                } else {
+                    shareLogLauncher.launch(emailIntent)
+                }
             }
         }
         // v11.9: MapActivity와 동일 - 집/회사를 상단바 고정 버튼으로 뺌(재억 요청). #문제시 원복

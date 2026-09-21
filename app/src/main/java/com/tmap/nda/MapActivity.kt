@@ -1071,7 +1071,12 @@ class MapActivity : AppCompatActivity() {
             return
         }
         val (intent, paths) = result
-        shareLogLauncher.launch(Intent.createChooser(intent, "로그 공유 (${paths.size}개 파일)"))
+        val emailIntent = NavLogger.resolveEmailIntent(this, intent)
+        if (emailIntent == null) {
+            Toast.makeText(this, "이메일 앱이 없어. Gmail 같은 이메일 앱을 설치하고 로그인한 뒤 다시 눌러줘.", Toast.LENGTH_LONG).show()
+            return
+        }
+        shareLogLauncher.launch(emailIntent)
     }
 
     // 1단계: SDK 안에 실제로 어떤 검색/경로 관련 메서드가 있는지 로그로 확인.

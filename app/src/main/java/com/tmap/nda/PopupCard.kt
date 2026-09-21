@@ -382,6 +382,8 @@ object PopupCard {
             closeFn = present(activity, root, card, menuWidth, "menuCard", false, topRight = true) {}
         }
 
+        fun isOpen(): Boolean = closeFn != null
+
         fun close() {
             closeFn?.invoke()
             closeFn = null
@@ -477,7 +479,20 @@ object PopupCard {
      * "설정" 버튼만은 카드를 닫지 않고, 같은 카드 안에서 설정 화면으로 바뀜(← 로 복귀).
      * 패널 자체는 계속 숨겨둔 채로 씀. #문제시 원복
      */
+    // v: 재억 요청 - 상단바가 메뉴 뒤 터치막보다 위에 그려져서 ≡를 또 누르면 메뉴가 계속 쌓였음.
+    // 이미 열려 있으면 새로 만들지 않고 닫기만 함(≡ 다시 누르면 닫힘). #문제시 원복
+    private var openMenuHost: MenuHost? = null
+    private var openMenuRoot: ViewGroup? = null
+
     fun showMenuFromPanel(activity: Activity, root: ViewGroup, panel: ViewGroup): () -> Unit {
+        openMenuHost?.let { prev ->
+            val sameRoot = openMenuRoot === root
+            val wasOpen = prev.isOpen()
+            prev.close()
+            openMenuHost = null
+            openMenuRoot = null
+            if (sameRoot && wasOpen) return {}
+        }
         val normal = ArrayList<Pair<TextView, String>>()
         val danger = ArrayList<Pair<TextView, String>>()
         var versionText: String? = null
@@ -553,6 +568,8 @@ object PopupCard {
 
         host.setMenu(versionText, menuContent)
         host.show()
+        openMenuHost = host
+        openMenuRoot = root
         return { host.close() }
     }
 

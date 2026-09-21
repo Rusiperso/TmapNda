@@ -246,7 +246,7 @@ object NavLogger {
         val savedNickname = DiscordReporter.getNickname(context)
 
         val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-            type = "text/plain"
+            type = "message/rfc822"
             putExtra(Intent.EXTRA_EMAIL, recipients)
             putExtra(Intent.EXTRA_SUBJECT, "TmapNda 로그 (${files.size}개 파일)")
             putExtra(
@@ -265,6 +265,23 @@ object NavLogger {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         return intent to files.map { it.absolutePath }
+    }
+
+    /** v: 재억 요청 - 로그 보내기 때 선택창에서 이메일 앱을 못 찾는 사람이 많아서, 설치된 이메일 앱을
+     *  직접 찾아 선택창 없이 바로 작성 화면으로 보냄(Gmail 우선, 없으면 첫 번째 이메일 앱).
+     *  이메일 앱이 하나도 없으면 null - 호출한 쪽에서 설치 안내 문구를 띄움. #문제시 원복 */
+    fun resolveEmailIntent(context: Context, shareIntent: Intent): Intent? {
+        val pm = context.packageManager
+        val probe = Intent(Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:"))
+        val packages = try {
+            pm.queryIntentActivities(probe, 0).map { it.activityInfo.packageName }.distinct()
+        } catch (e: Exception) { emptyList() }
+        val ordered = packages.sortedBy { if (it == "com.google.android.gm") 0 else 1 }
+        for (pkg in ordered) {
+            val candidate = Intent(shareIntent).setPackage(pkg)
+            if (candidate.resolveActivity(pm) != null) return candidate
+        }
+        return null
     }
 
     /** 앱 종료 시 호출 - logs 디렉토리의 로그 파일(현재 파일 + 회전되어 보관중이던 파일) 전부 삭제.
