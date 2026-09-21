@@ -41,6 +41,12 @@ object SettingsBackup {
     // 키는 JSON에 정수로 찍혀 있어도 무조건 Float로 되돌림. #문제시 원복
     private const val FLOAT_KEYS_MARKER = "__tmapnda_float_keys__"
 
+    // v19.3.98: 복원하면 앱이 켜지자마자 죽던 문제(ClassCastException: Integer -> Long). 원인: 시각 값처럼
+    // Long으로 저장된 값을 복원 때 putInt(toInt())로 깎아 저장해서, 읽는 쪽 getLong()이 죽음. 값이 작으면
+    // JSON에 그냥 정수로 찍혀 Long이었는지 구분이 안 되므로, 내보낼 때 원래 Long이던 키 목록도 따로 적어두고
+    // 복원 때 그 키와 Int 범위를 넘는 값은 Long 그대로 저장함. #문제시 원복
+    private const val LONG_KEYS_MARKER = "__tmapnda_long_keys__"
+
     // v19.3.38: 백업 파일 구조를 "파일 이름 -> 그 안의 설정" 두 단계로 바꾸면서, 예전(v19.3.32~37)
     // 백업 파일(키가 바로 최상위에 있던 납작한 구조)과 구분하기 위한 표시. 이 마커가 있으면
     // 새 구조, 없으면 예전 구조(TmapNdaPrefs 하나만 있는 걸로 간주)로 읽음 - 예전에 만들어둔
@@ -58,6 +64,7 @@ object SettingsBackup {
     private fun exportPrefsToJson(prefs: SharedPreferences): JSONObject {
         val json = JSONObject()
         val floatKeys = org.json.JSONArray()
+        val longKeys = org.json.JSONArray()
         for ((key, value) in prefs.all) {
             if (value == null) continue
             // Set<String>(즐겨찾기 등 일부 항목이 쓸 수 있음)은 JSONArray로 변환해서 보존
@@ -68,9 +75,11 @@ object SettingsBackup {
             } else {
                 json.put(key, value)
                 if (value is Float) floatKeys.put(key)
+                if (value is Long) longKeys.put(key)
             }
         }
         json.put(FLOAT_KEYS_MARKER, floatKeys)
+        json.put(LONG_KEYS_MARKER, longKeys)
         return json
     }
 
@@ -80,21 +89,30 @@ object SettingsBackup {
         json.optJSONArray(FLOAT_KEYS_MARKER)?.let { arr ->
             for (i in 0 until arr.length()) floatKeys.add(arr.getString(i))
         }
+        val longKeys = mutableSetOf<String>()
+        json.optJSONArray(LONG_KEYS_MARKER)?.let { arr ->
+            for (i in 0 until arr.length()) longKeys.add(arr.getString(i))
+        }
         val editor = prefs.edit()
         val keys = json.keys()
         var count = 0
         while (keys.hasNext()) {
             val key = keys.next()
-            if (key == FLOAT_KEYS_MARKER) continue
+            if (key == FLOAT_KEYS_MARKER || key == LONG_KEYS_MARKER) continue
             if (key in floatKeys) {
                 editor.putFloat(key, json.getDouble(key).toFloat())
+                count++
+                continue
+            }
+            if (key in longKeys) {
+                editor.putLong(key, json.getLong(key))
                 count++
                 continue
             }
             when (val value = json.get(key)) {
                 is Boolean -> editor.putBoolean(key, value)
                 is Int -> editor.putInt(key, value)
-                is Long -> editor.putInt(key, value.toInt())
+                is Long -> editor.putLong(key, value)
                 is Double -> editor.putFloat(key, value.toFloat())
                 is String -> editor.putString(key, value)
                 is org.json.JSONArray -> {

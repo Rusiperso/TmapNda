@@ -35,6 +35,10 @@ class VoiceAssistant(private val activity: Activity, private val host: Host) {
         fun launchRecognizer() {}
         /** 지금 진행 방향(도, 0~360). 모르면 null. */
         fun currentBearing(): Float? = null
+        /** 즐겨찾기 칸에 등록할 장소 검색을 시작. 지원 안 하는 화면은 false. */
+        fun registerFavorite(slot: String, query: String): Boolean = false
+        /** 카카오/티맵 화면 전환. 화면에 보여줄 결과 문장을 돌려줌. */
+        fun switchScreen(toKakao: Boolean): String = "이 화면에서는 전환할 수 없어요"
     }
 
     private val searchHttpClient by lazy { OkHttpClient() }
@@ -771,7 +775,7 @@ class VoiceAssistant(private val activity: Activity, private val host: Host) {
             }
         }
         val b = best
-        if (b != null && b.third >= 0.5) {
+        if (b != null && b.third >= 0.55 && b.first.explicit) {
             val (gp, entry, sim) = b
             NavLogger.d(activity, "[음성명령] 되묻기: '${entry.name}' (말=${gp.target}, 유사도=${"%.2f".format(sim)})")
             askYesNo("${entry.name} 말씀이신가요?",
@@ -782,7 +786,7 @@ class VoiceAssistant(private val activity: Activity, private val host: Host) {
         handle(cands[0], strict = false)
     }
 
-    class GoParse(val target: String, val priorityIndex: Int?, val replace: Boolean)
+    class GoParse(val target: String, val priorityIndex: Int?, val replace: Boolean, val explicit: Boolean)
 
     /** "OO으로 (무료도로로) 가자/바꿔줘" 같은 말에서 이름·경로방식·바꿈 여부를 뽑음. 안내 명령이 아니면 null. */
     private fun parseGo(spoken: String): GoParse? {
@@ -807,7 +811,8 @@ class VoiceAssistant(private val activity: Activity, private val host: Host) {
             .firstOrNull { target.endsWith(it) && target.length > it.length + 1 }
             ?.let { target = target.removeSuffix(it) }
         if (target.isEmpty()) return null
-        return GoParse(target, priorityIndex, replace)
+        val explicit = listOf("가자", "가줘", "가고싶어", "안내", "출발", "갈래", "가요").any { t.contains(it) } || t.contains("목적지")
+        return GoParse(target, priorityIndex, replace, explicit)
     }
 
     // 음성 명령: 말한 글자를 보고 (1) "근처 맛집 찾아봐" 같은 주변 검색, (2) "라니집으로 무료도로로 가자"
@@ -824,6 +829,9 @@ class VoiceAssistant(private val activity: Activity, private val host: Host) {
         if (handleWebCommand(orig)) return true
         if (handleSettingCommand(orig)) return true
         if (handleNearestBestCommand(orig)) return true
+        if (handleCarSettingCommand(orig)) return true
+        if (handleFavoriteManageCommand(orig)) return true
+        if (handleMiscNdaCommand(orig)) return true
         if (handleWaypointCommand(orig)) return true
         if (handleAppLaunchCommand(orig)) return true
         var t = orig
@@ -1012,6 +1020,200 @@ class VoiceAssistant(private val activity: Activity, private val host: Host) {
             }
         }
         return true
+    }
+
+    // ---- 차종·연료·하이패스, 오피넷 유종·브랜드 ----
+    private fun handleCarSettingCommand(t: String): Boolean {
+        val wantOn = t.contains("켜") || t.contains("켤")
+        val wantOff = t.contains("꺼") || t.contains("끄") || t.contains("해제") || t.contains("없애")
+        // 하이패스 장착
+        if (t.contains("하이패스") && (wantOn || wantOff || t.contains("장착"))) {
+            val on = if (wantOff) false else true
+            CarFuelSettings.save(activity, CarFuelSettings.getCarType(activity), CarFuelSettings.getCarFuel(activity), on)
+            speakReply(if (on) "하이패스 장착으로 바꿨어요. 통행료를 하이패스 요금으로 계산해요" else "하이패스 장착을 껐어요")
+            return true
+        }
+        // 오피넷(주유소 검색) 유종
+        if (t.contains("유종")) {
+            val hit = OpinetHelper.FUEL_TYPES.firstOrNull { t.contains(it.first.replace(" ", "")) }
+            if (hit != null) {
+                OpinetHelper.saveFuelType(activity, hit.second)
+                speakReply("주유소 검색 유종을 ${hit.first}로 바꿨어요")
+                return true
+            }
+        }
+        // 오피넷 브랜드
+        if (t.contains("브랜드") && (t.contains("주유소") || t.contains("바꿔") || t.contains("설정") || t.contains("전체"))) {
+            if (t.contains("전체") || t.contains("모두") || t.contains("상관없")) {
+                OpinetHelper.saveBrandFilter(activity, emptySet())
+                speakReply("주유소 브랜드를 전체로 바꿨어요")
+                return true
+            }
+            val aliases = mapOf(
+                "SKE" to listOf("sk", "에스케이"), "GSC" to listOf("gs", "지에스"), "HDO" to listOf("현대오일", "오일뱅크"),
+                "SOL" to listOf("s-oil", "soil", "에스오일", "에쓰오일", "s오일"), "RTX" to listOf("알뜰"), "NHO" to listOf("자가상표", "농협")
+            )
+            val picked = aliases.filter { (_, ws) -> ws.any { t.lowercase().contains(it) } }.keys
+            if (picked.isNotEmpty()) {
+                OpinetHelper.saveBrandFilter(activity, picked.toSet())
+                val names = OpinetHelper.BRANDS.filter { it.second in picked }.joinToString(", ") { it.first }
+                speakReply("주유소 브랜드를 $names(으)로 바꿨어요")
+                return true
+            }
+        }
+        // 카카오 경로 계산용 연료·차종
+        if (t.contains("연료")) {
+            val hit = CarFuelSettings.CAR_FUEL_LABELS.entries.sortedByDescending { it.value.length }
+                .firstOrNull { t.contains(it.value.replace(" ", "")) }
+            if (hit != null) {
+                CarFuelSettings.save(activity, CarFuelSettings.getCarType(activity), hit.key, CarFuelSettings.getUseHipass(activity))
+                speakReply("연료를 ${hit.value}(으)로 바꿨어요")
+                return true
+            }
+        }
+        if (t.contains("차종")) {
+            val hit = CarFuelSettings.CAR_TYPE_LABELS.entries.sortedByDescending { it.value.length }
+                .firstOrNull { t.contains(it.value.replace(" ", "")) }
+            if (hit != null) {
+                CarFuelSettings.save(activity, hit.key, CarFuelSettings.getCarFuel(activity), CarFuelSettings.getUseHipass(activity))
+                speakReply("차종을 ${hit.value}(으)로 바꿨어요")
+                return true
+            }
+        }
+        return false
+    }
+
+    // ---- 즐겨찾기 관리: 삭제 / 이름 변경 / 이동방식 저장·삭제 / 등록 ----
+    private fun slotOf(t: String): String? {
+        Regex("(\\d+)번").find(t)?.groupValues?.get(1)?.toIntOrNull()?.let { if (it in 1..QuickSlotStore.MAX_FAVORITE_SLOTS) return "fav$it" }
+        if (Regex("(^|[^가-힣])집(을|은|이|의|에|으로|$)").containsMatchIn(t) || t.startsWith("집")) return QuickSlotStore.SLOT_HOME
+        if (t.contains("회사")) return QuickSlotStore.SLOT_WORK
+        // 이름으로 찾기
+        favoriteEntries().forEach { (slot, e) ->
+            val n = e.name.replace(" ", "")
+            if (n.length >= 2 && t.contains(n)) return slot
+        }
+        return null
+    }
+
+    private fun slotLabel(slot: String): String = when (slot) {
+        QuickSlotStore.SLOT_HOME -> "집"
+        QuickSlotStore.SLOT_WORK -> "회사"
+        else -> "즐겨찾기 ${slot.removePrefix("fav")}번"
+    }
+
+    private fun handleFavoriteManageCommand(t: String): Boolean {
+        if (!(t.contains("즐겨찾기") || t.contains("집") || t.contains("회사") || Regex("\\d+번").containsMatchIn(t))) return false
+        // 삭제
+        if ((t.contains("삭제") || t.contains("지워")) && (t.contains("즐겨찾기") || t.contains("등록"))) {
+            val slot = slotOf(t) ?: return false
+            val e = QuickSlotStore.get(activity, slot)
+            if (e == null) { speakReply("${slotLabel(slot)}은 비어 있어요"); return true }
+            askYesNo("${slotLabel(slot)} ${e.name}을 삭제할까요?",
+                onYes = { QuickSlotStore.delete(activity, slot); speakReply("삭제했어요") },
+                onNo = { speakReply("삭제하지 않을게요") })
+            return true
+        }
+        // 이름 변경: "즐겨찾기 3번 이름을 처가로 변경"
+        val ren = Regex("이름(?:을|은)?(.+?)(?:으로|로)(?:변경|바꿔|수정|해줘)").find(t)
+        if (ren != null) {
+            val slot = slotOf(t.substringBefore("이름")) ?: return false
+            val e = QuickSlotStore.get(activity, slot)
+            val newName = ren.groupValues[1].trim()
+            if (e == null) { speakReply("${slotLabel(slot)}은 비어 있어요"); return true }
+            if (newName.isEmpty()) return false
+            QuickSlotStore.save(activity, slot, e.copy(name = newName))
+            speakReply("${slotLabel(slot)} 이름을 ${newName}(으)로 바꿨어요")
+            return true
+        }
+        // 이동방식 저장/삭제: "즐겨찾기 3번 이동방식 무료도로로 저장", "이동방식 삭제"
+        if (t.contains("이동방식") || t.contains("경로방식")) {
+            val slot = slotOf(t) ?: return false
+            val e = QuickSlotStore.get(activity, slot)
+            if (e == null) { speakReply("${slotLabel(slot)}은 비어 있어요"); return true }
+            if (t.contains("삭제") || t.contains("지워") || t.contains("초기화")) {
+                QuickSlotStore.clearRoutePreference(activity, slot)
+                speakReply("${slotLabel(slot)}의 저장된 이동방식을 지웠어요")
+                return true
+            }
+            val (name, avoid, label) = when {
+                t.contains("무료") -> Triple("KNRoutePriority_Recommand", com.kakaomobility.knsdk.KNRouteAvoidOption.KNRouteAvoidOption_Fare.value, "무료도로 우선")
+                t.contains("고속") -> Triple("KNRoutePriority_HighWay", 0, "고속도로 우선")
+                t.contains("추천") -> Triple("KNRoutePriority_Recommand", 0, "추천 경로")
+                else -> return false
+            }
+            QuickSlotStore.updateRoutePreference(activity, slot, name, avoid)
+            speakReply("${slotLabel(slot)}의 이동방식을 $label(으)로 저장했어요")
+            return true
+        }
+        // 등록: "즐겨찾기 3번에 강남역 등록해줘", "집을 서울역으로 등록해줘"
+        if (t.contains("등록") || t.contains("저장해")) {
+            val slot = slotOf(t.substringBefore("등록").substringBefore("저장")) ?: return false
+            var place = t
+            listOf("즐겨찾기", "등록해줘", "등록해", "등록", "저장해줘", "저장해", "해줘", "으로", "에", "을", "를", "로").forEach { place = place.replace(it, "") }
+            place = place.replace(Regex("\\d+번"), "").replace("집", "").replace("회사", "").trim()
+            if (place.length < 2) { speakReply("어디를 등록할지 같이 말해주세요. 예를 들면 '즐겨찾기 3번에 강남역 등록해줘'"); return true }
+            if (host.registerFavorite(slot, place)) speakReply("${slotLabel(slot)}에 등록할 ${place}을 검색할게요. 결과에서 골라 주세요")
+            else speakReply("이 화면에서는 등록을 못 해요. 카카오 화면에서 말씀해 주세요")
+            return true
+        }
+        return false
+    }
+
+    // ---- 화면 전환 / 볼륨 / 백업 / 로그 삭제 / 연결 스위치 ----
+    private fun handleMiscNdaCommand(t: String): Boolean {
+        if ((t.contains("카카오화면") || t.contains("티맵화면")) && (t.contains("바꿔") || t.contains("전환") || t.contains("열어") || t.contains("가줘") || t.contains("보여"))) {
+            val toKakao = t.contains("카카오화면")
+            val msg = host.switchScreen(toKakao)
+            speakReply(msg)
+            return true
+        }
+        if (t.contains("안내음량") || t.contains("길안내음량") || t.contains("안내소리")) {
+            val cur = VolumeHelper.guideVolumePercent(activity)
+            val pct = Regex("(\\d+)(?:퍼센트|%)").find(t)?.groupValues?.get(1)?.toIntOrNull()
+            val next = when {
+                pct != null -> pct
+                t.contains("올려") || t.contains("키워") || t.contains("크게") -> cur + 10
+                t.contains("내려") || t.contains("줄여") || t.contains("작게") -> cur - 10
+                else -> return false
+            }.coerceIn(0, 100)
+            VolumeHelper.setGuideVolumePercent(activity, next)
+            speakReply("안내 음량을 ${next}퍼센트로 맞췄어요")
+            return true
+        }
+        if (t.contains("백업") && !t.contains("복원")) {
+            val ok = try { SettingsBackup.exportToLocalDownloads(activity) } catch (e: Exception) { false }
+            speakReply(if (ok) "설정을 다운로드 폴더에 백업했어요" else "백업에 실패했어요")
+            return true
+        }
+        if (t.contains("로그삭제") || t.contains("로그지워") || t.contains("로그전체삭제")) {
+            askYesNo("로그를 모두 삭제할까요?",
+                onYes = { try { NavLogger.deleteAllLogFiles(activity) } catch (e: Exception) { }; speakReply("로그를 삭제했어요") },
+                onNo = { speakReply("삭제하지 않을게요") })
+            return true
+        }
+        val wantOn = t.contains("켜") || t.contains("켤")
+        val wantOff = t.contains("꺼") || t.contains("끄") || t.contains("해제")
+        if ((wantOn || wantOff) && (t.lowercase().contains("nmirror") || t.contains("엔미러"))) {
+            com.tmap.nda.nmirror.NMirrorSender.setEnabled(activity, wantOn && !wantOff)
+            speakReply("nMirror 안내 전달을 ${if (wantOn && !wantOff) "켰어요" else "껐어요"}")
+            return true
+        }
+        if ((wantOn || wantOff) && t.contains("오류보고")) {
+            DiscordReporter.setEnabled(activity, wantOn && !wantOff)
+            speakReply("자동 오류 보고를 ${if (wantOn && !wantOff) "켰어요" else "껐어요"}")
+            return true
+        }
+        if ((wantOn || wantOff) && (t.contains("다른앱위") || t.contains("백그라운드안내") || t.contains("미니안내"))) {
+            val on = wantOn && !wantOff
+            activity.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).edit().putBoolean("background_overlay_enabled", on).apply()
+            if (on && !NavOverlayManager.hasPermission(activity)) {
+                NavOverlayManager.requestPermission(activity)
+                speakReply("다른 앱 위에 표시를 켰어요. 권한 화면에서 TmapNda를 허용해 주세요")
+            } else speakReply("다른 앱 위에 표시를 ${if (on) "켰어요" else "껐어요"}")
+            return true
+        }
+        return false
     }
     // "미용실 경유지로 추가해줘" - 안내 중에 즐겨찾기(또는 검색한 곳)를 경유지로 넣음
     private fun handleWaypointCommand(t: String): Boolean {

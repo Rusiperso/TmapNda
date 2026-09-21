@@ -32,7 +32,7 @@ object DiscordReporter {
     // 읽거나 서버 다른 곳을 건드릴 수 없어서, 악용돼도 피해는 스팸 메시지 정도로 한정됨 -
     // 도배되면 디스코드에서 이 웹훅을 지우고 새로 만들어서 주소만 바꾸면 됨(다음 배포부터 반영). #문제시 원복
     private const val WEBHOOK_URL =
-        "https://discord.com/api/webhooks/1544715651824877649/R1dUxez_f5QNPMnXkx9f-546M_J4iwJzDbJJUvv_LBtnshCUwwjkTzL7JStDrAX3wj20"
+        "https://discord.com/api/webhooks/1549853078805684275/RU8KbBaiFgnatBvkVuGZYaxTgx9lz-iwr93FwnKr2xse8sWpt4ILc2yegVA2I-_MHGUH"
 
     private const val PREF_NAME = "TmapNdaPrefs"
     private const val KEY_ENABLED = "auto_report_enabled"
@@ -96,7 +96,7 @@ object DiscordReporter {
     // 보이니까, 완전히 조용한 전용 채널("사용현황")을 따로 만들어서 거기로만 보냄. 클로드는
     // 이 채널을 먼저 언급하지 않고, 재억이 "몇 명이나 써?"라고 물어볼 때만 확인해서 답함. #문제시 원복
     private const val HEARTBEAT_WEBHOOK_URL =
-        "https://discord.com/api/webhooks/1549402829763121176/AjekL6hW14wQdUTMN0lLlEWfn7vdDbEIywPu_rTrXaeaD0gkHtow9gaqpeC2HmbP6QTN"
+        "https://discord.com/api/webhooks/1549853331487199243/9lWWgn_CFvf4VZwyKiIrcQW5UEKEz_epGxaQNRc2fNOQ3fnRC6NnHehxQtYAFaPZ2t7n"
     private const val KEY_LAST_HEARTBEAT = "usage_heartbeat_last_sent_at"
     private const val HEARTBEAT_INTERVAL_MS = 24L * 60 * 60 * 1000
     private const val COLOR_HEARTBEAT = 0x57F287L
@@ -107,7 +107,9 @@ object DiscordReporter {
         if (!isEnabled(context)) return
         val p = prefs(context)
         val now = System.currentTimeMillis()
-        if (now - p.getLong(KEY_LAST_HEARTBEAT, 0L) < HEARTBEAT_INTERVAL_MS) return
+        // v19.3.98: 예전 복원 버그로 Int로 망가진 값이 있어도 죽지 않게 읽음
+        val last = (p.all[KEY_LAST_HEARTBEAT] as? Number)?.toLong() ?: 0L
+        if (now - last < HEARTBEAT_INTERVAL_MS) return
         p.edit().putLong(KEY_LAST_HEARTBEAT, now).apply()
 
         val appContextSafe = context.applicationContext

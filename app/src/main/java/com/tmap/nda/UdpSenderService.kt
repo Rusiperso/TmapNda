@@ -321,6 +321,7 @@ class UdpSenderService : Service() {
     // 이 판단이 도는 루프(sendSdiData)가 300ms 주기라서, 15번 ≈ 4.5초로 설정. #문제시 원복
     private val GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE_FAR_FROM_ROUTE_TURN = 15
     private val GENERAL_ROAD_LIMIT_TBT_NEAR_THRESHOLD_M = 250
+    private val GENERAL_ROAD_LIMIT_MANY_LINKS = 10
 
     // v: 재억 재설명(2026-09-02) - "잘 가다가 옆도로를 잡는 게 계속 문제. 70도로를 직진 중인데
     // 고가도로 아래 도로나 분기점으로 빠지는 도로의 속도를 갑자기 잡는다."
@@ -341,6 +342,7 @@ class UdpSenderService : Service() {
     // "영구 거부"를 없애기 위한 상한. 실주행 로그상 옆도로 오매칭은 값이 계속 튀어서 이 시간을
     // 못 채우고, 진짜 제한속도 변화(100->80 등)는 계속 유지되므로 정상 반영됨. #문제시 원복
     private val LIMIT_CHANGE_HOLD_MS = 6_000L
+    private val LIMIT_RISE_HOLD_MS = 1_500L
     private var pendingLimitValue = 0
     private var pendingLimitSince = 0L
     private var lastTmapSdiSuppressLogTime = 0L
@@ -405,7 +407,10 @@ class UdpSenderService : Service() {
         if (nearLinks == 1) return true
 
         if (directionMatchesKakao) return true
-        return heldMs >= LIMIT_CHANGE_HOLD_MS
+        // v19.3.98: 값이 올라가는 쪽(진출로 -> 본선 복귀)은 잘못 받아도 위험이 작으니 짧게.
+        // 6초는 티맵 값이 110<->60으로 뒤집히면 계속 리셋돼 복귀가 40초 늦어졌음. #문제시 원복
+        val needHoldMs = if (newLimit > currentLimit) LIMIT_RISE_HOLD_MS else LIMIT_CHANGE_HOLD_MS
+        return heldMs >= needHoldMs
     }
 
     /**
@@ -752,7 +757,7 @@ class UdpSenderService : Service() {
                     json.put("navitype", "tmap")
 
                     // 1. limitSpeed 처리
-                    val limitSpeedStr = bundle.getString("limitSpeed", bundle.getInt("limitSpeed", 0).toString())
+                    val limitSpeedStr = bundle.get("limitSpeed")?.toString() ?: "0"
                     val currentLimitSpeed = limitSpeedStr.toIntOrNull() ?: 0
                     // v8.8: 사용자 재제보(2026-08-13) - "10% 초과 옵션 켜도 여전히 계속 울림".
                     // v4.13에서 realRoadLimit(엔진 리플렉션) 경로는 카메라 근처면 도로 기본값으로
@@ -796,7 +801,8 @@ class UdpSenderService : Service() {
                         val nearLinksNowForLimitSpeed = readTmapNearLinkCount()
                         val requiredConsecutiveNowForLimitSpeed = when {
                             nearLinksNowForLimitSpeed == 1 -> 1
-                            routeExpectsExitOrTurnSoonForLimitSpeed -> GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE
+                            routeExpectsExitOrTurnSoonForLimitSpeed &&
+                                nearLinksNowForLimitSpeed < GENERAL_ROAD_LIMIT_MANY_LINKS -> GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE
                             else -> GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE_FAR_FROM_ROUTE_TURN
                         }
                         // v: 재억 재설명(2026-09-02) - 카카오 안내 중이고 카카오 기준 본선 직진
@@ -837,6 +843,10 @@ class UdpSenderService : Service() {
                                 currentLimitSpeed
                             } else {
                                 NavLogger.d(this@UdpSenderService, "[도로제한][분기오매칭방지][limitSpeed] currentLimitSpeed=$currentLimitSpeed < 기존=$generalRoadLimitSpeed, 경로상진출예정=$routeExpectsExitOrTurnSoonForLimitSpeed, 확인횟수=$pendingGeneralRoadLimitCount/$requiredConsecutiveNowForLimitSpeed - 보류")
+                                // v19.3.98: 확인 중에도 기존 값이 8초 만료로 0이 되면 비교 대상이 사라져
+                                // 15번 확인이 8초짜리가 됨(2026-09-20 10:30:57 로그). 시각 갱신. #문제시 원복
+                                lastRoadLimitUpdateTime = System.currentTimeMillis()
+                                lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
                                 null
                             }
                         } else {
@@ -999,9 +1009,12 @@ class UdpSenderService : Service() {
                         // v: 버그수정 - limitSpeed 경로와 동일하게, nearLinks(겹치는 후보 도로 개수)를
                         // 카카오 길안내 여부와 무관하게 항상 확인. #문제시 원복
                         val nearLinksNow = readTmapNearLinkCount()
+                        // v19.3.98: 2026-09-20 로그 - 고속도로 직진 중 nearLinks=70인데 "진출 예정"
+                        // 예외로 2번 확인만에 60이 통과했다 복귀. 후보 도로가 아주 많으면 예외 제외. #문제시 원복
+                        val manyCandidateRoads = nearLinksNow >= GENERAL_ROAD_LIMIT_MANY_LINKS
                         val requiredConsecutiveNow = when {
                             nearLinksNow == 1 -> 1
-                            routeExpectsExitOrTurnSoon -> GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE
+                            routeExpectsExitOrTurnSoon && !manyCandidateRoads -> GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE
                             else -> GENERAL_ROAD_LIMIT_REQUIRED_CONSECUTIVE_FAR_FROM_ROUTE_TURN
                         }
                         // v: 재억 재설명(2026-09-02) - limitSpeed 경로와 동일하게, 카카오 기준
@@ -1039,6 +1052,9 @@ class UdpSenderService : Service() {
                                 realRoadLimit
                             } else {
                                 NavLogger.d(this@UdpSenderService, "[도로제한][분기오매칭방지] realRoadLimit=$realRoadLimit < 기존=$generalRoadLimitSpeed, 경로상진출예정=$routeExpectsExitOrTurnSoon, 확인횟수=$pendingGeneralRoadLimitCount/$requiredConsecutiveNow - 보류")
+                                // v19.3.98: limitSpeed 경로와 동일 - 확인 중 8초 만료 방지. #문제시 원복
+                                lastRoadLimitUpdateTime = System.currentTimeMillis()
+                                lastGeneralRoadLimitUpdateTime = System.currentTimeMillis()
                                 null
                             }
                         } else {

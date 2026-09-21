@@ -268,6 +268,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             override fun isMuted(): Boolean? = kakaoMuted
             override fun launchRecognizer() = startVoiceSearch()
             override fun currentBearing(): Float? = lastKnownBearing
+            override fun registerFavorite(slot: String, query: String): Boolean {
+                pendingQuickSlotRegistration = slot
+                performInPlaceSearch(query)
+                return true
+            }
+            override fun switchScreen(toKakao: Boolean): String {
+                if (toKakao) return "이미 카카오 화면이에요"
+                return "카카오 화면에서 티맵 화면으로 가려면 안내를 종료해야 해요. 안내를 종료할까요라고 말씀해 주세요"
+            }
             override fun addWaypoint(entry: HistoryEntry) = addWaypointToActiveGuidance(entry)
             override fun addWaypointBySearch(query: String): Boolean {
                 pendingWaypointAddition = true

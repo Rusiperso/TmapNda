@@ -289,6 +289,12 @@ class MapActivity : AppCompatActivity() {
             override fun isMuted(): Boolean? = isTmapMuted
             override fun launchRecognizer() = startVoiceSearch()
             override fun currentBearing(): Float? = lastKnownBearing
+            override fun switchScreen(toKakao: Boolean): String {
+                if (!toKakao) return "이미 티맵 화면이에요"
+                if (!KakaoRouteDataRepository.isFresh()) return "안내 중인 카카오 화면이 없어요"
+                this@MapActivity.startActivity(Intent(this@MapActivity, KakaoNaviActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+                return "카카오 화면으로 갈게요"
+            }
             override fun addWaypoint(entry: HistoryEntry) {
                 if (!KakaoRouteDataRepository.isFresh()) {
                     Toast.makeText(this@MapActivity, "안내 중일 때만 경유지를 추가할 수 있어요", Toast.LENGTH_SHORT).show()
