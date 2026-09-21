@@ -32,7 +32,7 @@ object DiscordReporter {
     // 읽거나 서버 다른 곳을 건드릴 수 없어서, 악용돼도 피해는 스팸 메시지 정도로 한정됨 -
     // 도배되면 디스코드에서 이 웹훅을 지우고 새로 만들어서 주소만 바꾸면 됨(다음 배포부터 반영). #문제시 원복
     private const val WEBHOOK_URL =
-        "https://discord.com/api/webhooks/1549853078805684275/RU8KbBaiFgnatBvkVuGZYaxTgx9lz-iwr93FwnKr2xse8sWpt4ILc2yegVA2I-_MHGUH"
+        "https://discord.com/api/webhooks/1551610106259570880/Vq3-6PAM-pzKTkR9GHNJGVMPziMDvzRbb3kO5_etzOW9pPStb9aUoRif_O__h1jvD2Qh"
 
     private const val PREF_NAME = "TmapNdaPrefs"
     private const val KEY_ENABLED = "auto_report_enabled"
@@ -96,7 +96,7 @@ object DiscordReporter {
     // 보이니까, 완전히 조용한 전용 채널("사용현황")을 따로 만들어서 거기로만 보냄. 클로드는
     // 이 채널을 먼저 언급하지 않고, 재억이 "몇 명이나 써?"라고 물어볼 때만 확인해서 답함. #문제시 원복
     private const val HEARTBEAT_WEBHOOK_URL =
-        "https://discord.com/api/webhooks/1549853331487199243/9lWWgn_CFvf4VZwyKiIrcQW5UEKEz_epGxaQNRc2fNOQ3fnRC6NnHehxQtYAFaPZ2t7n"
+        "https://discord.com/api/webhooks/1551610006296858716/rKRmTHUfiDIEJA-Ah0udXhxEQ3c5yeq1RVjyLBXe048mrYkxbf2W4drS13DDSJmtI4Rn"
     private const val KEY_HB_MSG_ID = "usage_heartbeat_message_id"
     private const val KEY_HB_MSG_DAY = "usage_heartbeat_message_day"
     private const val HEARTBEAT_INTERVAL_MIN = 5L
