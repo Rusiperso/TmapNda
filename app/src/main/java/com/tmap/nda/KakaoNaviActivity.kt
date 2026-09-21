@@ -756,7 +756,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             // 이미 초기화된 뒤라 핀을 찍을 지도가 있음) 핀 찍고 경로선택 팝업을 직접 띄움.
             // 이러면 MapActivity 쪽 즐겨찾기/검색/주변탐색 등 모든 진입점이 이 화면으로만
             // 넘어오게 통일해두면 자동으로 지도 미리보기가 붙게 됨. #문제시 원복
-            if (routePriorityName != null) {
+            val parkedAt = intent.getLongExtra("parked_view_saved_at", 0L)
+            if (parkedAt > 0L) {
+                // 티맵 화면의 "내 차 위치 > 지도에서 보기"로 열린 경우 - 경로 없이 차 위치만 보여줌
+                parkedLaunchedFromTmap = true
+                startParkedCarViewWhenReady(destLat, destLon, parkedAt, 0)
+            } else if (routePriorityName != null) {
                 resolveCurrentPositionThenRequestRoute(destName, destLat, destLon)
             } else {
                 // v19.3.72: 재억 실기기 제보 - "취소 눌러도 티맵으로 안 돌아간다"의 원인 -
@@ -1702,7 +1707,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
         binding.btnParkedLocation?.setOnClickListener {
             binding.svSecondaryPanel?.visibility = View.GONE
-            ParkedLocationPopup.show(this)
+            ParkedLocationPopup.show(this) { lat, lon, at -> startParkedCarView(lat, lon, at) }
         }
 
         binding.btnEditKey?.setOnClickListener {
@@ -2808,6 +2813,225 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         return true
     }
 
+    // ---- 내 차 위치 보기(카카오 화면) ----
+    // 지도에 차 위치(주황 "차")와 내 위치(파란 점)를 보여주고, GPS 버튼으로
+    // [현재 위치 보기] -> [따라가기] 전환. GPS 버튼은 끌어서 옮기면 위치 저장.
+    // 카카오 길안내 중에는 위치 전달을 끊어야 하는 기능이라 막음. #문제시 원복
+    private var parkedActive = false
+    private var parkedLaunchedFromTmap = false
+    private var parkedOverlay: ParkedCarOverlayView? = null
+    private var parkedCloseButton: android.widget.TextView? = null
+    private var parkedBackCallback: androidx.activity.OnBackPressedCallback? = null
+    private var parkedGpsButton: android.widget.TextView? = null
+    private var parkedGpsStep = 0 // 0=차 위치 보는 중, 1=현재 위치 보는 중, 2=따라가는 중
+    private val parkedHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var parkedRefresh: Runnable? = null
+
+    private fun parkedKatec(lat: Double, lon: Double): FloatPoint {
+        val k = KNSDK.convertWGS84ToKATEC(lon, lat)
+        return FloatPoint(k.x.toFloat(), k.y.toFloat())
+    }
+
+    // 카카오 지도 화면이 아직 준비 안 됐으면 0.3초마다 다시 시도(최대 20번)
+    private fun startParkedCarViewWhenReady(lat: Double, lon: Double, savedAt: Long, tries: Int) {
+        if (isFinishing || isDestroyed) return
+        if (naviView.mapComponent.mapView != null && binding.root.width > 0) {
+            startParkedCarView(lat, lon, savedAt)
+        } else if (tries < 20) {
+            naviView.postDelayed({ startParkedCarViewWhenReady(lat, lon, savedAt, tries + 1) }, 300L)
+        } else {
+            NavLogger.e(this, "[내차위치] 지도가 준비되지 않아 표시 못 함")
+        }
+    }
+
+    private fun startParkedCarView(lat: Double, lon: Double, savedAt: Long) {
+        if (isGuidanceRunningNow()) {
+            Toast.makeText(this, "길안내 중에는 쓸 수 없어요", Toast.LENGTH_SHORT).show()
+            return
+        }
+        naviView.mapComponent.mapView ?: return
+        closeParkedCarView(finishIfFromTmap = false)
+        parkedActive = true
+        try {
+            if (savedMapViewMode == null) savedMapViewMode = naviView.mapViewMode
+            naviView.mapViewMode = com.kakaomobility.knsdk.ui.component.MapViewCameraMode.Top
+            kakaoGuidanceDelegate?.suppressLocationForward = true
+        } catch (e: Exception) {
+            NavLogger.e(this, "[내차위치] 지도모드 전환 실패: ${e.message}")
+        }
+        val root = binding.root as ViewGroup
+        val carPt = parkedKatec(lat, lon)
+        val overlay = ParkedCarOverlayView(this) { naviView.mapComponent.mapView }.apply { car = carPt }
+        parkedOverlay = overlay
+        root.addView(overlay, android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
+
+        val timeText = java.text.SimpleDateFormat("M월 d일 a h:mm", java.util.Locale.KOREAN).format(java.util.Date(savedAt))
+        Toast.makeText(this, "내 차 위치 ($timeText 저장)", Toast.LENGTH_LONG).show()
+        val (btnW, btnH) = parkedButtonSize()
+        val close = android.widget.TextView(this).apply {
+            text = "닫기"; textSize = 14f; gravity = android.view.Gravity.CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setTextColor(android.graphics.Color.parseColor("#DDDDDD"))
+            background = parkedButtonBackground("#CC28282C")
+        }
+        parkedCloseButton = close
+        root.addView(close, android.widget.FrameLayout.LayoutParams(btnW, btnH).apply {
+            gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+            marginEnd = PopupCard.dp(this@KakaoNaviActivity, 84) + btnW + PopupCard.dp(this@KakaoNaviActivity, 12)
+            bottomMargin = PopupCard.dp(this@KakaoNaviActivity, 84)
+        })
+        PopupCard.attachDrag(this, close, root, "parkedCloseButton") { closeParkedCarView(finishIfFromTmap = true) }
+        val back = object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() { closeParkedCarView(finishIfFromTmap = true) }
+        }
+        parkedBackCallback = back
+        onBackPressedDispatcher.addCallback(this, back)
+
+        addParkedGpsButton()
+
+        val (meLat, meLon) = resolveCurrentWgs84LatLonForSearch()
+        if (meLat != null && meLon != null) overlay.me = parkedKatec(meLat, meLon)
+        parkedHandler.postDelayed({ if (parkedActive && parkedGpsStep == 0) moveParkedCamera(carPt) }, 500L)
+        val tick = object : Runnable {
+            override fun run() {
+                if (!parkedActive) return
+                val (la, lo) = resolveCurrentWgs84LatLonForSearch()
+                if (la != null && lo != null) parkedOverlay?.me = if (parkedGpsStep == 2) null else parkedKatec(la, lo)
+                parkedHandler.postDelayed(this, 3_000L)
+            }
+        }
+        parkedRefresh = tick
+        parkedHandler.postDelayed(tick, 3_000L)
+    }
+
+    // 대상 지점을 화면 가운데로, 화면 세로가 대략 300m 정도 보이게 확대해서 이동
+    private fun moveParkedCamera(target: FloatPoint) {
+        try {
+            val mapView = naviView.mapComponent.mapView ?: return
+            var update = KNMapCameraUpdate.Creator.targetTo(target).anchorTo(FloatPoint(0.5f, 0.5f)).tiltTo(0f).bearingTo(0f)
+            val h = mapView.height.toDouble()
+            if (h > 10) {
+                val a = mapView.katecToScreen(target)
+                val b = mapView.katecToScreen(FloatPoint(target.x + 100f, target.y))
+                val pxPer100 = Math.abs(b.x - a.x).toDouble()
+                if (pxPer100 >= 1.0) {
+                    val wantedPxPer100 = h / 300.0 * 100.0
+                    val z = (mapView.zoom * pxPer100 / wantedPxPer100).toFloat().coerceAtLeast(0.5f)
+                    update = update.zoomTo(z)
+                }
+            }
+            mapView.moveCamera(update, false, false)
+        } catch (e: Exception) {
+            NavLogger.e(this, "[내차위치] 카메라 이동 실패: ${e.message}")
+        }
+    }
+
+    private fun addParkedGpsButton() {
+        if (parkedGpsButton != null) return
+        parkedGpsStep = 0
+        val root = binding.root as ViewGroup
+        val (btnW, btnH) = parkedButtonSize()
+        val gps = android.widget.TextView(this).apply {
+            text = "GPS"; textSize = 14f; gravity = android.view.Gravity.CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        }
+        parkedGpsButton = gps
+        root.addView(gps, android.widget.FrameLayout.LayoutParams(btnW, btnH).apply {
+            gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+            marginEnd = PopupCard.dp(this@KakaoNaviActivity, 84)
+            bottomMargin = PopupCard.dp(this@KakaoNaviActivity, 84)
+        })
+        // 짧게 누르면 GPS 동작, 끌면 옮겨지고 위치가 저장됨
+        PopupCard.attachDrag(this, gps, root, "parkedGpsButton") { onParkedGpsPressed() }
+        updateParkedGpsStyle()
+    }
+
+    // 즐겨찾기/주변 버튼과 같은 크기(못 재면 기본값)와 같은 둥근 모서리
+    private fun parkedButtonSize(): Pair<Int, Int> {
+        // 즐겨찾기/주변 버튼은 QuickIconGrid가 이 기준 뷰 크기에 맞춰 잡으므로 같은 뷰를 따라감
+        val ref = binding.tvConnectionStatus?.parent?.parent as? View
+        val w = ref?.width ?: 0
+        val h = ref?.height ?: 0
+        return if (w > 0 && h > 0) Pair(w, h) else Pair(PopupCard.dp(this, 96), PopupCard.dp(this, 46))
+    }
+
+    private fun parkedButtonBackground(colorHex: String): android.graphics.drawable.Drawable =
+        PopupCard.roundedFill(this, colorHex)
+
+    private fun removeParkedGpsButton() {
+        parkedGpsButton?.let { (binding.root as ViewGroup).removeView(it) }
+        parkedGpsButton = null
+    }
+
+    private fun updateParkedGpsStyle() {
+        val gps = parkedGpsButton ?: return
+        gps.background = parkedButtonBackground(if (parkedGpsStep == 2) "#FFD54F" else "#CC28282C")
+        gps.setTextColor(android.graphics.Color.parseColor(when (parkedGpsStep) {
+            2 -> "#212121"
+            1 -> "#FFD54F"
+            else -> "#DDDDDD"
+        }))
+    }
+
+    // 1번 누름: 현재 위치로 이동해서 보기 / 2번 누름: 움직임을 따라가기(카카오 원래 추적 모드 복원)
+    private fun onParkedGpsPressed() {
+        if (parkedGpsButton == null) return
+        if (parkedGpsStep == 1) {
+            parkedGpsStep = 2
+            parkedOverlay?.me = null
+            try {
+                kakaoGuidanceDelegate?.suppressLocationForward = false
+                savedMapViewMode?.let { naviView.mapViewMode = it }
+            } catch (e: Exception) {
+                NavLogger.e(this, "[내차위치] 따라가기 전환 실패: ${e.message}")
+            }
+            Toast.makeText(this, "내 위치를 따라가요", Toast.LENGTH_SHORT).show()
+        } else {
+            val (la, lo) = resolveCurrentWgs84LatLonForSearch()
+            if (la == null || lo == null) {
+                Toast.makeText(this, "현재 위치를 아직 못 받았어요", Toast.LENGTH_SHORT).show()
+                return
+            }
+            parkedGpsStep = 1
+            try {
+                naviView.mapViewMode = com.kakaomobility.knsdk.ui.component.MapViewCameraMode.Top
+                kakaoGuidanceDelegate?.suppressLocationForward = true
+            } catch (e: Exception) {
+                NavLogger.e(this, "[내차위치] 현재위치 전환 실패: ${e.message}")
+            }
+            val p = parkedKatec(la, lo)
+            parkedOverlay?.me = p
+            parkedHandler.postDelayed({ if (parkedActive && parkedGpsStep == 1) moveParkedCamera(p) }, 500L)
+            parkedHandler.postDelayed({ if (parkedActive && parkedGpsStep == 1) moveParkedCamera(p) }, 1300L)
+            Toast.makeText(this, "현재 위치로 이동", Toast.LENGTH_SHORT).show()
+        }
+        updateParkedGpsStyle()
+    }
+
+    private fun closeParkedCarView(finishIfFromTmap: Boolean) {
+        val wasActive = parkedActive
+        parkedActive = false
+        parkedRefresh?.let { parkedHandler.removeCallbacks(it) }
+        parkedRefresh = null
+        val root = binding.root as ViewGroup
+        parkedOverlay?.let { root.removeView(it) }
+        parkedCloseButton?.let { root.removeView(it) }
+        parkedBackCallback?.remove()
+        removeParkedGpsButton()
+        parkedOverlay = null; parkedCloseButton = null; parkedBackCallback = null
+        if (wasActive) {
+            kakaoGuidanceDelegate?.suppressLocationForward = false
+            savedMapViewMode?.let {
+                try { naviView.mapViewMode = it } catch (e: Exception) {
+                    NavLogger.e(this, "[내차위치] 지도모드 복원 실패: ${e.message}")
+                }
+                savedMapViewMode = null
+            }
+        }
+        if (finishIfFromTmap && parkedLaunchedFromTmap) finish()
+    }
+
     // v19.3.72: 신규기능(재억 요청 2026-09-18) - 검색 결과를 고르면 추천/고속/무료
     // 팝업이 뜨기 전에, 그 목적지 위치에 지도 핀을 찍고 카메라를 그쪽으로 이동시켜
     // "여기 맞아?" 확인할 수 있게 함. 카카오 SDK(KNMapView)가 addMarker/moveCamera를
@@ -2839,6 +3063,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 .bearingTo(0f)
             mapView.moveCamera(cameraUpdate, false, false)
             NavLogger.d(this, "[목적지핀][진단] point=(${point.x},${point.y}) mapViewMode=${naviView.mapViewMode} moveCamera 호출완료")
+            addParkedGpsButton()
         } catch (e: Exception) {
             NavLogger.e(this, "[목적지핀] 표시 실패: ${e.message}")
         }
@@ -3179,8 +3404,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         startClick = {
             stopCountdown()
             removePanel()
-            clearDestinationPin()
-            goDirectly(selectedIndex)
+            // 전체 경로가 보이던 화면에서 안내 화면으로 한 번에 확 넘어가지 않게, 먼저 내 위치로
+            // 부드럽게 확대한 다음 안내를 시작함. #문제시 원복
+            zoomToMyPositionThen(1500L) {
+                clearDestinationPin()
+                goDirectly(selectedIndex)
+            }
         }
         startBtn.setOnClickListener { startClick() }
 
@@ -3241,7 +3470,27 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private fun isGuidanceRunningNow(): Boolean =
         currentDestName.isNotBlank() && KakaoRouteDataRepository.isFresh(30_000L)
 
+    // 지금 보이는 지도(전체 경로)에서 내 위치까지 durationMs 동안 부드럽게 확대한 뒤 action 실행.
+    // 못 하면 바로 action 실행. 안내 배율(약 1.3)보다 조금 넓게(3)까지만 - 나머지는 카카오가 이어받음.
+    private fun zoomToMyPositionThen(durationMs: Long, action: () -> Unit) {
+        try {
+            val mapView = naviView.mapComponent.mapView
+            val pos = KNSDK.sharedGpsManager()?.recentGpsData?.pos
+            if (mapView == null || pos == null) { action(); return }
+            val target = FloatPoint(pos.x.toFloat(), pos.y.toFloat())
+            val update = KNMapCameraUpdate.Creator.targetTo(target).zoomTo(3f).tiltTo(0f).bearingTo(0f)
+                .anchorTo(FloatPoint(0.5f, 0.6f))
+            mapView.animateCamera(update, durationMs, false, false)
+            NavLogger.d(this, "[안내시작모션] 내 위치로 ${durationMs}ms 동안 확대 시작")
+            naviView.postDelayed({ if (!isFinishing && !isDestroyed) action() }, durationMs + 100L)
+        } catch (e: Exception) {
+            NavLogger.e(this, "[안내시작모션] 실패: ${e.message}")
+            action()
+        }
+    }
+
     private fun clearDestinationPin() {
+        if (!parkedActive) removeParkedGpsButton()
         kakaoGuidanceDelegate?.suppressLocationForward = false
         // v19.3.72: CarrotNavi 원본과 동일 - 저장해둔 지도 모드로 복원. #문제시 원복
         savedMapViewMode?.let {
@@ -4030,12 +4279,22 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private var topBarDrag: PanelDragHelper.TopBarLongPressDrag? = null
     private var topBarSlotLabelListener: android.content.SharedPreferences.OnSharedPreferenceChangeListener? = null
 
+    private var lastPinchMoveLogMs = 0L
+
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
         // v: 재억 제보(2026-09-13, 크래시 로그) - 화면 회전으로 액티비티가 재구성되는
         // 타이밍에 이전 인스턴스로 터치 이벤트가 마저 전달되면서 binding이 아직
         // 초기화되기 전에 접근해 UninitializedPropertyAccessException으로 강제종료됨.
         // 그 타이밍의 터치는 어차피 곧 사라질 화면에 대한 것이니 그냥 무시. #문제시 원복
         if (!::binding.isInitialized) return super.dispatchTouchEvent(ev)
+        // 핀치 줌 진단(엔미러 환경): 두 번째 손가락이 앱까지 오는지 확인용. 이동 이벤트는 0.5초에 한 번만 기록.
+        val touchAct = ev.actionMasked
+        if (touchAct != android.view.MotionEvent.ACTION_MOVE) {
+            NavLogger.d(this, "[핀치진단] action=$touchAct 손가락수=${ev.pointerCount} source=0x${Integer.toHexString(ev.source)} device=${ev.deviceId}")
+        } else if (ev.pointerCount >= 2 && ev.eventTime - lastPinchMoveLogMs > 500) {
+            lastPinchMoveLogMs = ev.eventTime
+            NavLogger.d(this, "[핀치진단] MOVE 손가락수=${ev.pointerCount}")
+        }
         if (topBarDrag?.dispatch(ev) { super@KakaoNaviActivity.dispatchTouchEvent(it) } == true) return true
         if (ev.action == android.view.MotionEvent.ACTION_DOWN) {
             val panel = binding.svSecondaryPanel
@@ -4385,6 +4644,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         NavLogger.d(this, "[KakaoNaviActivity lifecycle] onDestroy (isFinishing=$isFinishing, isChangingConfigurations=$isChangingConfigurations)")
         try { voiceAssistant.shutdown() } catch (e: Exception) { }
         cancelNavNotification()
+        parkedRefresh?.let { parkedHandler.removeCallbacks(it) }
         hudPollHandler.removeCallbacksAndMessages(null)
         // v: 재억 요청(2026-09-02, A안) - 화면이 사라지면 카카오 음량 적용 함수도 해제.
         // (이미 없어진 naviView를 붙잡고 있으면 안 됨) #문제시 원복

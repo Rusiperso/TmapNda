@@ -526,7 +526,10 @@ class MapActivity : AppCompatActivity() {
         // 뒤집음: 짧게 누르기 = 앱 설정(토글들), 길게 누르기 = 카카오키 재입력(드묾). #문제시 원복
         binding.btnParkedLocation?.setOnClickListener {
             binding.svSecondaryPanel?.visibility = View.GONE
-            ParkedLocationPopup.show(this)
+            // 카카오 화면으로 넘어가 차 위치를 지도에 보여줌(GPS 버튼으로 내 위치/따라가기). #문제시 원복
+            ParkedLocationPopup.show(this) { lat, lon, at ->
+                startKakaoOverlayGuidance("내 차 위치", lat, lon, null, 0, at)
+            }
         }
 
         binding.btnEditKey.setOnClickListener {
@@ -3320,7 +3323,8 @@ class MapActivity : AppCompatActivity() {
         // v13.1-2: 재억 요청 - 검색해서 목적지 고른 뒤 "추천/고속도로우선/무료도로우선"
         // 선택하는 기능 추가. Intent로는 enum을 직접 못 넘기니 이름(String)으로 넘김. #문제시 원복
         routePriorityName: String? = null,
-        routeAvoidOption: Int = 0
+        routeAvoidOption: Int = 0,
+        parkedViewSavedAt: Long = 0L
     ) {
         val nativeAppKey = getKakaoNativeAppKey()
 
@@ -3340,6 +3344,7 @@ class MapActivity : AppCompatActivity() {
             putExtra("dest_lat", goalLat)
             putExtra("dest_lon", goalLon)
             putExtra("kakao_native_app_key", nativeAppKey)
+            if (parkedViewSavedAt > 0L) putExtra("parked_view_saved_at", parkedViewSavedAt)
             if (routePriorityName != null) {
                 putExtra("route_priority_name", routePriorityName)
                 putExtra("route_avoid_option", routeAvoidOption)

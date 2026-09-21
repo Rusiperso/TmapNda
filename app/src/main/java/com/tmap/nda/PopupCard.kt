@@ -56,7 +56,7 @@ object PopupCard {
      * prefKey가 같은 카드끼리는 같은 자리를 공유(화면 방향별로 따로 저장). 저장값은 화면 안으로
      * 보정해서 복원하고, 자리잡기 전 깜빡임을 막으려고 그동안 투명하게 둠.
      */
-    fun attachDrag(context: Context, card: View, root: ViewGroup, prefKey: String) {
+    fun attachDrag(context: Context, card: View, root: ViewGroup, prefKey: String, onTap: (() -> Unit)? = null) {
         val prefs = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         val suffix = if (context.resources.configuration.orientation ==
             Configuration.ORIENTATION_LANDSCAPE) "land" else "port"
@@ -108,6 +108,8 @@ object PopupCard {
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (moved) {
                         prefs.edit().putFloat(keyX, card.x).putFloat(keyY, card.y).apply()
+                    } else if (event.action == MotionEvent.ACTION_UP) {
+                        onTap?.invoke()
                     }
                     true
                 }

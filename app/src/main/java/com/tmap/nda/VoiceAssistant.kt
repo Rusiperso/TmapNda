@@ -405,7 +405,8 @@ class VoiceAssistant(private val activity: Activity, private val host: Host) {
         }
         if (t.contains("내차위치") || t.contains("주차위치") || t.contains("차어디") || t.contains("주차한곳")) {
             try {
-                ParkedLocationPopup.show(activity)
+                val ok = clickById("btnParkedLocation")
+                if (!ok) speakReply("이 화면에서는 내 차 위치를 열 수 없어요")
             } catch (e: Exception) {
                 NavLogger.e(activity, "[음성명령] 내 차 위치 실패: ${e.message}")
             }
