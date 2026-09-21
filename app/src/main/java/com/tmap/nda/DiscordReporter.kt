@@ -97,31 +97,62 @@ object DiscordReporter {
     // 이 채널을 먼저 언급하지 않고, 재억이 "몇 명이나 써?"라고 물어볼 때만 확인해서 답함. #문제시 원복
     private const val HEARTBEAT_WEBHOOK_URL =
         "https://discord.com/api/webhooks/1549853331487199243/9lWWgn_CFvf4VZwyKiIrcQW5UEKEz_epGxaQNRc2fNOQ3fnRC6NnHehxQtYAFaPZ2t7n"
-    private const val KEY_LAST_HEARTBEAT = "usage_heartbeat_last_sent_at"
-    private const val HEARTBEAT_INTERVAL_MS = 24L * 60 * 60 * 1000
+    private const val KEY_HB_MSG_ID = "usage_heartbeat_message_id"
+    private const val KEY_HB_MSG_DAY = "usage_heartbeat_message_day"
+    private const val HEARTBEAT_INTERVAL_MIN = 5L
     private const val COLOR_HEARTBEAT = 0x57F287L
     private const val KEY_INSTALL_REPORTED = "install_reported"
     private const val COLOR_INSTALL = 0x3498DBL
 
+    // v: 재억 요청(2026-09-21) - "지금 켜져 있는 사람"을 알 수 있게, 앱이 떠 있는 동안 5분마다
+    // 신호를 보냄(폰이 꺼지거나 앱 프로세스가 죽으면 저절로 멈춤). 5분마다 새 메시지를 올리면
+    // 사용현황 채널이 도배되고 일일 집계가 깨지므로, 하루에 메시지를 하나만 만들고 그 메시지를
+    // 5분마다 고쳐씀(웹훅 메시지 수정). 하루 첫 신호는 예전처럼 새 메시지라 집계 방식은 그대로. #문제시 원복
+    private val heartbeatStarted = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val heartbeatScheduler by lazy {
+        java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "usage-heartbeat").apply { isDaemon = true }
+        }
+    }
+
     fun reportHeartbeatIfDue(context: Context) {
         if (!isEnabled(context)) return
-        val p = prefs(context)
-        val now = System.currentTimeMillis()
-        // v19.3.98: 예전 복원 버그로 Int로 망가진 값이 있어도 죽지 않게 읽음
-        val last = (p.all[KEY_LAST_HEARTBEAT] as? Number)?.toLong() ?: 0L
-        if (now - last < HEARTBEAT_INTERVAL_MS) return
-        p.edit().putLong(KEY_LAST_HEARTBEAT, now).apply()
-
+        if (!heartbeatStarted.compareAndSet(false, true)) return
         val appContextSafe = context.applicationContext
-        reportExecutor.submit {
+        heartbeatScheduler.scheduleWithFixedDelay({
             try {
-                val payload = buildPayload("[사용중]", COLOR_HEARTBEAT, commonFields(appContextSafe))
-                val body = payload.toRequestBody("application/json".toMediaTypeOrNull())
-                val request = Request.Builder().url(HEARTBEAT_WEBHOOK_URL).post(body).build()
-                client.newCall(request).execute().close()
+                if (isEnabled(appContextSafe)) sendHeartbeatTick(appContextSafe)
             } catch (e: Exception) {
                 // 조용히 무시 - 이 신호 실패가 앱 동작에 영향을 주면 안 됨
             }
+        }, 0L, HEARTBEAT_INTERVAL_MIN, TimeUnit.MINUTES)
+    }
+
+    private fun sendHeartbeatTick(context: Context) {
+        val zone = java.time.ZoneId.of("Asia/Seoul")
+        val now = java.time.ZonedDateTime.now(zone)
+        val today = now.toLocalDate().toString()
+        val fields = commonFields(context) + ("마지막 신호" to "%02d:%02d".format(now.hour, now.minute))
+        val payload = buildPayload("[사용중]", COLOR_HEARTBEAT, fields)
+        val p = prefs(context)
+        val msgId = p.getString(KEY_HB_MSG_ID, null)
+
+        if (msgId != null && p.getString(KEY_HB_MSG_DAY, null) == today) {
+            val editBody = JSONObject(payload).apply { remove("username") }.toString()
+                .toRequestBody("application/json".toMediaTypeOrNull())
+            val edit = Request.Builder().url("$HEARTBEAT_WEBHOOK_URL/messages/$msgId").patch(editBody).build()
+            client.newCall(edit).execute().use { res ->
+                // 메시지가 지워졌으면(404) 아래에서 새로 만들고, 그 외 실패는 다음 주기에 다시 시도
+                if (res.code != 404) return
+            }
+        }
+
+        val body = payload.toRequestBody("application/json".toMediaTypeOrNull())
+        val request = Request.Builder().url("$HEARTBEAT_WEBHOOK_URL?wait=true").post(body).build()
+        client.newCall(request).execute().use { res ->
+            if (!res.isSuccessful) return
+            val id = JSONObject(res.body?.string() ?: return).optString("id")
+            if (id.isNotEmpty()) p.edit().putString(KEY_HB_MSG_ID, id).putString(KEY_HB_MSG_DAY, today).apply()
         }
     }
 
