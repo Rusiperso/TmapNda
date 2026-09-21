@@ -1073,7 +1073,7 @@ class MapActivity : AppCompatActivity() {
         val (intent, paths) = result
         val emailIntent = NavLogger.resolveEmailIntent(this, intent)
         if (emailIntent == null) {
-            Toast.makeText(this, "이메일 앱이 없어. Gmail 같은 이메일 앱을 설치하고 로그인한 뒤 다시 눌러줘.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "이메일 앱이 없어. 이메일 앱을 설치하고 로그인한 뒤 다시 눌러줘.", Toast.LENGTH_LONG).show()
             return
         }
         shareLogLauncher.launch(emailIntent)

@@ -273,6 +273,15 @@ object NavLogger {
     fun resolveEmailIntent(context: Context, shareIntent: Intent): Intent? {
         val pm = context.packageManager
         val probe = Intent(Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:"))
+        // 폰에 "기본 이메일 앱"으로 지정된 게 있으면 시스템이 그 앱을 바로 돌려줌(지정 없이 여러 개면
+        // 선택창 담당인 "android"가 나오므로 그건 건너뜀). 지정된 앱이 있으면 그걸 우선 사용.
+        try {
+            val def = pm.resolveActivity(probe, 0)?.activityInfo?.packageName
+            if (def != null && def != "android") {
+                val candidate = Intent(shareIntent).setPackage(def)
+                if (candidate.resolveActivity(pm) != null) return candidate
+            }
+        } catch (e: Exception) { /* 아래 순서대로 찾기로 넘어감 */ }
         val packages = try {
             pm.queryIntentActivities(probe, 0).map { it.activityInfo.packageName }.distinct()
         } catch (e: Exception) { emptyList() }
