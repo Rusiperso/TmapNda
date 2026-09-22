@@ -12,8 +12,16 @@ android {
         applicationId = "com.tmap.nda"
         minSdk = 26
         targetSdk = 36
-        versionCode = 513
-        versionName = "19.4.03"
+        versionCode = 514
+        versionName = "19.4.04"
+
+        // v: 재억 요청(2026-09-22) - 디스코드 웹훅 주소가 코드에 그대로 박혀 공개 저장소에
+        // 커밋되면 스팸봇이 깃허브를 긁어서 찾아내 도배 → 디스코드가 웹훅을 자동 삭제하는
+        // 일이 반복됨(9/17, 9/22 두 번). 저장소엔 빈 문자열만 남기고, 실제 값은 GitHub
+        // Actions 시크릿(USAGE_WEBHOOK_URL/CRASH_WEBHOOK_URL)에서 빌드 시점에만 주입함.
+        // 로컬 빌드(환경변수 없음)는 빈 값이 들어가 DiscordReporter가 조용히 전송을 건너뜀. #문제시 원복
+        buildConfigField("String", "USAGE_WEBHOOK_URL", "\"${System.getenv("USAGE_WEBHOOK_URL") ?: ""}\"")
+        buildConfigField("String", "CRASH_WEBHOOK_URL", "\"${System.getenv("CRASH_WEBHOOK_URL") ?: ""}\"")
     }
 
     signingConfigs {

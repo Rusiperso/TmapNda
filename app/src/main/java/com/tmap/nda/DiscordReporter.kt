@@ -27,12 +27,12 @@ import java.util.concurrent.TimeUnit
  */
 object DiscordReporter {
 
-    // 이 웹훅 주소는 앱 소스(커뮤니티에 공개되는 저장소)에 그대로 들어가므로 사실상
-    // 공개된 값과 같음. 디스코드 웹훅은 그 채널에 메시지를 "보내기"만 할 수 있고 채널을
-    // 읽거나 서버 다른 곳을 건드릴 수 없어서, 악용돼도 피해는 스팸 메시지 정도로 한정됨 -
-    // 도배되면 디스코드에서 이 웹훅을 지우고 새로 만들어서 주소만 바꾸면 됨(다음 배포부터 반영). #문제시 원복
-    private const val WEBHOOK_URL =
-        "https://discord.com/api/webhooks/1551610106259570880/Vq3-6PAM-pzKTkR9GHNJGVMPziMDvzRbb3kO5_etzOW9pPStb9aUoRif_O__h1jvD2Qh"
+    // v: 재억 요청(2026-09-22) - 웹훅 주소를 소스에 그대로 박아두니(공개 저장소) 깃허브를
+    // 긁는 스팸봇이 찾아내 도배 → 디스코드가 웹훅을 자동 삭제하는 일이 반복됨(9/17, 9/22).
+    // 이제 소스엔 값을 안 남기고 BuildConfig(빌드 시점 GitHub Actions 시크릿 주입, build.gradle.kts
+    // 참고)로만 받는다. 로컬 빌드처럼 시크릿이 없으면 빈 문자열이 들어오고, 그 경우 아래 send
+    // 함수들이 조용히 건너뜀. #문제시 원복
+    private val WEBHOOK_URL get() = BuildConfig.CRASH_WEBHOOK_URL
 
     private const val PREF_NAME = "TmapNdaPrefs"
     private const val KEY_ENABLED = "auto_report_enabled"
@@ -95,8 +95,7 @@ object DiscordReporter {
     // v: 재억 요청(2026-09-15) - 크래시 보고 채널과 섞이면 재억이 그 채널을 볼 때마다 매번
     // 보이니까, 완전히 조용한 전용 채널("사용현황")을 따로 만들어서 거기로만 보냄. 클로드는
     // 이 채널을 먼저 언급하지 않고, 재억이 "몇 명이나 써?"라고 물어볼 때만 확인해서 답함. #문제시 원복
-    private const val HEARTBEAT_WEBHOOK_URL =
-        "https://discord.com/api/webhooks/1551610006296858716/rKRmTHUfiDIEJA-Ah0udXhxEQ3c5yeq1RVjyLBXe048mrYkxbf2W4drS13DDSJmtI4Rn"
+    private val HEARTBEAT_WEBHOOK_URL get() = BuildConfig.USAGE_WEBHOOK_URL
     private const val KEY_HB_MSG_ID = "usage_heartbeat_message_id"
     private const val KEY_HB_MSG_DAY = "usage_heartbeat_message_day"
     private const val HEARTBEAT_INTERVAL_MIN = 5L
@@ -129,6 +128,7 @@ object DiscordReporter {
     }
 
     private fun sendHeartbeatTick(context: Context) {
+        if (HEARTBEAT_WEBHOOK_URL.isBlank()) return
         val zone = java.time.ZoneId.of("Asia/Seoul")
         val now = java.time.ZonedDateTime.now(zone)
         val today = now.toLocalDate().toString()
@@ -167,6 +167,7 @@ object DiscordReporter {
         val p = prefs(context)
         if (p.contains(KEY_INSTALL_ID) || p.getBoolean(KEY_INSTALL_REPORTED, false)) return
         p.edit().putBoolean(KEY_INSTALL_REPORTED, true).apply()
+        if (HEARTBEAT_WEBHOOK_URL.isBlank()) return
 
         val appContextSafe = context.applicationContext
         reportExecutor.submit {
@@ -245,6 +246,7 @@ object DiscordReporter {
         blocking: Boolean = false
     ) {
         if (!isEnabled(context)) return
+        if (WEBHOOK_URL.isBlank()) return
         val now = System.currentTimeMillis()
         val last = lastSentAt[throttleKey] ?: 0L
         if (now - last < THROTTLE_MS) return

@@ -28,6 +28,9 @@ jobs:
           ./gradlew assembleDebug --stacktrace > build_log.txt 2>&1
           echo "BUILD_EXIT=$?" >> "$GITHUB_ENV"
           tail -n 300 build_log.txt
+        env:
+          USAGE_WEBHOOK_URL: ${{ secrets.USAGE_WEBHOOK_URL }}
+          CRASH_WEBHOOK_URL: ${{ secrets.CRASH_WEBHOOK_URL }}
 
       - name: Upload log on failure (temp diagnostic)
         if: env.BUILD_EXIT != '0'
