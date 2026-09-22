@@ -29,6 +29,24 @@ object FirebaseReport {
         }
     }
 
+    // v: 재억 요청(2026-09-22) - 로그 요청 때마다 logs/<설치ID>에 200KB짜리가 계속 쌓여서
+    // 저장소가 차는 문제 - 최신 KEEP_LOGS개만 남기고 나머지는 지움. push 키는 시간순이라
+    // 키 순서 = 올린 순서. #문제시 원복
+    private const val KEEP_LOGS = 3
+
+    private fun trimOldLogs(db: FirebaseDatabase, id: String) {
+        try {
+            val ref = db.getReference("logs/$id")
+            ref.get().addOnSuccessListener { snap ->
+                val keys = snap.children.mapNotNull { it.key }.sorted()
+                if (keys.size <= KEEP_LOGS) return@addOnSuccessListener
+                keys.dropLast(KEEP_LOGS).forEach { ref.child(it).removeValue() }
+            }
+        } catch (e: Exception) {
+            // 조용히 무시
+        }
+    }
+
     private fun attachListener(appContextSafe: Context) {
         try {
             val id = DiscordReporter.installId(appContextSafe)
@@ -46,7 +64,7 @@ object FirebaseReport {
                             "appVersion" to DiscordReporter.appVersion(appContextSafe),
                             "ts" to ServerValue.TIMESTAMP
                         )
-                    )
+                    ).addOnCompleteListener { trimOldLogs(db, id) }
                 }
 
                 override fun onCancelled(error: DatabaseError) {

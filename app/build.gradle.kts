@@ -13,8 +13,8 @@ android {
         applicationId = "com.tmap.nda"
         minSdk = 26
         targetSdk = 36
-        versionCode = 522
-        versionName = "19.4.12"
+        versionCode = 523
+        versionName = "19.4.13"
 
         // v: 재억 요청(2026-09-22) - 디스코드 웹훅 주소가 코드에 그대로 박혀 공개 저장소에
         // 커밋되면 스팸봇이 깃허브를 긁어서 찾아내 도배 → 디스코드가 웹훅을 자동 삭제하는
