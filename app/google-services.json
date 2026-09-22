@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "997132590266",
+    "firebase_url": "https://tmapnda-a46ae-default-rtdb.firebaseio.com",
+    "project_id": "tmapnda-a46ae",
+    "storage_bucket": "tmapnda-a46ae.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:997132590266:android:336982d0ce6ee4aec8f683",
+        "android_client_info": {
+          "package_name": "com.tmap.nda"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCimpio84X7DjtgSf3V5AiQDfLEzO4sMSM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

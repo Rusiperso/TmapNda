@@ -174,6 +174,7 @@ class MainActivity : AppCompatActivity() {
         // 익명 신호를 디스코드로 보냄(자동 오류 보고 꺼둔 사람은 안 감). #문제시 원복
         DiscordReporter.reportInstallIfNew(applicationContext)
         DiscordReporter.reportHeartbeatIfDue(applicationContext)
+        FirebasePresence.start(applicationContext)
 
         // 이전엔 앱이 강제종료돼도 원인이 로그파일 어디에도 안 남아서(NavLogger는 우리가 명시적으로
         // 호출한 것만 기록함) 사후분석이 불가능했음. 전역 크래시 핸들러를 걸어서 마지막 순간에

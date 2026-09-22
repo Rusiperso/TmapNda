@@ -182,7 +182,7 @@ object DiscordReporter {
         }
     }
 
-    private fun installId(context: Context): String {
+    fun installId(context: Context): String {
         val p = prefs(context)
         p.getString(KEY_INSTALL_ID, null)?.let { return it }
         val id = UUID.randomUUID().toString().take(8)
@@ -190,7 +190,7 @@ object DiscordReporter {
         return id
     }
 
-    private fun appVersion(context: Context): String = try {
+    fun appVersion(context: Context): String = try {
         context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
     } catch (e: Exception) { "?" }
 

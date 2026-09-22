@@ -3,6 +3,7 @@ plugins {
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
   id("com.tmap.nda.audiofocus")
+  id("com.google.gms.google-services")
 }
 
 android {
@@ -12,8 +13,8 @@ android {
         applicationId = "com.tmap.nda"
         minSdk = 26
         targetSdk = 36
-        versionCode = 514
-        versionName = "19.4.04"
+        versionCode = 515
+        versionName = "19.4.05"
 
         // v: 재억 요청(2026-09-22) - 디스코드 웹훅 주소가 코드에 그대로 박혀 공개 저장소에
         // 커밋되면 스팸봇이 깃허브를 긁어서 찾아내 도배 → 디스코드가 웹훅을 자동 삭제하는
@@ -70,6 +71,13 @@ kotlin {
 }
 
 dependencies {
+  // v: 재억 요청(2026-09-22) - 디스코드 웹훅이 서버 관리 권한 탈취로 계속 삭제되는 문제 때문에,
+  // "지금 켜져 있는 사람"만이라도 파이어베이스로 옮김. Realtime Database의 onDisconnect() 기능을
+  // 쓰면 연결이 끊기는 순간 서버가 알아서 오프라인 처리를 해줘서, 예전처럼 "5분마다 신호 보내고
+  // 15분 안이면 켜진 걸로 침" 하는 추측이 필요 없어짐. #문제시 원복
+  implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+  implementation("com.google.firebase:firebase-database")
+
   val composeBom = platform(libs.androidx.compose.bom)
   implementation(composeBom)
   androidTestImplementation(composeBom)
