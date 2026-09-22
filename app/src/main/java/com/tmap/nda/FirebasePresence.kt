@@ -6,7 +6,9 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.MutableData
 import com.google.firebase.database.ServerValue
+import com.google.firebase.database.Transaction
 import com.google.firebase.database.ValueEventListener
 
 /**
@@ -64,6 +66,19 @@ object FirebasePresence {
                         mapOf("online" to false, "lastSeen" to ServerValue.TIMESTAMP)
                     )
                     deviceRef.updateChildren(info)
+                    // v: 재억 요청(2026-09-22) - "처음 신호"가 항상 "마지막 신호"와 같게 나오는 문제 수정.
+                    // lastSeen은 매번 덮어쓰지만 firstSeen은 비어있을 때 딱 한 번만 채움(트랜잭션으로
+                    // 이미 값이 있으면 그대로 둠). ServerValue.TIMESTAMP는 트랜잭션 안에서 제대로 안 풀려서
+                    // 클라이언트 시각을 씀 - 몇 초 오차는 "처음 신호" 용도엔 문제 없음. #문제시 원복
+                    deviceRef.child("firstSeen").runTransaction(object : Transaction.Handler {
+                        override fun doTransaction(currentData: MutableData): Transaction.Result {
+                            if (currentData.value == null) currentData.value = System.currentTimeMillis()
+                            return Transaction.success(currentData)
+                        }
+                        override fun onComplete(error: DatabaseError?, committed: Boolean, snapshot: DataSnapshot?) {
+                            // 조용히 무시
+                        }
+                    })
                 }
 
                 override fun onCancelled(error: DatabaseError) {
