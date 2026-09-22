@@ -4286,6 +4286,50 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     private var lastPinchMoveLogMs = 0L
 
+    // v: 재억 제보(2026-09-22, [핀치진단] 로그 분석) - 엔미러 환경에서 두 손가락 터치가 SDK까지
+    // 오기 전에 0.3~1초 간격으로 "눌림→2개로 늘어남→살짝 움직임→1개로 줄어듦→뗌"을 반복하며
+    // 계속 끊김. 카카오 SDK 내장 핀치 처리(useZoomGesture)는 진짜 제스처가 끊기지 않고 쭉
+    // 이어진다고 가정하고 만들어져 있어서, 매번 새 제스처로 리셋되며 줌이 "조금씩 조금씩"만
+    // 반영됨. SDK 내장 핀치는 꺼두고(ensurePinchZoomBridge에서 useZoomGesture=false), 대신
+    // 우리가 직접 ScaleGestureDetector로 배율을 추적하면서, 손가락이 짧게(400ms 이내) 다시
+    // 잡히면 새 제스처로 리셋하지 않고 이전 배율에 이어붙여서 zoomTo()를 직접 호출함. #문제시 원복
+    private var pinchZoomBase = 0f
+    private var pinchZoomLastEndAt = 0L
+    private val PINCH_BRIDGE_MS = 400L
+    private val pinchScaleDetector by lazy {
+        android.view.ScaleGestureDetector(this, object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScaleBegin(detector: android.view.ScaleGestureDetector): Boolean {
+                val mv = runCatching { naviView.mapComponent.mapView }.getOrNull()
+                val bridging = System.currentTimeMillis() - pinchZoomLastEndAt <= PINCH_BRIDGE_MS
+                if (!bridging || pinchZoomBase == 0f) {
+                    pinchZoomBase = mv?.zoom ?: pinchZoomBase
+                }
+                return true
+            }
+
+            override fun onScale(detector: android.view.ScaleGestureDetector): Boolean {
+                val mv = runCatching { naviView.mapComponent.mapView }.getOrNull() ?: return true
+                if (pinchZoomBase == 0f) pinchZoomBase = mv.zoom
+                pinchZoomBase = (pinchZoomBase * detector.scaleFactor).coerceIn(1f, 20f)
+                runCatching { mv.moveCamera(KNMapCameraUpdate().zoomTo(pinchZoomBase), false, false) }
+                return true
+            }
+
+            override fun onScaleEnd(detector: android.view.ScaleGestureDetector) {
+                pinchZoomLastEndAt = System.currentTimeMillis()
+            }
+        })
+    }
+
+    private var pinchZoomGestureDisabled = false
+    private fun ensurePinchZoomBridge() {
+        if (pinchZoomGestureDisabled) return
+        val mv = runCatching { naviView.mapComponent.mapView }.getOrNull() ?: return
+        mv.useZoomGesture = false
+        pinchZoomGestureDisabled = true
+        NavLogger.d(this, "[핀치줌브릿지] SDK 내장 핀치 끄고 자체 처리로 전환")
+    }
+
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
         // v: 재억 제보(2026-09-13, 크래시 로그) - 화면 회전으로 액티비티가 재구성되는
         // 타이밍에 이전 인스턴스로 터치 이벤트가 마저 전달되면서 binding이 아직
@@ -4299,6 +4343,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         } else if (ev.pointerCount >= 2 && ev.eventTime - lastPinchMoveLogMs > 500) {
             lastPinchMoveLogMs = ev.eventTime
             NavLogger.d(this, "[핀치진단] MOVE 손가락수=${ev.pointerCount}")
+        }
+        ensurePinchZoomBridge()
+        if (pinchZoomGestureDisabled) {
+            pinchScaleDetector.onTouchEvent(ev)
+            if (ev.pointerCount >= 2 || pinchScaleDetector.isInProgress) return true
         }
         if (topBarDrag?.dispatch(ev) { super@KakaoNaviActivity.dispatchTouchEvent(it) } == true) return true
         if (ev.action == android.view.MotionEvent.ACTION_DOWN) {
