@@ -4322,9 +4322,21 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     }
 
     private var pinchZoomGestureDisabled = false
+    private var lastPinchBridgeFailLogMs = 0L
     private fun ensurePinchZoomBridge() {
         if (pinchZoomGestureDisabled) return
-        val mv = runCatching { naviView.mapComponent.mapView }.getOrNull() ?: return
+        val result = runCatching { naviView.mapComponent.mapView }
+        val mv = result.getOrNull()
+        if (mv == null) {
+            // v: 재억 제보(2026-09-22) - 이전 버전에서 이 지점이 왜 실패하는지 로그가 없어서
+            // 원인 확정이 안 됐음. 1초에 한 번만 남겨서 도배 방지. #문제시 원복
+            val now = System.currentTimeMillis()
+            if (now - lastPinchBridgeFailLogMs > 1000) {
+                lastPinchBridgeFailLogMs = now
+                NavLogger.d(this, "[핀치줌브릿지] 실패: naviView초기화=${::naviView.isInitialized} 예외=${result.exceptionOrNull()?.javaClass?.simpleName}:${result.exceptionOrNull()?.message} mapView=null")
+            }
+            return
+        }
         mv.useZoomGesture = false
         pinchZoomGestureDisabled = true
         NavLogger.d(this, "[핀치줌브릿지] SDK 내장 핀치 끄고 자체 처리로 전환")
