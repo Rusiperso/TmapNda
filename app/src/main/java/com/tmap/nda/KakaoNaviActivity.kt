@@ -4318,6 +4318,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     pinchLastSpan = 0f
                     pinchZoomLastEndAt = System.currentTimeMillis()
                     NavLogger.d(this, "[핀치줌브릿지] 종료 최종zoom=$pinchZoomBase")
+                    startPinchZoomHold(pinchZoomBase)
                 }
             }
         }
@@ -4342,6 +4343,35 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         mv.useZoomGesture = false
         pinchZoomGestureDisabled = true
         NavLogger.d(this, "[핀치줌브릿지] SDK 내장 핀치 끄고 자체 처리로 전환")
+    }
+
+    // v: 재억 제보(2026-09-22, 4차, 영상) - 손을 떼자마자 지도가 원래 확대 상태로 즉시
+    // 되돌아감. 원인은 카카오 SDK가 운전 중 위치가 갱신될 때마다(1초에 한 번꼴) 카메라
+    // zoom을 자체적으로 다시 계산해서 덮어쓰기 때문 - 우리가 zoomTo()로 바꿔놔도 다음 위치
+    // 갱신 틱에서 SDK가 그냥 지워버림. SDK에 "잠깐만 자동 줌 건들지 마" 같은 API가 없어서,
+    // 손을 뗀 뒤 일정 시간 동안 우리가 짧은 간격으로 계속 같은 zoom을 다시 밀어넣어(SDK가
+    // 덮어써도 바로 다음 틱에 우리가 또 덮어씀) 사용자 눈에는 몇 초간 유지되는 것처럼 보이게
+    // 함. 그 시간이 지나면 손을 놓고, SDK가 원래 하던 자동 추적으로 돌아감. #문제시 원복
+    private val pinchZoomHoldHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var pinchZoomHoldRunnable: Runnable? = null
+    private val PINCH_HOLD_MS = 10000L
+    private val PINCH_HOLD_INTERVAL_MS = 150L
+
+    private fun startPinchZoomHold(zoom: Float) {
+        pinchZoomHoldRunnable?.let { pinchZoomHoldHandler.removeCallbacks(it) }
+        val until = System.currentTimeMillis() + PINCH_HOLD_MS
+        val r = object : Runnable {
+            override fun run() {
+                if (System.currentTimeMillis() >= until) { pinchZoomHoldRunnable = null; return }
+                // 그 사이에 새 핀치가 시작됐으면(pinchZoomLastEndAt이 갱신 안 되고 base만 바뀜) 멈춤
+                if (pinchLastSpan != 0f) { pinchZoomHoldRunnable = null; return }
+                val mv = runCatching { naviView.mapComponent.mapView }.getOrNull()
+                if (mv != null) runCatching { mv.moveCamera(KNMapCameraUpdate().zoomTo(zoom), false, false) }
+                pinchZoomHoldHandler.postDelayed(this, PINCH_HOLD_INTERVAL_MS)
+            }
+        }
+        pinchZoomHoldRunnable = r
+        pinchZoomHoldHandler.post(r)
     }
 
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
