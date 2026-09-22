@@ -4262,15 +4262,18 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private var lastPinchMoveLogMs = 0L
 
     // v: 재억 제보(2026-09-22, [핀치진단] 로그 분석) - 엔미러 환경에서 두 손가락 터치가 SDK까지
-    // 오기 전에 0.3~1초 간격으로 "눌림→2개로 늘어남→살짝 움직임→1개로 줄어듦→뗌"을 반복하며
-    // 계속 끊김. 카카오 SDK 내장 핀치 처리(useZoomGesture)는 진짜 제스처가 끊기지 않고 쭉
-    // 이어진다고 가정하고 만들어져 있어서, 매번 새 제스처로 리셋되며 줌이 "조금씩 조금씩"만
-    // 반영됨. SDK 내장 핀치는 꺼두고(ensurePinchZoomBridge에서 useZoomGesture=false), 대신
-    // 우리가 직접 ScaleGestureDetector로 배율을 추적하면서, 손가락이 짧게(400ms 이내) 다시
-    // 잡히면 새 제스처로 리셋하지 않고 이전 배율에 이어붙여서 zoomTo()를 직접 호출함. #문제시 원복
+    // 오기 전에 계속 끊김("눌림→2개로 늘어남→살짝 움직임→1개로 줄어듦→뗌" 반복). 카카오 SDK
+    // 내장 핀치 처리(useZoomGesture)는 진짜 제스처가 끊기지 않고 쭉 이어진다고 가정하고 만들어져
+    // 있어서, 매번 새 제스처로 리셋되며 줌이 "조금씩 조금씩"만 반영됨. SDK 내장 핀치는 꺼두고
+    // (ensurePinchZoomBridge에서 useZoomGesture=false), 대신 우리가 직접 ScaleGestureDetector로
+    // 배율을 추적하면서 짧게 다시 잡히면 새 제스처로 리셋하지 않고 이전 배율에 이어붙임.
+    // v: 재억 제보(2026-09-22, 2차) - 400ms 기준으로 처음 만들었는데, 실제 로그(김반장님 기기)로
+    // 끊기는 간격을 재보니 대부분 0.5~1.6초였음(400ms보다 훨씬 김) - 그래서 다리 잇기가 거의
+    // 안 먹혀서 여전히 매번 리셋됐음. 기준을 1800ms로 크게 늘림. #문제시 원복
     private var pinchZoomBase = 0f
     private var pinchZoomLastEndAt = 0L
-    private val PINCH_BRIDGE_MS = 400L
+    private val PINCH_BRIDGE_MS = 1800L
+    private var lastPinchScaleLogMs = 0L
     private val pinchScaleDetector by lazy {
         android.view.ScaleGestureDetector(this, object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScaleBegin(detector: android.view.ScaleGestureDetector): Boolean {
@@ -4279,6 +4282,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 if (!bridging || pinchZoomBase == 0f) {
                     pinchZoomBase = mv?.zoom ?: pinchZoomBase
                 }
+                NavLogger.d(this@KakaoNaviActivity, "[핀치줌브릿지] 시작 이어붙임=$bridging base=$pinchZoomBase")
                 return true
             }
 
@@ -4287,11 +4291,17 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 if (pinchZoomBase == 0f) pinchZoomBase = mv.zoom
                 pinchZoomBase = (pinchZoomBase * detector.scaleFactor).coerceIn(1f, 20f)
                 runCatching { mv.moveCamera(KNMapCameraUpdate().zoomTo(pinchZoomBase), false, false) }
+                val now = System.currentTimeMillis()
+                if (now - lastPinchScaleLogMs > 300) {
+                    lastPinchScaleLogMs = now
+                    NavLogger.d(this@KakaoNaviActivity, "[핀치줌브릿지] scale=${detector.scaleFactor} 결과zoom=$pinchZoomBase")
+                }
                 return true
             }
 
             override fun onScaleEnd(detector: android.view.ScaleGestureDetector) {
                 pinchZoomLastEndAt = System.currentTimeMillis()
+                NavLogger.d(this@KakaoNaviActivity, "[핀치줌브릿지] 종료 최종zoom=$pinchZoomBase")
             }
         })
     }
