@@ -1195,11 +1195,6 @@ class VoiceAssistant(private val activity: Activity, private val host: Host) {
             speakReply("nMirror 안내 전달을 ${if (wantOn && !wantOff) "켰어요" else "껐어요"}")
             return true
         }
-        if ((wantOn || wantOff) && t.contains("오류보고")) {
-            DiscordReporter.setEnabled(activity, wantOn && !wantOff)
-            speakReply("자동 오류 보고를 ${if (wantOn && !wantOff) "켰어요" else "껐어요"}")
-            return true
-        }
         if ((wantOn || wantOff) && (t.contains("다른앱위") || t.contains("백그라운드안내") || t.contains("미니안내"))) {
             val on = wantOn && !wantOff
             activity.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).edit().putBoolean("background_overlay_enabled", on).apply()
