@@ -2,6 +2,7 @@ package com.tmap.nda
 
 import android.content.Context
 import android.os.Build
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
@@ -14,7 +15,12 @@ import com.google.firebase.database.ValueEventListener
  * 보내고 15분 안이면 켜진 걸로 침)과 달리, 여기서는 파이어베이스의 onDisconnect() 기능을 써서
  * 앱의 인터넷 연결이 끊기는 "그 순간" 서버가 알아서 오프라인으로 바꿔줌 - 클라이언트가 죽어도
  * (강제종료, 배터리 방전 등) 서버가 감지하므로 훨씬 정확함. 설치ID/닉네임은 기존 DiscordReporter가
- * 쓰던 것과 그대로 공유해서 두 시스템이 서로 다른 사용자로 잡히지 않게 함. #문제시 원복
+ * 쓰던 것과 그대로 공유해서 두 시스템이 서로 다른 사용자로 잡히지 않게 함.
+ *
+ * v: 재억 요청(2026-09-22) - devices 경로를 "누구나 읽기 가능"으로 열어두면, 공개 저장소에 같이
+ * 들어있는 google-services.json(파이어베이스 접속 정보)만 있으면 앱 없이도 전체 사용자 목록을
+ * 그냥 읽어갈 수 있어서, 익명 로그인(파이어베이스 계정 생성 없이 자동으로 "인증된 상태"만 얻는
+ * 기능)을 최소 문턱으로 걸어둠 - 파이어베이스 규칙도 "auth != null"로 같이 바꿔야 함(README/콘솔 안내 참고). #문제시 원복
  */
 object FirebasePresence {
     private const val ROOT = "devices"
@@ -22,6 +28,20 @@ object FirebasePresence {
     fun start(context: Context) {
         if (!DiscordReporter.isEnabled(context)) return
         val appContextSafe = context.applicationContext
+        try {
+            val auth = FirebaseAuth.getInstance()
+            fun afterAuth() = beginPresence(appContextSafe)
+            if (auth.currentUser != null) {
+                afterAuth()
+            } else {
+                auth.signInAnonymously().addOnSuccessListener { afterAuth() }
+            }
+        } catch (e: Exception) {
+            // 조용히 무시
+        }
+    }
+
+    private fun beginPresence(appContextSafe: Context) {
         try {
             val db = FirebaseDatabase.getInstance()
             val id = DiscordReporter.installId(appContextSafe)

@@ -13,8 +13,8 @@ android {
         applicationId = "com.tmap.nda"
         minSdk = 26
         targetSdk = 36
-        versionCode = 515
-        versionName = "19.4.05"
+        versionCode = 516
+        versionName = "19.4.06"
 
         // v: 재억 요청(2026-09-22) - 디스코드 웹훅 주소가 코드에 그대로 박혀 공개 저장소에
         // 커밋되면 스팸봇이 깃허브를 긁어서 찾아내 도배 → 디스코드가 웹훅을 자동 삭제하는
@@ -77,6 +77,7 @@ dependencies {
   // 15분 안이면 켜진 걸로 침" 하는 추측이 필요 없어짐. #문제시 원복
   implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
   implementation("com.google.firebase:firebase-database")
+  implementation("com.google.firebase:firebase-auth")
 
   val composeBom = platform(libs.androidx.compose.bom)
   implementation(composeBom)
