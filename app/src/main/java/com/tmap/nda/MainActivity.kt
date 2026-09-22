@@ -319,10 +319,6 @@ class MainActivity : AppCompatActivity() {
             com.tmap.nda.nmirror.NMirrorSender.setEnabled(this, isChecked)
         }
 
-        binding.cbAutoReport.isChecked = DiscordReporter.isEnabled(this)
-        binding.cbAutoReport.setOnCheckedChangeListener { _, isChecked ->
-            DiscordReporter.setEnabled(this, isChecked)
-        }
         binding.etNickname.setText(DiscordReporter.getNickname(this))
 
         binding.btnRestoreBackup.setOnClickListener { restoreBackupLauncher.launch("application/json") }

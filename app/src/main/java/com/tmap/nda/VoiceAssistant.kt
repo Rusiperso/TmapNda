@@ -393,11 +393,6 @@ class VoiceAssistant(private val activity: Activity, private val host: Host) {
             speakReply(if (ok) "안내를 종료할게요" else "지금 진행 중인 안내가 없어요")
             return true
         }
-        if (t.contains("로그전송") || t.contains("로그보내") || t.contains("로그공유")) {
-            val ok = clickById("btnShareLogTopBar")
-            speakReply(if (ok) "로그 전송 화면을 열었어요" else "로그 전송 버튼을 못 찾았어요")
-            return true
-        }
         if (t.contains("업데이트확인") || t.contains("업데이트해") || t.contains("업데이트있")) {
             val ok = clickById("btnCheckUpdate")
             speakReply(if (ok) "업데이트를 확인할게요" else "이 화면에서는 업데이트 확인을 못 해요")
@@ -660,7 +655,7 @@ class VoiceAssistant(private val activity: Activity, private val host: Host) {
                 val hints = ArrayList<String>()
                 favoriteEntries().forEach { (_, e) -> hints.add(e.name) }
                 hints.addAll(listOf("무료도로", "고속도로", "경유지", "위성지도", "교통정보", "미니 플레이어", "주야 모드",
-                    "안내 종료", "로그 전송", "내 차 위치", "근처", "맛집", "주유소", "충전소"))
+                    "안내 종료", "내 차 위치", "근처", "맛집", "주유소", "충전소"))
                 putStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_BIASING_STRINGS, hints)
             }
         }

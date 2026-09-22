@@ -233,23 +233,6 @@ class MapActivity : AppCompatActivity() {
 
     // 음성 검색 결과 수신용 런처. 안드로이드 표준 음성인식 액티비티(RecognizerIntent)를 위임 호출하는 방식이라
     // 별도의 RECORD_AUDIO 런타임 권한 요청 없이 동작함 (인식은 시스템 음성입력 앱이 수행).
-    // 로그 공유 화면(이메일 앱 등)에서 돌아왔을 때, 방금 보낸 로그 파일들을 삭제하기 위한 목록.
-    // ACTION_SEND_MULTIPLE은 "진짜 전송됨"까지는 확인 못 하고 "공유 화면에서 돌아옴"까지만 알 수 있어서
-    // v10.1: "전송된 로그가 삭제 안 되고 계속 쌓인다"(재억 재요청) - 이전에 "공유해도
-    // 안 지워지게" 바꿨던 걸 다시 원복. 공유 화면(이메일 앱 등)에서 앱으로 돌아오면
-    // 그 시점을 "보냈다"로 간주하고 삭제함. #문제시 원복
-    private val shareLogLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        // v11.8: ACTION_SEND는 안드로이드 구조상 "진짜 보내졌는지" 확인할 방법이 없어서,
-        // 실제로 잘 보내졌어도 대부분 "취소됐다"는 문구가 뜨는 부작용이 있었음(재억 지적) -
-        // 재억 요청대로 성공/취소 문구 자체를 안 띄우기로 함. 삭제 여부 판단(RESULT_OK일
-        // 때만 삭제)은 그대로 유지. #문제시 원복
-        if (result.resultCode == RESULT_OK) {
-            NavLogger.deleteAllLogFiles(this)
-        }
-    }
-
     private val voiceSearchLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -913,9 +896,6 @@ class MapActivity : AppCompatActivity() {
         binding.btnStopGuidance?.setOnClickListener {
             stopGuidance()
         }
-        binding.btnShareLogTopBar?.setOnClickListener {
-            shareNavLog()
-        }
         // v11.9: 집/회사를 상단바 고정 버튼으로 뺌(재억 요청) - 짧게 누르면 등록 안 됐을 땐
         // 검색해서 등록+바로 안내, 등록 됐으면 검색 없이 바로 안내. 길게 누르면 이미
         // 등록돼 있어도 무시하고 다시 검색해서 덮어씀. #문제시 원복
@@ -1059,24 +1039,6 @@ class MapActivity : AppCompatActivity() {
             .setNeutralButton("음성으로 검색") { _, _ -> startVoiceSearch() }
             .setNegativeButton("취소", null)
             .show()
-    }
-
-    // 로그 파일을 이메일(jaeeok.cho@icloud.com, choksa55@gmail.com 두 곳 동시)로 공유 -
-    // 회전되어 쌓여있던 로그까지 전부 한번에 보냄.
-    // 공유해도 삭제되지 않음(앱 종료시에만 전체 삭제).
-    private fun shareNavLog() {
-        val result = NavLogger.buildShareIntent(this)
-        if (result == null) {
-            Toast.makeText(this, "저장된 로그가 없어. 먼저 검색을 시도해봐.", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val (intent, paths) = result
-        val emailIntent = NavLogger.resolveEmailIntent(this, intent)
-        if (emailIntent == null) {
-            Toast.makeText(this, "이메일 앱이 없어. 이메일 앱을 설치하고 로그인한 뒤 다시 눌러줘.", Toast.LENGTH_LONG).show()
-            return
-        }
-        shareLogLauncher.launch(emailIntent)
     }
 
     // 1단계: SDK 안에 실제로 어떤 검색/경로 관련 메서드가 있는지 로그로 확인.

@@ -606,39 +606,6 @@
                     android:includeFontPadding="false"/>
             </LinearLayout>
 
-            <!-- v7.9: 로그전송을 더보기(≡) 메뉴 밖으로 빼서 상단바 고정 버튼으로 - 메뉴
-                 바로 왼쪽에 배치 (재억 요청). #문제시 원복 -->
-            <LinearLayout
-                android:id="@+id/btnShareLogTopBar"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:layout_marginEnd="6dp"
-                android:orientation="vertical"
-                android:gravity="center"
-                android:background="@drawable/shape_rounded_gray"
-                android:contentDescription="로그 전송"
-                android:tooltipText="로그 전송"
-                android:clickable="true"
-                android:focusable="true">
-                <ImageView
-                    android:layout_width="16dp"
-                    android:layout_height="16dp"
-                    android:src="@drawable/ic_mail"
-                    android:importantForAccessibility="no"/>
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="1dp"
-                    android:text="로그"
-                    android:textColor="#FFFFFF"
-                    android:textSize="8sp"
-                    android:shadowColor="#FF000000"
-                    android:shadowDx="0"
-                    android:shadowDy="0"
-                    android:shadowRadius="4.5"
-                    android:includeFontPadding="false"/>
-            </LinearLayout>
-
             <LinearLayout
                 android:id="@+id/btnMoreMenu"
                 android:layout_width="36dp"
