@@ -4295,6 +4295,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     val bridging = System.currentTimeMillis() - pinchZoomLastEndAt <= PINCH_BRIDGE_MS
                     if (!bridging || pinchZoomBase == 0f) pinchZoomBase = mv.zoom
                     pinchLastSpan = pinchSpan(ev)
+                    pinchEndGeneration++ // 재입력 감지 - 예약해둔 "유지 모드 시작"을 무효화
                     NavLogger.d(this, "[핀치줌브릿지] 시작 이어붙임=$bridging base=$pinchZoomBase 지도zoom=${mv.zoom}")
                 }
             }
@@ -4302,11 +4303,24 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 if (ev.pointerCount < 2 || pinchLastSpan < 1f) return
                 val span = pinchSpan(ev)
                 if (span < 1f) return
+                // v: 재억 제보(2026-09-23, 4차) - 완충장치 없이 두 손가락 거리를 매 이벤트마다 그대로
+                // 반영해서, 손 떨림 수준의 몇 픽셀짜리 미세한 움직임까지도 확대/축소 방향이 뒤집힌 걸로
+                // 잡아버림("줌인 할까 말까" 버벅임). 4픽셀 미만 변화는 무시(손 떨림으로 보고 그냥
+                // 넘어감 - pinchLastSpan도 안 바꿔서 다음 이벤트에서 다시 비교됨). #문제시 원복
+                if (kotlin.math.abs(span - pinchLastSpan) < 4f) return
                 val factor = span / pinchLastSpan
                 pinchLastSpan = span
                 if (pinchZoomBase == 0f) pinchZoomBase = mv.zoom
-                pinchZoomBase = (pinchZoomBase / factor).coerceIn(0.3f, 50f)
-                runCatching { mv.moveCamera(KNMapCameraUpdate().zoomTo(pinchZoomBase), false, false) }
+                // v: 재억 제보(2026-09-23, 6차) - 0.3까지 허용했는데, SDK가 그 근처 값은 받아주지
+                // 않는 듯 화면에 반영이 안 됐음(우리 변수만 줄어들고 실제 지도는 그대로). SDK 진짜
+                // 하한선을 정확히 특정하긴 어려워서(자동 재조정 때문에 측정이 흔들림), 실측으로
+                // 확실히 잘 되는 범위(0.4~1.4)보다 여유 있게 좁힘. #문제시 원복
+                pinchZoomBase = (pinchZoomBase / factor).coerceIn(0.5f, 20f)
+                // v: 재억 제보(2026-09-23, 5차) - zoomTo()만 부르고 tiltTo()를 안 불러서, SDK가
+                // "기울기 지정 안 했으니 0(수평, 위에서 내려다보는 평면)으로 리셋"해버림 - 핀치
+                // 몇 번 하고 나면 운전 중 비스듬한 3D 시점이 사라지고 평면 뷰로 바뀌어 있었음
+                // ("비율이 달라 보인다"의 정체). 지금 기울기 값을 같이 넣어서 안 지워지게 함. #문제시 원복
+                runCatching { mv.moveCamera(KNMapCameraUpdate().zoomTo(pinchZoomBase).tiltTo(mv.tilt), false, false) }
                 val now = System.currentTimeMillis()
                 if (now - lastPinchScaleLogMs > 300) {
                     lastPinchScaleLogMs = now
@@ -4317,12 +4331,24 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 if (ev.pointerCount == 2) {
                     pinchLastSpan = 0f
                     pinchZoomLastEndAt = System.currentTimeMillis()
-                    NavLogger.d(this, "[핀치줌브릿지] 종료 최종zoom=$pinchZoomBase")
-                    startPinchZoomHold(pinchZoomBase)
+                    NavLogger.d(this, "[핀치줌브릿지] 종료 최종zoom=$pinchZoomBase, ${PINCH_BRIDGE_MS}ms 안에 재입력 없으면 유지 모드 시작")
+                    // v: 재억 제보(2026-09-23, 3차) - 엔미러 환경에서 두 손가락이 계속 짧게 끊겼다
+                    // 재접촉하는데(이어붙이기로 원래 처리하던 상황), 손을 뗄 때마다 곧바로 "매 프레임
+                    // 유지 모드"가 켜져서 그 짧은 끊긴 순간마다 강하게 끼어들며 다음 재접촉과 충돌 -
+                    // "줌인 할까 말까" 버벅임으로 보였음. 진짜로 손을 뗀 게 맞는지(이어붙이기 시간 동안
+                    // 재입력이 없었는지) 확인한 뒤에만 유지 모드를 시작하도록 지연시킴. #문제시 원복
+                    val myGen = pinchEndGeneration
+                    val zoomAtEnd = pinchZoomBase
+                    pinchEndScheduler.postDelayed({
+                        if (myGen == pinchEndGeneration && pinchLastSpan == 0f) startPinchZoomHold(zoomAtEnd)
+                    }, PINCH_BRIDGE_MS)
                 }
             }
         }
     }
+
+    private val pinchEndScheduler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var pinchEndGeneration = 0
 
     private var pinchZoomGestureDisabled = false
     private var lastPinchBridgeFailLogMs = 0L
@@ -4352,26 +4378,39 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 손을 뗀 뒤 일정 시간 동안 우리가 짧은 간격으로 계속 같은 zoom을 다시 밀어넣어(SDK가
     // 덮어써도 바로 다음 틱에 우리가 또 덮어씀) 사용자 눈에는 몇 초간 유지되는 것처럼 보이게
     // 함. 그 시간이 지나면 손을 놓고, SDK가 원래 하던 자동 추적으로 돌아감. #문제시 원복
-    private val pinchZoomHoldHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private var pinchZoomHoldRunnable: Runnable? = null
     private val PINCH_HOLD_MS = 10000L
-    private val PINCH_HOLD_INTERVAL_MS = 150L
+
+    // v: 재억 제보(2026-09-23, 2차) - 0.15초 간격으로는 그 사이에 SDK가 자기 내부 애니메이션으로
+    // 줌을 슬금슬금 움직이고 있어서(우리가 부르는 함수를 거치지 않는 자체 루프), "우리가 고정 →
+    // SDK가 그 사이 이동 → 우리가 또 홱 되돌림"이 반복되며 줌인/줌아웃을 반복하는 톱니 떨림으로
+    // 보였음(재억 확인). 0.15초마다 대신 화면이 그려질 때마다(Choreographer, 1초에 ~60번) 계속
+    // 눌러줘서 SDK가 움직일 틈 자체를 거의 없앰. #문제시 원복
+    private var pinchZoomFrameCallback: android.view.Choreographer.FrameCallback? = null
 
     private fun startPinchZoomHold(zoom: Float) {
-        pinchZoomHoldRunnable?.let { pinchZoomHoldHandler.removeCallbacks(it) }
+        val choreographer = android.view.Choreographer.getInstance()
+        pinchZoomFrameCallback?.let { choreographer.removeFrameCallback(it) }
         val until = System.currentTimeMillis() + PINCH_HOLD_MS
-        val r = object : Runnable {
-            override fun run() {
-                if (System.currentTimeMillis() >= until) { pinchZoomHoldRunnable = null; return }
+        val cb = object : android.view.Choreographer.FrameCallback {
+            override fun doFrame(frameTimeNanos: Long) {
+                if (System.currentTimeMillis() >= until) { pinchZoomFrameCallback = null; return }
                 // 그 사이에 새 핀치가 시작됐으면(pinchZoomLastEndAt이 갱신 안 되고 base만 바뀜) 멈춤
-                if (pinchLastSpan != 0f) { pinchZoomHoldRunnable = null; return }
+                if (pinchLastSpan != 0f) { pinchZoomFrameCallback = null; return }
                 val mv = runCatching { naviView.mapComponent.mapView }.getOrNull()
-                if (mv != null) runCatching { mv.moveCamera(KNMapCameraUpdate().zoomTo(zoom), false, false) }
-                pinchZoomHoldHandler.postDelayed(this, PINCH_HOLD_INTERVAL_MS)
+                // v: 재억 제보(2026-09-23, 7차) - 값이 안 어긋났는데도 프레임마다(초당 60번) 계속
+                // 같은 값을 다시 쓰고 있어서, 그 반복 자체가 미세한 떨림을 만들었음(재억 확인). 매
+                // 프레임 확인은 하되(SDK가 몰래 바꾸면 바로 잡아야 하니까), 실제로 어긋났을 때만
+                // 다시 씀. #문제시 원복
+                if (mv != null && kotlin.math.abs(mv.zoom - zoom) > 0.005f) {
+                    // v: 재억 제보(2026-09-23, 5차) - 여기서도 zoomTo()만 부르면 기울기가 0으로
+                    // 리셋됨(위와 동일 원인). 기울기값도 같이 넣음. #문제시 원복
+                    runCatching { mv.moveCamera(KNMapCameraUpdate().zoomTo(zoom).tiltTo(mv.tilt), false, false) }
+                }
+                choreographer.postFrameCallback(this)
             }
         }
-        pinchZoomHoldRunnable = r
-        pinchZoomHoldHandler.post(r)
+        pinchZoomFrameCallback = cb
+        choreographer.postFrameCallback(cb)
     }
 
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {

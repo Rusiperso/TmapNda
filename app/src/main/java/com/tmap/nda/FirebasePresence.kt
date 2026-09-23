@@ -2,6 +2,8 @@ package com.tmap.nda
 
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -26,6 +28,12 @@ import com.google.firebase.database.ValueEventListener
  */
 object FirebasePresence {
     private const val ROOT = "devices"
+    // v: 재억 요청(2026-09-23) - lastSeen이 연결 맺어질 때 딱 한 번만 찍혀서, 연결이 오래 유지되면
+    // "마지막 신호"가 몇 시간 전에 멈춰 보이는 문제 - 연결돼 있는 동안은 이 주기로 계속 lastSeen을
+    // 갱신함(연결 끊기면 heartbeat도 같이 멈추고, onDisconnect가 마지막으로 한 번 더 찍어줌). #문제시 원복
+    private const val HEARTBEAT_MS = 5 * 60 * 1000L
+    private val heartbeatHandler = Handler(Looper.getMainLooper())
+    private var heartbeatRunnable: Runnable? = null
 
     fun start(context: Context) {
         if (!DiscordReporter.isEnabled(context)) return
@@ -53,6 +61,7 @@ object FirebasePresence {
             connectedRef.addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     val connected = snapshot.getValue(Boolean::class.java) ?: false
+                    heartbeatRunnable?.let { heartbeatHandler.removeCallbacks(it) }
                     if (!connected) return
                     val info = mapOf(
                         "nickname" to DiscordReporter.getNickname(appContextSafe).ifBlank { "(미입력)" },
@@ -79,6 +88,15 @@ object FirebasePresence {
                             // 조용히 무시
                         }
                     })
+
+                    val runnable = object : Runnable {
+                        override fun run() {
+                            deviceRef.child("lastSeen").setValue(ServerValue.TIMESTAMP)
+                            heartbeatHandler.postDelayed(this, HEARTBEAT_MS)
+                        }
+                    }
+                    heartbeatRunnable = runnable
+                    heartbeatHandler.postDelayed(runnable, HEARTBEAT_MS)
                 }
 
                 override fun onCancelled(error: DatabaseError) {
