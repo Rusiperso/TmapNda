@@ -534,6 +534,9 @@ class MapActivity : AppCompatActivity() {
             // v4.23: UdpSenderService 정지는 이제 여기(의도적 종료)에서만. #문제시 원복
             stopService(Intent(this, UdpSenderService::class.java))
             finishAffinity()
+            // v: 재억 제보(2026-09-23) - "앱 종료" 눌러도 프로세스가 백그라운드에 남아있어서
+            // 명시적으로 죽임(카카오 화면과 동일 조치). #문제시 원복
+            android.os.Process.killProcess(android.os.Process.myPid())
         }
 
         val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE

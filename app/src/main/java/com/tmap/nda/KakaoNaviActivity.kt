@@ -1683,8 +1683,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             // (카카오 화면 중 OS가 MapActivity만 강제로 destroy하는 경우에도 UDP 서비스가
             // 안 죽게 하려고), 카카오 화면의 "앱 종료"에서도 명시적으로 멈춰줘야
             // finishAffinity() 후에도 서비스가 고아 상태로 계속 도는 걸 방지함. #문제시 원복
+            // v: 재억 제보(2026-09-23) - "앱 종료"를 눌러도 백그라운드에 프로세스가 살아있음
+            // (finishAffinity()는 화면만 닫지 프로세스는 안 죽임). 명시적으로 프로세스를
+            // 죽여서 확실히 종료되게 함. 단, 알림 접근 권한이 켜져 있으면 그 서비스는 시스템이
+            // 자체적으로 다시 띄울 수 있음(설정에서 권한을 꺼야 완전히 막힘 - 앱 코드로는
+            // 제어 불가). #문제시 원복
             stopService(Intent(this, UdpSenderService::class.java))
             finishAffinity()
+            android.os.Process.killProcess(android.os.Process.myPid())
         }
         // v: 재억 요청(2026-09-20) - "UI 편집" 모드 삭제(Tmap 화면과 동일). 상단바를 꾹 눌러 끌어서 옮김. #문제시 원복
         binding.btnEditPanelPosition?.visibility = View.GONE
