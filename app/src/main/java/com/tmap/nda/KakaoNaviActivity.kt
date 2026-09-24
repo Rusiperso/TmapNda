@@ -4286,6 +4286,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 움직일 때마다 바로 반영함. 또 카카오 zoom 값은 "화면 1픽셀당 거리"라 클수록 멀리 보이는데
     // 배율을 곱하고 있어서 벌리면 오히려 축소되던 방향 반대 버그도 같이 고침(나누기로). #문제시 원복
     private var pinchLastSpan = 0f
+    // v: 재억 지시(2026-09-24, 재적용) - MOVE마다 "직전 값" 대비로 배율을 계산해서 나누기를
+    // 반복 적용하다 보니, 이벤트가 짧은 시간에 몰리면 작은 오차가 나누기 위에 나누기로 겹겹이
+    // 쌓여 실제 손가락 움직임보다 훨씬 크게 zoom이 튀었음("울컥울컥", 로그 예시: 0.7초 만에
+    // zoom 1.4→12.58). 매번 "핀치 시작 시점"의 손가락 거리/zoom을 기준으로 새로 비율을 계산하게
+    // 바꿔서 오차가 누적되지 않게 함. #문제시 원복
+    private var pinchStartSpan = 0f
+    private var pinchStartZoom = 0f
     private fun pinchSpan(ev: android.view.MotionEvent): Float {
         if (ev.pointerCount < 2) return 0f
         val dx = ev.getX(0) - ev.getX(1)
@@ -4301,6 +4308,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     val bridging = System.currentTimeMillis() - pinchZoomLastEndAt <= PINCH_BRIDGE_MS
                     if (!bridging || pinchZoomBase == 0f) pinchZoomBase = mv.zoom
                     pinchLastSpan = pinchSpan(ev)
+                    pinchStartSpan = pinchLastSpan
+                    pinchStartZoom = pinchZoomBase
                     pinchEndGeneration++ // 재입력 감지 - 예약해둔 "유지 모드 시작"을 무효화
                     NavLogger.d(this, "[핀치줌브릿지] 시작 이어붙임=$bridging base=$pinchZoomBase 지도zoom=${mv.zoom}")
                 }
@@ -4314,14 +4323,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // 잡아버림("줌인 할까 말까" 버벅임). 4픽셀 미만 변화는 무시(손 떨림으로 보고 그냥
                 // 넘어감 - pinchLastSpan도 안 바꿔서 다음 이벤트에서 다시 비교됨). #문제시 원복
                 if (kotlin.math.abs(span - pinchLastSpan) < 4f) return
-                val factor = span / pinchLastSpan
                 pinchLastSpan = span
                 if (pinchZoomBase == 0f) pinchZoomBase = mv.zoom
+                if (pinchStartSpan < 1f) { pinchStartSpan = span; pinchStartZoom = pinchZoomBase }
+                val factor = span / pinchStartSpan
                 // v: 재억 제보(2026-09-23, 6차) - 0.3까지 허용했는데, SDK가 그 근처 값은 받아주지
                 // 않는 듯 화면에 반영이 안 됐음(우리 변수만 줄어들고 실제 지도는 그대로). SDK 진짜
                 // 하한선을 정확히 특정하긴 어려워서(자동 재조정 때문에 측정이 흔들림), 실측으로
                 // 확실히 잘 되는 범위(0.4~1.4)보다 여유 있게 좁힘. #문제시 원복
-                pinchZoomBase = (pinchZoomBase / factor).coerceIn(0.5f, 20f)
+                pinchZoomBase = (pinchStartZoom / factor).coerceIn(0.5f, 20f)
                 // v: 재억 제보(2026-09-23, 5차) - zoomTo()만 부르고 tiltTo()를 안 불러서, SDK가
                 // "기울기 지정 안 했으니 0(수평, 위에서 내려다보는 평면)으로 리셋"해버림 - 핀치
                 // 몇 번 하고 나면 운전 중 비스듬한 3D 시점이 사라지고 평면 뷰로 바뀌어 있었음

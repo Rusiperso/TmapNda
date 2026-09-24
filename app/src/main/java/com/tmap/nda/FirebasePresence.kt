@@ -34,6 +34,12 @@ object FirebasePresence {
     private const val HEARTBEAT_MS = 5 * 60 * 1000L
     private val heartbeatHandler = Handler(Looper.getMainLooper())
     private var heartbeatRunnable: Runnable? = null
+    // v: 재억 지시(2026-09-24) - "오늘 몇 시에 켜서 몇 시에 껐는지" 하루 단위로 보려고, 연결될 때마다
+    // sessions/{설치ID}/{날짜(KST)}에 새 줄을 만들어 start를 찍고, onDisconnect로 그 줄의 end를
+    // 예약해둠. 연결이 끊기면(강제종료·배터리방전·네트워크끊김 등) 그 줄은 그대로 두고 다음 연결부터는
+    // 새 줄로 시작(짧은 순단으로 잠깐 끊겼다 바로 재연결돼도 별도 줄로 취급 - 실제로 끊긴 게 맞음).
+    // 날짜 키가 KST 자정 기준이라 다음날로 넘어가면 자연히 새 날짜에 쌓임. #문제시 원복
+    private var currentSessionRef: com.google.firebase.database.DatabaseReference? = null
 
     fun start(context: Context) {
         if (!DiscordReporter.isEnabled(context)) return
@@ -62,7 +68,7 @@ object FirebasePresence {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     val connected = snapshot.getValue(Boolean::class.java) ?: false
                     heartbeatRunnable?.let { heartbeatHandler.removeCallbacks(it) }
-                    if (!connected) return
+                    if (!connected) { currentSessionRef = null; return }
                     val info = mapOf(
                         "nickname" to DiscordReporter.getNickname(appContextSafe).ifBlank { "(미입력)" },
                         "model" to "${Build.MANUFACTURER} ${Build.MODEL}",
@@ -75,6 +81,15 @@ object FirebasePresence {
                         mapOf("online" to false, "lastSeen" to ServerValue.TIMESTAMP)
                     )
                     deviceRef.updateChildren(info)
+                    if (currentSessionRef == null) {
+                        val today = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).apply {
+                            timeZone = java.util.TimeZone.getTimeZone("Asia/Seoul")
+                        }.format(java.util.Date())
+                        val sessionRef = db.getReference("sessions/$id/$today").push()
+                        sessionRef.child("start").setValue(ServerValue.TIMESTAMP)
+                        sessionRef.onDisconnect().updateChildren(mapOf("end" to ServerValue.TIMESTAMP))
+                        currentSessionRef = sessionRef
+                    }
                     // v: 재억 요청(2026-09-22) - "처음 신호"가 항상 "마지막 신호"와 같게 나오는 문제 수정.
                     // lastSeen은 매번 덮어쓰지만 firstSeen은 비어있을 때 딱 한 번만 채움(트랜잭션으로
                     // 이미 값이 있으면 그대로 둠). ServerValue.TIMESTAMP는 트랜잭션 안에서 제대로 안 풀려서
