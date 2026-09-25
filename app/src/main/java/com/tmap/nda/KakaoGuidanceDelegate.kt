@@ -12,6 +12,7 @@ import com.kakaomobility.knsdk.guidance.knguidance.routeguide.objects.KNMultiRou
 import com.kakaomobility.knsdk.guidance.knguidance.safetyguide.KNGuide_Safety
 import com.kakaomobility.knsdk.guidance.knguidance.safetyguide.objects.KNSafety
 import com.kakaomobility.knsdk.guidance.knguidance.voiceguide.KNGuide_Voice
+import com.kakaomobility.knsdk.guidance.knguidance.voiceguide.KNVoiceCode
 import com.kakaomobility.knsdk.trip.kntrip.knroute.KNRoute
 
 /**
@@ -1411,7 +1412,7 @@ class KakaoGuidanceDelegate(
         voiceGuide: KNGuide_Voice,
         newData: MutableList<ByteArray>
     ): Boolean {
-        val allow = isRouteGuideActive()
+        var allow = isRouteGuideActive()
         NavLogger.trace("voice", "[음성] shouldPlayVoiceGuide allow=$allow ${tmapMuteStateSnapshot()}")
         // v1.0.99: naviView.shouldPlayVoiceGuide()를 relay하면 naviView가 재생 여부를
         // 자체적으로 다시 판단해서(우리 kakaoMuted 값과 무관하게) 소리가 계속 나던 것으로
@@ -1419,6 +1420,24 @@ class KakaoGuidanceDelegate(
         // guidance에 직접 리턴하는 allow 값만으로 음소거를 제어하도록 relay 제거.
         // newData가 mutable list라, boolean 리턴만으로 재생이 안 막힐 경우를 대비해
         // 음소거 상태면 오디오 바이트 자체도 비워버림(이중 방어). #문제시 원복
+        // v: 재억 요청("최소 안내") - 카카오가 실제로 말하는 모든 음성을 종류(KNVoiceCode)로
+        // 정확히 구분해서 판단하는 진짜 공식 훅이 이거였음(항목별 제외 API는 카메라 종류만
+        // 걸렀지 "안내시작/종료/경로변경" 같은 잡다한 멘트는 못 걸렀음). 켜져 있으면 회전
+        // (Turn)/안전정보(Safety, SchoolZone, BusLaneGuide)/경고(Alert, Alram)만 남기고
+        // 나머지(시작/종료 멘트, 경로 재탐색 알림, 하이패스 등)는 막음. #문제시 원복
+        val minimalGuideEnabled = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            .getBoolean("kakao_minimal_guide_enabled", false)
+        if (allow && minimalGuideEnabled) {
+            val essential = setOf(
+                KNVoiceCode.KNVoiceCode_Turn,
+                KNVoiceCode.KNVoiceCode_Safety,
+                KNVoiceCode.KNVoiceCode_SchoolZone,
+                KNVoiceCode.KNVoiceCode_BusLaneGuide,
+                KNVoiceCode.KNVoiceCode_Alert,
+                KNVoiceCode.KNVoiceCode_Alram
+            )
+            allow = voiceGuide.voiceCode in essential
+        }
         if (!allow) {
             newData.clear()
         }

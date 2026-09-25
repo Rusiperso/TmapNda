@@ -699,12 +699,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // (KNGuidance.judgeOverSpeedAlert, initWithGuidance가 내부적으로 등록)가 화면에
         // 안 보이는 "그 카메라 하나에 박혀있는 카카오 자체 DB상의 제한속도"를 기준으로
         // 10%를 계산해서 생기는 불일치였음(classes.jar를 javap로 까서 확인 - 우리
-        // SdiDataRepository 값과는 전혀 무관). 우리가 손댈 수 없는 값이라 기준을 맞출
-        // 방법이 없으므로, 카카오 자체 경고음은 완전히 꺼버리고 화면에 보이는 값을 그대로
-        // 쓰는 우리 자체 경고음(checkOverSpeedWarning, 로그도 다 남음) 하나로 통일함.
-        // initWithGuidance 호출 직후에 다시 세팅해야 카카오가 지 걸로 덮어쓴 걸 우리 걸로
-        // 다시 덮어쓸 수 있음. #문제시 원복
-        guidance.judgeOverSpeedAlert = { _, _, _, _, _ -> false }
+        // SdiDataRepository 값과는 전혀 무관).
+        // v: 재억 재제보 - 위 방식(judgeOverSpeedAlert를 무조건 false)으로 껐더니 "000m 전방에
+        // 카메라가 있습니다" 카메라 음성 안내 자체가 통째로 같이 사라졌음(이 콜백이 카카오
+        // 자체 경고음뿐 아니라 카메라 음성 안내 재생 여부까지 같이 결정하는 것으로 보임).
+        // 재억이 실제로 거슬려했던 "300m/100m 전부터 띵띵" 반복음은 이 콜백이 아니라 우리
+        // 자체 로직(checkOverSpeedWarning, 카메라 하나당 300~500m/100m 두 번 반복)이었음 -
+        // 그건 onLocationChanged에서 이 화면(카카오)만 호출을 뺐음. 그래서 여기는 무조건
+        // true로 돌려서 카카오 음성 안내를 살림. initWithGuidance 호출 직후에 다시 세팅해야
+        // 카카오가 지 걸로 덮어쓴 걸 우리 걸로 다시 덮어쓸 수 있음. #문제시 원복
+        guidance.judgeOverSpeedAlert = { _, _, _, _, _ -> true }
 
         // v4.16: [볼륨API스캔]으로도 확인됐지만, 카카오모빌리티 공식 문서
         // (사용자 맞춤 설정하기)에 명시된 공개 API였음 - KNNaviView.sndVolume(Float,
@@ -4668,56 +4672,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 반복돼서(예: 매초 완전히 동일한 좌표) GPS_PROVIDER의 정확한 실시간 값과 번갈아
     // KNSDK로 들어가는 바람에 위치가 오락가락했음(사용자 - "평택인데 용인으로 잡힘").
     // GPS_PROVIDER만 반영하고, 정확도가 너무 나쁜 픽스(accuracy > 50m)는 무시함. #문제시 원복
-    private fun checkOverSpeedWarning(speedKph: Int) {
-        val pref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-        if (!pref.getBoolean("over_speed_warning_enabled", true)) return
-        // v: 버그수정(재억 제보 - "10% 이하로 달렸는데도 경고음 남") - 카카오 화면에서 지금까지
-        // Tmap 전용 값(SdiDataRepository.roadLimitSpeed)을 그대로 읽고 있었음. 카카오 화면은
-        // 이 값을 채워주는 코드가 없어서 Tmap 화면의 마지막 값(또는 기본값 80)이 실제 도로와
-        // 무관하게 고정된 채 "80의 110%"를 기준으로 잘못 판단하고 있었던 게 원인.
-        // kakaoRoadLimitSpeed(카카오 전용, 실시간 채워지는 값)로 교체하고, 아직 한 번도
-        // 못 채웠거나(조사 중인 리플렉션 게터가 안 맞음) 너무 오래됐으면 안전하게 판단을
-        // 건너뜀(잘못된 숫자로 울리느니 조용한 게 낫다는 판단). #문제시 원복
-        // v: 재억 제보(2026-09-20 로그) - 카카오 SDK 위치정보엔 제한속도 항목이 없어 카카오 값이 한 번도
-        // 안 채워졌고, 그래서 이 화면 경고음이 통째로 안 울렸음. 카카오 값이 없으면 화면에 표시되는
-        // 제한속도(roadLimitSpeed)를 기준으로 삼고, 여전히 110% 초과일 때만 울림. #문제시 원복
-        val limit = if (SdiDataRepository.isKakaoRoadLimitFresh()) SdiDataRepository.kakaoRoadLimitSpeed else SdiDataRepository.roadLimitSpeed
-        if (limit < 30 || speedKph <= 0) return
-        val now = System.currentTimeMillis()
-        // v: MapActivity와 동일한 진단 로그 - "65 주행 당시 limit이 실제로 몇이었는지"
-        // 대조용. v: 재억 요청(2026-09-03) - 3초마다 무조건 남기던 걸 제한속도가 실제로
-        // 바뀌는 순간만 남기도록 변경(MapActivity와 동일 처리). #문제시 원복
-        NavLogger.dIfChanged(this, "과속경고음진단", "[과속경고음진단] limit=$limit (limit*1.1=${limit * 1.1}) 이때속도=$speedKph")
-        // v: 재억 제보(2026-08-22) - 카메라 접근 중엔 300~500m에서 한 번, 100m 이내에서
-        // 또 한 번(8초 쿨다운마다 반복) 울리던 걸 "이 카메라 하나당 한 번"으로 제한.
-        // 카메라가 없을 때(그냥 과속 중)는 기존처럼 8초마다 반복 경고. MapActivity와 동일 로직. #문제시 원복
-        val nearCamera = SdiDataRepository.isNearCameraEvent()
-        if (!nearCamera) {
-            SdiDataRepository.cameraApproachWarned = false
-        }
-        val shouldWarn = if (nearCamera) {
-            speedKph > limit * 1.1 && !SdiDataRepository.cameraApproachWarned
-        } else {
-            speedKph > limit * 1.1 && now - SdiDataRepository.lastOverSpeedWarningTime > 8000L
-        }
-        if (shouldWarn) {
-            SdiDataRepository.lastOverSpeedWarningTime = now
-            if (nearCamera) SdiDataRepository.cameraApproachWarned = true
-// v: 재억 요청(2026-09-02) - 경고음이 왜 울렸는지는 그 직전 GPS·경로 상황을 봐야
-            // 알 수 있어서, 평소 메모리에만 쌓아둔 기록을 이 순간 같이 뱉음. #문제시 원복
-            NavLogger.flushTrace(this, "gps", "[과속경고음발생][카카오화면] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1}) nearCamera=$nearCamera")
-            try {
-                // v: 재억 지적(2026-08-22) - MapActivity와 동일한 문제(안내음량 설정이 안 먹힘). #문제시 원복
-                val volumePercent = VolumeHelper.guideVolumePercent(this).coerceIn(1, 100)
-                AudioStreamDiagnostics.log(this, "경고음발생[카카오화면]")
-                val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, volumePercent)
-                tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ tone.release() }, 500)
-            } catch (e: Exception) {
-                NavLogger.flushTrace(this, "voice", "속도경고음 재생 예외: ${e.message}")
-            }
-        }
-    }
+    // v: 재억 재제보 - 카카오 화면 자체 경고음(checkOverSpeedWarning, 300~500m/100m 반복
+    // "띵띵")은 judgeOverSpeedAlert를 다시 켜서 카카오 SDK가 직접 음성 안내를 하게 되면서
+    // 중복이라 지웠음. MapActivity(티맵 화면)에는 동명의 함수가 그대로 남아있음(카카오 SDK가
+    // 없는 화면이라 대체 수단이 없어서 유지). #문제시 원복
 
     // v14.4: GPS 위치가 들어올 때마다(제한 없이, 최대한 빠르게) 매번 새로 메서드를
     // 찾던 것을 한 번만 찾아서 저장해두고 재사용하도록 캐싱. MapActivity.kt의
@@ -4750,7 +4708,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
             val speedKph = (location.speed * 3.6).toInt()
             binding.tvCurrentSpeed?.text = speedKph.toString()
-            checkOverSpeedWarning(speedKph)
+            // v: 재억 재제보 - judgeOverSpeedAlert를 다시 켜서 카카오 자체 음성 안내(+ 카카오
+            // 자체 경고음)가 살아났으므로, 우리 자체 경고음(checkOverSpeedWarning, 300~500m/100m
+            // "띵띵" 반복 톤)을 카카오 화면에서 같이 울리면 중복이라 꺼둠(호출 자체를 뺌). 티맵
+            // 화면(MapActivity) 쪽 checkOverSpeedWarning은 그대로 유지(카카오 SDK가 없어 대체
+            // 수단이 없음). #문제시 원복
             if (location.hasBearing() && location.speed > 0.5f) { // v: 화면이 자주 재시작돼서 bearing이 쌓일 시간이 부족했음 - 조건 완화(1.0->0.5) #문제시 원복
                 lastKnownBearing = location.bearing
             }

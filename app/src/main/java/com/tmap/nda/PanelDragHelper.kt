@@ -566,6 +566,16 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 16, 40, 32)
         }
+        // v: 재억 요청("최소 안내") - 처음엔 항목별(과속카메라/신호위반 등) 토글 여러 개로
+        // 만들었는데, 사람들이 헷갈릴 것 같다는 지적으로 다 걷어내고 스위치 하나로 단순화.
+        // 카카오 음성을 종류(KNVoiceCode)별로 진짜 걸러내는 shouldPlayVoiceGuide에서 처리함
+        // (자세한 내용은 KakaoGuidanceDelegate.shouldPlayVoiceGuide 참고). #문제시 원복
+        val kakaoMinimalGuideCheckBox = android.widget.Switch(context).apply {
+            text = "최소 안내 (회전/카메라 등 핵심만 안내)"
+            isChecked = pref.getBoolean("kakao_minimal_guide_enabled", false)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 32)
+        }
         val disableMobileCamCheckBox = android.widget.Switch(context).apply {
             text = "이동식카메라 감속"
             // 저장값(mobile_cam_slowdown_disabled)은 "꺼졌는지 여부"라 의미가 반대이므로
@@ -909,7 +919,8 @@ object PanelDragHelper {
             // 상단바 이벤트 표시와 같은 그룹이 맞다는 지적으로 이동. #문제시 원복
             accidentAlertCheckBox,      // 사고/공사구간 알림 표시
             emergencyAlertCheckBox,     // 긴급차량 접근 알림 표시
-            avoidSchoolZoneCheckBox     // 스쿨존(어린이보호구역) 회피
+            avoidSchoolZoneCheckBox,    // 스쿨존(어린이보호구역) 회피
+            kakaoMinimalGuideCheckBox   // 최소 안내(카카오 음성 종류별 필터)
         ))
         addAccordionGroup("화면 표시", listOfNotNull(
             satelliteViewCheckBox,          // 티맵 위성지도 보기
@@ -1261,6 +1272,7 @@ object PanelDragHelper {
                     .putBoolean("tmap_traffic_info_enabled", trafficInfoCheckBox.isChecked)
                     .putBoolean("route_line_display_enabled", routeLineDisplayCheckBox.isChecked)
                     .putBoolean("kakao_only_sdi_when_guiding", kakaoOnlySdiCheckBox.isChecked)
+                    .putBoolean("kakao_minimal_guide_enabled", kakaoMinimalGuideCheckBox.isChecked)
                     .putBoolean(com.tmap.nda.miniplayer.MiniPlayerManager.PREF_KEY_ENABLED, showMiniPlayerCheckBox.isChecked)
                     .putInt("quickslot_favorite_count", favoriteCount)
                     .putString(DayNightHelper.KEY_MODE, dayNightMode)

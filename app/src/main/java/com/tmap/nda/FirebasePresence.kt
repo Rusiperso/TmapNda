@@ -40,6 +40,15 @@ object FirebasePresence {
     // 새 줄로 시작(짧은 순단으로 잠깐 끊겼다 바로 재연결돼도 별도 줄로 취급 - 실제로 끊긴 게 맞음).
     // 날짜 키가 KST 자정 기준이라 다음날로 넘어가면 자연히 새 날짜에 쌓임. #문제시 원복
     private var currentSessionRef: com.google.firebase.database.DatabaseReference? = null
+    // v: 재억 제보(보드 앱에서 "14:20 종료/14:20 시작"처럼 종료=시작인 줄이 계속 보임) - 파이어베이스
+    // .info/connected는 진짜 앱 종료가 아니라 화면꺼짐/절전모드/전파 순간 끊김 같은 사소한 이유로도
+    // 수시로 false->true를 반복함. 그런데 기존 코드는 끊길 때마다 currentSessionRef를 null로 지워서,
+    // 재연결될 때마다 무조건 새 줄(새 start)을 만들었음 - onDisconnect가 예약해둔 "end"가 거의 같은
+    // 시각에 찍히니 종료=시작으로 보였던 것. 끊긴 지 2분 이내에 다시 붙으면 새 줄을 만들지 않고
+    // 방금 끝난 줄을 그대로 이어씀(end를 지우고 start는 원래 값 유지). #문제시 원복
+    private var lastEndedSessionRef: com.google.firebase.database.DatabaseReference? = null
+    private var lastDisconnectAtMs: Long = 0L
+    private const val SESSION_RESUME_WINDOW_MS = 2 * 60 * 1000L
 
     fun start(context: Context) {
         if (!DiscordReporter.isEnabled(context)) return
@@ -68,7 +77,14 @@ object FirebasePresence {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     val connected = snapshot.getValue(Boolean::class.java) ?: false
                     heartbeatRunnable?.let { heartbeatHandler.removeCallbacks(it) }
-                    if (!connected) { currentSessionRef = null; return }
+                    if (!connected) {
+                        if (currentSessionRef != null) {
+                            lastEndedSessionRef = currentSessionRef
+                            lastDisconnectAtMs = System.currentTimeMillis()
+                        }
+                        currentSessionRef = null
+                        return
+                    }
                     val info = mapOf(
                         "nickname" to DiscordReporter.getNickname(appContextSafe).ifBlank { "(미입력)" },
                         "model" to "${Build.MANUFACTURER} ${Build.MODEL}",
@@ -82,13 +98,22 @@ object FirebasePresence {
                     )
                     deviceRef.updateChildren(info)
                     if (currentSessionRef == null) {
-                        val today = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).apply {
-                            timeZone = java.util.TimeZone.getTimeZone("Asia/Seoul")
-                        }.format(java.util.Date())
-                        val sessionRef = db.getReference("sessions/$id/$today").push()
-                        sessionRef.child("start").setValue(ServerValue.TIMESTAMP)
-                        sessionRef.onDisconnect().updateChildren(mapOf("end" to ServerValue.TIMESTAMP))
-                        currentSessionRef = sessionRef
+                        val resumable = lastEndedSessionRef
+                        if (resumable != null && System.currentTimeMillis() - lastDisconnectAtMs < SESSION_RESUME_WINDOW_MS) {
+                            // 잠깐 끊겼다 바로 붙은 것으로 보고, 새 줄 대신 방금 끝난 줄을 그대로 이어씀
+                            resumable.child("end").removeValue()
+                            resumable.onDisconnect().updateChildren(mapOf("end" to ServerValue.TIMESTAMP))
+                            currentSessionRef = resumable
+                        } else {
+                            val today = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).apply {
+                                timeZone = java.util.TimeZone.getTimeZone("Asia/Seoul")
+                            }.format(java.util.Date())
+                            val sessionRef = db.getReference("sessions/$id/$today").push()
+                            sessionRef.child("start").setValue(ServerValue.TIMESTAMP)
+                            sessionRef.onDisconnect().updateChildren(mapOf("end" to ServerValue.TIMESTAMP))
+                            currentSessionRef = sessionRef
+                        }
+                        lastEndedSessionRef = null
                     }
                     // v: 재억 요청(2026-09-22) - "처음 신호"가 항상 "마지막 신호"와 같게 나오는 문제 수정.
                     // lastSeen은 매번 덮어쓰지만 firstSeen은 비어있을 때 딱 한 번만 채움(트랜잭션으로
