@@ -156,7 +156,7 @@ object DiscordReporter {
             try {
                 if (!ensureAnonymousAuth()) return@Runnable
                 val logText = try { tailOfLogFile(NavLogger.activeLogFile(appContextSafe)) } catch (e: Exception) { "" }
-                val fields = commonFields(appContextSafe) + extraFields.associate { it.first to it.second.take(1000) }
+                val fields = commonFields(appContextSafe) + extraFields.associate { it.first to it.second.take(3000) }
                 val ref = FirebaseDatabase.getInstance().getReference("crashes").push()
                 Tasks.await(
                     ref.setValue(
@@ -188,11 +188,20 @@ object DiscordReporter {
         }
     }
 
+    /** 진짜 원인(마지막 "Caused by")과 그 아래 3줄을 맨 앞에 둠 - 앞부분만 잘라 보내면 원인이 잘려나감. */
+    private fun crashSummary(stackTrace: String): String {
+        val lines = stackTrace.lines()
+        val causeIdx = lines.indexOfLast { it.startsWith("Caused by:") }
+        if (causeIdx < 0) return stackTrace.take(3000)
+        val cause = lines.subList(causeIdx, minOf(lines.size, causeIdx + 4)).joinToString("\n")
+        return ("원인: $cause\n---\n$stackTrace").take(3000)
+    }
+
     /** 전역 크래시 핸들러에서 호출 - 프로세스 종료 전에 최대한 전송을 시도함(blocking). */
     fun reportCrash(context: Context, threadName: String, stackTrace: String) {
         send(
             context, throttleKey = "crash", title = "🔴 앱 크래시",
-            extraFields = listOf("스레드" to threadName, "에러" to stackTrace.take(500)),
+            extraFields = listOf("스레드" to threadName, "에러" to crashSummary(stackTrace)),
             blocking = true
         )
     }
