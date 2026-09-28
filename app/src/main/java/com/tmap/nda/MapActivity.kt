@@ -294,6 +294,8 @@ class MapActivity : AppCompatActivity() {
                 val prefs = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 binding.btnNearbyCategory?.visibility =
                     if (prefs.getBoolean("show_category_button", true)) View.VISIBLE else View.GONE
+                binding.btnFavorites?.visibility =
+                    if (prefs.getBoolean("show_favorites_button", true)) View.VISIBLE else View.GONE
                 binding.btnToggleTopPanel?.visibility =
                     if (prefs.getBoolean("show_toggle_top_panel_button", false)) View.VISIBLE else View.GONE
                 binding.flMiniPlayerContainer?.let { outer ->
@@ -1892,6 +1894,8 @@ class MapActivity : AppCompatActivity() {
             val showCategoryButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 .getBoolean("show_category_button", true)
             binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
+            binding.btnFavorites?.visibility = if (getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                    .getBoolean("show_favorites_button", true)) View.VISIBLE else View.GONE
             // v19.3.44: 재억 요청 - 상단바 표시/숨김 플로팅 버튼은 기본 안 보이고, 설정에서
             // 켰을 때만 보이게. 다른 설정들처럼 저장 즉시 반영. #문제시 원복
             val showTogglePanelBtn = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
@@ -4381,6 +4385,8 @@ class MapActivity : AppCompatActivity() {
             val showCategoryButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 .getBoolean("show_category_button", true)
             binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
+            binding.btnFavorites?.visibility = if (getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                    .getBoolean("show_favorites_button", true)) View.VISIBLE else View.GONE
             // v19.3.44: 재억 요청 - 상단바 표시/숨김 플로팅 버튼은 기본 안 보이고, 설정에서
             // 켰을 때만 보이게. 다른 설정들처럼 저장 즉시 반영. #문제시 원복
             val showTogglePanelBtn = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)

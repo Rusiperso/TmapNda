@@ -694,6 +694,12 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 32)
         }
+        val showFavoritesButtonCheckBox = android.widget.Switch(context).apply {
+            text = "즐겨찾기 버튼 표시"
+            isChecked = pref.getBoolean("show_favorites_button", true)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 32)
+        }
         // v: 신규기능(경유지 취소 버튼) - 재억 요청으로 켜고끄기 옵션 추가. 꺼두면 경유지가
         // 있어도 취소 버튼 자체가 안 뜸. #문제시 원복
         val showCancelWaypointButtonCheckBox = android.widget.Switch(context).apply {
@@ -937,6 +943,7 @@ object PanelDragHelper {
         addAccordionGroup("버튼 표시", listOf(
             showWaypointButtonCheckBox,      // 경유지 버튼 표시
             showCategoryButtonCheckBox,      // 카테고리 버튼 표시
+            showFavoritesButtonCheckBox,     // 즐겨찾기 버튼 표시
             showCancelWaypointButtonCheckBox // 경유지 취소 버튼 표시
         ))
 
@@ -1266,6 +1273,7 @@ object PanelDragHelper {
                     .putBoolean("black_screen_on_usb_connect", blackScreenOnUsbConnectCheckBox.isChecked)
                     .putBoolean("show_waypoint_button", showWaypointButtonCheckBox.isChecked)
                     .putBoolean("show_category_button", showCategoryButtonCheckBox.isChecked)
+                    .putBoolean("show_favorites_button", showFavoritesButtonCheckBox.isChecked)
                     .putBoolean("show_cancel_waypoint_button", showCancelWaypointButtonCheckBox.isChecked)
                     .putBoolean("show_toggle_top_panel_button", showToggleTopPanelButtonCheckBox.isChecked)
                     .putBoolean("tmap_satellite_view_enabled", satelliteViewCheckBox.isChecked)

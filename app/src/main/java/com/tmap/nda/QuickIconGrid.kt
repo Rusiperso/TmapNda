@@ -38,6 +38,9 @@ object QuickIconGrid {
         lateinit var group: List<Item>
         /** 칸 크기의 기준이 되는 뷰(콤마 연결상태 칩). null이면 100x50dp. */
         var sizeRef: View? = null
+        var dragging = false
+        var wPx = 0
+        var hPx = 0
     }
 
     private val registry = WeakHashMap<View, Item>()
@@ -59,6 +62,12 @@ object QuickIconGrid {
             if ((r - l) != (or - ol) || (b - t) != (ob - ot)) sizeRef.post { layoutAll(context, items) }
         }
         items.forEach { attachTouch(context, it) }
+        // 숨김(GONE)이었다가 다시 보일 때 뷰의 기준 위치(left/top)가 바뀌므로, 배치가 끝날 때마다 저장된 자리로 다시 맞춤
+        items.forEach { item ->
+            item.view.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+                if (!item.dragging && v.visibility == View.VISIBLE && v.width > 0 && item.wPx > 0) applyPosition(context, item)
+            }
+        }
         items.first().view.post { layoutAll(context, items) }
     }
 
@@ -119,6 +128,16 @@ object QuickIconGrid {
             }
         }
 
+        item.wPx = wPx
+        item.hPx = hPx
+        applyPosition(context, item)
+        PanelDragHelper.forceToFront(v)
+    }
+
+    private fun applyPosition(context: Context, item: Item) {
+        val v = item.view
+        val wPx = item.wPx
+        val hPx = item.hPx
         val p = prefs(context)
         val parent = v.parent as? View
         if (p.contains(keyX(context, item)) && p.contains(keyY(context, item))) {
@@ -135,7 +154,6 @@ object QuickIconGrid {
             v.x = dpPx(context, ORIGIN_X_DP) + (item.slot % 2) * (wPx + gap)
             v.y = dpPx(context, ORIGIN_Y_DP) + (item.slot / 2) * (hPx + gap)
         }
-        PanelDragHelper.forceToFront(v)
     }
 
     private fun attachTouch(context: Context, item: Item) {
@@ -145,13 +163,12 @@ object QuickIconGrid {
         var downY = 0f
         var dX = 0f
         var dY = 0f
-        var dragging = false
 
         v.setOnTouchListener { _, e ->
             when (e.action) {
                 MotionEvent.ACTION_DOWN -> {
                     PanelDragHelper.forceToFront(v)
-                    dragging = false
+                    item.dragging = false
                     downX = e.rawX
                     downY = e.rawY
                     dX = v.x - e.rawX
@@ -159,10 +176,10 @@ object QuickIconGrid {
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    if (!dragging &&
+                    if (!item.dragging &&
                         kotlin.math.hypot((e.rawX - downX).toDouble(), (e.rawY - downY).toDouble()) < slop
                     ) return@setOnTouchListener true
-                    dragging = true
+                    item.dragging = true
                     val parent = v.parent as? View
                     val maxX = ((parent?.width ?: 0) - v.width).coerceAtLeast(0).toFloat()
                     val maxY = ((parent?.height ?: 0) - v.height).coerceAtLeast(0).toFloat()
@@ -171,7 +188,7 @@ object QuickIconGrid {
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (dragging) {
+                    if (item.dragging) {
                         prefs(context).edit()
                             .putFloat(keyX(context, item), v.x)
                             .putFloat(keyY(context, item), v.y)
@@ -179,7 +196,7 @@ object QuickIconGrid {
                     } else if (e.action == MotionEvent.ACTION_UP) {
                         item.onTap()
                     }
-                    dragging = false
+                    item.dragging = false
                     true
                 }
                 else -> false

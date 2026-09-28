@@ -276,6 +276,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 val prefs = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 binding.btnAddWaypoint?.visibility = if (prefs.getBoolean("show_waypoint_button", true)) View.VISIBLE else View.GONE
                 binding.btnNearbyCategory?.visibility = if (prefs.getBoolean("show_category_button", true)) View.VISIBLE else View.GONE
+                binding.btnFavorites?.visibility = if (prefs.getBoolean("show_favorites_button", true)) View.VISIBLE else View.GONE
                 binding.btnToggleTopPanel?.visibility = if (prefs.getBoolean("show_toggle_top_panel_button", false)) View.VISIBLE else View.GONE
                 binding.flMiniPlayerContainer?.let { outer ->
                     com.tmap.nda.miniplayer.MiniPlayerManager.refresh(
@@ -511,6 +512,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         binding.btnAddWaypoint?.let { btn -> quickItems.add(QuickIconGrid.Item(btn, "btnAddWaypoint", 2) { btn.performClick() }) }
         binding.btnCancelWaypoint?.let { btn -> quickItems.add(QuickIconGrid.Item(btn, "btnCancelWaypoint", 3) { btn.performClick() }) }
         if (quickItems.isNotEmpty()) QuickIconGrid.setup(this, quickItems, binding.tvConnectionStatus?.parent?.parent as? View)
+        // 화면이 새로 만들어질 때도 저장된 버튼 표시 설정을 바로 적용(onResume이 먼저 지나가 건너뛴 경우 대비)
+        getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).let { p ->
+            binding.btnAddWaypoint?.visibility = if (p.getBoolean("show_waypoint_button", true)) View.VISIBLE else View.GONE
+            binding.btnNearbyCategory?.visibility = if (p.getBoolean("show_category_button", true)) View.VISIBLE else View.GONE
+            binding.btnFavorites?.visibility = if (p.getBoolean("show_favorites_button", true)) View.VISIBLE else View.GONE
+        }
         // v19.3.37: 재억 요청 - Tmap 화면과 동일한 상단바 표시/숨김 플로팅 버튼. 카카오
         // SDK 자체가 화면이 좁을수록 왼쪽 안내 박스를 겹쳐 그리는 문제 대응 - 눌러서
         // 상단바를 통째로 치우고 지도한테 세로 공간을 최대한 양보. v19.3.37b: "UI 편집"
@@ -1751,6 +1758,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     binding.btnCancelWaypoint?.post {
                         QuickIconGrid.restore(this, binding.btnCancelWaypoint!!)
                     }
+                binding.btnFavorites?.visibility = if (getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                        .getBoolean("show_favorites_button", true)) View.VISIBLE else View.GONE
                 }
             }
         }
@@ -4563,6 +4572,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         EmergencyAlertRepository.activeRenderer = AccidentAlertRepository.activeRenderer
         AccidentAlertRepository.notifyChanged()
         // v: 재억 제보(2026-08-30) - MapActivity와 대칭으로, 이 화면이 다시 보일 때마다
+            binding.btnFavorites?.visibility = if (getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                    .getBoolean("show_favorites_button", true)) View.VISIBLE else View.GONE
         // (예: 티맵 화면에서 잠깐 설정을 열었다 닫는 등으로 이 화면이 일시정지-재개될
         // 때) 미니플레이어를 이 화면 것으로 재부착. #문제시 원복
         if (::binding.isInitialized) {

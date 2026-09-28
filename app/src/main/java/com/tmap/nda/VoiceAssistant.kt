@@ -265,6 +265,7 @@ class VoiceAssistant(private val activity: Activity, private val host: Host) {
             VoiceSetting(listOf("화면블랙", "폰화면블랙", "블랙처리"), "black_screen_on_usb_connect", "차량 연결시 폰 화면 블랙"),
             VoiceSetting(listOf("경유지버튼"), "show_waypoint_button", "경유지 버튼"),
             VoiceSetting(listOf("카테고리버튼", "주변버튼"), "show_category_button", "카테고리 버튼"),
+            VoiceSetting(listOf("즐겨찾기버튼"), "show_favorites_button", "즐겨찾기 버튼"),
             VoiceSetting(listOf("경로선"), "route_line_display_enabled", "경로선 콤마 화면 표시"),
             VoiceSetting(listOf("차선안내", "차선오버레이"), "lane_overlay_tmap_enabled", "차선 안내 오버레이"),
             VoiceSetting(listOf("상단바버튼"), "show_toggle_top_panel_button", "상단바 표시/숨김 버튼")

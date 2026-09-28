@@ -115,7 +115,8 @@
                 android:orientation="horizontal"
                 android:gravity="bottom"
                 android:background="@drawable/bg_chip_glass"
-                android:paddingHorizontal="10dp"
+                android:paddingStart="3dp"
+                android:paddingEnd="10dp"
                 android:paddingVertical="4dp">
 
                 <TextView
