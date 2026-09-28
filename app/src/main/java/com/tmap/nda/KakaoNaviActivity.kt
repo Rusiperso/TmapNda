@@ -1738,6 +1738,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 NavLogger.d(this, "[버튼표시설정] 저장직후 적용: 경유지=$showWaypointButton 카테고리=$showCategoryButton 경유지취소=$showCancelWaypointButton")
                 binding.btnAddWaypoint?.visibility = if (showWaypointButton) View.VISIBLE else View.GONE
                 binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
+                binding.btnFavorites?.visibility = if (getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                        .getBoolean("show_favorites_button", true)) View.VISIBLE else View.GONE
                 binding.btnCancelWaypoint?.visibility = if (showCancelWaypointButton && activeWaypoints.isNotEmpty()) View.VISIBLE else View.GONE
                 // v19.3.44: 재억 요청 - 상단바 표시/숨김 플로팅 버튼은 기본 안 보이고, 설정에서
                 // 켰을 때만 보이게. 다른 설정들처럼 저장 즉시 반영. #문제시 원복
@@ -1758,8 +1760,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     binding.btnCancelWaypoint?.post {
                         QuickIconGrid.restore(this, binding.btnCancelWaypoint!!)
                     }
-                binding.btnFavorites?.visibility = if (getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-                        .getBoolean("show_favorites_button", true)) View.VISIBLE else View.GONE
                 }
             }
         }
@@ -4552,6 +4552,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 .getBoolean("show_cancel_waypoint_button", true)
             binding.btnAddWaypoint?.visibility = if (showWaypointButton) View.VISIBLE else View.GONE
             binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
+            binding.btnFavorites?.visibility = if (getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                    .getBoolean("show_favorites_button", true)) View.VISIBLE else View.GONE
             binding.btnCancelWaypoint?.visibility = if (showCancelWaypointButton && activeWaypoints.isNotEmpty()) View.VISIBLE else View.GONE
             if (showCancelWaypointButton && activeWaypoints.isNotEmpty()) {
                 binding.btnCancelWaypoint?.post {
@@ -4572,8 +4574,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         EmergencyAlertRepository.activeRenderer = AccidentAlertRepository.activeRenderer
         AccidentAlertRepository.notifyChanged()
         // v: 재억 제보(2026-08-30) - MapActivity와 대칭으로, 이 화면이 다시 보일 때마다
-            binding.btnFavorites?.visibility = if (getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-                    .getBoolean("show_favorites_button", true)) View.VISIBLE else View.GONE
         // (예: 티맵 화면에서 잠깐 설정을 열었다 닫는 등으로 이 화면이 일시정지-재개될
         // 때) 미니플레이어를 이 화면 것으로 재부착. #문제시 원복
         if (::binding.isInitialized) {
