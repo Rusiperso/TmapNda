@@ -317,4 +317,24 @@ object NavLogger {
             Log.e(TAG, "NavLogger clear error: ${e.message}")
         }
     }
+
+    // v: 재억 지시(2026-09-27) - "앱 종료" 버튼이 그 자리에서 로그를 통째로 지워버려서,
+    // 운전 끝나고 앱을 끄고 나면 보드앱 "로그 요청"으로도 그 주행 기록을 영영 못 뽑는
+    // 문제였음(deleteAllLogFiles를 종료 시점에 호출하던 걸 원복). 대신 앱을 새로 켤 때마다
+    // (MainActivity.onCreate) 이 함수를 불러서, 마지막으로 수정된 지 3일 지난 로그 파일만
+    // 지움 - 최근 며칠치 주행 기록은 남아있고, 저장공간은 계속 늘어나지 않게 함. #문제시 원복
+    private const val LOG_MAX_AGE_MS = 3L * 24 * 60 * 60 * 1000
+
+    fun deleteLogsOlderThan3Days(context: Context) {
+        try {
+            val cutoff = System.currentTimeMillis() - LOG_MAX_AGE_MS
+            var deleted = 0
+            for (file in allLogFiles(context)) {
+                if (file.lastModified() < cutoff && file.delete()) deleted++
+            }
+            if (deleted > 0) Log.i(TAG, "[로그정리] 3일 지난 로그 $deleted 개 삭제")
+        } catch (e: Exception) {
+            Log.e(TAG, "NavLogger deleteLogsOlderThan3Days error: ${e.message}")
+        }
+    }
 }

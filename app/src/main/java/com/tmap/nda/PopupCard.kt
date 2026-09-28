@@ -56,6 +56,11 @@ object PopupCard {
      * prefKey가 같은 카드끼리는 같은 자리를 공유(화면 방향별로 따로 저장). 저장값은 화면 안으로
      * 보정해서 복원하고, 자리잡기 전 깜빡임을 막으려고 그동안 투명하게 둠.
      */
+    /** 재억 요청(2026-09-28): 설정의 "팝업 위치 잠금"이 켜져 있으면 모든 팝업 카드가 안 끌림. #문제시 원복 */
+    const val LOCK_PREF_KEY = "lock_popups"
+    fun isLocked(context: Context): Boolean =
+        context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean(LOCK_PREF_KEY, false)
+
     fun attachDrag(context: Context, card: View, root: ViewGroup, prefKey: String, onTap: (() -> Unit)? = null) {
         val prefs = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         val suffix = if (context.resources.configuration.orientation ==
@@ -82,6 +87,7 @@ object PopupCard {
         var downRawX = 0f
         var downRawY = 0f
         var moved = false
+        var lockedMoved = false
         // 손가락이 살짝 떨린 정도로는 "끌었다"고 치지 않음(그것만으로 위치가 저장돼버리던 문제). #문제시 원복
         val slop = dp(context, 10)
         card.setOnTouchListener { _, event ->
@@ -92,9 +98,14 @@ object PopupCard {
                     downRawX = event.rawX
                     downRawY = event.rawY
                     moved = false
+                    lockedMoved = false
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
+                    if (isLocked(context)) {
+                        if (Math.hypot((event.rawX - downRawX).toDouble(), (event.rawY - downRawY).toDouble()) >= slop) lockedMoved = true
+                        return@setOnTouchListener true
+                    }
                     if (!moved && Math.hypot((event.rawX - downRawX).toDouble(), (event.rawY - downRawY).toDouble()) < slop) {
                         return@setOnTouchListener true
                     }
@@ -108,7 +119,7 @@ object PopupCard {
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (moved) {
                         prefs.edit().putFloat(keyX, card.x).putFloat(keyY, card.y).apply()
-                    } else if (event.action == MotionEvent.ACTION_UP) {
+                    } else if (event.action == MotionEvent.ACTION_UP && !lockedMoved) {
                         onTap?.invoke()
                     }
                     true

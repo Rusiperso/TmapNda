@@ -150,6 +150,7 @@ object NavOverlayManager {
         var downX = 0
         var downY = 0
         var moved = false
+        var lockedMoved = false
         view.setOnTouchListener { v, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -168,11 +169,17 @@ object NavOverlayManager {
                     downX = params.x
                     downY = params.y
                     moved = false
+                    lockedMoved = false
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (event.rawX - downRawX).toInt()
                     val dy = (event.rawY - downRawY).toInt()
+                    // 재억 요청(2026-09-28): 팝업 위치 잠금이 켜져 있으면 오버레이도 안 움직임. #문제시 원복
+                    if (PopupCard.isLocked(context)) {
+                        if (kotlin.math.abs(dx) > 4 || kotlin.math.abs(dy) > 4) lockedMoved = true
+                        return@setOnTouchListener true
+                    }
                     if (kotlin.math.abs(dx) > 4 || kotlin.math.abs(dy) > 4) moved = true
                     val dm = context.resources.displayMetrics
                     val maxX = (dm.widthPixels - v.width).coerceAtLeast(0)
@@ -188,7 +195,7 @@ object NavOverlayManager {
                             .putInt(PREF_KEY_POS_X, params.x)
                             .putInt(PREF_KEY_POS_Y, params.y)
                             .apply()
-                    } else {
+                    } else if (!lockedMoved) {
                         // v: 재억 제보(2026-08-27) - "오버레이 눌러도 반응이 없다" - 끌지 않고
                         // 그냥 터치만 뗀 경우(=탭)는 앱을 다시 앞으로 가져옴. #문제시 원복
                         reopenApp(context)

@@ -694,6 +694,28 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 32)
         }
+        // 재억 요청(2026-09-28): 상단바 ≡ 메뉴 버튼을 즐겨찾기/주변 같은 아이콘으로 떼어내 자유롭게
+        // 옮기는 옵션. 기본값 꺼짐(false). #문제시 원복
+        val detachMenuButtonCheckBox = android.widget.Switch(context).apply {
+            text = "메뉴버튼 분리"
+            isChecked = pref.getBoolean(MenuButtonDetach.PREF_KEY, false)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 32)
+        }
+        // 재억 요청(2026-09-28): 즐겨찾기/주변/경유지/취소/메뉴 아이콘을 실수로 옮기지 않게 잠금. 기본 꺼짐. #문제시 원복
+        val lockQuickIconsCheckBox = android.widget.Switch(context).apply {
+            text = "아이콘 위치 잠금"
+            isChecked = pref.getBoolean(QuickIconGrid.LOCK_PREF_KEY, false)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 32)
+        }
+        // 재억 요청(2026-09-28): 길안내/메뉴/설정 등 모든 팝업 카드와 오버레이 창을 실수로 옮기지 않게 잠금. 기본 꺼짐. #문제시 원복
+        val lockPopupsCheckBox = android.widget.Switch(context).apply {
+            text = "팝업 위치 잠금"
+            isChecked = pref.getBoolean(PopupCard.LOCK_PREF_KEY, false)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 32)
+        }
         val showFavoritesButtonCheckBox = android.widget.Switch(context).apply {
             text = "즐겨찾기 버튼 표시"
             isChecked = pref.getBoolean("show_favorites_button", true)
@@ -944,7 +966,10 @@ object PanelDragHelper {
             showWaypointButtonCheckBox,      // 경유지 버튼 표시
             showCategoryButtonCheckBox,      // 카테고리 버튼 표시
             showFavoritesButtonCheckBox,     // 즐겨찾기 버튼 표시
-            showCancelWaypointButtonCheckBox // 경유지 취소 버튼 표시
+            showCancelWaypointButtonCheckBox, // 경유지 취소 버튼 표시
+            detachMenuButtonCheckBox,        // 메뉴버튼 분리
+            lockQuickIconsCheckBox,          // 아이콘 위치 잠금
+            lockPopupsCheckBox               // 팝업 위치 잠금
         ))
 
         // v: 재억 요청(2026-08-26) - 즐겨찾기 개수/길안내 음량은 아코디언 안에 넣지 않고
@@ -1274,6 +1299,9 @@ object PanelDragHelper {
                     .putBoolean("show_waypoint_button", showWaypointButtonCheckBox.isChecked)
                     .putBoolean("show_category_button", showCategoryButtonCheckBox.isChecked)
                     .putBoolean("show_favorites_button", showFavoritesButtonCheckBox.isChecked)
+                    .putBoolean(MenuButtonDetach.PREF_KEY, detachMenuButtonCheckBox.isChecked)
+                    .putBoolean(QuickIconGrid.LOCK_PREF_KEY, lockQuickIconsCheckBox.isChecked)
+                    .putBoolean(PopupCard.LOCK_PREF_KEY, lockPopupsCheckBox.isChecked)
                     .putBoolean("show_cancel_waypoint_button", showCancelWaypointButtonCheckBox.isChecked)
                     .putBoolean("show_toggle_top_panel_button", showToggleTopPanelButtonCheckBox.isChecked)
                     .putBoolean("tmap_satellite_view_enabled", satelliteViewCheckBox.isChecked)

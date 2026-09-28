@@ -65,6 +65,44 @@ class KakaoGuidanceDelegate(
     private var lastProbeMulti: Any? = null
     private var lastLocationLogAt = 0L
 
+    // v: 재억 제보(2026-09-26) - 터널/지하주차장처럼 GPS가 끊기면 카카오 SDK가
+    // guidanceDidUpdateLocation 콜백 자체를 안 불러서, 그 안에서만 호출되는
+    // KakaoHudBridge.publish()도 같이 멈춰 클러스터/HUD 전송이 끊김(openpilot UDP 쪽엔
+    // 이미 있는 "폰 GPS로 대체" 백업이 이 경로엔 연결 안 돼 있었음). 콜백이 마지막으로
+    // 온 시각을 기록해두고, 안내 중인데 2초 넘게 안 오면 방금 갖고 있던 마지막 guidance/
+    // locationGuide/routeGuide로 그대로 다시 publish해서 전송이 끊기지 않게 함(위치 자체는
+    // 갱신 안 되지만 안내 문구/거리 등은 계속 나감 - GPS 복귀하면 정상 콜백이 다시 이어받음). #문제시 원복
+    private var lastGuidance: KNGuidance? = null
+    private var lastLocationGuide: KNGuide_Location? = null
+    private var lastRouteGuide: KNGuide_Route? = null
+    private var lastLocationCallbackAt = 0L
+    private val gpsWatchdogHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val gpsWatchdogInterval = 2000L
+    private val gpsWatchdogRunnable = object : Runnable {
+        override fun run() {
+            val guidance = lastGuidance
+            if (guidance != null && isRouteGuideActive() &&
+                System.currentTimeMillis() - lastLocationCallbackAt > gpsWatchdogInterval
+            ) {
+                try {
+                    NavLogger.dIfChanged(context, "GPS끊김워치독", "[GPS끊김워치독] ${System.currentTimeMillis() - lastLocationCallbackAt}ms째 콜백 없음 - 마지막 값으로 재전송")
+                    KakaoHudBridge.publish(context, guidance, lastLocationGuide, lastRouteGuide)
+                } catch (e: Exception) {
+                    NavLogger.e(context, "[GPS끊김워치독] 재전송 실패: ${e.message}")
+                }
+            }
+            gpsWatchdogHandler.postDelayed(this, gpsWatchdogInterval)
+        }
+    }
+
+    init {
+        gpsWatchdogHandler.postDelayed(gpsWatchdogRunnable, gpsWatchdogInterval)
+    }
+
+    fun stopGpsWatchdog() {
+        gpsWatchdogHandler.removeCallbacks(gpsWatchdogRunnable)
+    }
+
     // ===== GuideStateDelegate =====
     override fun guidanceGuideStarted(guidance: KNGuidance) {
         NavLogger.d(context, "[카카오안내] 시작됨")
@@ -86,6 +124,9 @@ class KakaoGuidanceDelegate(
         NavLogger.d(context, "[카카오안내] 종료됨(도착) - Tmap으로 복귀")
         com.tmap.nda.navdy.NavdySender.setNavigating(false)
         KakaoRouteDataRepository.reset()
+        lastGuidance = null
+        lastLocationGuide = null
+        lastRouteGuide = null
         naviView?.guidanceGuideEnded(guidance)
         onGuideEnded()
     }
@@ -614,6 +655,10 @@ class KakaoGuidanceDelegate(
         // 위 리플렉션 코드보다 뒤에 있어야 함 - 리플렉션이 잘못된 값을 넣었어도 여기서 교정됨.
         try {
             KakaoHudBridge.publish(context, guidance, locationGuide, guidance.routeGuide)
+            lastGuidance = guidance
+            lastLocationGuide = locationGuide
+            lastRouteGuide = guidance.routeGuide
+            lastLocationCallbackAt = System.currentTimeMillis()
         } catch (e: Exception) {
             NavLogger.e(context, "[HUD 브릿지] guidanceDidUpdateLocation 반영 실패: ${e.message}")
         }
@@ -1237,13 +1282,16 @@ class KakaoGuidanceDelegate(
 
     // v: 재억 요청(2026-09-15) - 사고/공사구간 자동 팝업용. 이미 받고 있던 사고 코드를
     // 화면 알림으로도 보여줌. #문제시 원복
+    // v: 재억 재제보(2026-09-27) - "진짜 교통사고로 인한 정체/지체"만 보고 싶은데
+    // 사고다발구간(IntentTrafficAccident, 상시 위험구간 안내- 실시간 사고 아님)/졸음운전
+    // 사고다발(DrowsyDrivingAccidentPos, 마찬가지로 상시 안내)까지 같이 떠서 헷갈렸음.
+    // 실제로 "지금 이 자리에 사고가 있다"는 위치 기반 코드만 남기고, 상시 위험구간
+    // 안내 성격의 두 코드는 이 팝업에서 제외. #문제시 원복
     private val ACCIDENT_CODE_TITLES = mapOf(
         "KNSafetyCode_TrafficAccidentPos" to "교통사고 주의",
         "KNSafetyCode_CarAccidentPos" to "차량사고 주의",
         "KNSafetyCode_PedestrianAccidentPos" to "보행자사고 주의",
-        "KNSafetyCode_ChildrenAccidentPos" to "어린이사고 주의",
-        "KNSafetyCode_DrowsyDrivingAccidentPos" to "졸음운전 사고다발",
-        "KNSafetyCode_IntentTrafficAccident" to "사고다발구간"
+        "KNSafetyCode_ChildrenAccidentPos" to "어린이사고 주의"
     )
 
     private fun updateAccidentAlert(safetyList: List<*>?) {
@@ -1279,6 +1327,14 @@ class KakaoGuidanceDelegate(
 
     // ===== SafetyGuideDelegate =====
     private var lastUnmappedSafetyCodeLogTime = 0L
+
+    // v: 재억 요청(2026-09-26) - "최소안내"가 음성 종류만 걸러서, 카카오가 같은 카메라
+    // 하나를 1km 전/500m 전/직전("잠시 후")처럼 단계별로 여러 번 안내하면 전부 그대로
+    // 통과됐음(essential 카테고리라서). safetyEventDistFromS(그 카메라의 경로상 위치,
+    // 카메라가 바뀌기 전까진 값이 그대로 유지됨)를 카메라 식별키로 써서, 같은 카메라는
+    // 최소안내 켜져 있을 때 최대 2번까지만 재생되게 제한. #문제시 원복
+    private var lastMinimalGuideCameraKey = Int.MIN_VALUE
+    private var minimalGuideCameraPlayCount = 0
     override fun guidanceDidUpdateSafetyGuide(guidance: KNGuidance, safetyGuide: KNGuide_Safety?) {
         try {
             val safetyList = safetyGuide?.let { findGetter(it, "getSafetiesOnGuide") } as? List<*>
@@ -1437,6 +1493,33 @@ class KakaoGuidanceDelegate(
                 KNVoiceCode.KNVoiceCode_Alram
             )
             allow = voiceGuide.voiceCode in essential
+            // v: 재억 재제보(2026-09-27) - "500m 전/잠시 후" 같은 카메라 단계별 안내가
+            // 아예 안 나온다는 지적. 2회 캡(아래)이 원인인지, 이 단계별 안내가 애초에
+            // essential 목록(voiceCode) 자체에 안 걸려서 여기서부터 막히는 건지 구분이
+            // 안 됐음. voiceCode 값과 실제 멘트 텍스트(있으면)를 매번 남겨서 다음
+            // 실주행 로그로 어느 단계에서 막히는지 확정. #문제시 원복
+            NavLogger.d(
+                context,
+                "[최소안내진단] voiceCode=${voiceGuide.voiceCode} essential포함=$allow " +
+                    "comment=${findGetterString(voiceGuide, "Comment") ?: findGetterString(voiceGuide, "Message") ?: findGetterString(voiceGuide, "Text")}"
+            )
+            // v: 재억 요청(2026-09-28) - 2초마다 반복되는 경고음(Alert)과 회전(Turn) 안내가 횟수를
+            // 먼저 다 써버려서 정작 "카메라 단속구간입니다"(Safety)가 전부 차단됐음. 말로 하는
+            // 카메라 안내(Safety)만 세고, 카메라 식별키를 못 구한(-1) 경우엔 제한 안 함. #문제시 원복
+            if (allow && voiceGuide.voiceCode == KNVoiceCode.KNVoiceCode_Safety &&
+                KakaoRouteDataRepository.safetyEventDistFromS >= 0) {
+                val cameraKey = KakaoRouteDataRepository.safetyEventDistFromS
+                if (cameraKey != lastMinimalGuideCameraKey) {
+                    lastMinimalGuideCameraKey = cameraKey
+                    minimalGuideCameraPlayCount = 0
+                }
+                if (minimalGuideCameraPlayCount >= 2) {
+                    allow = false
+                    NavLogger.d(context, "[최소안내] 같은 카메라(key=$cameraKey) 2회 초과 안내 차단")
+                } else {
+                    minimalGuideCameraPlayCount++
+                }
+            }
         }
         if (!allow) {
             newData.clear()

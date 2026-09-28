@@ -296,6 +296,7 @@ class MapActivity : AppCompatActivity() {
                     if (prefs.getBoolean("show_category_button", true)) View.VISIBLE else View.GONE
                 binding.btnFavorites?.visibility =
                     if (prefs.getBoolean("show_favorites_button", true)) View.VISIBLE else View.GONE
+                syncMenuButtonDetach()
                 binding.btnToggleTopPanel?.visibility =
                     if (prefs.getBoolean("show_toggle_top_panel_button", false)) View.VISIBLE else View.GONE
                 binding.flMiniPlayerContainer?.let { outer ->
@@ -346,6 +347,12 @@ class MapActivity : AppCompatActivity() {
         } catch (e: Exception) {
             NavLogger.e(this, "티맵 볼륨 복원 예외: ${e.message}")
         }
+    }
+
+    // 재억 요청(2026-09-28): 설정의 "메뉴 버튼 따로 떼어내기"에 맞춰 ≡ 버튼 위치를 맞춤. #문제시 원복
+    private fun syncMenuButtonDetach() {
+        val btn = binding.btnMoreMenu ?: return
+        MenuButtonDetach.sync(this, btn, binding.btnFavorites?.parent as? android.view.ViewGroup, binding.llStatusChip)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -530,9 +537,9 @@ class MapActivity : AppCompatActivity() {
         }
 
         binding.btnExitApp.setOnClickListener {
-            // 공유시 삭제하던 방식에서 변경: 이제 로그는 실행 중엔 계속 쌓이고(10MB 회전),
-            // 앱을 종료하는 이 시점에 전체 삭제. #문제시 원복
-            NavLogger.deleteAllLogFiles(this)
+            // v: 재억 지시(2026-09-27) - 종료할 때마다 로그를 지워버려서, 운전 끝나고 앱을
+            // 끄면 그 주행 로그를 보드앱 "로그 요청"으로 영영 못 뽑는 문제였음. 종료해도
+            // 로그는 남기고, 대신 다음 실행 시(MainActivity.onCreate) 3일 지난 것만 정리. #문제시 원복
             // v4.23: UdpSenderService 정지는 이제 여기(의도적 종료)에서만. #문제시 원복
             stopService(Intent(this, UdpSenderService::class.java))
             finishAffinity()
@@ -592,7 +599,9 @@ class MapActivity : AppCompatActivity() {
             // 레이아웃 구조 차이 때문에 상단바 전체를 가리켜버려서 즐겨찾기 버튼이
             // 뻥튀기되는 문제가 있었음. 레이아웃에 직접 id(llStatusChip)를 붙여서
             // 구조 변화에 안전하게 만듦. #문제시 원복
-            if (quickItems.isNotEmpty()) QuickIconGrid.setup(this, quickItems, binding.llStatusChip)
+            QuickIconGrid.snapTargets = { listOfNotNull(binding.tvCurrentSpeed?.parent as? View, binding.llStatusChip) }
+        if (quickItems.isNotEmpty()) QuickIconGrid.setup(this, quickItems, binding.llStatusChip)
+        syncMenuButtonDetach()
         }
         binding.btnNearbyCategory?.let { btn ->
             btn.post {
@@ -1750,18 +1759,14 @@ class MapActivity : AppCompatActivity() {
         // v14.2: 재억 아이디어 - 항목을 골라서 여기로 들어온 순간, 배경에서 돌던 나머지
         // 목록 계산들은 더 안 늘어나게 멈춤(위 etaQueueGeneration 설명 참고). #문제시 원복
         etaQueueGeneration++
-        val optionLabels = listOf("추천 경로", "고속도로 우선", "무료도로 우선")
-        val optionPriorities = listOf(
-            KNRoutePriority.KNRoutePriority_Recommand,
-            KNRoutePriority.KNRoutePriority_HighWay,
-            KNRoutePriority.KNRoutePriority_Recommand
-        )
-        val optionAvoidOptions = listOf(0, 0, KNRouteAvoidOption.KNRouteAvoidOption_Fare.value)
+        val optionLabels = RouteChoiceOptions.labels
+        val optionPriorities = RouteChoiceOptions.priorities
+        val optionAvoidOptions = RouteChoiceOptions.avoidOptions
 
         // v14.9: 재억 요청 - "경로 방식 변경" 메뉴(saveToSlot != null)로 들어왔을 때만
         // 맨 아래에 "저장된 방식 삭제"를 추가함. 검색/즐겨찾기에서 바로 물어보는 경우(saveToSlot
         // == null)는 애초에 저장된 게 없을 수도 있는 상황이라 이 항목을 안 보여줌. #문제시 원복
-        val CLEAR_OPTION_INDEX = 3
+        val CLEAR_OPTION_INDEX = RouteChoiceOptions.count
 
         fun goDirectly(index: Int) {
             if (index == CLEAR_OPTION_INDEX && saveToSlot != null) {
@@ -1785,7 +1790,7 @@ class MapActivity : AppCompatActivity() {
             )
         }
 
-        fun showPickerWithResults(minutesArr: Array<Int?>, distArr: Array<Int?>, costArr: Array<Int?> = arrayOfNulls(3)) {
+        fun showPickerWithResults(minutesArr: Array<Int?>, distArr: Array<Int?>, costArr: Array<Int?> = arrayOfNulls(RouteChoiceOptions.count)) {
             val labels = optionLabels.mapIndexed { i, label ->
                 // v: 신규기능(예상 통행료 표시, 재억 요청 2026-09-15) - KakaoNaviActivity와 동일. #문제시 원복
                 val etaLine = SearchRanking.formatEtaMinutes(minutesArr[i]) ?: "계산 실패"
@@ -1819,9 +1824,9 @@ class MapActivity : AppCompatActivity() {
             goDirectly(0)
             return
         }
-        val minutesArr = arrayOfNulls<Int>(3)
-        val distArr = arrayOfNulls<Int>(3)
-        val costArr = arrayOfNulls<Int>(3)
+        val minutesArr = arrayOfNulls<Int>(RouteChoiceOptions.count)
+        val distArr = arrayOfNulls<Int>(RouteChoiceOptions.count)
+        val costArr = arrayOfNulls<Int>(RouteChoiceOptions.count)
         var receivedCount = 0
         // v13.6: 재억 지적(계산 느림) - "출발-도착 연결"을 3번 따로 안 하고 한 번만 해서
         // 그 위에서 3개 우선순위만 각각 계산하도록 함(computeEtaForOptions). #문제시 원복
@@ -1838,7 +1843,7 @@ class MapActivity : AppCompatActivity() {
                 distArr[index] = distanceMeters
                 costArr[index] = tollCostWon
                 receivedCount++
-                if (receivedCount == 3) {
+                if (receivedCount == RouteChoiceOptions.count) {
                     // v: 재억 재지적(2026-08-29) - KakaoNaviActivity와 동일 - "왜 자꾸 팝업
                     // 없이 바로 안내를 시작하냐"는 강한 제보로 이 자동 생략 로직을 완전히
                     // 제거. #문제시 원복
@@ -1896,6 +1901,7 @@ class MapActivity : AppCompatActivity() {
             binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
             binding.btnFavorites?.visibility = if (getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                     .getBoolean("show_favorites_button", true)) View.VISIBLE else View.GONE
+            syncMenuButtonDetach()
             // v19.3.44: 재억 요청 - 상단바 표시/숨김 플로팅 버튼은 기본 안 보이고, 설정에서
             // 켰을 때만 보이게. 다른 설정들처럼 저장 즉시 반영. #문제시 원복
             val showTogglePanelBtn = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
@@ -4387,6 +4393,7 @@ class MapActivity : AppCompatActivity() {
             binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
             binding.btnFavorites?.visibility = if (getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                     .getBoolean("show_favorites_button", true)) View.VISIBLE else View.GONE
+            syncMenuButtonDetach()
             // v19.3.44: 재억 요청 - 상단바 표시/숨김 플로팅 버튼은 기본 안 보이고, 설정에서
             // 켰을 때만 보이게. 다른 설정들처럼 저장 즉시 반영. #문제시 원복
             val showTogglePanelBtn = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)

@@ -277,6 +277,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 binding.btnAddWaypoint?.visibility = if (prefs.getBoolean("show_waypoint_button", true)) View.VISIBLE else View.GONE
                 binding.btnNearbyCategory?.visibility = if (prefs.getBoolean("show_category_button", true)) View.VISIBLE else View.GONE
                 binding.btnFavorites?.visibility = if (prefs.getBoolean("show_favorites_button", true)) View.VISIBLE else View.GONE
+                syncMenuButtonDetach()
                 binding.btnToggleTopPanel?.visibility = if (prefs.getBoolean("show_toggle_top_panel_button", false)) View.VISIBLE else View.GONE
                 binding.flMiniPlayerContainer?.let { outer ->
                     com.tmap.nda.miniplayer.MiniPlayerManager.refresh(
@@ -322,6 +323,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         } catch (e: Exception) {
             NavLogger.e(this, "티맵 볼륨 복원 예외: ${e.message}")
         }
+    }
+
+    // 재억 요청(2026-09-28): 설정의 "메뉴 버튼 따로 떼어내기"에 맞춰 ≡ 버튼 위치를 맞춤. #문제시 원복
+    private fun syncMenuButtonDetach() {
+        val btn = binding.btnMoreMenu ?: return
+        MenuButtonDetach.sync(this, btn, binding.btnFavorites?.parent as? android.view.ViewGroup, binding.tvConnectionStatus?.parent?.parent as? View)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -511,12 +518,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         binding.btnNearbyCategory?.let { btn -> quickItems.add(QuickIconGrid.Item(btn, "btnNearbyCategory", 1) { btn.performClick() }) }
         binding.btnAddWaypoint?.let { btn -> quickItems.add(QuickIconGrid.Item(btn, "btnAddWaypoint", 2) { btn.performClick() }) }
         binding.btnCancelWaypoint?.let { btn -> quickItems.add(QuickIconGrid.Item(btn, "btnCancelWaypoint", 3) { btn.performClick() }) }
+        QuickIconGrid.snapTargets = { listOfNotNull(binding.tvCurrentSpeed?.parent as? View, binding.tvConnectionStatus?.parent?.parent as? View) }
         if (quickItems.isNotEmpty()) QuickIconGrid.setup(this, quickItems, binding.tvConnectionStatus?.parent?.parent as? View)
+        syncMenuButtonDetach()
         // 화면이 새로 만들어질 때도 저장된 버튼 표시 설정을 바로 적용(onResume이 먼저 지나가 건너뛴 경우 대비)
         getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).let { p ->
             binding.btnAddWaypoint?.visibility = if (p.getBoolean("show_waypoint_button", true)) View.VISIBLE else View.GONE
             binding.btnNearbyCategory?.visibility = if (p.getBoolean("show_category_button", true)) View.VISIBLE else View.GONE
             binding.btnFavorites?.visibility = if (p.getBoolean("show_favorites_button", true)) View.VISIBLE else View.GONE
+            syncMenuButtonDetach()
         }
         // v19.3.37: 재억 요청 - Tmap 화면과 동일한 상단바 표시/숨김 플로팅 버튼. 카카오
         // SDK 자체가 화면이 좁을수록 왼쪽 안내 박스를 겹쳐 그리는 문제 대응 - 눌러서
@@ -715,7 +725,34 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // 그건 onLocationChanged에서 이 화면(카카오)만 호출을 뺐음. 그래서 여기는 무조건
         // true로 돌려서 카카오 음성 안내를 살림. initWithGuidance 호출 직후에 다시 세팅해야
         // 카카오가 지 걸로 덮어쓴 걸 우리 걸로 다시 덮어쓸 수 있음. #문제시 원복
-        guidance.judgeOverSpeedAlert = { _, _, _, _, _ -> true }
+        // v: 재억 재제보(2026-09-27) - "원인 찾았으면 왜 안 고치냐"는 지적에 다시 파봄.
+        // classes.jar를 javap로 다시 까보니 이 콜백의 진짜 시그니처가
+        // Function5<KNSafetyCode, Int, Int, Int, Boolean, Boolean>인 게 확인됨 - 즉 이
+        // 안에서 카카오가 우리에게 (안전코드, 정수 3개, 불리언 1개)를 실제로 넘겨주고
+        // 있었음. 근데 이 4개 인자 중 어느 게 "그 카메라의 제한속도"고 어느 게 "현재
+        // 속도"인지는 공식 문서가 없어 이름만으로는 확정 불가능(네이티브 계층에서 호출돼
+        // 자바 바이트코드로는 호출부 추적도 안 됨). 여기서 섣불리 "세 번째 인자가 속도"
+        // 식으로 추측해서 조건을 걸면, 추측이 틀렸을 때 카메라 음성 안내가 또 통째로
+        // 사라질 위험이 있음(#문제시 원복 - 예전에 이미 한 번 겪은 사고). 그래서 일단
+        // true는 그대로 유지하되, 인자 5개의 실제 값과 우리 쪽이 그 순간 알고 있는
+        // 진짜 제한속도/속도(SdiDataRepository, KakaoRouteDataRepository)를 나란히
+        // 로그로 남김 - 다음 실주행에서 "10% 안 넘었는데 울렸다"는 순간의 이 로그를
+        // 보면 인자 순서를 실측으로 확정할 수 있고, 그때 가서 진짜 조건식으로 바꿈. #문제시 원복
+        // 재억 요청(2026-09-28) - 9/27~28 실주행 로그 3145건으로 인자 뜻 확정: a=카메라 제한속도,
+        // b=현재속도, c=카메라까지 남은 거리(m), d=항상 false. 이 콜백은 속도가 제한을 "조금이라도"
+        // 넘을 때마다 불리는데(61/60 같은 1.7% 초과도 호출됨) 예전엔 무조건 true라 10% 안 넘어도
+        // 경고음이 났음. 이제 속도가 제한의 110%를 넘을 때만 true. 제한속도를 모르면(a<=0) 예전처럼 true.
+        // 주의: 예전에 이 콜백을 false로 껐더니 카메라 음성 안내까지 사라진 적이 있어서, 그런 증상이
+        // 다시 보이면 이 조건만 원복(항상 true). #문제시 원복
+        guidance.judgeOverSpeedAlert = { code, a, b, c, d ->
+            val allow = a <= 0 || b > a * 1.1
+            NavLogger.d(
+                this,
+                "[카카오과속알림진단] code=$code a=$a b=$b c=$c d=$d 허용=$allow " +
+                    "(참고)우리쪽limit=${SdiDataRepository.roadLimitSpeed} 우리쪽sdiLimit=${KakaoRouteDataRepository.safetySpeedLimit}"
+            )
+            allow
+        }
 
         // v4.16: [볼륨API스캔]으로도 확인됐지만, 카카오모빌리티 공식 문서
         // (사용자 맞춤 설정하기)에 명시된 공개 API였음 - KNNaviView.sndVolume(Float,
@@ -1740,6 +1777,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
                 binding.btnFavorites?.visibility = if (getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                         .getBoolean("show_favorites_button", true)) View.VISIBLE else View.GONE
+                syncMenuButtonDetach()
                 binding.btnCancelWaypoint?.visibility = if (showCancelWaypointButton && activeWaypoints.isNotEmpty()) View.VISIBLE else View.GONE
                 // v19.3.44: 재억 요청 - 상단바 표시/숨김 플로팅 버튼은 기본 안 보이고, 설정에서
                 // 켰을 때만 보이게. 다른 설정들처럼 저장 즉시 반영. #문제시 원복
@@ -3140,6 +3178,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         fun dp(v: Int) = (v * density).toInt()
         // v: 재억 재제보(2026-09-19) - "계산 중" 카운트다운 문제 수정용 추적 변수. #문제시 원복
         var countdownStartedForIndex = -1
+        // 재억 요청(2026-09-28): 이동방식 칸을 하나라도 직접 누르면 그 뒤로는 자동 시작 안 함
+        // (비교 중인데 저절로 출발하면 안 되므로). 아무것도 안 눌렀을 때만 10초 후 자동 시작. #문제시 원복
+        var userTouched = false
+        var startBtnRef: android.widget.TextView? = null
         val root = binding.root as ViewGroup
         // v19.3.72: 재억 요청(2026-09-18) - fitTo 자동 맞춤을 포기하고 거리 기반 줌
         // 계산으로 바꿨으니, 카드 위치가 지도 표시 영역 모양에 영향을 주는 이유가 없어짐.
@@ -3148,7 +3190,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val panelMarginStart = dp(170).toFloat()
         val panelMarginTop = dp(76).toFloat()
 
-        var selectedIndex = 0
+        // 칸 자리 순서(저장됨). 첫 칸의 방식이 처음 선택되고 자동 시작 때 쓰임.
+        val displayOrder = RouteChoiceOptions.loadOrder(this).toMutableList()
+        var layoutTabs: () -> Unit = {}
+        var selectedIndex = displayOrder[0]
         var panelView: View? = null
         // v19.3.72: 재억 실기기 제보 - 계산 결과가 옵션별로 하나씩 도착할 때마다 매번
         // fitTo로 카메라를 다시 움직였더니, 전환이 끝나기 전에 또 새로 움직이는 일이
@@ -3236,7 +3281,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             // 도착(minutes != null)했을 때 딱 한 번만 시작하도록 바꿈 - 계산 끝나기 전엔
             // 카운트다운 자체를 시작 안 함. countdownStartedForIndex로 같은 탭에 대해
             // 중복 시작 안 하게 막음(다른 탭 ETA가 나중에 도착해도 여기서 재시작 안 됨). #문제시 원복
-            if (minutes != null && countdownStartedForIndex != selectedIndex) {
+            if (minutes != null && countdownStartedForIndex != selectedIndex && !userTouched) {
                 countdownStartedForIndex = selectedIndex
                 startCountdown()
             }
@@ -3289,6 +3334,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val tabsRow = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
         }
+        val tabsRow2 = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+        }
+        // 끌어서 자리 바꿀 때 들린 칸이 자기 줄 밖(다른 줄 위)으로 나가도 잘리지 않고 보이게 함. #문제시 원복
+        tabsRow.clipChildren = false
+        tabsRow2.clipChildren = false
+        card.clipChildren = false
+        card.clipToPadding = false
         optionLabels.forEachIndexed { i, label ->
             val tab = android.widget.TextView(this).apply {
                 text = label
@@ -3299,6 +3352,107 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     cornerRadius = dp(12).toFloat()
                 }
                 isClickable = true
+                // 재억 요청(2026-09-28): 칸을 꾹 누른 채 다른 칸 위로 끌어다 놓으면 서로 자리가 바뀌고,
+                // 그 순서는 저장돼서 다음에도 유지됨. #문제시 원복
+                val longPressHandler = android.os.Handler(android.os.Looper.getMainLooper())
+                var lifting = false
+                var downRawX = 0f
+                var downRawY = 0f
+                val liftRunnable = Runnable {
+                    lifting = true
+                    userTouched = true
+                    stopCountdown()
+                    startBtnRef?.text = startButtonLabel
+                    elevation = dp(8).toFloat()
+                    (parent as? View)?.elevation = dp(8).toFloat() // 다른 줄 위로 지나갈 때 위에 그려지게
+                    animate().scaleX(1.12f).scaleY(1.12f).setDuration(120).start()
+                    alpha = 1f
+                    (parent as? ViewGroup)?.requestDisallowInterceptTouchEvent(true)
+                }
+                setOnTouchListener { v, e ->
+                    when (e.action) {
+                        android.view.MotionEvent.ACTION_DOWN -> {
+                            downRawX = e.rawX
+                            downRawY = e.rawY
+                            lifting = false
+                            longPressHandler.postDelayed(liftRunnable, 450L)
+                            false
+                        }
+                        android.view.MotionEvent.ACTION_MOVE -> {
+                            if (!lifting) {
+                                if (Math.hypot((e.rawX - downRawX).toDouble(), (e.rawY - downRawY).toDouble()) > dp(10)) {
+                                    longPressHandler.removeCallbacks(liftRunnable)
+                                }
+                                false
+                            } else {
+                                v.translationX = e.rawX - downRawX
+                                v.translationY = e.rawY - downRawY
+                                // 놓으면 자리가 바뀔 칸을 흐리게 표시
+                                tabViews.forEachIndexed { idx, tv ->
+                                    if (idx == i) return@forEachIndexed
+                                    val loc = IntArray(2)
+                                    tv.getLocationOnScreen(loc)
+                                    val over = e.rawX >= loc[0] && e.rawX <= loc[0] + tv.width &&
+                                        e.rawY >= loc[1] && e.rawY <= loc[1] + tv.height
+                                    tv.alpha = if (over) 0.4f else 1f
+                                }
+                                true
+                            }
+                        }
+                        android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                            longPressHandler.removeCallbacks(liftRunnable)
+                            if (lifting) {
+                                lifting = false
+                                // 놓는 순간 모든 칸의 화면 위치를 기억해뒀다가, 자리가 정리된 뒤 그 위치에서
+                                // 새 자리로 미끄러지듯 움직이게 함(끌린 칸은 놓은 곳에서 제자리로). #문제시 원복
+                                val before = tabViews.map { tv -> IntArray(2).also { tv.getLocationOnScreen(it) } }
+                                v.translationX = 0f
+                                v.translationY = 0f
+                                v.scaleX = 1f
+                                v.scaleY = 1f
+                                v.alpha = 1f
+                                v.elevation = 0f
+                                (v.parent as? View)?.elevation = 0f
+                                tabViews.forEach { it.alpha = 1f }
+                                v.isPressed = false
+                                val target = tabViews.indices.firstOrNull { idx ->
+                                    if (idx == i) return@firstOrNull false
+                                    before[idx][0].let { lx ->
+                                        e.rawX >= lx && e.rawX <= lx + tabViews[idx].width &&
+                                            e.rawY >= before[idx][1] && e.rawY <= before[idx][1] + tabViews[idx].height
+                                    }
+                                }
+                                if (target != null && e.action == android.view.MotionEvent.ACTION_UP) {
+                                    val a = displayOrder.indexOf(i)
+                                    val b = displayOrder.indexOf(target)
+                                    displayOrder[a] = target
+                                    displayOrder[b] = i
+                                    RouteChoiceOptions.saveOrder(this@KakaoNaviActivity, displayOrder)
+                                    layoutTabs()
+                                }
+                                card.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+                                    override fun onPreDraw(): Boolean {
+                                        card.viewTreeObserver.removeOnPreDrawListener(this)
+                                        tabViews.forEachIndexed { idx, tv ->
+                                            val now = IntArray(2)
+                                            tv.getLocationOnScreen(now)
+                                            val dx = before[idx][0] - now[0]
+                                            val dy = before[idx][1] - now[1]
+                                            if (dx != 0 || dy != 0) {
+                                                tv.translationX = dx.toFloat()
+                                                tv.translationY = dy.toFloat()
+                                                tv.animate().translationX(0f).translationY(0f).setDuration(220).start()
+                                            }
+                                        }
+                                        return true
+                                    }
+                                })
+                                true
+                            } else false
+                        }
+                        else -> false
+                    }
+                }
                 setOnClickListener {
                     selectedIndex = i
                     // v: 재억 재제보(2026-09-19, "계산 중일 때도 카운트가 이미 가고 있다") -
@@ -3306,15 +3460,29 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     // 시작했음. countdownStartedForIndex를 초기화해서, updateSelection()이
                     // 실제로 그 탭의 소요시간(minutes)이 도착했을 때만 시작하도록 넘김. #문제시 원복
                     countdownStartedForIndex = -1
+                    userTouched = true
+                    stopCountdown()
+                    startBtnRef?.text = startButtonLabel
                     updateSelection()
                 }
             }
-            val lp = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            if (i > 0) lp.marginStart = dp(8)
-            tabsRow.addView(tab, lp)
             tabViews.add(tab)
         }
+        // 2줄 x 3칸: 저장된 순서(displayOrder)의 앞 3개는 위 줄, 나머지 3개는 아래 줄
+        layoutTabs = {
+            tabsRow.removeAllViews()
+            tabsRow2.removeAllViews()
+            displayOrder.forEachIndexed { slot, optionIndex ->
+                val lp = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                if (slot % 3 > 0) lp.marginStart = dp(8)
+                (if (slot < 3) tabsRow else tabsRow2).addView(tabViews[optionIndex], lp)
+            }
+        }
+        layoutTabs()
         card.addView(tabsRow, android.widget.LinearLayout.LayoutParams(
+            android.widget.LinearLayout.LayoutParams.MATCH_PARENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(8) })
+        card.addView(tabsRow2, android.widget.LinearLayout.LayoutParams(
             android.widget.LinearLayout.LayoutParams.MATCH_PARENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { bottomMargin = dp(14) })
 
@@ -3400,6 +3568,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
             isClickable = true
         }
+        startBtnRef = startBtn
         startClick = {
             stopCountdown()
             removePanel()
@@ -3527,13 +3696,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 고를 때와 똑같이, 목록형 AlertDialog 대신 지도 위 지도+경로선택 카드(showRouteChoicePanel,
     // 소요시간/통행료/자동시작 카운트다운/드래그 이동 다 포함)를 그대로 재사용. #문제시 원복
     private fun addWaypointToActiveGuidance(picked: HistoryEntry) {
-        val optionLabels = listOf("추천 경로", "고속도로 우선", "무료도로 우선")
-        val optionPriorities = listOf(
-            KNRoutePriority.KNRoutePriority_Recommand,
-            KNRoutePriority.KNRoutePriority_HighWay,
-            KNRoutePriority.KNRoutePriority_Recommand
-        )
-        val optionAvoidOptions = listOf(0, 0, KNRouteAvoidOption.KNRouteAvoidOption_Fare.value)
+        val optionLabels = RouteChoiceOptions.labels
+        val optionPriorities = RouteChoiceOptions.priorities
+        val optionAvoidOptions = RouteChoiceOptions.avoidOptions
 
         showDestinationPinOnMap(picked.lat, picked.lon)
 
@@ -3550,9 +3715,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             return
         }
 
-        val minutesArr = arrayOfNulls<Int>(3)
-        val costArr = arrayOfNulls<Int>(3)
-        val routesArr = arrayOfNulls<Any>(3)
+        val minutesArr = arrayOfNulls<Int>(RouteChoiceOptions.count)
+        val costArr = arrayOfNulls<Int>(RouteChoiceOptions.count)
+        val routesArr = arrayOfNulls<Any>(RouteChoiceOptions.count)
         val refresh = showRouteChoicePanel(picked, optionLabels, minutesArr, costArr, routesArr, curLat, curLon, ::goDirectly, startButtonLabel = "경유지 추가", topLabel = "경유지로 추가")
         KakaoSdkState.computeEtaForOptions(
             this, curLat, curLon, picked.lat, picked.lon,
@@ -3632,17 +3797,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         if (saveToSlot == null) {
             showDestinationPinOnMap(picked.lat, picked.lon)
         }
-        val optionLabels = listOf("추천 경로", "고속도로 우선", "무료도로 우선")
-        val optionPriorities = listOf(
-            KNRoutePriority.KNRoutePriority_Recommand,
-            KNRoutePriority.KNRoutePriority_HighWay,
-            KNRoutePriority.KNRoutePriority_Recommand
-        )
-        val optionAvoidOptions = listOf(0, 0, KNRouteAvoidOption.KNRouteAvoidOption_Fare.value)
+        val optionLabels = RouteChoiceOptions.labels
+        val optionPriorities = RouteChoiceOptions.priorities
+        val optionAvoidOptions = RouteChoiceOptions.avoidOptions
 
         // v: 재억 요청(2026-08-22) - 티맵 화면(MapActivity)에만 있던 "저장된 방식 삭제"
         // 메뉴를 카카오 화면에도 이식. #문제시 원복
-        val CLEAR_OPTION_INDEX = 3
+        val CLEAR_OPTION_INDEX = RouteChoiceOptions.count
 
         fun goDirectly(index: Int) {
             if (index == CLEAR_OPTION_INDEX && saveToSlot != null) {
@@ -3683,9 +3844,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // 그려서(refresh) 자연스럽게 채워지게 함. "이동방식 저장" 전용 메뉴(saveToSlot != null,
         // 실제로 안 감)는 굳이 지도가 필요없어서 기존 목록 팝업을 그대로 둠. #문제시 원복
         if (saveToSlot == null) {
-            val minutesArr = arrayOfNulls<Int>(3)
-            val costArr = arrayOfNulls<Int>(3)
-            val routesArr = arrayOfNulls<Any>(3)
+            val minutesArr = arrayOfNulls<Int>(RouteChoiceOptions.count)
+            val costArr = arrayOfNulls<Int>(RouteChoiceOptions.count)
+            val routesArr = arrayOfNulls<Any>(RouteChoiceOptions.count)
             val refresh = showRouteChoicePanel(picked, optionLabels, minutesArr, costArr, routesArr, curLat, curLon, ::goDirectly)
             KakaoSdkState.computeEtaForOptions(
                 this, curLat, curLon, picked.lat, picked.lon,
@@ -3701,7 +3862,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             return
         }
 
-        fun showPickerWithResults(minutesArr: Array<Int?>, costArr: Array<Int?> = arrayOfNulls(3)) {
+        fun showPickerWithResults(minutesArr: Array<Int?>, costArr: Array<Int?> = arrayOfNulls(RouteChoiceOptions.count)) {
             val labels = optionLabels.mapIndexed { i, label ->
                 // v: 신규기능(예상 통행료 표시, 재억 요청 2026-09-15) - 통행료 값을 못 구했으면
                 // (SDK가 안 주거나 무료도로라 0원인 경우 포함) 그냥 시간만 보여주고 생략. #문제시 원복
@@ -3728,9 +3889,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             routeDialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog_212121_rounded)
         }
 
-        val minutesArr = arrayOfNulls<Int>(3)
-        val distArr = arrayOfNulls<Int>(3)
-        val costArr = arrayOfNulls<Int>(3)
+        val minutesArr = arrayOfNulls<Int>(RouteChoiceOptions.count)
+        val distArr = arrayOfNulls<Int>(RouteChoiceOptions.count)
+        val costArr = arrayOfNulls<Int>(RouteChoiceOptions.count)
         var receivedCount = 0
         // v: 재억 제보(2026-08-31, 실기기로 확인 - "길안내 중 경유지 추가할 때 추천/고속/
         // 무료 목록이 안 뜨고 취소 버튼만 덩그러니 있다") - 이 선택창은 3개 옵션의 예상
@@ -3764,7 +3925,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 distArr[index] = distanceMeters
                 costArr[index] = tollCostWon
                 receivedCount++
-                if (receivedCount == 3) {
+                if (receivedCount == RouteChoiceOptions.count) {
                     showPickerOnce()
                 }
             }
@@ -4554,6 +4715,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             binding.btnNearbyCategory?.visibility = if (showCategoryButton) View.VISIBLE else View.GONE
             binding.btnFavorites?.visibility = if (getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                     .getBoolean("show_favorites_button", true)) View.VISIBLE else View.GONE
+            syncMenuButtonDetach()
             binding.btnCancelWaypoint?.visibility = if (showCancelWaypointButton && activeWaypoints.isNotEmpty()) View.VISIBLE else View.GONE
             if (showCancelWaypointButton && activeWaypoints.isNotEmpty()) {
                 binding.btnCancelWaypoint?.post {
@@ -4769,6 +4931,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // v4.24: MapActivity와 동일 이유로 추가. #문제시 원복
         NavLogger.d(this, "[KakaoNaviActivity lifecycle] onDestroy (isFinishing=$isFinishing, isChangingConfigurations=$isChangingConfigurations)")
         try { voiceAssistant.shutdown() } catch (e: Exception) { }
+        // v: 재억 지시(2026-09-27, GPS끊김워치독 추가하면서) - 델리게이트가 자체 Handler
+        // 루프를 갖게 됐으니, 화면 종료 시 반드시 멈춰야 액티비티 재생성될 때마다 중복으로
+        // 계속 도는 걸 막을 수 있음. #문제시 원복
+        try { kakaoGuidanceDelegate?.stopGpsWatchdog() } catch (e: Exception) { }
         cancelNavNotification()
         parkedRefresh?.let { parkedHandler.removeCallbacks(it) }
         hudPollHandler.removeCallbacksAndMessages(null)

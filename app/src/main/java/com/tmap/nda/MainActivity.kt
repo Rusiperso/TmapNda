@@ -170,6 +170,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         NavLogger.appContext = applicationContext
+        NavLogger.deleteLogsOlderThan3Days(applicationContext)
         // v: 재억 요청(2026-09-15) - 실사용자가 몇 명인지 대략이라도 알 수 있게, 하루 한 번
         // 익명 신호를 디스코드로 보냄(자동 오류 보고 꺼둔 사람은 안 감). #문제시 원복
         DiscordReporter.reportInstallIfNew(applicationContext)

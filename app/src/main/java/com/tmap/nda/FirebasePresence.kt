@@ -48,7 +48,20 @@ object FirebasePresence {
     // 방금 끝난 줄을 그대로 이어씀(end를 지우고 start는 원래 값 유지). #문제시 원복
     private var lastEndedSessionRef: com.google.firebase.database.DatabaseReference? = null
     private var lastDisconnectAtMs: Long = 0L
-    private const val SESSION_RESUME_WINDOW_MS = 2 * 60 * 1000L
+    // v: 재억 재제보(2026-09-26) - 2분으로는 화면꺼짐 후 절전모드(Doze)에 들어간 폰이 한참
+    // 있다 재연결되는 경우를 못 잡아서, 보드 앱에 여전히 "시작=종료" 줄이 남았음. 실제로 앱을
+    // 끄고 한참 쉬다 다시 켠 것과 구분하기 위해 너무 길게 늘리진 않되, Doze 재연결 텀을
+    // 넉넉히 덮도록 15분으로 확대. #문제시 원복
+    // v: 재억 재제보(2026-09-27) - 15분으로 늘렸는데도 "8초 만에 새 줄" 같은 게 여전히
+    // 있었음. 원인은 창문 길이가 아니라, lastEndedSessionRef/lastDisconnectAtMs가 메모리
+    // 변수라서 앱이 크래시로 죽었다 자동으로 다시 켜지면(재억 폰 "크래시 298회") 그 기억
+    // 자체가 통째로 날아가 창문 계산까지 못 가고 무조건 새 줄이 됐던 것. 창문은 부작용
+    // (진짜 오래 쉬다 켠 것까지 이어붙임) 줄이려고 10분으로 살짝 줄이고, 기억 자체는
+    // 아래 PREFS에 같이 저장해서 프로세스가 재시작돼도 이어붙일 수 있게 함. #문제시 원복
+    private const val SESSION_RESUME_WINDOW_MS = 10 * 60 * 1000L
+    private const val PREFS_NAME = "TmapNdaPrefs"
+    private const val PREF_LAST_SESSION_PATH = "firebase_last_session_path"
+    private const val PREF_LAST_DISCONNECT_AT = "firebase_last_disconnect_at"
 
     fun start(context: Context) {
         if (!DiscordReporter.isEnabled(context)) return
@@ -81,6 +94,12 @@ object FirebasePresence {
                         if (currentSessionRef != null) {
                             lastEndedSessionRef = currentSessionRef
                             lastDisconnectAtMs = System.currentTimeMillis()
+                            // v: 위 크래시 대비 - 메모리에도 남기지만, 프로세스가 죽어도
+                            // 남아있도록 디스크(SharedPreferences)에도 같이 적어둠. #문제시 원복
+                            appContextSafe.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+                                .putString(PREF_LAST_SESSION_PATH, currentSessionRef!!.toString())
+                                .putLong(PREF_LAST_DISCONNECT_AT, lastDisconnectAtMs)
+                                .apply()
                         }
                         currentSessionRef = null
                         return
@@ -98,13 +117,27 @@ object FirebasePresence {
                     )
                     deviceRef.updateChildren(info)
                     if (currentSessionRef == null) {
-                        val resumable = lastEndedSessionRef
-                        if (resumable != null && System.currentTimeMillis() - lastDisconnectAtMs < SESSION_RESUME_WINDOW_MS) {
+                        // v: 위 크래시 대비 - 메모리에 있으면 그걸 쓰고, 없으면(프로세스가
+                        // 방금 재시작된 경우) 디스크에 저장해둔 걸로 대신 확인. #문제시 원복
+                        val prefs = appContextSafe.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                        var resumable = lastEndedSessionRef
+                        var resumeDisconnectAt = lastDisconnectAtMs
+                        if (resumable == null) {
+                            val savedPath = prefs.getString(PREF_LAST_SESSION_PATH, null)
+                            val savedAt = prefs.getLong(PREF_LAST_DISCONNECT_AT, 0L)
+                            if (savedPath != null && savedAt > 0L) {
+                                resumable = db.getReferenceFromUrl(savedPath)
+                                resumeDisconnectAt = savedAt
+                            }
+                        }
+                        if (resumable != null && System.currentTimeMillis() - resumeDisconnectAt < SESSION_RESUME_WINDOW_MS) {
                             // 잠깐 끊겼다 바로 붙은 것으로 보고, 새 줄 대신 방금 끝난 줄을 그대로 이어씀
                             resumable.child("end").removeValue()
                             resumable.onDisconnect().updateChildren(mapOf("end" to ServerValue.TIMESTAMP))
                             currentSessionRef = resumable
+                            prefs.edit().remove(PREF_LAST_SESSION_PATH).remove(PREF_LAST_DISCONNECT_AT).apply()
                         } else {
+                            prefs.edit().remove(PREF_LAST_SESSION_PATH).remove(PREF_LAST_DISCONNECT_AT).apply()
                             val today = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).apply {
                                 timeZone = java.util.TimeZone.getTimeZone("Asia/Seoul")
                             }.format(java.util.Date())
