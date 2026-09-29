@@ -13,8 +13,8 @@ android {
         applicationId = "com.tmap.nda"
         minSdk = 26
         targetSdk = 36
-        versionCode = 533
-        versionName = "19.4.23"
+        versionCode = 534
+        versionName = "19.4.24"
 
         // v: 재억 요청(2026-09-22) - 디스코드 웹훅 주소가 코드에 그대로 박혀 공개 저장소에
         // 커밋되면 스팸봇이 깃허브를 긁어서 찾아내 도배 → 디스코드가 웹훅을 자동 삭제하는
@@ -124,11 +124,10 @@ dependencies {
 
   // TMapUISDK
   // v19.3.44: 재억 요청 - Tmap 공식 배포 zip(1.77) 샘플이 참조하는 최신 버전으로 업데이트.
-  // 카카오내비 SDK는 카카오모빌리티 릴리즈 페이지 확인 결과 1.12.8-hotfix02(2025.11.18)가
-  // 이미 최신이라 그대로 유지. #문제시 원복
   implementation("com.tmapmobility.tmap:tmap-ui-sdk:1.0.0.0158")
   // 카카오내비 SDK - 검색/경로계산/실시간안내를 카카오로 우회 (Tmap 화면 위에 오버레이로 얹음)
-  implementation("com.kakaomobility.knsdk:knsdk_ui:1.12.8-hotfix02")
+  // hotfix03 테스트 설치 (릴리스 노트 없이 배포됨, 지도뷰/클러스터 코드 변경 확인됨)
+  implementation("com.kakaomobility.knsdk:knsdk_ui:1.12.8-hotfix03")
 
   // v2.0: Android Auto 차량 클러스터/HUD로 회전·거리·ETA Trip 정보 전송
   implementation("androidx.car.app:app:1.7.0")
