@@ -1346,9 +1346,7 @@ class MapActivity : AppCompatActivity() {
                         }
                     }
                 }
-                row.addView(nameText)
-                row.addView(saveText)
-                row.addView(deleteText)
+                PopupCard.arrangeHistoryRow(row, nameText, listOf(saveText, deleteText), PopupCard.isCompact(this@MapActivity))
                 return row
             }
         }

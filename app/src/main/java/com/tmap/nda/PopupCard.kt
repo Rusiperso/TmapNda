@@ -23,6 +23,56 @@ object PopupCard {
 
     fun dp(context: Context, v: Int): Int = (v * context.resources.displayMetrics.density).toInt()
 
+    // v: 재억 요청(2026-09-29, 김반장 제보) - 분할화면에서 창이 절반으로 줄어도 팝업은 창 너비의
+    // 94%를 그대로 써서 지도를 다 덮고, 줄마다 버튼 3개가 이름 옆에 붙어 이름이 세로로 꺾였음.
+    // 창이 화면 전체 너비의 75%보다 좁아진 "좁은 창" 상태를 판별해, 팝업을 창의 60%로 줄이고
+    // 목록 줄은 이름 아래에 버튼을 내려 배치(넘치면 그 줄만 좌우로 밀 수 있음). #문제시 원복
+    fun isCompact(activity: Activity): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < 24 || !activity.isInMultiWindowMode) return false
+        val win = activity.resources.displayMetrics.widthPixels
+        // 화면 전체 너비: Resources.getSystem()은 최신 안드로이드에서 앱 창 크기를 돌려주므로
+        // 30 이상은 maximumWindowMetrics(분할과 상관없는 화면 전체 영역)를, 그 아래는 getRealSize를 씀.
+        val full = if (android.os.Build.VERSION.SDK_INT >= 30) {
+            activity.windowManager.maximumWindowMetrics.bounds.width()
+        } else {
+            val p = android.graphics.Point()
+            @Suppress("DEPRECATION") activity.windowManager.defaultDisplay.getRealSize(p)
+            p.x
+        }
+        return win < full * 0.75
+    }
+
+    /** 최근 목적지 목록 한 줄 배치: 좁은 창이면 이름 위, 버튼 아래(좌우 스크롤 가능). */
+    fun arrangeHistoryRow(row: LinearLayout, name: TextView, chips: List<TextView>, compact: Boolean) {
+        if (!compact) {
+            row.addView(name)
+            chips.forEach { row.addView(it) }
+            return
+        }
+        row.orientation = LinearLayout.VERTICAL
+        row.gravity = Gravity.START
+        name.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        name.textSize = 13f
+        row.addView(name)
+        val chipRow = LinearLayout(row.context).apply { orientation = LinearLayout.HORIZONTAL }
+        chips.forEachIndexed { i, c ->
+            c.textSize = 12f
+            c.setPadding(24, 14, 24, 14)
+            c.layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = 10; marginStart = if (i == 0) 0 else 12 }
+            chipRow.addView(c)
+        }
+        row.addView(android.widget.HorizontalScrollView(row.context).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(chipRow)
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+    }
+
     fun newCardBackground(context: Context): GradientDrawable = GradientDrawable().apply {
         setColor(Color.parseColor("#B328282C"))
         cornerRadius = dp(context, 20).toFloat()
@@ -301,8 +351,9 @@ object PopupCard {
             }
             content?.let { c ->
                 (c.parent as? ViewGroup)?.removeView(c)
-                val h = minOf(dp(activity, contentMaxDp), activity.resources.displayMetrics.heightPixels - dp(activity, contentReserveDp))
+                var h = minOf(dp(activity, contentMaxDp), activity.resources.displayMetrics.heightPixels - dp(activity, contentReserveDp))
                     .coerceAtLeast(dp(activity, 140))
+                if (isCompact(activity)) h = minOf(h, (activity.resources.displayMetrics.heightPixels * 0.55).toInt())
                 card.addView(c, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, h))
             }
             val order = listOf(BUTTON_NEUTRAL, BUTTON_NEGATIVE, BUTTON_POSITIVE).filter { buttons.containsKey(it) }
@@ -317,7 +368,11 @@ object PopupCard {
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { topMargin = dp(activity, 12) })
             }
-            val width = minOf(dp(activity, 600), (activity.resources.displayMetrics.widthPixels * 0.94).toInt())
+            val winW = activity.resources.displayMetrics.widthPixels
+            var width = minOf(dp(activity, 600), (winW * 0.94).toInt())
+            if (isCompact(activity)) {
+                width = maxOf((winW * 0.6).toInt(), minOf((winW * 0.94).toInt(), dp(activity, 260)))
+            }
             closeFn = present(activity, root, card, width, "listCard", true) { finish() }
         }
     }

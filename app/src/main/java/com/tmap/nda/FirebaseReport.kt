@@ -47,7 +47,32 @@ object FirebaseReport {
         }
     }
 
+    // v: 재억 요청(2026-09-29) - Board에서 "테스트 배포"를 누르면 testUpdate/<설치ID>에
+    // {tag, url}이 써짐. 값이 생기면 AutoUpdater에 담아두고(다음 업데이트 확인 때 창으로 뜸),
+    // 값이 지워지면 비움. 일반 릴리즈와 무관. #문제시 원복
+    private fun attachTestUpdateListener(appContextSafe: Context) {
+        try {
+            val id = DiscordReporter.installId(appContextSafe)
+            FirebaseDatabase.getInstance().getReference("testUpdate/$id")
+                .addValueEventListener(object : ValueEventListener {
+                    override fun onDataChange(snapshot: DataSnapshot) {
+                        AutoUpdater.setPendingTestUpdate(
+                            snapshot.child("tag").getValue(String::class.java),
+                            snapshot.child("url").getValue(String::class.java)
+                        )
+                    }
+
+                    override fun onCancelled(error: DatabaseError) {
+                        // 조용히 무시
+                    }
+                })
+        } catch (e: Exception) {
+            // 조용히 무시
+        }
+    }
+
     private fun attachListener(appContextSafe: Context) {
+        attachTestUpdateListener(appContextSafe)
         try {
             val id = DiscordReporter.installId(appContextSafe)
             val db = FirebaseDatabase.getInstance()

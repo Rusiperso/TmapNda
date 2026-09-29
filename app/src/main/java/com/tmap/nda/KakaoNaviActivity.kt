@@ -2232,10 +2232,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         }
                     }
                 }
-                row.addView(nameText)
-                row.addView(saveText)
-                row.addView(addWaypointText)
-                row.addView(deleteText)
+                PopupCard.arrangeHistoryRow(row, nameText, listOf(saveText, addWaypointText, deleteText), PopupCard.isCompact(this@KakaoNaviActivity))
                 return row
             }
         }

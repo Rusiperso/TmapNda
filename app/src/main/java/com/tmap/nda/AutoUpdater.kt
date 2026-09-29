@@ -78,8 +78,34 @@ object AutoUpdater {
     // 누르면 5분 뒤 다시 알림 오는 방식 유지). #문제시 원복
     private var currentUpdateDialog: AlertDialog? = null
 
+    // v: 재억 요청(2026-09-29) - 정식 릴리즈 전에 특정 사람 폰에만 테스트 버전을 보내고 싶음.
+    // Board 앱이 파이어베이스 testUpdate/<설치ID>에 {tag,url}을 써두면 FirebaseReport가 여기에
+    // 담아두고, 다음 업데이트 확인(5분 주기/수동) 때 일반 업데이트와 똑같은 창으로 띄움.
+    // 같은 tag는 한 번 "업데이트"를 누른 뒤엔 다시 안 띄움. 정식 릴리즈(latest)와 별개라
+    // 다른 사용자에겐 아무 영향 없음. #문제시 원복
+    private const val PREF_TEST_APPLIED = "test_update_applied_tag"
+    @Volatile private var pendingTest: Pair<String, String>? = null
+
+    fun setPendingTestUpdate(tag: String?, url: String?) {
+        // 파이어베이스 규칙상 익명 로그인만 있으면 누구나 이 값을 쓸 수 있어서, 우리 저장소
+        // 릴리즈 파일 주소가 아니면 무시(엉뚱한 주소로 유도하는 걸 막음).
+        val ok = !tag.isNullOrBlank() && !url.isNullOrBlank() &&
+            url.startsWith("https://github.com/Rusiperso/TmapNda/releases/download/")
+        pendingTest = if (ok) tag!! to url!! else null
+    }
+
+    private fun showPendingTestIfAny(context: Context): Boolean {
+        val (tag, url) = pendingTest ?: return false
+        val prefs = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        if (prefs.getString(PREF_TEST_APPLIED, null) == tag) return false
+        NavLogger.d(context, "[업데이트확인] 테스트 업데이트 대기 중 tag=$tag - 다이얼로그 표시")
+        showUpdateDialog(context, tag, url, isTest = true)
+        return true
+    }
+
     fun checkForUpdates(context: Context, isManual: Boolean = false) {
         NavLogger.d(context, "[업데이트확인] checkForUpdates() 진입 isManual=$isManual")
+        if (showPendingTestIfAny(context)) return
         CoroutineScope(Dispatchers.IO).launch {
             NavLogger.d(context, "[업데이트확인] 코루틴 시작됨")
             try {
@@ -173,7 +199,7 @@ object AutoUpdater {
         return false
     }
 
-    private fun showUpdateDialog(context: Context, newVersion: String, downloadUrl: String) {
+    private fun showUpdateDialog(context: Context, newVersion: String, downloadUrl: String, isTest: Boolean = false) {
         // v8.8: 주기적 백그라운드 체크 결과가 늦게 돌아왔을 때 Activity가 이미 종료된
         // 상태면 다이얼로그를 못 띄우게(WindowLeaked 크래시 방지). #문제시 원복
         if (context is android.app.Activity && (context.isFinishing || context.isDestroyed)) {
@@ -195,10 +221,15 @@ object AutoUpdater {
             currentUpdateDialog = null
         }
         val dialog = AlertDialog.Builder(context, R.style.RoundedDialogTheme)
-            .setTitle("새로운 업데이트 발견")
-            .setMessage("최신 버전($newVersion)이 등록되었습니다.\n지금 업데이트 하시겠습니까?")
+            .setTitle(if (isTest) "테스트 버전 도착" else "새로운 업데이트 발견")
+            .setMessage(
+                if (isTest) "테스트용 버전($newVersion)이 도착했습니다.\n지금 설치하시겠습니까?"
+                else "최신 버전($newVersion)이 등록되었습니다.\n지금 업데이트 하시겠습니까?"
+            )
             .setPositiveButton("업데이트") { _, _ ->
                 currentUpdateDialog = null
+                if (isTest) context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                    .edit().putString(PREF_TEST_APPLIED, newVersion).apply()
                 downloadAndInstall(context, downloadUrl, newVersion)
             }
             .setNegativeButton("나중에") { dialog, _ ->
