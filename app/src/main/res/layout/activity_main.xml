@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical">
@@ -72,6 +73,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:hint="카카오 REST API 키 (목적지 검색용, 선택)"
+        app:helperTextEnabled="true"
+        app:helperText="⚠ 카카오 콘솔 [플랫폼 키]의 'REST API 키'만 넣으세요. JavaScript 키·네이티브 앱 키는 넣으면 안 됩니다."
         android:layout_marginBottom="16dp">
 
         <com.google.android.material.textfield.TextInputEditText
@@ -86,6 +89,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:hint="카카오 네이티브 앱 키 (길안내용, 선택 - 카카오 콘솔 각자 발급)"
+        app:helperTextEnabled="true"
+        app:helperText="⚠ 카카오 콘솔 [플랫폼 키]의 '네이티브 앱 키'만 넣으세요. JavaScript 키·REST API 키는 넣으면 안 됩니다."
         android:layout_marginBottom="16dp">
 
         <com.google.android.material.textfield.TextInputEditText

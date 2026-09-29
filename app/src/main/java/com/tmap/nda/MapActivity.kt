@@ -2148,6 +2148,9 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
+    private var lastInstantLimitForWarn = 0
+    private var instantLimitStableSince = 0L
+
     private fun checkOverSpeedWarning(speedKph: Int) {
         // v19.3.41: 재억 제보 - "티맵은(카카오 안내 중이라) 음소거 모드인데 왜 경고음이
         // 나냐" - 진짜 원인 찾음. 이 함수를 부르는 GPS 리스너(locationListener, 아래
@@ -2166,13 +2169,29 @@ class MapActivity : AppCompatActivity() {
         // roadLimitSpeed는 분기 오매칭 방지 때문에 몇 초씩 옛 값을 들고 있을 수 있음.
         // 티맵이 방금 보고한 최신 값(instantRoadLimitSpeed)이 있으면 경고음 판단만 그걸
         // 우선 씀 - 화면 표시/콤마 전송(roadLimitSpeed)은 그대로 보호됨. #문제시 원복
-        val limit = if (SdiDataRepository.isInstantRoadLimitFresh()) {
-            SdiDataRepository.instantRoadLimitSpeed
-        } else {
-            SdiDataRepository.roadLimitSpeed
+        // 재억 요청(2026-09-28, 폰 시험): 순간값(instant)이 60→50→30처럼 흔들리는데 그걸 그대로 써서
+        // "10% 안 넘었는데 경고음"이 났음(로그 21건 중 14건). 이제 (1) 카메라 근처면 카메라 제한속도를
+        // 바로 믿고, (2) 아니면 순간값과 굳힌 값(roadLimitSpeed) 중 큰 쪽을 쓰되 순간값이 더 낮은 경우엔
+        // 같은 숫자가 3초 이어질 때만 믿음(진짜 낮은 구간 진입엔 3초 안에 반응). #문제시 원복
+        val nowMs = System.currentTimeMillis()
+        val confirmedLimit = SdiDataRepository.roadLimitSpeed
+        val instantFresh = SdiDataRepository.isInstantRoadLimitFresh()
+        val instantLimit = if (instantFresh) SdiDataRepository.instantRoadLimitSpeed else 0
+        if (instantLimit != lastInstantLimitForWarn) {
+            lastInstantLimitForWarn = instantLimit
+            instantLimitStableSince = nowMs
+        }
+        val instantStable = nowMs - instantLimitStableSince >= 3000L
+        val cameraLimit = SdiDataRepository.sdiSpeedLimit
+        var limitBasis = "굳힌값"
+        val limit = when {
+            SdiDataRepository.isNearCameraEvent() && cameraLimit >= 30 -> { limitBasis = "카메라"; cameraLimit }
+            instantLimit >= 30 && (confirmedLimit < 30 || instantLimit >= confirmedLimit) -> { limitBasis = "순간값"; instantLimit }
+            instantLimit >= 30 && instantStable -> { limitBasis = "순간값(3초유지)"; instantLimit }
+            else -> confirmedLimit
         }
         if (limit < 30 || speedKph <= 0) return
-        val now = System.currentTimeMillis()
+        val now = nowMs
         // v: "65로 주행 중이었고 60 제한이면 10%(66)를 안 넘었는데 경고음이 났다"(사용자
         // 재지적) - 지금까지는 실제로 트리거된 순간의 값만 로그로 남겨서, 화면에 보이는
         // limit이랑 이 함수가 실제로 쓰는 limit이 서로 다른 타이밍일 가능성(구간 경계
@@ -2186,7 +2205,7 @@ class MapActivity : AppCompatActivity() {
         // v: 재억 요청(2026-09-23) - "제한속도가 안 바뀐 게 진짜 그 도로가 그런 건지, 인식이
         // 멈춘 건지" 구분할 수 있게 도로 이름도 같이 남김. GPS 좌표는 매 틱마다 바뀌어서 로그가
         // 다시 커지지만, 도로 이름은 그 도로를 벗어나기 전까진 안 바뀌어서 로그양엔 영향 거의 없음. #문제시 원복
-        NavLogger.dIfChanged(this, "과속경고음진단", "[과속경고음진단] limit=$limit (limit*1.1=${limit * 1.1}) 이때속도=$speedKph 도로=${KakaoRouteDataRepository.roadName}")
+        NavLogger.dIfChanged(this, "과속경고음진단", "[과속경고음진단] limit=$limit (limit*1.1=${limit * 1.1}) 이때속도=$speedKph 도로=${KakaoRouteDataRepository.roadName} 기준=$limitBasis 순간=$instantLimit 굳힘=$confirmedLimit")
         // v: 재억 제보(2026-08-22) - 카메라 접근 중엔 300~500m에서 한 번, 100m 이내에서
         // 또 한 번(8초 쿨다운마다 반복) 울리던 걸 "이 카메라 하나당 한 번"으로 제한.
         // 카메라가 없을 때(그냥 과속 중)는 기존처럼 8초마다 반복 경고. #문제시 원복
@@ -2206,7 +2225,7 @@ class MapActivity : AppCompatActivity() {
             // 실제 limit/speedKph 값을 못 남기고 있어서 원인 특정이 안 됐음. 트리거되는
             // 바로 그 순간의 값을 남겨서 다음 로그로 어떤 limit이 실제로 쓰였는지
             // 확정할 수 있게 함. #문제시 원복
-            NavLogger.e(this, "[과속경고음발생][Tmap화면] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1}) nearCamera=$nearCamera")
+            NavLogger.e(this, "[과속경고음발생][Tmap화면] speedKph=$speedKph limit=$limit (limit*1.1=${limit * 1.1}) nearCamera=$nearCamera 기준=$limitBasis 순간=$instantLimit 굳힘=$confirmedLimit")
             try {
                 // v: 재억 지적(2026-08-22) - 안내음량을 20%/30%로 낮춰도 이 경고음만
                 // 항상 100% 고정 크기로 울렸음. 사용자가 설정해둔 안내음량 값을 그대로
