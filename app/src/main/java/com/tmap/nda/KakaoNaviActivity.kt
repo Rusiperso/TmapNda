@@ -745,7 +745,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // 주의: 예전에 이 콜백을 false로 껐더니 카메라 음성 안내까지 사라진 적이 있어서, 그런 증상이
         // 다시 보이면 이 조건만 원복(항상 true). #문제시 원복
         guidance.judgeOverSpeedAlert = { code, a, b, c, d ->
-            val allow = a <= 0 || b > a * 1.1
+            // 재억 요청(2026-09-30): 50으로 달리는데 1km 앞 30 카메라가 잡히면 1km 전부터 경고음이 났음.
+            // 시내에선 1km가 너무 멀어서 카메라까지 300m 이내일 때만 허용. 거리를 모르면(c<=0) 속도 조건만. #문제시 원복
+            val allow = a <= 0 || (b > a * 1.1 && (c <= 0 || c <= 300))
             NavLogger.d(
                 this,
                 "[카카오과속알림진단] code=$code a=$a b=$b c=$c d=$d 허용=$allow " +

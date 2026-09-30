@@ -117,26 +117,8 @@ object FirebasePresence {
                     )
                     deviceRef.updateChildren(info)
                     if (currentSessionRef == null) {
-                        // v: 위 크래시 대비 - 메모리에 있으면 그걸 쓰고, 없으면(프로세스가
-                        // 방금 재시작된 경우) 디스크에 저장해둔 걸로 대신 확인. #문제시 원복
                         val prefs = appContextSafe.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                        var resumable = lastEndedSessionRef
-                        var resumeDisconnectAt = lastDisconnectAtMs
-                        if (resumable == null) {
-                            val savedPath = prefs.getString(PREF_LAST_SESSION_PATH, null)
-                            val savedAt = prefs.getLong(PREF_LAST_DISCONNECT_AT, 0L)
-                            if (savedPath != null && savedAt > 0L) {
-                                resumable = db.getReferenceFromUrl(savedPath)
-                                resumeDisconnectAt = savedAt
-                            }
-                        }
-                        if (resumable != null && System.currentTimeMillis() - resumeDisconnectAt < SESSION_RESUME_WINDOW_MS) {
-                            // 잠깐 끊겼다 바로 붙은 것으로 보고, 새 줄 대신 방금 끝난 줄을 그대로 이어씀
-                            resumable.child("end").removeValue()
-                            resumable.onDisconnect().updateChildren(mapOf("end" to ServerValue.TIMESTAMP))
-                            currentSessionRef = resumable
-                            prefs.edit().remove(PREF_LAST_SESSION_PATH).remove(PREF_LAST_DISCONNECT_AT).apply()
-                        } else {
+                        fun startNewSession() {
                             prefs.edit().remove(PREF_LAST_SESSION_PATH).remove(PREF_LAST_DISCONNECT_AT).apply()
                             val today = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).apply {
                                 timeZone = java.util.TimeZone.getTimeZone("Asia/Seoul")
@@ -145,8 +127,45 @@ object FirebasePresence {
                             sessionRef.child("start").setValue(ServerValue.TIMESTAMP)
                             sessionRef.onDisconnect().updateChildren(mapOf("end" to ServerValue.TIMESTAMP))
                             currentSessionRef = sessionRef
+                            // v: 재억 제보(2026-09-29) - 앱이 죽었다 바로 다시 켜지면(종료 19:23/시작 19:23) 이전 줄이
+                            // 이어붙지 않았음: 끊김을 못 본 채 프로세스가 사라져 "마지막 줄" 기억이 없었기 때문.
+                            // 세션을 만들거나 이어쓸 때마다 그 경로를 미리 저장해두고, 다음 시작 때 서버에 적힌
+                            // end 시각으로 "방금 끝난 줄인지" 판단함. #문제시 원복
+                            prefs.edit().putString(PREF_LAST_SESSION_PATH, sessionRef.toString())
+                                .putLong(PREF_LAST_DISCONNECT_AT, 0L).apply()
                         }
+                        fun resume(ref: com.google.firebase.database.DatabaseReference) {
+                            ref.child("end").removeValue()
+                            ref.onDisconnect().updateChildren(mapOf("end" to ServerValue.TIMESTAMP))
+                            currentSessionRef = ref
+                            prefs.edit().putString(PREF_LAST_SESSION_PATH, ref.toString())
+                                .putLong(PREF_LAST_DISCONNECT_AT, 0L).apply()
+                        }
+                        var resumable = lastEndedSessionRef
+                        var resumeDisconnectAt = lastDisconnectAtMs
                         lastEndedSessionRef = null
+                        val savedPath = prefs.getString(PREF_LAST_SESSION_PATH, null)
+                        val savedAt = prefs.getLong(PREF_LAST_DISCONNECT_AT, 0L)
+                        if (resumable == null && savedPath != null && savedAt > 0L) {
+                            resumable = db.getReferenceFromUrl(savedPath)
+                            resumeDisconnectAt = savedAt
+                        }
+                        if (resumable != null && System.currentTimeMillis() - resumeDisconnectAt < SESSION_RESUME_WINDOW_MS) {
+                            // 잠깐 끊겼다 바로 붙은 것으로 보고, 새 줄 대신 방금 끝난 줄을 그대로 이어씀
+                            resume(resumable)
+                        } else if (resumable == null && savedPath != null && savedAt == 0L) {
+                            // 프로세스가 통째로 죽었다 다시 켜진 경우: 서버에 적힌 end 시각으로 판단
+                            val old = db.getReferenceFromUrl(savedPath)
+                            old.child("end").get().addOnSuccessListener { endSnap ->
+                                val endMs = (endSnap.value as? Number)?.toLong()
+                                if (currentSessionRef == null) {
+                                    if (endMs != null && System.currentTimeMillis() - endMs < SESSION_RESUME_WINDOW_MS) resume(old)
+                                    else startNewSession()
+                                }
+                            }.addOnFailureListener { if (currentSessionRef == null) startNewSession() }
+                        } else {
+                            startNewSession()
+                        }
                     }
                     // v: 재억 요청(2026-09-22) - "처음 신호"가 항상 "마지막 신호"와 같게 나오는 문제 수정.
                     // lastSeen은 매번 덮어쓰지만 firstSeen은 비어있을 때 딱 한 번만 채움(트랜잭션으로
