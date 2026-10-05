@@ -96,12 +96,9 @@ object SearchRanking {
             else -> 3
         }
         val dtPreferred = if (normalizedName.contains("DT", ignoreCase = true)) 0 else 1
-        val extraLength = (normalizedName.length - normalizedQuery.length).toDouble()
-        return if (dtPreferred == 0) {
-            RankKey(nameTier, dtPreferred, distanceMeters, 0.0)
-        } else {
-            RankKey(nameTier, dtPreferred, extraLength, distanceMeters)
-        }
+        // 재억 요청(2026-10-05): 같은 이름일치 단계 안에서는 이름 길이 무시하고 거리순으로만
+        // 정렬(거리가 1km/500m/2.5km 뒤죽박죽 나오던 원인). #문제시 원복(이전: 비DT는 이름 짧은 쪽 우선 후 거리)
+        return RankKey(nameTier, dtPreferred, distanceMeters, 0.0)
     }
 
     /**

@@ -1562,6 +1562,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                             if (activeWaypoints.isEmpty()) {
                                 binding.btnCancelWaypoint?.visibility = View.GONE
                             }
+                            removePassedViaFromKakaoTrip(next.name)
                         }
                     }
                 }
@@ -2497,6 +2498,27 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // v: 경유지 목록도 화면이 다시 만들어지면 사라지던 값 - 경로 방식과 같은 방식으로
     // 인텐트에 적어둬서(분할화면 전환 등으로) 화면이 다시 만들어져도 경유지를 그대로
     // 이어감. 목록이 바뀌는 곳마다 이 함수를 불러줌. #문제시 원복
+    // 재억 요청(2026-09-30, 내 폰 시험): 경유지를 지나도 카카오 지도의 경유 표시가 남던 것을
+    // 카카오 trip의 경유지 목록에서 직접 빼서 지워봄. 결과는 [경유지표시제거] 로그로 확인. #문제시 원복
+    private fun removePassedViaFromKakaoTrip(name: String) {
+        try {
+            val g = KNSDK.sharedGuidance() ?: return
+            val trip = g.javaClass.methods.firstOrNull { it.name.equals("getCurTrip", true) || it.name.equals("getTrip", true) }?.invoke(g)
+            if (trip == null) { NavLogger.d(this, "[경유지표시제거] trip 없음"); return }
+            val getVias = trip.javaClass.methods.firstOrNull { it.name == "getVias" }
+            val before = (getVias?.invoke(trip) as? List<*>)?.size
+            val passed = (trip.javaClass.methods.firstOrNull { it.name == "passedVias" }?.invoke(trip) as? List<*>)?.size
+            NavLogger.d(this, "[경유지표시제거] '$name' 통과: 카카오 경유지 ${before}개, 카카오가 아는 통과분 ${passed}개")
+            if (before != null && before > 0) {
+                trip.javaClass.methods.firstOrNull { it.name == "removeViaAtIdx" }?.invoke(trip, 0)
+                val after = (getVias?.invoke(trip) as? List<*>)?.size
+                NavLogger.d(this, "[경유지표시제거] removeViaAtIdx(0) 호출 후 카카오 경유지 ${after}개")
+            }
+        } catch (e: Exception) {
+            NavLogger.e(this, "[경유지표시제거] 실패: ${e.javaClass.simpleName} ${e.cause?.message ?: e.message}")
+        }
+    }
+
     private fun syncWaypointsToIntent() {
         val arr = org.json.JSONArray()
         activeWaypoints.forEach {
@@ -3251,6 +3273,22 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
         }
 
+        // 재억 요청(2026-10-05): 추천 경로와 시간·거리가 똑같은 방식 칸은 흐리게 표시(고르나 마나 같은 길). #문제시 원복
+        fun routeKey(r: Any?): Pair<Int, Int>? {
+            if (r == null) return null
+            val t = (r.javaClass.methods.firstOrNull { it.name == "getTotalTime" && it.parameterCount == 0 }?.invoke(r) as? Number)?.toInt()
+            val d = (r.javaClass.methods.firstOrNull { it.name == "getTotalDist" && it.parameterCount == 0 }?.invoke(r) as? Number)?.toInt()
+            return if (t != null && d != null) t to d else null
+        }
+        fun sameAsRecommend(i: Int): Boolean {
+            if (i == 0) return false
+            val base = routeKey(routesArr.getOrNull(0)) ?: return false
+            return routeKey(routesArr.getOrNull(i)) == base
+        }
+        fun applySameDim() {
+            tabViews.forEachIndexed { i, tv -> tv.alpha = if (i != selectedIndex && sameAsRecommend(i)) 0.45f else 1f }
+        }
+
         fun updateSelection() {
             tabViews.forEachIndexed { i, tv ->
                 // v19.3.74: 재억 제보 - setBackgroundColor()가 처음에 만들어둔 둥근 모서리
@@ -3267,14 +3305,17 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     tv.setTypeface(null, android.graphics.Typeface.NORMAL)
                 }
             }
-            val minutes = minutesArr[selectedIndex]
+            // 재억 요청(2026-10-05): 계산이 실패/시간초과된 칸(-1)은 "계산 중..."에 계속 머물지 않고 "계산 실패"로 표시. #문제시 원복
+            val rawMinutes = minutesArr[selectedIndex]
+            val failed = rawMinutes != null && rawMinutes < 0
+            val minutes = if (failed) null else rawMinutes
             val etaLine = SearchRanking.formatEtaMinutes(minutes)
             // v19.3.72: 재억 실기기 제보 - "계산실패?" - 실제로는 실패한 게 아니라, 거리가
             // 멀어서(평택-대구 등) 계산이 3초 넘게 걸린 것뿐이었는데 "계산 실패"라고 써놔서
             // 영영 안 되는 것처럼 보였음. 아직 값이 안 왔을 때는 "계산 중..."으로 바꾸고,
             // 값이 도착하면(아래 refresh 참고) 다시 그려서 실제 값으로 바뀌게 함. #문제시 원복
-            timeText.text = etaLine ?: "계산 중..."
-            etaText.text = ""
+            timeText.text = etaLine ?: if (failed) "계산 실패" else "계산 중..."
+            etaText.text = if (minutes != null && sameAsRecommend(selectedIndex)) "추천 경로와 같음" else ""
             // v: 재억 재제보(2026-09-19) - "계산 중..."인 동안에도 안내시작 카운트다운이
             // 이미 돌고 있었음(패널 열리자마자 무조건 10초 시작). 이 탭의 실제 소요시간이
             // 도착(minutes != null)했을 때 딱 한 번만 시작하도록 바꿈 - 계산 끝나기 전엔
@@ -3291,6 +3332,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 else -> "통행료 무료"
             }
             drawRouteAndFit()
+            applySameDim()
         }
 
         val card = android.widget.LinearLayout(this).apply {
@@ -3429,6 +3471,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                                     RouteChoiceOptions.saveOrder(this@KakaoNaviActivity, displayOrder)
                                     layoutTabs()
                                 }
+                                applySameDim()
                                 card.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
                                     override fun onPreDraw(): Boolean {
                                         card.viewTreeObserver.removeOnPreDrawListener(this)
@@ -3613,6 +3656,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         activeRouteChoicePanelCancel = { stopCountdown() }
         attachPopupCardDrag(card, root)
         updateSelection()
+        // 재억 요청(2026-10-05): 25초가 지나도 안 온 칸은 실패로 보고 "계산 실패" 표시(계속 "계산 중..."이던 문제). #문제시 원복
+        countdownHandler.postDelayed({
+            if (activeRouteChoicePanel === card) {
+                var changed = false
+                for (i in minutesArr.indices) if (minutesArr[i] == null) { minutesArr[i] = -1; changed = true }
+                if (changed) updateSelection()
+            }
+        }, 25_000L)
         // v19.3.80: 패널이 뜬 뒤 화면 크기가 잡히면 출발~목적지 전체를 중앙에 맞춤. #문제시 원복
         card.post {
             fitViewToEndpoints(startLat, startLon, picked.lat, picked.lon) { activeRouteChoicePanel === card }
@@ -3723,7 +3774,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             options = optionPriorities.zip(optionAvoidOptions)
         ) { index, minutes, _, tollCostWon, route ->
             runOnUiThread {
-                minutesArr[index] = minutes
+                minutesArr[index] = minutes ?: -1
                 costArr[index] = tollCostWon
                 routesArr[index] = route
                 refresh()
@@ -3852,7 +3903,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 options = optionPriorities.zip(optionAvoidOptions)
             ) { index, minutes, _, tollCostWon, route ->
                 runOnUiThread {
-                    minutesArr[index] = minutes
+                    minutesArr[index] = minutes ?: -1
                     costArr[index] = tollCostWon
                     routesArr[index] = route
                     refresh()
