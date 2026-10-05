@@ -4530,7 +4530,18 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             android.view.MotionEvent.ACTION_POINTER_DOWN -> {
                 if (ev.pointerCount == 2) {
                     val bridging = System.currentTimeMillis() - pinchZoomLastEndAt <= PINCH_BRIDGE_MS
-                    if (!bridging || pinchZoomBase == 0f) pinchZoomBase = mv.zoom
+                    // 재억 제보(2026-10-05, 폰 로그): 손 뗀 직후 지도가 스스로 줌을 되돌려(우리 7.92 / 지도 2.22) 다음
+                    // 핀치 때 낡은 값으로 이어붙이면 한 번에 점프("갈까말까"). 우리 값과 지도 실제 값이 25% 넘게 다르면
+                    // 지도 실제 값에서 시작. #문제시 원복
+                    val mapZoomNow = mv.zoom
+                    val drifted = pinchZoomBase > 0f && kotlin.math.abs(mapZoomNow - pinchZoomBase) > pinchZoomBase * 0.25f
+                    if (!bridging || pinchZoomBase == 0f || drifted) pinchZoomBase = mapZoomNow
+                    pinchZoomFrameCallback?.let { android.view.Choreographer.getInstance().removeFrameCallback(it) }
+                    pinchZoomFrameCallback = null
+                    kakaoGuidanceDelegate?.suppressForPinch = true
+                    pinchEndScheduler.postDelayed({
+                        if (pinchLastSpan == 0f && pinchZoomFrameCallback == null) kakaoGuidanceDelegate?.suppressForPinch = false
+                    }, 15000L)
                     pinchLastSpan = pinchSpan(ev)
                     pinchStartSpan = pinchLastSpan
                     pinchStartZoom = pinchZoomBase
@@ -4577,11 +4588,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     // 유지 모드"가 켜져서 그 짧은 끊긴 순간마다 강하게 끼어들며 다음 재접촉과 충돌 -
                     // "줌인 할까 말까" 버벅임으로 보였음. 진짜로 손을 뗀 게 맞는지(이어붙이기 시간 동안
                     // 재입력이 없었는지) 확인한 뒤에만 유지 모드를 시작하도록 지연시킴. #문제시 원복
-                    val myGen = pinchEndGeneration
-                    val zoomAtEnd = pinchZoomBase
-                    pinchEndScheduler.postDelayed({
-                        if (myGen == pinchEndGeneration && pinchLastSpan == 0f) startPinchZoomHold(zoomAtEnd)
-                    }, PINCH_BRIDGE_MS)
+                    // 재억 제보(2026-10-05): 1.8초 기다린 뒤에야 유지하면 그 사이 지도가 줌을 되돌려 "풀림". 손을 뗀
+                    // 즉시 유지 시작 - 새 손가락이 닿으면 POINTER_DOWN에서 바로 멈추고 이어받음. #문제시 원복
+                    pinchEndGeneration++
+                    startPinchZoomHold(pinchZoomBase)
                 }
             }
         }
@@ -4633,7 +4643,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val until = System.currentTimeMillis() + PINCH_HOLD_MS
         val cb = object : android.view.Choreographer.FrameCallback {
             override fun doFrame(frameTimeNanos: Long) {
-                if (System.currentTimeMillis() >= until) { pinchZoomFrameCallback = null; return }
+                if (System.currentTimeMillis() >= until) { pinchZoomFrameCallback = null; kakaoGuidanceDelegate?.suppressForPinch = false; return }
                 // 그 사이에 새 핀치가 시작됐으면(pinchZoomLastEndAt이 갱신 안 되고 base만 바뀜) 멈춤
                 if (pinchLastSpan != 0f) { pinchZoomFrameCallback = null; return }
                 val mv = runCatching { naviView.mapComponent.mapView }.getOrNull()
@@ -4735,7 +4745,38 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
+    // 재억 요청(2026-10-05): 길안내 중 지도 중심(내 차 위치)을 화면 가운데가 아니라 운전자 쪽(왼쪽)으로 약간 치우치게.
+    // 카카오 SDK가 정한 위치(왼쪽 정보패널 오른쪽 영역의 가운데, 약 0.56)를 카메라 앵커로 덮어씀. 가로 화면·분할화면 아님·
+    // 길안내 중일 때만 적용하고, SDK가 앵커를 되돌리면 1초 안에 다시 맞춤. #문제시 원복(이 블록과 onResume/onPause 호출부만 지우면 됨)
+    private val DRIVER_SIDE_ANCHOR_X = 0.45f
+    // 재억 제보: 1초마다 확인하면 SDK가 되돌린 뒤 0.6초쯤 "갔다가 빠졌다가" 보임 -> 매 프레임 확인해서 한 프레임 안에 바로 되돌림.
+    private val driverAnchorFrame = object : android.view.Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            applyDriverSideAnchor()
+            android.view.Choreographer.getInstance().postFrameCallback(this)
+        }
+    }
+    private fun applyDriverSideAnchor() {
+        try {
+            if (isFinishing || isDestroyed || !::naviView.isInitialized) return
+            if (!isGuidanceRunningNow() || activeRouteChoicePanel != null || parkedActive) return
+            if (resources.configuration.orientation != android.content.res.Configuration.ORIENTATION_LANDSCAPE) return
+            if (android.os.Build.VERSION.SDK_INT >= 24 && isInMultiWindowMode) return
+            val mv = naviView.mapComponent.mapView ?: return
+            val a = mv.anchor
+            if (kotlin.math.abs(a.x - DRIVER_SIDE_ANCHOR_X) < 0.01f) return
+            // getAnchor()의 y는 아래쪽 기준, anchorTo()의 y는 위쪽 기준이라 뒤집어 넣음(안 그러면 차가 위로 튐).
+            mv.moveCamera(
+                KNMapCameraUpdate().zoomTo(mv.zoom).tiltTo(mv.tilt).bearingTo(mv.bearing)
+                    .anchorTo(FloatPoint(DRIVER_SIDE_ANCHOR_X, 1f - a.y)), false, false
+            )
+        } catch (e: Exception) {
+            NavLogger.e(this, "[운전자쪽중심] 적용 실패: ${e.message}")
+        }
+    }
+
     override fun onResume() {
+        android.view.Choreographer.getInstance().removeFrameCallback(driverAnchorFrame); android.view.Choreographer.getInstance().postFrameCallback(driverAnchorFrame)
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ setupParkingLotProbe() }, 3000L)
         super.onResume()
         NavLogger.d(this, "[lifecycle] onResume")
@@ -4810,7 +4851,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     }
 
     override fun onPause() {
+        android.view.Choreographer.getInstance().removeFrameCallback(driverAnchorFrame)
         super.onPause()
+        kakaoGuidanceDelegate?.suppressForPinch = false
         NavLogger.d(this, "[lifecycle] onPause")
         LaneSignalRepository.activeRenderer = null
         AccidentAlertRepository.activeRenderer = null

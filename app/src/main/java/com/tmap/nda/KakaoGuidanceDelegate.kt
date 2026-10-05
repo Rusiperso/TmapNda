@@ -60,6 +60,9 @@ class KakaoGuidanceDelegate(
     // 아이콘이었을 가능성이 높음 - 실제 파란 화살표가 카메라 이동과 무관하게 항상 화면
     // 정중앙에 있었음). #문제시 원복
     var suppressLocationForward = false
+    // 재억 요청(2026-10-05): 핀치줌 직후 카카오 지도가 0.5초마다 줌을 덮어써서 생기는 떨림을 없애려고, 핀치 시작부터
+    // 유지 시간(10초) 동안 지도(naviView)로 위치 전달을 멈춤(HUD/콤마 전송은 그대로). #문제시 원복
+    @Volatile var suppressForPinch = false
     private var lastRoadEventSig: String? = null
     private var lastProbeImg: Any? = null
     private var lastProbeMulti: Any? = null
@@ -663,7 +666,7 @@ class KakaoGuidanceDelegate(
             NavLogger.e(context, "[HUD 브릿지] guidanceDidUpdateLocation 반영 실패: ${e.message}")
         }
 
-        if (!suppressLocationForward) {
+        if (!suppressLocationForward && !suppressForPinch) {
             naviView?.guidanceDidUpdateLocation(guidance, locationGuide)
         }
     }
