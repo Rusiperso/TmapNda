@@ -343,6 +343,7 @@ class UdpSenderService : Service() {
     // 못 채우고, 진짜 제한속도 변화(100->80 등)는 계속 유지되므로 정상 반영됨. #문제시 원복
     private val LIMIT_CHANGE_HOLD_MS = 6_000L
     private val LIMIT_RISE_HOLD_MS = 1_500L
+    private val LIMIT_SINGLE_LINK_DROP_HOLD_MS = 4_000L
     private var pendingLimitValue = 0
     private var pendingLimitSince = 0L
     private var lastTmapSdiSuppressLogTime = 0L
@@ -404,7 +405,14 @@ class UdpSenderService : Service() {
         // 근처 후보 도로가 하나뿐이면 옆도로를 잘못 잡는 것 자체가 불가능 -> 바로 수용.
         // (이 값이 안 채워지는 기기/상황에서는 0이나 -1이 나오므로 이 분기는 그냥 안 탐)
         val nearLinks = readTmapNearLinkCount()
-        if (nearLinks == 1) return true
+        // v: 2026-10-09 로그 - 고속도로 83km 주행 중 후보 도로 1개짜리 엉뚱한 도로(40)에 붙었는데
+        // 이 지름길이 무조건 수용해서 약 5초간 콤마에 40이 나가고 자동 길안내 갈림길도 꺼졌음.
+        // 카카오가 본선 직진이라는데 값이 낮아지는 경우(방향 불일치 하향)는 후보 1개여도 4초
+        // 유지될 때만 수용. 나머지(상향, 방향 일치)는 예전처럼 즉시. #문제시 원복
+        if (nearLinks == 1) {
+            if (directionMatchesKakao || newLimit >= currentLimit) return true
+            return heldMs >= LIMIT_SINGLE_LINK_DROP_HOLD_MS
+        }
 
         if (directionMatchesKakao) return true
         // v19.3.98: 값이 올라가는 쪽(진출로 -> 본선 복귀)은 잘못 받아도 위험이 작으니 짧게.
@@ -676,7 +684,7 @@ class UdpSenderService : Service() {
                 // v: 사용자 요청(재억, 2026-08-12) - AutoWatchHelper 검증용. 사용정보 접근
                 // 권한 없으면 항상 false로 찍힘(정상) - 설정에서 허용 후 재확인 필요. #문제시 원복
                 "AA포그라운드(권한=${AutoWatchHelper.hasUsageAccessPermission(ctx)}, foreground=${AutoWatchHelper.isAndroidAutoForeground(ctx)}) " +
-                "구형NDA비콘(addr=${ndaRemoteAddr}, GPS=${ndaGps?.hasFix} - openpilot 포크에 따라 지원 여부가 다름, 재억 본인 차량은 미지원이 정상) " +
+                "구형NDA비콘(addr=${ndaRemoteAddr}, GPS=${ndaGps?.hasFix} - openpilot 포크에 따라 지원 여부가 다름, 미지원 포크는 정상) " +
                 "나브디(${com.tmap.nda.navdy.NavdySender.statusForLog()}) " +
                 // v: 재억 제보(2026-09-04) - 차량 순정 계기판에 안내가 잘 뜨는데, 그게 우리가
                 // nMirror에 넣어준 것인지 nMirror가 순정 티맵에서 빼간 것인지 구분할 방법이
@@ -1132,6 +1140,15 @@ class UdpSenderService : Service() {
 
                     json.put("nRoadLimitSpeed", roadLimitSpeed)
 
+                    // 자동 진출 판단용 도로 종류(0,1=고속) - 콤마가 고속도로(80 이상)는 2km 전부터
+                    // 차선변경을 시작하는 데 씀. 방지턱용 roadcate와 섞이지 않게 별도 필드. #문제시 원복
+                    val autoNaviDrive = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                        .getBoolean("auto_navi_drive_enabled", false)
+                    json.put("autoNaviDrive", if (autoNaviDrive) 1 else 0)
+                    // 2026-10-09 깜빡이 켜기 시험: 켜져 있을 때만 콤마가 자동 차선변경 중 차량 깜빡이를 켬(차종별 번호는 콤마가 정함). #문제시 원복
+                    json.put("autoBlinker", if (getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("auto_blinker_enabled", false)) 1 else 0)
+                    if (autoNaviDrive) json.put("nRoadClass", LaneSignalRepository.roadCategory)
+
                     // 3. secondSDIInfo (GRT47과 동일하게 nSdiPlus... 접두어로 추가)
                     val sdiPlusObj = bundle.get("secondSDIInfo")
                     if (sdiPlusObj != null) {
@@ -1320,6 +1337,7 @@ class UdpSenderService : Service() {
                         }
                         val kakaoTbtDist = if (kr.tbtDist > 0) kr.tbtDist else 9999
                         json.put("nTBTDist", kakaoTbtDist)
+                        // 2026-10-09: 시내(80 미만) 갈림길 제외는 빼기로 함(콤마가 80 미만에서도 차선변경함). 코드 그대로 전송.
                         json.put("nTBTTurnType", kr.tbtTurnType)
                         // v4.21: 예전 매핑(1,2,3,4,7→단속구간/22→방지턱/33→스쿨존)이 실제
                         // KNSafetyCode 값 체계랑 완전히 어긋나 있었음(사용자 지적으로 재검증) -
@@ -1388,8 +1406,12 @@ class UdpSenderService : Service() {
                         if (tmapHasSdi && kakaoHasSdi) {
                             val tmapSdiType = json.optInt("nSdiType", 0)
                             val tmapSpeedLimit = json.optInt("nSdiSpeedLimit", 0)
-                            val mismatch = tmapSdiType != safeKakaoSdiType ||
-                                (tmapSpeedLimit > 0 && kr.safetySpeedLimit > 0 && kotlin.math.abs(tmapSpeedLimit - kr.safetySpeedLimit) > 5)
+                            // 로그 확인(2026-10-08): 거리가 150m 넘게 다르면(예: 72m vs 296m) 서로 다른 지점의
+                            // 안전정보라 비교 대상이 아님 → 같은 지점일 때만 불일치로 판정(오탐 제거). #문제시 원복
+                            // 2026-10-09 로그: 불일치 11건 전부 거리 차이 80~124m의 서로 다른 지점(교통량수집 vs 단속 등)이라 150m는 넓음 → 40m. #문제시 원복
+                            val sameSpot = kotlin.math.abs(json.optInt("nSdiDist", 0) - kr.safetyDist) <= 40
+                            val mismatch = sameSpot && (tmapSdiType != safeKakaoSdiType ||
+                                (tmapSpeedLimit > 0 && kr.safetySpeedLimit > 0 && kotlin.math.abs(tmapSpeedLimit - kr.safetySpeedLimit) > 5))
                             if (mismatch && System.currentTimeMillis() - lastSdiMismatchLogTime > 3000L) {
                                 lastSdiMismatchLogTime = System.currentTimeMillis()
                                 NavLogger.e(
@@ -1400,7 +1422,14 @@ class UdpSenderService : Service() {
                             }
                         }
 
-                        if (kakaoHasSdi && kr.safetyDistTrusted) {
+                        // 2026-10-09 재억 지시: 길안내 중에도 카메라는 티맵 단독(카카오 카메라가 옆도로/가림 문제).
+                        // 카카오는 방지턱(22)만 추가로 받음.
+                        // 카메라류 = 단속·신호·구간단속·교통정보수집 등. 티맵 카메라가 더 가까우면 티맵 유지. #문제시 원복
+                        // 2026-10-09 재억 재지시: 카카오는 방지턱(22)만. 나머지(급커브·사고다발 포함)는 전부 티맵 단독.
+                        val kakaoIsCameraClass = safeKakaoSdiType != 22
+                        val tmapNearer = tmapHasSdi && json.optInt("nSdiDist", 0) in 1..kr.safetyDist
+                        val useKakaoSdi = kakaoHasSdi && kr.safetyDistTrusted && !kakaoIsCameraClass && !tmapNearer
+                        if (useKakaoSdi) {
                             json.put("nSdiType", safeKakaoSdiType)
                             json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
                             json.put("nSdiDist", kr.safetyDist)
@@ -1413,7 +1442,7 @@ class UdpSenderService : Service() {
                                 json.put("roadcate", 8)
                             }
                             NavLogger.dIfChanged(this@UdpSenderService, "sdi_priority", "[안전정보 우선순위] 검증된 카카오값 우선 채택: type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit}")
-                        } else if (!tmapHasSdi && kakaoHasSdi) {
+                        } else if (!tmapHasSdi && kakaoHasSdi && !kakaoIsCameraClass) {
                             if (kr.safetyDistTrusted) {
                                 json.put("nSdiType", safeKakaoSdiType)
                                 json.put("nSdiSpeedLimit", kr.safetySpeedLimit)

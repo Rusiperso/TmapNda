@@ -34,14 +34,15 @@ object FirebaseReport {
     // 키 순서 = 올린 순서. #문제시 원복
     private const val KEEP_LOGS = 3
 
-    private fun trimOldLogs(db: FirebaseDatabase, id: String) {
+    // 2026-10-09 파이어베이스 다운로드 한도 절약 - 예전엔 정리할 때마다 logs/<ID> 전체(최대 4.5MB)를
+    // 내려받아 키를 셌음. 이제는 내가 올린 키를 폰에 기억해두고, 오래된 것만 키로 바로 지움(다운로드 0).
+    // 이 방식 도입 전에 올라가 있던 옛 로그(최대 3개)는 폰이 모르니 그대로 남음. #문제시 원복
+    private fun rememberAndTrim(context: Context, db: FirebaseDatabase, id: String, newKey: String) {
         try {
-            val ref = db.getReference("logs/$id")
-            ref.get().addOnSuccessListener { snap ->
-                val keys = snap.children.mapNotNull { it.key }.sorted()
-                if (keys.size <= KEEP_LOGS) return@addOnSuccessListener
-                keys.dropLast(KEEP_LOGS).forEach { ref.child(it).removeValue() }
-            }
+            val prefs = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            val keys = (prefs.getString("uploaded_log_keys", "") ?: "").split(",").filter { it.isNotBlank() } + newKey
+            keys.dropLast(KEEP_LOGS).forEach { db.getReference("logs/$id/$it").removeValue() }
+            prefs.edit().putString("uploaded_log_keys", keys.takeLast(KEEP_LOGS).joinToString(",")).apply()
         } catch (e: Exception) {
             // 조용히 무시
         }
@@ -71,6 +72,49 @@ object FirebaseReport {
         }
     }
 
+    // 2026-10-09 재억 지시: 보관 중인 로그(4일치)를 통째로 원격 요청으로 받기. 새 경로는 파이어베이스 규칙상
+    // 막혀 있어서 logs/<ID> 아래에 조각(part)으로 올림. 파일별로 gzip(여러 조각을 이어붙여도 유효한 gzip)
+    // 후 base64 -> 90만 글자씩. 최신 파일부터 담아 총 8MB 압축분까지만(넘으면 오래된 것 생략).
+    // 마지막에 평소 형식 항목(log=끝부분)을 한 번 더 올려서 기존 Board의 "최신 1건" 읽기는 그대로 동작.
+    // 이전 조각 묶음은 폰이 키를 기억해 바로 지움(다운로드 0). #문제시 원복
+    private const val FULL_GZ_LIMIT = 8 * 1024 * 1024
+    private const val FULL_PART_CHARS = 900_000
+
+    private fun uploadFullLogs(context: Context, db: FirebaseDatabase, id: String) {
+        val files = NavLogger.allLogFilesChronological(context)
+        val picked = ArrayList<ByteArray>()
+        var total = 0
+        var rawTotal = 0L
+        for (f in files.reversed()) {
+            val bos = java.io.ByteArrayOutputStream()
+            java.util.zip.GZIPOutputStream(bos).use { gz -> f.inputStream().use { it.copyTo(gz) } }
+            val bytes = bos.toByteArray()
+            if (total + bytes.size > FULL_GZ_LIMIT && picked.isNotEmpty()) break
+            picked.add(bytes); total += bytes.size; rawTotal += f.length()
+        }
+        picked.reverse()
+        val all = java.io.ByteArrayOutputStream().also { o -> picked.forEach { o.write(it) } }.toByteArray()
+        val b64 = android.util.Base64.encodeToString(all, android.util.Base64.NO_WRAP)
+        val parts = b64.chunked(FULL_PART_CHARS)
+        val prefs = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        (prefs.getString("uploaded_full_keys", "") ?: "").split(",").filter { it.isNotBlank() }
+            .forEach { db.getReference("logs/$id/$it").removeValue() }
+        val setId = System.currentTimeMillis().toString()
+        val keys = ArrayList<String>()
+        parts.forEachIndexed { i, chunk ->
+            val r = db.getReference("logs/$id").push()
+            r.key?.let { keys.add(it) }
+            r.setValue(mapOf("log" to "", "gz" to chunk, "part" to i + 1, "parts" to parts.size, "setId" to setId,
+                "files" to picked.size, "totalFiles" to files.size, "rawBytes" to rawTotal, "ts" to ServerValue.TIMESTAMP))
+        }
+        prefs.edit().putString("uploaded_full_keys", keys.joinToString(",")).apply()
+        val tail = try { DiscordReporter.tailOfLogFile(NavLogger.activeLogFile(context)) } catch (e: Exception) { "" }
+        val last = db.getReference("logs/$id").push()
+        last.setValue(mapOf("log" to tail, "appVersion" to DiscordReporter.appVersion(context), "fullSet" to setId,
+            "fullParts" to parts.size, "ts" to ServerValue.TIMESTAMP))
+            .addOnCompleteListener { last.key?.let { k -> rememberAndTrim(context, db, id, k) } }
+    }
+
     private fun attachListener(appContextSafe: Context) {
         attachTestUpdateListener(appContextSafe)
         try {
@@ -79,17 +123,25 @@ object FirebaseReport {
             val reqRef = db.getReference("logRequests/$id")
             reqRef.addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
-                    val requested = snapshot.getValue(Boolean::class.java) ?: return
-                    if (!requested) return
+                    // true = 평소처럼 최근 로그 끝부분, "full" = 보관 중인 4일치 전부(압축해서 조각으로 올림).
+                    val raw = snapshot.value
+                    val full = raw == "full"
+                    if (raw != true && !full) return
                     reqRef.setValue(false)
+                    if (full) {
+                        Thread { try { uploadFullLogs(appContextSafe, db, id) } catch (e: Exception) { } }.start()
+                        return
+                    }
                     val logText = try { DiscordReporter.tailOfLogFile(NavLogger.activeLogFile(appContextSafe)) } catch (e: Exception) { "" }
-                    db.getReference("logs/$id").push().setValue(
+                    val logRef = db.getReference("logs/$id").push()
+                    val logKey = logRef.key
+                    logRef.setValue(
                         mapOf(
                             "log" to logText,
                             "appVersion" to DiscordReporter.appVersion(appContextSafe),
                             "ts" to ServerValue.TIMESTAMP
                         )
-                    ).addOnCompleteListener { trimOldLogs(db, id) }
+                    ).addOnCompleteListener { if (logKey != null) rememberAndTrim(appContextSafe, db, id, logKey) }
                 }
 
                 override fun onCancelled(error: DatabaseError) {

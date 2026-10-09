@@ -576,6 +576,21 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 32)
         }
+        // 자동 길안내 주행(시험): 켜면 고속도로 분기점·도시고속도로 진출 안내를 갈림길로 내보내고
+        // 도로등급을 콤마로 보내서, 콤마가 80 이상 도로에서 2km 전부터 반응하게 함(시내는 제외). #문제시 원복
+        val autoNaviDriveCheckBox = android.widget.Switch(context).apply {
+            text = "자동 길안내 주행 (시험) - 갈림길·출구를 미리 따라가기"
+            isChecked = pref.getBoolean("auto_navi_drive_enabled", false)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 32)
+        }
+        // 깜빡이 켜기 허용(시험): 켜면 콤마가 자동 차선변경 때 차량 깜빡이를 직접 켬. 확인된 차종만 동작. #문제시 원복
+        val autoBlinkerCheckBox = android.widget.Switch(context).apply {
+            text = "깜빡이 켜기 허용 (시험) - 자동 차선변경 때 깜빡이 먼저 켜기"
+            isChecked = pref.getBoolean("auto_blinker_enabled", false)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 32)
+        }
         val disableMobileCamCheckBox = android.widget.Switch(context).apply {
             text = "이동식카메라 감속"
             // 저장값(mobile_cam_slowdown_disabled)은 "꺼졌는지 여부"라 의미가 반대이므로
@@ -1167,6 +1182,7 @@ object PanelDragHelper {
         etcItems.add(backupHintText)
         etcItems.add(backupButtonRow)
         addAccordionGroup("기타 설정", etcItems)
+        addAccordionGroup("자동 길안내 주행", listOf(autoNaviDriveCheckBox, autoBlinkerCheckBox))
 
         // v19.3.79: 재억 요청 - 설정 창을 카드형 2단(왼쪽: 그룹 고르기 / 오른쪽: 그 그룹 항목)으로.
         // 켜진 스위치는 노란색으로 보이게 색을 입힘. 저장/취소 동작은 그대로. 바깥을 눌러
@@ -1288,6 +1304,8 @@ object PanelDragHelper {
                     // 저장 키(mobile_cam_slowdown_disabled)는 "꺼졌는지 여부"라 스위치 상태를
                     // 반전해서 저장(스위치 켜짐=감속 기능 켜짐이므로 disabled=!isChecked)
                     .putBoolean("mobile_cam_slowdown_disabled", !disableMobileCamCheckBox.isChecked)
+                    .putBoolean("auto_navi_drive_enabled", autoNaviDriveCheckBox.isChecked)
+                    .putBoolean("auto_blinker_enabled", autoBlinkerCheckBox.isChecked)
                     .putBoolean("topbar_event_enabled", showTopBarEventCheckBox.isChecked)
                     .putBoolean("lane_overlay_tmap_enabled", showLaneOverlayTmapCheckBox.isChecked)
                     .putBoolean("accident_alert_enabled", accidentAlertCheckBox.isChecked)

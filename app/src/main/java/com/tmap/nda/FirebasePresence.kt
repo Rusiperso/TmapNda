@@ -104,12 +104,14 @@ object FirebasePresence {
                         currentSessionRef = null
                         return
                     }
-                    val info = mapOf(
+                    val info = mapOf<String, Any?>(
                         "nickname" to DiscordReporter.getNickname(appContextSafe).ifBlank { "(미입력)" },
                         "model" to "${Build.MANUFACTURER} ${Build.MODEL}",
                         "appVersion" to DiscordReporter.appVersion(appContextSafe),
                         "online" to true,
-                        "lastSeen" to ServerValue.TIMESTAMP
+                        "lastSeen" to ServerValue.TIMESTAMP,
+                        // 재억 요청(2026-10-05): 테스트 빌드를 설치한 폰이면 그 태그를 알려 Board에 표시(아니면 null=삭제). #문제시 원복
+                        "testTag" to AutoUpdater.installedTestTag(appContextSafe)
                     )
                     // 연결이 끊기는 순간(강제종료, 배터리 방전, 전파 끊김 등) 서버가 대신 써줄 값을 미리 등록
                     deviceRef.onDisconnect().updateChildren(

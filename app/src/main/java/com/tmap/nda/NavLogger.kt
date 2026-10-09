@@ -102,6 +102,10 @@ object NavLogger {
         }
     }
 
+    /** 보관 중인 로그 파일 전부, 오래된 것 -> 최신(현재 쓰는 파일) 순. 원격 4일치 업로드용. */
+    fun allLogFilesChronological(context: Context): List<File> =
+        allLogFiles(context).sortedBy { if (it.name == "tmapnda_log.txt") Long.MAX_VALUE else it.lastModified() }
+
     /** 현재 쓰고 있는 로그 파일(회전 안 된 최신 파일). 디스코드 자동 보고 등 외부에서 첨부용으로 씀. */
     fun activeLogFile(context: Context): File = logFile(context)
 
@@ -323,7 +327,8 @@ object NavLogger {
     // 문제였음(deleteAllLogFiles를 종료 시점에 호출하던 걸 원복). 대신 앱을 새로 켤 때마다
     // (MainActivity.onCreate) 이 함수를 불러서, 마지막으로 수정된 지 3일 지난 로그 파일만
     // 지움 - 최근 며칠치 주행 기록은 남아있고, 저장공간은 계속 늘어나지 않게 함. #문제시 원복
-    private const val LOG_MAX_AGE_MS = 3L * 24 * 60 * 60 * 1000
+    // 2026-10-09 재억 지시: 3일 -> 4일 보관(원격 4일치 로그 요청용). 함수 이름은 그대로 둠. #문제시 원복
+    private const val LOG_MAX_AGE_MS = 4L * 24 * 60 * 60 * 1000
 
     fun deleteLogsOlderThan3Days(context: Context) {
         try {

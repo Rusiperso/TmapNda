@@ -1112,6 +1112,10 @@ class KakaoGuidanceDelegate(
     //   6/43/73/74/117/123/124=우측분기(fork right)  7/17/44/75/76/118=좌측분기(fork left)
     //   101/104/111/114=우측 완만한 램프(off-ramp 우) 102/105/112/115=좌측 완만한 램프
     //   153/154/249=톨게이트(TG)
+    private fun autoNaviDriveOn(): Boolean =
+        context.getSharedPreferences("TmapNdaPrefs", android.content.Context.MODE_PRIVATE)
+            .getBoolean("auto_navi_drive_enabled", false)
+
     private fun mapKakaoTurnTypeToOpenpilot(kakaoTurnType: Any?, directionAngleForMapping: Int = 0): Int {
         val name = kakaoTurnType?.toString() ?: return 51
         return when (name) {
@@ -1136,6 +1140,12 @@ class KakaoGuidanceDelegate(
             // 고속도로 진출 램프
             "KNRGCode_LeftOutHighway" -> 102
             "KNRGCode_RightOutHighway", "KNRGCode_OutHighway" -> 101
+            // 도시고속도로 진출·고속도로 분기점(JC) 우측/좌측 갈아타기 - 로그(10/2~10/4)에서
+            // 무안내(51)로 나가던 걸 갈림길 코드로 매핑. 좌측 이름은 우측과 대칭으로 추정. #문제시 원복
+            "KNRGCode_RightOutCityway", "KNRGCode_OutCityway" -> if (autoNaviDriveOn()) 101 else 51
+            "KNRGCode_LeftOutCityway" -> if (autoNaviDriveOn()) 102 else 51
+            "KNRGCode_ChangeRightHighway" -> if (autoNaviDriveOn()) 6 else 51
+            "KNRGCode_ChangeLeftHighway" -> if (autoNaviDriveOn()) 7 else 51
             // 톨게이트
             "KNRGCode_Tollgate", "KNRGCode_NonstopTollgate" -> 153
             else -> {

@@ -788,6 +788,7 @@ class MapActivity : AppCompatActivity() {
                     // 판단해서 v4.19에서 통째로 뺐었음). 이번엔 순서를 서비스 시작 뒤로 미루고,
                     // 실제 무거운 작업은 백그라운드 스레드로 넘기고, 값 1회만 받고 끝내도록 재작성. #문제시 원복
                     setupObservableLaneDataDump()
+                    setupTrafficSignalProbe()
                     initKakaoSdkAndShowIdleMap()
                 }
             }
@@ -4596,6 +4597,8 @@ class MapActivity : AppCompatActivity() {
         AutoUpdater.stopPeriodicCheck()
 
         laneDataObserver?.let { observableLaneDataLiveData?.removeObserver(it) }
+        tsObserver?.let { tsLiveData?.removeObserver(it) }
+        citsStatusObserver?.let { citsStatusLiveData?.removeObserver(it) }
 
         // v4.23: "티맵 화면에선 카메라 반응 감속이 되는데 카카오맵에선 안 된다"(사용자 지적) -
         // 원인으로 의심되는 구조적 문제를 찾음: UdpSenderService(카메라 감속 데이터를
@@ -4811,6 +4814,61 @@ class MapActivity : AppCompatActivity() {
             NavLogger.d(this, "[차선전용LiveData] getObservableLaneData() 구독 성공")
         } catch (e: Exception) {
             NavLogger.e(this, "[차선전용LiveData] 구독 실패(리플렉션): ${e.message}")
+        }
+    }
+
+    // 재억 요청(2026-10-05, 조사용): 티맵 엔진 안에 신호등 잔여시간 전용 통로(getObservableTrafficSignalData,
+    // 남은시간/빨강·좌회전·초록/위치)가 있음을 확인 - 실제로 값이 오는지 [신호등Tmap] 로그로만 확인.
+    // 값이 바뀔 때만, 초당 1줄 이하, 최대 600줄. CITS 연결상태도 같이 남김. #문제시 원복(이 함수·호출부·onDestroy 해제만 지우면 됨)
+    private var tsObserver: androidx.lifecycle.Observer<Any?>? = null
+    private var tsLiveData: androidx.lifecycle.LiveData<Any?>? = null
+    private var citsStatusObserver: androidx.lifecycle.Observer<Any?>? = null
+    private var citsStatusLiveData: androidx.lifecycle.LiveData<Any?>? = null
+    @Suppress("UNCHECKED_CAST")
+    private fun setupTrafficSignalProbe() {
+        try {
+            if (sdkManagerCompanion == null) {
+                val sdkManagerClass = Class.forName("com.skt.tmap.engine.navigation.SDKManager")
+                sdkManagerCompanion = sdkManagerClass.getField("Companion").get(null)
+                getInstanceMethod = sdkManagerCompanion?.javaClass?.getMethod("getInstance")
+            }
+            val sdkManager = getInstanceMethod?.invoke(sdkManagerCompanion) ?: return
+            val liveData = sdkManager.javaClass.getMethod("getObservableTrafficSignalData")
+                .invoke(sdkManager) as? androidx.lifecycle.LiveData<Any?> ?: run {
+                NavLogger.d(this, "[신호등Tmap] LiveData가 null"); return
+            }
+            var lastSig = ""
+            var lastLogMs = 0L
+            var count = 0
+            val obs = androidx.lifecycle.Observer<Any?> { data ->
+                if (data == null || count >= 600) return@Observer
+                try {
+                    fun g(n: String): Any? = data.javaClass.getMethod(n).invoke(data)
+                    val sig = "${g("isTrafficSignalVisible")}/${g("isRedLightOn")}/${g("isLeftLightOn")}/${g("isGreenLightOn")}/${g("getRemainTime")}"
+                    val now = System.currentTimeMillis()
+                    if (sig == lastSig || now - lastLogMs < 1000) return@Observer
+                    lastSig = sig; lastLogMs = now; count++
+                    NavLogger.d(this, "[신호등Tmap] 표시=${g("isTrafficSignalVisible")} 빨강=${g("isRedLightOn")} 좌회전=${g("isLeftLightOn")} " +
+                        "초록=${g("isGreenLightOn")} 남은시간=${g("getRemainTime")}초 위치=${g("getTrafficLocation")}")
+                } catch (e: Exception) {
+                    NavLogger.e(this, "[신호등Tmap] 값 읽기 실패: ${e.message}")
+                }
+            }
+            tsObserver = obs; tsLiveData = liveData
+            liveData.observeForever(obs)
+            NavLogger.d(this, "[신호등Tmap] getObservableTrafficSignalData() 구독 성공")
+        } catch (e: Exception) {
+            NavLogger.e(this, "[신호등Tmap] 구독 실패(리플렉션): ${e.message}")
+        }
+        try {
+            val inst = Class.forName("com.tmapmobility.tmap.sdk.cits.CITSRepository").getField("INSTANCE").get(null)
+            val ld = inst.javaClass.getMethod("getCitsStatus").invoke(inst) as? androidx.lifecycle.LiveData<Any?> ?: return
+            val o = androidx.lifecycle.Observer<Any?> { NavLogger.d(this, "[신호등Tmap] CITS 연결상태=$it") }
+            citsStatusObserver = o; citsStatusLiveData = ld
+            ld.observeForever(o)
+            NavLogger.d(this, "[신호등Tmap] CITS 상태 구독 성공")
+        } catch (e: Exception) {
+            NavLogger.d(this, "[신호등Tmap] CITS 상태 구독 불가: ${e.javaClass.simpleName} ${e.message}")
         }
     }
 

@@ -84,6 +84,13 @@ object AutoUpdater {
     // 같은 tag는 한 번 "업데이트"를 누른 뒤엔 다시 안 띄움. 정식 릴리즈(latest)와 별개라
     // 다른 사용자에겐 아무 영향 없음. #문제시 원복
     private const val PREF_TEST_APPLIED = "test_update_applied_tag"
+    // 재억 요청(2026-10-05): 테스트 설치 당시 버전. 지금 버전과 같을 때만 Board에 "테스트 설치됨"으로 알림(정식 새 버전을 깔면 자동으로 사라짐). #문제시 원복
+    private const val PREF_TEST_APPLIED_VER = "test_update_applied_ver"
+    fun installedTestTag(context: Context): String? {
+        val p = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        val tag = p.getString(PREF_TEST_APPLIED, null)?.takeIf { it.isNotBlank() } ?: return null
+        return if (p.getString(PREF_TEST_APPLIED_VER, null) == BuildConfig.VERSION_NAME) tag else null
+    }
     @Volatile private var pendingTest: Pair<String, String>? = null
 
     fun setPendingTestUpdate(tag: String?, url: String?) {
@@ -229,7 +236,7 @@ object AutoUpdater {
             .setPositiveButton("업데이트") { _, _ ->
                 currentUpdateDialog = null
                 if (isTest) context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-                    .edit().putString(PREF_TEST_APPLIED, newVersion).apply()
+                    .edit().putString(PREF_TEST_APPLIED, newVersion).putString(PREF_TEST_APPLIED_VER, BuildConfig.VERSION_NAME).apply()
                 downloadAndInstall(context, downloadUrl, newVersion)
             }
             .setNegativeButton("나중에") { dialog, _ ->

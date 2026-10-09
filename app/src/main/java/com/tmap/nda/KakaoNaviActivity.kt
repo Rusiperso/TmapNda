@@ -4748,7 +4748,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 재억 요청(2026-10-05): 길안내 중 지도 중심(내 차 위치)을 화면 가운데가 아니라 운전자 쪽(왼쪽)으로 약간 치우치게.
     // 카카오 SDK가 정한 위치(왼쪽 정보패널 오른쪽 영역의 가운데, 약 0.56)를 카메라 앵커로 덮어씀. 가로 화면·분할화면 아님·
     // 길안내 중일 때만 적용하고, SDK가 앵커를 되돌리면 1초 안에 다시 맞춤. #문제시 원복(이 블록과 onResume/onPause 호출부만 지우면 됨)
-    private val DRIVER_SIDE_ANCHOR_X = 0.45f
+    // 2026-10-09 재억 요청: 0.45 -> 0.32 (더 운전자 쪽으로)
+    private val DRIVER_SIDE_ANCHOR_X = 0.32f
     // 재억 제보: 1초마다 확인하면 SDK가 되돌린 뒤 0.6초쯤 "갔다가 빠졌다가" 보임 -> 매 프레임 확인해서 한 프레임 안에 바로 되돌림.
     private val driverAnchorFrame = object : android.view.Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
@@ -4948,7 +4949,17 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // sdkManagerCompanion/getInstanceMethod 캐싱 방식과 동일한 패턴. #문제시 원복
     private var gpsOnLocationChangedMethod: java.lang.reflect.Method? = null
 
+    // 길안내 시작 후 GPS가 처음 잡히기까지 걸린 시간을 재기 위한 기록용(동작에는 영향 없음). #문제시 원복
+    private var gpsWatchStartAt = 0L
+    private var gpsFirstAnyLogged = false
+    private var gpsFirstGoodLogged = false
+    private var gpsRejectedBeforeGood = 0
+
     private fun startRealtimeGpsForwarding() {
+        gpsWatchStartAt = android.os.SystemClock.elapsedRealtime()
+        gpsFirstAnyLogged = false
+        gpsFirstGoodLogged = false
+        gpsRejectedBeforeGood = 0
         try {
             locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
             locationManager?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0L, 0f, this)
@@ -4962,6 +4973,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     override fun onLocationChanged(location: Location) {
         try {
+            if (!gpsFirstAnyLogged) {
+                gpsFirstAnyLogged = true
+                NavLogger.d(this, "[GPS시작지연] 구독 후 ${android.os.SystemClock.elapsedRealtime() - gpsWatchStartAt}ms에 첫 위치 수신: " +
+                    "provider=${location.provider} accuracy=${if (location.hasAccuracy()) location.accuracy else -1f}m")
+            }
             if (location.provider != LocationManager.GPS_PROVIDER) {
                 // 나중에 카메라/경로 오탐 분석용으로는 남겨두되, 매번 찍히면 로그가
                 // 금방 커지니 몇 초에 한 번만 기록. #문제시 원복
@@ -4969,8 +4985,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 return
             }
             if (location.hasAccuracy() && location.accuracy > 50f) {
+                if (!gpsFirstGoodLogged) gpsRejectedBeforeGood++
                 NavLogger.dThrottled(this, "gps_low_accuracy", 5000L, "[GPS] 정확도 낮아 무시: accuracy=${location.accuracy}m")
                 return
+            }
+            if (!gpsFirstGoodLogged) {
+                gpsFirstGoodLogged = true
+                NavLogger.d(this, "[GPS시작지연] 구독 후 ${android.os.SystemClock.elapsedRealtime() - gpsWatchStartAt}ms에 쓸 만한 GPS 확보: " +
+                    "accuracy=${if (location.hasAccuracy()) location.accuracy else -1f}m (그 전에 정확도 때문에 버린 횟수=$gpsRejectedBeforeGood)")
             }
             val speedKph = (location.speed * 3.6).toInt()
             binding.tvCurrentSpeed?.text = speedKph.toString()
