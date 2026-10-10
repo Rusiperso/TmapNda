@@ -199,11 +199,23 @@ class AnnouncePlanner {
         if (thresholds.any { it <= stage && said.contains(base + it) }) return null
         // 한 번에 여러 단계를 건너뛰고 들어온 경우, 먼 단계들도 말한 것으로 쳐서 중복을 막는다
         for (t in thresholds) if (t >= stage) said.add(base + t)
+        val action = spoken(label)
         return when {
-            stage <= NOW_M -> label
-            stage >= 1000 -> "${stage / 1000}킬로미터 앞 $label"
-            else -> "${stage}미터 앞 $label"
+            stage <= NOW_M -> "잠시 후 $action"
+            stage >= 1000 -> "${stage / 1000}킬로미터 앞에서 $action"
+            else -> "${stage}미터 앞에서 $action"
         }
+    }
+
+    /** 안내 이름을 사람이 말하는 끝맺음("~합니다")으로 바꾼다. */
+    private fun spoken(label: String): String = when {
+        label == "목적지" -> "목적지 부근입니다"
+        label == "경유지" -> "경유지 부근입니다"
+        label == "회전교차로" || label == "톨게이트" -> "${label}가 있습니다"
+        label.endsWith("회전") -> "$label 하세요"
+        label == "유턴" -> "유턴 하세요"
+        label.endsWith("진입") || label.endsWith("진출") || label.endsWith("합류") -> "${label}합니다"
+        else -> "${label}입니다"
     }
 
     fun reset() { said.clear() }
