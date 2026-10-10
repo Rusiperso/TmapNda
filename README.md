@@ -221,7 +221,7 @@ TmapNda를 쓰려면 **① Tmap AppKey**와, 고른 길안내 쪽 키(**② 카�
    | 항목 | 값 |
    |---|---|
    | Application 이름 | 자유 입력 (예: TmapNda) |
-   | API 선택 | **Dynamic Map**, **Directions 5** 체크 (Static Map·Geocoding은 필요 없습니다) |
+   | API 선택 | **Dynamic Map**, **Directions 5** 체크 |
    | Android 앱 패키지 이름 | `com.tmap.nda` 입력 후 **오른쪽 "+ 추가" 버튼을 꼭 누르기** (목록에 들어가야 등록 완료) |
 
 <p align="center"><img src="docs/images/naver-cloud-app-create.png" width="620" alt="Application 등록 화면 - Dynamic Map, Directions 5, 패키지 이름 com.tmap.nda"></p>
