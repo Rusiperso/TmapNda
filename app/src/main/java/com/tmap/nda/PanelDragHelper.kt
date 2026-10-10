@@ -763,6 +763,19 @@ object PanelDragHelper {
             setPadding(40, 0, 40, 32)
         }
 
+        val naverTrafficCheckBox = android.widget.Switch(context).apply {
+            text = "네이버 지도 교통 정보 표시"
+            isChecked = pref.getBoolean("naver_traffic_enabled", false)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 32)
+        }
+        val naverFlatCheckBox = android.widget.Switch(context).apply {
+            text = "네이버 지도 평면으로 보기"
+            isChecked = pref.getBoolean("naver_flat_view_enabled", false)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 32)
+        }
+
         // v9.2: 재억 요청 - 도로 위 초록/주황/빨강 실시간 정체 표시 켜고 끄기. SDK 안에 실제
         // 스위치가 있는지는 아직 조사 중이라(dumpTrafficApiCandidates), 우선 체크박스와 저장값만
         // 만들어둠 - 조사 결과 나오면 applyTmapSatelliteViewSetting()처럼 실제로 연결 예정. #문제시 원복
@@ -946,35 +959,44 @@ object PanelDragHelper {
         fun addAccordionGroup(title: String, items: List<View>) {
             settingGroups[title] = items
         }
+        // 고른 길안내에 따라 그 길안내에만 해당하는 항목만 보이게 한다(공통·티맵 항목은 항상 표시).
+        // 숨겨진 항목의 값은 그대로 저장돼 있어서 길안내를 바꿔도 설정이 남는다.
+        val naverSelected = GuideEngine.isNaver(context)
+        fun kakaoOnly(vararg v: View): List<View> = if (naverSelected) emptyList() else v.toList()
+        fun naverOnly(vararg v: View): List<View> = if (naverSelected) v.toList() else emptyList()
 
         // 길안내 선택(카카오 / 네이버): 고르면 그 엔진의 키 입력 팝업이 뜨고, 저장하면 앱이 다시 시작된다.
         addAccordionGroup("길안내 선택", GuideEngineSettings.buildItems(context))
-        addAccordionGroup("안전운전 알림", listOf(
+        // 공통 설정 안에 소제목으로 구역을 나눈다. 길안내(카카오/네이버)별 항목은 아래에서 따로 묶는다.
+        fun sectionHeader(text: String) = android.widget.TextView(context).apply {
+            setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
+            this.text = text
+            setTextColor(android.graphics.Color.parseColor("#FFD54F"))
+            textSize = 13f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(40, 18, 40, 6)
+        }
+        val safetyItems = listOf<View>(
             disableMobileCamCheckBox,   // 이동식카메라 감속
             checkBox,                   // 속도 10% 초과 시 경고음
             arrivalRadiusAlertCheckBox, // 목적지 근처 도착 알림 (소리+진동)
             showTopBarEventCheckBox,    // 상단바에 이벤트(카메라/구간단속/방지턱) 표시
-            // v: 재억 요청(2026-09-15) - "화면 표시"가 아니라 위험요소를 알려주는 기능이라
-            // 상단바 이벤트 표시와 같은 그룹이 맞다는 지적으로 이동. #문제시 원복
             accidentAlertCheckBox,      // 사고/공사구간 알림 표시
-            emergencyAlertCheckBox,     // 긴급차량 접근 알림 표시
-            // 아래 두 항목은 카카오 안내에만 있는 기능이라 네이버를 골랐을 때는 보이지 않게 한다.
-            avoidSchoolZoneCheckBox,    // 스쿨존(어린이보호구역) 회피
-            kakaoMinimalGuideCheckBox   // 최소 안내(카카오 음성 종류별 필터)
-        ))
-        addAccordionGroup("화면 표시", listOfNotNull(
-            satelliteViewCheckBox,          // 티맵 위성지도 보기
-            naverSatelliteViewCheckBox,     // 네이버 지도 위성지도 보기
+            emergencyAlertCheckBox      // 긴급차량 접근 알림 표시
+        )
+        val displayCommonItems = listOf<View>(
             dayNightRow,                    // 지도 밝기 (자동/항상 낮/항상 밤)
-            routeLineDisplayCheckBox,       // 경로선 콤마 화면에 표시
-            trafficInfoCheckBox,            // 티맵 교통 정보 (도로 정체 색깔 표시)
             distanceFormatKmCheckBox,       // 1000m 이상일 때 km 단위로 거리 표시
-            unlockMapTouchCheckBox,         // 티맵 터치 잠금 해제 (핀치줌/드래그 허용) - 화면표시로 이동
             showMiniPlayerCheckBox,          // 미니 플레이어 표시
             showToggleTopPanelButtonCheckBox, // 상단바 표시/숨김 플로팅 버튼 보이기
             blackScreenOnUsbConnectCheckBox   // 차량 연결시 폰 화면 블랙 처리
-        ))
-        addAccordionGroup("버튼 표시", listOf(
+        )
+        val tmapItems = listOfNotNull<View>(
+            satelliteViewCheckBox,          // 티맵 위성지도 보기
+            trafficInfoCheckBox,            // 티맵 교통 정보 (도로 정체 색깔 표시)
+            unlockMapTouchCheckBox          // 티맵 터치 잠금 해제 (핀치줌/드래그 허용)
+        )
+        val buttonItems = listOf<View>(
             showWaypointButtonCheckBox,      // 경유지 버튼 표시
             showCategoryButtonCheckBox,      // 카테고리 버튼 표시
             showFavoritesButtonCheckBox,     // 즐겨찾기 버튼 표시
@@ -982,7 +1004,7 @@ object PanelDragHelper {
             detachMenuButtonCheckBox,        // 메뉴버튼 분리
             lockQuickIconsCheckBox,          // 아이콘 위치 잠금
             lockPopupsCheckBox               // 팝업 위치 잠금
-        ))
+        )
 
         // v: 재억 요청(2026-08-26) - 즐겨찾기 개수/길안내 음량은 아코디언 안에 넣지 않고
         // 항상 바로 보이게 그룹들 아래에 고정 배치. #문제시 원복
@@ -1063,12 +1085,11 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 6)
         }
-        etcItems.addAll(GuideVoice.buildItems(context))
+        val naverVoiceItems: List<View> = if (naverSelected) GuideVoice.buildItems(context) else emptyList()
         etcItems.add(carFuelSectionTitle)
         etcItems.add(carFuelHintText)
         etcItems.add(carFuelRow)
         // 하이패스 요금은 카카오 통행료 계산에만 있는 기능이라 네이버를 골랐을 때는 보이지 않게 한다.
-        etcItems.add(useHipassCheckBox)
 
         // 음성 보정: 폰이 자꾸 잘못 알아듣는 말을 직접 적어두는 표("틀린말=원래말" 한 줄에 하나).
         // 설정 왼쪽 목록의 독립 그룹이고, 적는 즉시 저장·적용됨(저장 버튼 없음). #문제시 원복
@@ -1113,7 +1134,7 @@ object PanelDragHelper {
                 android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
             ))
         }
-        addAccordionGroup("음성 보정", listOf(voiceFixTitle, voiceFixHint, voiceFixInputRow))
+        val voiceFixItems = listOf<View>(voiceFixTitle, voiceFixHint, voiceFixInputRow)
 
 
         // v19.3.32: 재억 요청 - 설정 백업/복원. 공유 방식으로 내보내서 재억이 원하는 곳
@@ -1180,8 +1201,33 @@ object PanelDragHelper {
         etcItems.add(backupSectionTitle)
         etcItems.add(backupHintText)
         etcItems.add(backupButtonRow)
-        addAccordionGroup("기타 설정", etcItems)
-        addAccordionGroup("자동 길안내 주행", listOf(autoNaviDriveCheckBox, autoBlinkerCheckBox))
+        // 설정 탭: 길안내 선택 / 공통 설정 / 티맵 설정 / (카카오 또는 네이버) 설정.
+        // 안 고른 길안내의 탭은 보이지 않는다(값은 그대로 저장돼 있다).
+        // 공통 설정은 항목이 많아서 위쪽 작은 탭(안전운전 / 화면 / …)으로 나눠 보여준다.
+        val commonSections = LinkedHashMap<String, List<View>>().apply {
+            put("안전운전", safetyItems)
+            put("화면", displayCommonItems)
+            put("버튼", buttonItems)
+            put("자동주행", listOf(autoNaviDriveCheckBox, autoBlinkerCheckBox))
+            put("음성", voiceFixItems)
+            put("기타", etcItems)
+        }
+        var selectedCommonSection = commonSections.keys.first()
+        addAccordionGroup("공통 설정", commonSections.values.flatten())
+        addAccordionGroup("티맵 설정", tmapItems)
+        if (naverSelected) {
+            addAccordionGroup("네이버 설정", ArrayList<View>().apply {
+                add(naverSatelliteViewCheckBox); add(naverTrafficCheckBox); add(naverFlatCheckBox)
+                addAll(naverVoiceItems)
+            })
+        } else {
+            addAccordionGroup("카카오 설정", listOf<View>(
+                avoidSchoolZoneCheckBox,    // 스쿨존(어린이보호구역) 회피
+                kakaoMinimalGuideCheckBox,  // 최소 안내(카카오 음성 종류별 필터)
+                routeLineDisplayCheckBox,   // 경로선 콤마 화면에 표시(카카오 경로 좌표만 전송됨)
+                useHipassCheckBox           // 하이패스 장착(카카오 통행료 계산)
+            ))
+        }
 
         // v19.3.79: 재억 요청 - 설정 창을 카드형 2단(왼쪽: 그룹 고르기 / 오른쪽: 그 그룹 항목)으로.
         // 켜진 스위치는 노란색으로 보이게 색을 입힘. 저장/취소 동작은 그대로. 바깥을 눌러
@@ -1271,12 +1317,14 @@ object PanelDragHelper {
                     textSize = 15f
                     setPadding(PopupCard.dp(context, 14), PopupCard.dp(context, 12), PopupCard.dp(context, 14), PopupCard.dp(context, 12))
                     if (selected) {
-                        setTextColor(android.graphics.Color.parseColor("#212121"))
+                        setTextColor(android.graphics.Color.WHITE)
                         setTypeface(null, android.graphics.Typeface.BOLD)
                     } else {
                         setTextColor(android.graphics.Color.WHITE)
                     }
-                    background = PopupCard.roundedFill(context, if (selected) AppAccent.hex(context) else "#1AFFFFFF")
+                    // 왼쪽 탭은 색 없이 반투명 회색(고른 탭만 조금 더 밝게). 화면 색은 위쪽 탭에만 쓴다.
+                    val bgHex = if (selected) "#40FFFFFF" else "#1AFFFFFF"
+                    background = PopupCard.roundedFill(context, bgHex)
                     isClickable = true
                     setOnClickListener {
                         selectedGroup = title
@@ -1288,7 +1336,34 @@ object PanelDragHelper {
                 ).apply { bottomMargin = PopupCard.dp(context, 6) })
             }
             rightList.removeAllViews()
-            settingGroups[selectedGroup]?.forEach { v ->
+            val shownItems: List<View>? = if (selectedGroup == "공통 설정") {
+                val chipRow = android.widget.LinearLayout(context).apply {
+                    orientation = android.widget.LinearLayout.HORIZONTAL
+                    setPadding(0, 0, 0, PopupCard.dp(context, 6))
+                }
+                commonSections.keys.forEach { name ->
+                    val on = name == selectedCommonSection
+                    chipRow.addView(android.widget.TextView(context).apply {
+                        text = name
+                        textSize = 13f
+                        setPadding(PopupCard.dp(context, 12), PopupCard.dp(context, 7), PopupCard.dp(context, 12), PopupCard.dp(context, 7))
+                        setTextColor(if (on) android.graphics.Color.parseColor("#212121") else android.graphics.Color.WHITE)
+                        if (on) setTypeface(null, android.graphics.Typeface.BOLD)
+                        background = PopupCard.roundedFill(context, if (on) AppAccent.hex(context) else "#1AFFFFFF")
+                        isClickable = true
+                        setOnClickListener { selectedCommonSection = name; renderGroups() }
+                    }, android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { marginEnd = PopupCard.dp(context, 6) })
+                }
+                rightList.addView(android.widget.HorizontalScrollView(context).apply {
+                    isHorizontalScrollBarEnabled = false
+                    addView(chipRow)
+                })
+                commonSections[selectedCommonSection]
+            } else settingGroups[selectedGroup]
+            shownItems?.forEach { v ->
                 (v.parent as? android.view.ViewGroup)?.removeView(v)
                 rightList.addView(v)
             }
@@ -1322,6 +1397,8 @@ object PanelDragHelper {
                     .putBoolean("show_toggle_top_panel_button", showToggleTopPanelButtonCheckBox.isChecked)
                     .putBoolean("tmap_satellite_view_enabled", satelliteViewCheckBox.isChecked)
                     .putBoolean("naver_satellite_view_enabled", naverSatelliteViewCheckBox.isChecked)
+                    .putBoolean("naver_traffic_enabled", naverTrafficCheckBox.isChecked)
+                    .putBoolean("naver_flat_view_enabled", naverFlatCheckBox.isChecked)
                     .putBoolean("tmap_traffic_info_enabled", trafficInfoCheckBox.isChecked)
                     .putBoolean("route_line_display_enabled", routeLineDisplayCheckBox.isChecked)
                     .putBoolean("kakao_minimal_guide_enabled", kakaoMinimalGuideCheckBox.isChecked)

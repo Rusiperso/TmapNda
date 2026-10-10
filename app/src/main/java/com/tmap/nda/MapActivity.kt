@@ -1878,7 +1878,7 @@ class MapActivity : AppCompatActivity() {
         if (start < 0) return label
         val spannable = android.text.SpannableString(label)
         spannable.setSpan(
-            android.text.style.ForegroundColorSpan(android.graphics.Color.parseColor("#FFD54F")),
+            android.text.style.ForegroundColorSpan(AppAccent.color(this)),
             start + 3, start + marker.length,
             android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
         )

@@ -414,11 +414,16 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
-    // 설정의 "네이버 지도 위성지도 보기"를 지도에 반영(안내 시작 때와 설정 창을 닫을 때).
+    // 설정의 네이버 지도 옵션(위성지도·교통 정보·평면 보기)을 지도에 반영(안내 시작 때와 설정 창을 닫을 때).
     private fun applyNaverSatellite() {
-        val on = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("naver_satellite_view_enabled", false)
-        if (::naverMap.isInitialized) naverMap.setSatellite(on)
-        NavLogger.d(this, "[네이버위성지도] 적용됨: $on")
+        val pref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        val sat = pref.getBoolean("naver_satellite_view_enabled", false)
+        val traffic = pref.getBoolean("naver_traffic_enabled", false)
+        val flat = pref.getBoolean("naver_flat_view_enabled", false)
+        if (::naverMap.isInitialized) {
+            naverMap.setSatellite(sat); naverMap.setTraffic(traffic); naverMap.setFlat(flat)
+        }
+        NavLogger.d(this, "[네이버지도옵션] 위성=$sat 교통=$traffic 평면=$flat")
     }
 
     private fun setupContentAndStart(destName: String, destLat: Double, destLon: Double, routePriorityName: String?) {
@@ -2120,7 +2125,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         }
         card.addView(android.widget.TextView(this).apply {
             text = "경유지 추가"
-            setTextColor(android.graphics.Color.parseColor("#FFD54F"))
+            setTextColor(AppAccent.color(this@NaverNaviActivity))
             textSize = 12f
             setPadding(0, 0, 0, dp(4))
         })
@@ -2396,7 +2401,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         gps.background = parkedButtonBackground(if (parkedGpsStep == 2) "#03C75A" else "#CC28282C")
         gps.setTextColor(android.graphics.Color.parseColor(when (parkedGpsStep) {
             2 -> "#212121"
-            1 -> "#FFD54F"
+            1 -> AppAccent.hex(this)
             else -> "#DDDDDD"
         }))
     }
@@ -2641,7 +2646,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         if (topLabel != null) {
             card.addView(android.widget.TextView(this).apply {
                 text = topLabel
-                setTextColor(android.graphics.Color.parseColor("#FFD54F"))
+                setTextColor(AppAccent.color(this@NaverNaviActivity))
                 textSize = 12f
                 setPadding(0, 0, 0, dp(4))
             })
@@ -2840,7 +2845,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
             maxLines = 1
         }
         etaText = android.widget.TextView(this).apply {
-            setTextColor(android.graphics.Color.parseColor("#FFD54F"))
+            setTextColor(AppAccent.color(this@NaverNaviActivity))
             textSize = 13f
             setPadding(dp(8), 0, 0, 0)
             maxLines = 1
@@ -3270,7 +3275,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         if (start < 0) return label
         val spannable = android.text.SpannableString(label)
         spannable.setSpan(
-            android.text.style.ForegroundColorSpan(android.graphics.Color.parseColor("#FFD54F")),
+            android.text.style.ForegroundColorSpan(AppAccent.color(this@NaverNaviActivity)),
             start + 3, start + marker.length,
             android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
         )

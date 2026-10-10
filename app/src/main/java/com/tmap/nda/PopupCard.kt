@@ -686,7 +686,7 @@ object PopupCard {
         if (topLabel != null) {
             card.addView(TextView(activity).apply {
                 text = topLabel
-                setTextColor(Color.parseColor("#FFD54F"))
+                setTextColor(AppAccent.color(activity))
                 textSize = 12f
                 setPadding(0, 0, 0, dp(activity, 4))
             })

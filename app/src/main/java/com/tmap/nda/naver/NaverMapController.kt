@@ -61,6 +61,7 @@ class NaverMapController(private val activity: Activity, private val host: Frame
                 isRotateGesturesEnabled = true; isTiltGesturesEnabled = true
             }
             m.locationOverlay.isVisible = true
+            m.locationOverlay.iconAlpha = 0.9f
             m.addOnCameraChangeListener { reason, _ ->
                 if (reason == CameraUpdate.REASON_GESTURE) {
                     val now = System.currentTimeMillis()
@@ -94,6 +95,19 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         it.mapType = if (on) NaverMap.MapType.NaviHybrid else NaverMap.MapType.Navi
     }
 
+    // ===== 기울기 / 교통 / 위치 아이콘 =====
+    /** 켜면 지도를 눕히지 않고 위에서 내려다보는 평면으로, 끄면 안내 중 40도 기울기. */
+    @Volatile private var flat = false
+    fun setFlat(on: Boolean) = whenReady { m ->
+        flat = on
+        m.maxTilt = if (on) 0.0 else 60.0
+        val c = m.cameraPosition
+        m.moveCamera(CameraUpdate.toCameraPosition(CameraPosition(c.target, c.zoom, if (on) 0.0 else 40.0, c.bearing)))
+    }
+
+    /** 네이버 실시간 교통 정보(도로 정체 색) 레이어. */
+    fun setTraffic(on: Boolean) = whenReady { it.setLayerGroupEnabled(NaverMap.LAYER_GROUP_TRAFFIC, on) }
+
     // ===== 낮/밤 =====
     fun setNight(night: Boolean) = whenReady { it.isNightModeEnabled = night }
 
@@ -112,6 +126,7 @@ class NaverMapController(private val activity: Activity, private val host: Frame
                 color = if (isSel) colorOf(r) else (colorOf(r) and 0x00FFFFFF) or 0x66000000
                 outlineWidth = dp(2); outlineColor = Color.WHITE
                 zIndex = if (isSel) 1 else 0
+                isHideCollidedSymbols = true; isHideCollidedMarkers = true; isHideCollidedCaptions = true
                 this.map = m
             })
         }
@@ -129,6 +144,7 @@ class NaverMapController(private val activity: Activity, private val host: Frame
             coords = latLngs(route.path)
             width = dp(11); color = 0xFF2E7DFF.toInt(); outlineWidth = dp(2); outlineColor = Color.WHITE
             passedColor = 0xFFB0BEC5.toInt(); passedOutlineColor = Color.WHITE
+            isHideCollidedSymbols = true; isHideCollidedMarkers = true; isHideCollidedCaptions = true
             this.map = m
         }
     }
@@ -199,7 +215,7 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         val ax = anchorXFraction
         val rightPad = if (ax != null) ((1f - 2f * ax) * host.width).toInt().coerceAtLeast(0) else 0
         m.setContentPadding(0, topInsetPx, rightPad, bottomPad)
-        val upd = CameraUpdate.toCameraPosition(CameraPosition(LatLng(loc.latitude, loc.longitude), zoom, 40.0, bearing))
+        val upd = CameraUpdate.toCameraPosition(CameraPosition(LatLng(loc.latitude, loc.longitude), zoom, if (flat) 0.0 else 40.0, bearing))
         m.moveCamera(if (animated) upd.animate(CameraAnimation.Linear, 900) else upd)
     }
 

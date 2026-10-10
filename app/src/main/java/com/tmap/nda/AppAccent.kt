@@ -19,6 +19,9 @@ object AppAccent {
     /** 티맵 하단 "주행종료" 버튼과 같은 진한 파랑. */
     const val TMAP_BLUE = "#3D83FF"
 
+    /** [hex]와 같은 색을 Int로(글씨 색에 쓰기 편하게). */
+    fun color(context: Context): Int = android.graphics.Color.parseColor(hex(context))
+
     fun hex(context: Context): String {
         var c: Context = context
         while (c is ContextWrapper && c !is Activity) c = c.baseContext

@@ -223,7 +223,7 @@ object NearbyCategoryPopup {
                     setPadding(0, 0, 0, dp(context, 10))
                     addView(TextView(context).apply {
                         text = "주변 검색"
-                        setTextColor(android.graphics.Color.parseColor("#FFD54F"))
+                        setTextColor(AppAccent.color(context))
                         textSize = 12f
                     })
                     addView(headerTitle)
@@ -830,7 +830,7 @@ object NearbyCategoryPopup {
                     setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = "  약 ${etaMinutes}분"
                     textSize = 13f
-                    setTextColor(android.graphics.Color.parseColor("#FFD54F"))
+                    setTextColor(AppAccent.color(context))
                 })
             }
         }
@@ -840,7 +840,7 @@ object NearbyCategoryPopup {
                 setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 text = priceText
                 textSize = 13f
-                setTextColor(android.graphics.Color.parseColor("#FFD54F"))
+                setTextColor(AppAccent.color(context))
             })
         }
         return row
@@ -880,7 +880,7 @@ object NearbyCategoryPopup {
                 setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 text = "약 ${etaMinutes}분"
                 textSize = 13f
-                setTextColor(android.graphics.Color.parseColor("#FFD54F"))
+                setTextColor(AppAccent.color(context))
             }
             row.addView(etaView)
         }

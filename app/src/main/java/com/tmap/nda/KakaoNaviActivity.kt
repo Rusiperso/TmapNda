@@ -4749,7 +4749,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 카카오 SDK가 정한 위치(왼쪽 정보패널 오른쪽 영역의 가운데, 약 0.56)를 카메라 앵커로 덮어씀. 가로 화면·분할화면 아님·
     // 길안내 중일 때만 적용하고, SDK가 앵커를 되돌리면 1초 안에 다시 맞춤. #문제시 원복(이 블록과 onResume/onPause 호출부만 지우면 됨)
     // 2026-10-09 재억 요청: 0.45 -> 0.32 (더 운전자 쪽으로)
-    private val DRIVER_SIDE_ANCHOR_X = 0.32f
+    // 2026-10-10 재억 요청: 카카오는 너무 왼쪽이라 0.32 -> 0.40 (네이버는 0.32 그대로)
+    private val DRIVER_SIDE_ANCHOR_X = 0.40f
     // 재억 제보: 1초마다 확인하면 SDK가 되돌린 뒤 0.6초쯤 "갔다가 빠졌다가" 보임 -> 매 프레임 확인해서 한 프레임 안에 바로 되돌림.
     private val driverAnchorFrame = object : android.view.Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
