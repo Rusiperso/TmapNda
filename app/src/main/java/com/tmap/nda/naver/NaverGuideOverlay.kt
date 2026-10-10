@@ -24,7 +24,7 @@ class NaverGuideOverlay(private val activity: Activity, private val root: FrameL
     private val density = activity.resources.displayMetrics.density
     private fun dp(v: Int) = (v * density).toInt()
 
-    private val glass = 0xE6202428.toInt()
+    private val glass = 0xB328282C.toInt()
 
     private val arrow = text(46f, Color.WHITE, true)
     private val dist = text(36f, 0xFFFFD54F.toInt(), true)

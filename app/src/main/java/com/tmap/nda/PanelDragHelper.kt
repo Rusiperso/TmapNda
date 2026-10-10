@@ -998,7 +998,7 @@ object PanelDragHelper {
         }
         val carFuelHintText = android.widget.TextView(context).apply {
             setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
-            text = "카카오 경로 계산과 주유소 안내에 사용돼요"
+            text = "길안내 경로 계산과 주유소 안내에 사용돼요"
             setTextColor(android.graphics.Color.parseColor("#999999"))
             textSize = 12f
             setPadding(40, 0, 40, 4)

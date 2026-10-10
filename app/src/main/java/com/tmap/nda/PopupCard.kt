@@ -117,19 +117,37 @@ object PopupCard {
             Configuration.ORIENTATION_LANDSCAPE) "land" else "port"
         val keyX = "${prefKey}_x_$suffix"
         val keyY = "${prefKey}_y_$suffix"
+        // 시스템 바/노치 자리를 비워둔 화면(root padding)은 그 안쪽까지만 움직이게 한다.
+        fun minX() = root.paddingLeft.toFloat()
+        fun minY() = root.paddingTop.toFloat()
+        fun maxX() = (root.width - root.paddingRight - card.width).coerceAtLeast(root.paddingLeft).toFloat()
+        fun maxY() = (root.height - root.paddingBottom - card.height).coerceAtLeast(root.paddingTop).toFloat()
 
         if (prefs.contains(keyX) && prefs.contains(keyY)) {
             card.alpha = 0f
             card.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
                 override fun onGlobalLayout() {
                     card.viewTreeObserver.removeOnGlobalLayoutListener(this)
-                    val maxX = (root.width - card.width).coerceAtLeast(0).toFloat()
-                    val maxY = (root.height - card.height).coerceAtLeast(0).toFloat()
-                    card.x = prefs.getFloat(keyX, card.x).coerceIn(0f, maxX)
-                    card.y = prefs.getFloat(keyY, card.y).coerceIn(0f, maxY)
+                    card.x = prefs.getFloat(keyX, card.x).coerceIn(minX(), maxX())
+                    card.y = prefs.getFloat(keyY, card.y).coerceIn(minY(), maxY())
                     card.alpha = 1f
                 }
             })
+        }
+
+        // 저장된 자리는 박스 크기가 바뀌어도(글자 길이 변화, 숨김→표시) 그 자리에 그대로 있도록 레이아웃이 바뀔 때마다 다시 맞춘다.
+        var pinX: Float? = if (prefs.contains(keyX)) prefs.getFloat(keyX, 0f) else null
+        var pinY: Float? = if (prefs.contains(keyY)) prefs.getFloat(keyY, 0f) else null
+        var dragging = false
+        card.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            val px = pinX
+            val py = pinY
+            if (!dragging && px != null && py != null && card.width > 0 && card.height > 0 && root.width > 0) {
+                val tx = px.coerceIn(minX(), maxX())
+                val ty = py.coerceIn(minY(), maxY())
+                if (Math.abs(card.x - tx) > 0.5f) card.x = tx
+                if (Math.abs(card.y - ty) > 0.5f) card.y = ty
+            }
         }
 
         var dragDX = 0f
@@ -159,15 +177,17 @@ object PopupCard {
                     if (!moved && Math.hypot((event.rawX - downRawX).toDouble(), (event.rawY - downRawY).toDouble()) < slop) {
                         return@setOnTouchListener true
                     }
-                    val maxX = (root.width - card.width).coerceAtLeast(0).toFloat()
-                    val maxY = (root.height - card.height).coerceAtLeast(0).toFloat()
-                    card.x = (event.rawX + dragDX).coerceIn(0f, maxX)
-                    card.y = (event.rawY + dragDY).coerceIn(0f, maxY)
+                    dragging = true
+                    card.x = (event.rawX + dragDX).coerceIn(minX(), maxX())
+                    card.y = (event.rawY + dragDY).coerceIn(minY(), maxY())
                     moved = true
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    dragging = false
                     if (moved) {
+                        pinX = card.x
+                        pinY = card.y
                         prefs.edit().putFloat(keyX, card.x).putFloat(keyY, card.y).apply()
                     } else if (event.action == MotionEvent.ACTION_UP && !lockedMoved) {
                         onTap?.invoke()
