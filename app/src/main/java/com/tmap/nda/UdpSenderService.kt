@@ -346,7 +346,6 @@ class UdpSenderService : Service() {
     private val LIMIT_SINGLE_LINK_DROP_HOLD_MS = 4_000L
     private var pendingLimitValue = 0
     private var pendingLimitSince = 0L
-    private var lastTmapSdiSuppressLogTime = 0L
 
     /**
      * v: 재억 재정리(2026-09-02) - 원하는 규칙은 정확히 두 줄이고, 방향이 서로 반대임:
@@ -1365,132 +1364,8 @@ class UdpSenderService : Service() {
                             "카카오안내"
                         }
                         json.put("szTBTMainText", kakaoPrefix)
-                        // v: 사용자 제안(2026-08-08) - "Tmap 우선순위 + 카카오 폴백"이라는
-                        // 하이브리드 판단 자체가 문제였음. 실제 로그로 확인됨: safetyDistTrusted
-                        // (카카오 SDK의 getRemainDist() 기반 검증)가 거의 항상 false로 나와서
-                        // 카카오 안전정보가 사실상 거의 다 막히고 있었음(재억 로그 기준 검증됨=0,
-                        // 미검증=417). 구조를 단순하게 바꿈: "카카오 길안내 중이면 카카오
-                        // 안전정보만 사용, 길안내 안 하면 Tmap 안전정보만 사용"으로 명확히 분리.
-                        // v: 사용자 요청(2026-08-08) - "카카오 길안내 중=카카오만" 구조를
-                        // 하이브리드(Tmap 우선 + 카카오 trusted 폴백)로 롤백. 구조 자체가
-                        // 문제였던 게 아니라 trusted 판정 로직이 버그였던 거라(DistFromS
-                        // 뺄셈으로 이미 고침), 하이브리드로 되돌려도 이제는 정상 작동해야 함.
-                        // 방지턱 speedLimit 예외는 그대로 유지. #문제시 원복
-                        // v: 사용자 요청(2026-08-12) - 우선순위를 다시 반전: 카카오 길안내
-                        // 중일 땐 카카오값이 검증됐으면(trusted) 카카오를 우선 채택하고, Tmap은
-                        // 카카오가 못 잡았을 때(트러스트 안 됐거나 카카오 자체에 정보가 없을 때)만
-                        // 백업으로 사용. 기존엔 반대로 Tmap이 항상 우선이고 카카오는 Tmap이
-                        // 아무것도 못 잡았을 때만 백업이었음. Tmap 대기화면(길안내 안 할 때) 동작은
-                        // 이 블록 자체가 kr.isFresh() 안에서만 도니까 안 건드림. #문제시 원복
-                        val tmapHasSdi = json.optInt("nSdiType", 0) != 0 || json.optInt("nSdiDist", 0) > 0
-                        // v: 재억 지적(2026-09-05, "방지턱 같은 걸 못 잡는 게 너무 많다") -
-                        // 로그 분석 결과 카카오가 알려주는 위험정보 중 "제한속도가 붙은 것"과
-                        // 방지턱(22)만 채택하고 나머지는 전부 버리고 있었음. 실제로 버려진 것:
-                        // 급커브(30) 16건, 보행자/교통사고다발(29) 17건, 높이제한 41건,
-                        // 휴게소(25) 7건 등. 이것들은 속도제한이 없을 뿐 엄연히 알려줘야 할
-                        // 정보라서, 종류(safetyType)와 거리가 유효하면 제한속도 유무와 무관하게
-                        // 채택하도록 완화. #문제시 원복
-                        val kakaoHasSdi = kr.safetyType > 0 && kr.safetyDist > 0
-                        // v10.1: Tmap 분기(위쪽)엔 "sdiType==0인데 speedLimit/dist는 있으면 1로
-                        // 강제"하는 안전장치가 있는데 여기(카카오 채택 분기)엔 없어서, 향후 또
-                        // 다른 카카오 안전코드가 실수로 0에 매핑되면 여기서도 똑같이 조용히
-                        // 무시(=카메라없음으로 오인식)될 수 있음. 동일한 안전장치를 걸어둠. #문제시 원복
-                        val safeKakaoSdiType = if (kr.safetyType == 0 && kr.safetySpeedLimit > 0 && kr.safetyDist > 0) 1 else kr.safetyType
-
-                        // v: 신규기능(안전정보 불일치 감지) - 티맵/카카오 둘 다 이 지점에 안전정보를
-                        // 주고 있는데 서로 다른 값(카메라 있음/없음, 종류, 제한속도)을 말할 때를
-                        // 별도 로그로 자동 기록. 지금까지는 재억이 직접 "여기 이상하다" 제보해야만
-                        // 알 수 있었는데, 이제 두 SDK 값이 갈리는 순간을 놓치지 않고 잡아둠 -
-                        // 나중에 어느 쪽이 더 믿을만한지 패턴 분석하는 데 씀. 우선순위 판단 로직
-                        // 자체엔 영향 없음(로그만 남김). #문제시 원복
-                        if (tmapHasSdi && kakaoHasSdi) {
-                            val tmapSdiType = json.optInt("nSdiType", 0)
-                            val tmapSpeedLimit = json.optInt("nSdiSpeedLimit", 0)
-                            // 로그 확인(2026-10-08): 거리가 150m 넘게 다르면(예: 72m vs 296m) 서로 다른 지점의
-                            // 안전정보라 비교 대상이 아님 → 같은 지점일 때만 불일치로 판정(오탐 제거). #문제시 원복
-                            // 2026-10-09 로그: 불일치 11건 전부 거리 차이 80~124m의 서로 다른 지점(교통량수집 vs 단속 등)이라 150m는 넓음 → 40m. #문제시 원복
-                            val sameSpot = kotlin.math.abs(json.optInt("nSdiDist", 0) - kr.safetyDist) <= 40
-                            val mismatch = sameSpot && (tmapSdiType != safeKakaoSdiType ||
-                                (tmapSpeedLimit > 0 && kr.safetySpeedLimit > 0 && kotlin.math.abs(tmapSpeedLimit - kr.safetySpeedLimit) > 5))
-                            if (mismatch && System.currentTimeMillis() - lastSdiMismatchLogTime > 3000L) {
-                                lastSdiMismatchLogTime = System.currentTimeMillis()
-                                NavLogger.e(
-                                    this@UdpSenderService,
-                                    "[안전정보불일치] Tmap(type=$tmapSdiType limit=$tmapSpeedLimit dist=${json.optInt("nSdiDist", 0)}) " +
-                                        "vs Kakao(type=${kr.safetyType} limit=${kr.safetySpeedLimit} dist=${kr.safetyDist} trusted=${kr.safetyDistTrusted})"
-                                )
-                            }
-                        }
-
-                        // 2026-10-09 재억 지시: 길안내 중에도 카메라는 티맵 단독(카카오 카메라가 옆도로/가림 문제).
-                        // 카카오는 방지턱(22)만 추가로 받음.
-                        // 카메라류 = 단속·신호·구간단속·교통정보수집 등. 티맵 카메라가 더 가까우면 티맵 유지. #문제시 원복
-                        // 2026-10-09 재억 재지시: 카카오는 방지턱(22)만. 나머지(급커브·사고다발 포함)는 전부 티맵 단독.
-                        val kakaoIsCameraClass = safeKakaoSdiType != 22
-                        val tmapNearer = tmapHasSdi && json.optInt("nSdiDist", 0) in 1..kr.safetyDist
-                        val useKakaoSdi = kakaoHasSdi && kr.safetyDistTrusted && !kakaoIsCameraClass && !tmapNearer
-                        if (useKakaoSdi) {
-                            json.put("nSdiType", safeKakaoSdiType)
-                            json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
-                            json.put("nSdiDist", kr.safetyDist)
-                            // v: roadcate 버그 수정 - Tmap 자체 감지 분기(방지턱 sdiType==22일 때
-                            // roadcate=8 채움)와 동일하게, 카카오 폴백으로 방지턱 정보가 채워질
-                            // 때도 roadcate를 같이 채워야 함. carrot_serv.py 규격상 roadcate>=2가
-                            // 없으면 방지턱 감속 자체가 자동 생략되는데, 지금까지 이 필드가
-                            // 비어있었음. #문제시 원복
-                            if (kr.safetyType == 22) {
-                                json.put("roadcate", 8)
-                            }
-                            NavLogger.dIfChanged(this@UdpSenderService, "sdi_priority", "[안전정보 우선순위] 검증된 카카오값 우선 채택: type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit}")
-                        } else if (!tmapHasSdi && kakaoHasSdi && !kakaoIsCameraClass) {
-                            if (kr.safetyDistTrusted) {
-                                json.put("nSdiType", safeKakaoSdiType)
-                                json.put("nSdiSpeedLimit", kr.safetySpeedLimit)
-                                json.put("nSdiDist", kr.safetyDist)
-                                if (kr.safetyType == 22) {
-                                    json.put("roadcate", 8)
-                                }
-                                NavLogger.d(this@UdpSenderService, "[안전정보 우선순위] Tmap 없음 -> 검증된 카카오값으로 폴백: type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}")
-                            } else {
-                                NavLogger.d(this@UdpSenderService, "[카카오 안전정보 검증용][실제전송안함 - 미검증 폴백] type=${kr.safetyType} speedLimit=${kr.safetySpeedLimit} dist=${kr.safetyDist}")
-                            }
-                        }
-
-                        // v: 재억 재설명(2026-09-02) - "카카오 길안내를 기반으로 카메라를 매칭하고
-                        // 싶다". 위 분기들은 "카카오가 잡은 게 있으면 카카오 우선"까지는 하는데,
-                        // 카카오가 이 경로에 아무 이벤트도 없다고 할 때(kakaoHasSdi=false) 티맵이
-                        // 옆도로/고가도로 아래에서 잡아온 카메라가 그대로 콤마로 나갔음 - 이게
-                        // 바로 "직진 중인데 옆으로 빠지는 도로 카메라/속도를 잡는" 증상의 카메라
-                        // 쪽 절반임. 카카오가 경로 위 이벤트를 실제로 관리하고 있는 상태(안내 중)
-                        // 라면, 카카오가 "없다"고 하는 건 진짜로 경로상에 없다는 뜻으로 보고
-                        // 티맵 단독 이벤트는 내보내지 않음. 혹시 카카오가 놓치는 카메라가 있으면
-                        // 설정에서 이 항목을 꺼서 예전 동작(티맵 폴백)으로 즉시 되돌릴 수 있음. #문제시 원복
-                        // v: 재억 질문(2026-09-02, "기본을 꺼짐으로 두면 문제가 되나?") - 안 됨.
-                        // 이 옵션은 "카카오가 못 잡은 카메라를 아예 안 보낼 것인가"만 정하는데,
-                        // 꺼두면 예전과 똑같이 티맵 카메라도 그대로 나가므로 카메라를 놓칠 위험이
-                        // 없는 쪽(보수적)임. 급감속의 실제 원인이던 "티맵 카메라 제한속도가 도로
-                        // 제한속도를 끌어내리는 통로"는 이 옵션과 무관하게 위쪽에서 항상 막히므로,
-                        // 기본을 꺼짐으로 둬도 원하는 효과는 그대로 남음. 기본값 false로 변경. #문제시 원복
-                        val kakaoOnlySdi = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
-                            .getBoolean("kakao_only_sdi_when_guiding", false)
-                        if (kakaoOnlySdi && !kakaoHasSdi && tmapHasSdi) {
-                            val suppressedType = json.optInt("nSdiType", 0)
-                            val suppressedLimit = json.optInt("nSdiSpeedLimit", 0)
-                            val suppressedDist = json.optInt("nSdiDist", 0)
-                            json.put("nSdiType", 0)
-                            json.put("nSdiSpeedLimit", 0)
-                            json.put("nSdiDist", 0)
-                            json.put("nSdiBlockType", 0)
-                            json.put("nSdiSection", 0)
-                            if (System.currentTimeMillis() - lastTmapSdiSuppressLogTime > 5000L) {
-                                lastTmapSdiSuppressLogTime = System.currentTimeMillis()
-                                NavLogger.d(
-                                    this@UdpSenderService,
-                                    "[안전정보 우선순위][티맵단독 억제] 카카오 경로엔 이벤트 없음 - 티맵이 잡은 " +
-                                        "type=$suppressedType limit=$suppressedLimit dist=${suppressedDist}m 이벤트는 옆도로 오매칭으로 보고 전송 생략"
-                                )
-                            }
-                        }
+                        // 안전정보(카메라·구간단속·방지턱 등)는 길안내 엔진과 무관하게 티맵 값만 쓴다.
+                        // 예전에 카카오가 방지턱(22)을 보충하거나, 티맵과 카카오 값을 비교·억제하던 부분은 모두 뺐다.
                         // v: 재억 요청(2026-08-22) - 이 로그가 UDP 전송 주기마다 매번 찍혀서
                         // 로그 파일 용량을 많이 차지하고 있었음(1800줄 이상). 값 자체는
                         // 자주 안 바뀌니 10초 간격으로 줄임. #문제시 원복
@@ -1979,7 +1854,6 @@ class UdpSenderService : Service() {
     private var httpNaviFailCount = 0
     private var lastHttpNaviLogTime = 0L
     private var lastKakaoOverwriteLogTime = 0L
-    private var lastSdiMismatchLogTime = 0L
     private var lastHttpNaviErrorMsg: String? = null
 
     private fun startCommaHttpNaviLoop() {

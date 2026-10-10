@@ -41,7 +41,7 @@ class VoiceAssistant(private val activity: Activity, private val host: Host) {
         fun switchScreen(toKakao: Boolean): String = "이 화면에서는 전환할 수 없어요"
     }
 
-    private val searchHttpClient by lazy { OkHttpClient() }
+    private val searchHttpClient by lazy { OkHttpClient.Builder().addInterceptor(KakaoToTmapInterceptor(activity.applicationContext)).build() }
 
     // ---- 음성 대답(폰 기본 음성으로 읽어줌) ----
     private var voiceTts: android.speech.tts.TextToSpeech? = null
@@ -267,7 +267,6 @@ class VoiceAssistant(private val activity: Activity, private val host: Host) {
             VoiceSetting(listOf("카테고리버튼", "주변버튼"), "show_category_button", "카테고리 버튼"),
             VoiceSetting(listOf("즐겨찾기버튼"), "show_favorites_button", "즐겨찾기 버튼"),
             VoiceSetting(listOf("경로선"), "route_line_display_enabled", "경로선 콤마 화면 표시"),
-            VoiceSetting(listOf("차선안내", "차선오버레이"), "lane_overlay_tmap_enabled", "차선 안내 오버레이"),
             VoiceSetting(listOf("상단바버튼"), "show_toggle_top_panel_button", "상단바 표시/숨김 버튼")
         )
     }

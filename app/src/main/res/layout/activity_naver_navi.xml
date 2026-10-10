@@ -1,0 +1,1114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v3.0: Tmap HUD 화면(activity_map.xml)과 완전히 동일한 상단바+≡메뉴 패턴으로 통일.
+     그동안 예전 좌측 220dp 세로 패널 스타일이 그대로 남아있어서 Tmap 화면과 다르게
+     보이는 문제(사용자 지적 4번: "카카오 길안내 시 구버전 UI화면 나옴") 해결.
+     Tmap 전용 버튼(음소거는 카카오 자체 음소거, 설정/업데이트/앱종료는 제외)만
+     빼고 뷰 ID는 최대한 동일하게 맞춤. #문제시 원복 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#080808"
+    android:clipChildren="false">
+
+    <FrameLayout
+        android:id="@+id/naviView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"/>
+
+    <!-- v14.4: 재억 요청 - 재안내(경로 변경) 시 잠깐 뜨는 문구 배너. 상단바보다 아래,
+         차선안내 바보다 위에 둬서 겹치지 않게 함. 평소엔 gone, 재안내 순간에만
+         잠깐 보였다 자동으로 사라짐. #문제시 원복 -->
+    <TextView
+        android:id="@+id/tvRerouteBanner"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="60dp"
+        android:text="새로운 길로 안내합니다"
+        android:textColor="#FFFFFF"
+        android:shadowColor="#FF000000"
+        android:shadowDx="0"
+        android:shadowDy="0"
+        android:shadowRadius="5.5"
+        android:textSize="13sp"
+        android:background="#CC000000"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="8dp"
+        android:visibility="gone"
+        android:elevation="21dp"/>
+
+    <!-- 차선안내/신호등 잔여시간 - 상단바 아래로 -->
+    <LinearLayout
+        android:id="@+id/llLaneSignalBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="60dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="#CC000000"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="6dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/llLaneBoxes"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+
+        <TextView
+            android:id="@+id/tvTrafficLightCountdown"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:text=""
+            android:textColor="#FFFFFF"
+            android:shadowColor="#FF000000"
+            android:shadowDx="0"
+            android:shadowDy="0"
+            android:shadowRadius="5.5"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- ===== 상단 HUD 바 (Tmap 화면과 동일 패턴) ===== -->
+    <!-- v19.3.28: 재억 제보 - 편집모드 "이동" 핸들이 상단바에 가려 보이고, 상단바를 옮겨도
+         핸들은 따로 안 움직임. FrameLayout으로 바꿔 핸들을 상단바 안쪽에 겹쳐서 얹음 -
+         핸들이 상단바의 진짜 일부가 돼서 항상 보이고 같이 움직임. #문제시 원복 -->
+    <FrameLayout
+        android:id="@+id/llLeftHudPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:elevation="20dp"
+        android:background="@android:color/transparent">
+
+        <!-- 상시 노출 줄: 속도 / 제한 / 상태 / GPS / 음소거 / 검색 / 메뉴.
+             v3.11: 화면이 좁아서 내용이 잘리는 경우(사용자 지적: "겔럭시 Fe23 6.4인치에서
+             우측 짤림") 대비 가로 스크롤 가능하게 HorizontalScrollView로 감쌈. minHeight는
+             여기(ScrollView)에 유지해서 기존 자동 높이보정 로직(llTopBarRow.minimumHeight
+             참조)이 그대로 맞게 동작함. #문제시 원복 -->
+        <HorizontalScrollView
+            android:id="@+id/llTopBarRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="56dp"
+            android:scrollbars="none"
+            android:overScrollMode="never"
+            android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingVertical="4dp"
+            android:paddingHorizontal="10dp">
+
+            <!-- v19.3.60: 재억 요청 - 큰 바 배경 없애고 요소별 반투명 유리 칩(bg_chip_glass)으로.
+                 llTopBarRow 전체가 한 덩어리라 UI편집 드래그해도 항상 같이 이동함. #문제시 원복 -->
+            <!-- 속도 -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="bottom"
+                android:background="@drawable/bg_chip_glass"
+                android:paddingStart="3dp"
+                android:paddingEnd="10dp"
+                android:paddingVertical="4dp">
+
+                <TextView
+                    android:id="@+id/tvCurrentSpeed"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0"
+                    android:textColor="#FFFFFF"
+                    android:textSize="28sp"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
+                    android:textStyle="bold"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="km/h"
+                    android:textColor="#666666"
+                    android:textSize="10sp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginBottom="6dp"/>
+
+                <TextView
+                    android:id="@+id/tvRoadSpeedLimit"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="--"
+                    android:textColor="#FF5252"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:background="@drawable/bg_speed_limit_hud"
+                    android:paddingHorizontal="6dp"
+                    android:paddingVertical="2dp"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginBottom="4dp"/>
+            </LinearLayout>
+
+            <View android:layout_width="8dp" android:layout_height="0dp"/>
+
+            <!-- 상태 -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_chip_glass"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="4dp">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="start">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <View
+                            android:id="@+id/vConnectionDot"
+                            android:layout_width="6dp"
+                            android:layout_height="6dp"
+                            android:background="@drawable/shape_circle_gray"
+                            android:layout_marginEnd="6dp"/>
+
+                        <TextView
+                            android:id="@+id/tvActiveStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Cruise Off"
+                            android:textColor="#FFFFFF"
+                            android:textSize="9sp"
+                            android:shadowColor="#FF000000"
+                            android:shadowDx="0"
+                            android:shadowDy="0"
+                            android:shadowRadius="5.5"
+                            android:maxLines="1"
+                            android:ellipsize="end"/>
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvConnectionStatus"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="콤마 연결 대기"
+                        android:textColor="#FFFFFF"
+                        android:shadowColor="#FF000000"
+                        android:shadowDx="0"
+                        android:shadowDy="0"
+                        android:shadowRadius="5.5"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:layout_marginTop="1dp"/>
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tvXStateBadge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=""
+                    android:textColor="#4FC3F7"
+                    android:textSize="9sp"
+                    android:textStyle="bold"
+                    android:visibility="gone"/>
+            </LinearLayout>
+
+            <View android:layout_width="8dp" android:layout_height="0dp"/>
+
+            <!-- GPS 상태 -->
+            <Button
+                android:id="@+id/btnGpsStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:text="GPS 확인 중"
+                android:textSize="9sp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:paddingHorizontal="10dp"
+                android:backgroundTint="#B328282C" />
+
+            <View android:layout_width="8dp" android:layout_height="0dp"/>
+
+            <!-- 음소거 / 검색 -->
+            <LinearLayout
+                android:id="@+id/btnKakaoMuteToggle"
+                android:layout_width="52dp"
+                android:layout_height="38dp"
+                android:layout_marginEnd="8dp"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@drawable/shape_rounded_gray"
+                android:contentDescription="음소거"
+                android:tooltipText="음소거"
+                android:clickable="true"
+                android:focusable="true">
+                <ImageView
+                    android:id="@+id/ivKakaoMuteToggleIcon"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@android:drawable/ic_lock_silent_mode_off"
+                    android:importantForAccessibility="no"/>
+                <TextView
+                    android:id="@+id/tvKakaoMuteToggleLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="무음"
+                    android:textColor="#FFFFFF"
+                    android:textSize="8sp"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="4.5"
+                    android:includeFontPadding="false"/>
+            </LinearLayout>
+
+            <!-- v3.1: 예전엔 이 버튼도 음성검색, 필드 안 마이크도 음성검색이라 완전히
+                 중복이었음. 이 버튼을 음성검색 전용(아이콘도 마이크로)으로 통일하고,
+                 필드 안 아이콘은 최근검색으로 바꿈. #문제시 원복 -->
+            <LinearLayout
+                android:id="@+id/btnOpenSearch"
+                android:layout_width="52dp"
+                android:layout_height="38dp"
+                android:layout_marginEnd="8dp"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@drawable/shape_rounded_gray"
+                android:contentDescription="음성검색"
+                android:tooltipText="음성검색"
+                android:clickable="true"
+                android:focusable="true">
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/ic_mic"
+                    android:importantForAccessibility="no"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="음성"
+                    android:textColor="#FFFFFF"
+                    android:textSize="8sp"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="4.5"
+                    android:includeFontPadding="false"/>
+            </LinearLayout>
+
+            <!-- v2.9: 검색 팝업을 거치지 않고 상단바에서 바로 입력 가능하도록.
+                 v3.9: 남은 공간을 다 차지하던 걸(weight=1) 고정폭으로 줄임
+                 (사용자: "목적지를 입력하세요를 목적지 검색으로 줄이라는게 아니라
+                 그 칸 자체를 줄이자는 거") #문제시 원복 -->
+            <!-- v19.3.80: 재억 요청 - 평소엔 좁게, 검색어/음성검색 결과가 들어오면 글자 길이에 맞춰
+                 늘어남(최대폭까지, 넘으면 안에서 스크롤). 안내가 시작되면 코드가 글자를 비워서 다시
+                 좁아짐. #문제시 원복 -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/bg_chip_glass"
+                android:paddingHorizontal="10dp">
+
+                <EditText
+                    android:id="@+id/etDestination"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:minWidth="60dp"
+                    android:maxWidth="260dp"
+                    android:hint="검색"
+                    android:textColor="#FFFFFF"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
+                    android:textColorHint="#666666"
+                    android:textSize="12sp"
+                    android:background="@android:color/transparent"
+                    android:singleLine="true"
+                    android:imeOptions="actionSearch"
+                    android:inputType="text" />
+
+                <!-- v3.1: 마이크(음성검색, 왼쪽 버튼과 중복)에서 최근검색으로 변경 -->
+                <ImageButton
+                    android:id="@+id/btnVoiceSearch"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:layout_marginStart="4dp"
+                    android:src="@drawable/ic_history"
+                    android:background="@android:color/transparent"
+                    android:scaleType="center" />
+            </LinearLayout>
+
+            <!-- 검색창을 고정폭으로 줄인 만큼, 오른쪽(도착정보/메뉴)을 끝까지 밀어내는 spacer -->
+            <View android:layout_width="20dp" android:layout_height="0dp"/>
+
+            <!-- v11.9: 집/회사를 최근검색 팝업 안(즐겨찾기와 같이)에서 상단바 고정 버튼으로
+                 이동(재억 요청) - 순서는 검색창 -> 집 -> 회사 -> 업로드 -> 메뉴. 검색창
+                 자체는 지금 크기(220dp 고정폭) 그대로 유지. #문제시 원복 -->
+            <LinearLayout
+                android:id="@+id/btnHomeQuickSlot"
+                android:layout_width="52dp"
+                android:layout_height="38dp"
+                android:layout_marginEnd="8dp"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@drawable/shape_rounded_gray"
+                android:contentDescription="집"
+                android:tooltipText="집"
+                android:clickable="true"
+                android:focusable="true">
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/ic_home_quickslot"
+                    android:importantForAccessibility="no"/>
+                <TextView
+                    android:id="@+id/tvHomeSlotLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="집"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:maxWidth="48dp"
+                    android:textColor="#FFFFFF"
+                    android:textSize="8sp"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="4.5"
+                    android:includeFontPadding="false"/>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/btnWorkQuickSlot"
+                android:layout_width="52dp"
+                android:layout_height="38dp"
+                android:layout_marginEnd="8dp"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@drawable/shape_rounded_gray"
+                android:contentDescription="회사"
+                android:tooltipText="회사"
+                android:clickable="true"
+                android:focusable="true">
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/ic_work_quickslot"
+                    android:importantForAccessibility="no"/>
+                <TextView
+                    android:id="@+id/tvWorkSlotLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="회사"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:maxWidth="48dp"
+                    android:textColor="#FFFFFF"
+                    android:textSize="8sp"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="4.5"
+                    android:includeFontPadding="false"/>
+            </LinearLayout>
+
+            <!-- v4.1: 순서를 검색창 -> 메뉴 -> 안내종료 -> 이벤트로 재배치 (사용자 요청).
+                 이벤트는 생겼다 없어졌다 하는 항목이라 맨 끝에 둬서 다른 요소를 계속
+                 밀어내지 않게 함. #문제시 원복 -->
+            <LinearLayout
+                android:id="@+id/btnMoreMenu"
+                android:layout_width="52dp"
+                android:layout_height="38dp"
+                android:layout_marginEnd="8dp"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@drawable/shape_rounded_gray"
+                android:contentDescription="메뉴"
+                android:tooltipText="메뉴"
+                android:clickable="true"
+                android:focusable="true">
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/ic_hamburger"
+                    android:importantForAccessibility="no"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="메뉴"
+                    android:textColor="#FFFFFF"
+                    android:textSize="8sp"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="4.5"
+                    android:includeFontPadding="false"/>
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnStopKakaoGuidance"
+                android:layout_width="wrap_content"
+                android:layout_height="34dp"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:paddingHorizontal="12dp"
+                android:text="안내 종료"
+                android:textSize="10sp"
+                android:backgroundTint="#F44336"
+                android:layout_marginEnd="10dp"/>
+
+            <!-- 카메라/구간단속/방지턱 등 이벤트 - 항상 맨 끝 -->
+            <ImageView
+                android:id="@+id/ivTopBarEvent"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:layout_marginEnd="3dp"
+                android:padding="2dp"
+                android:background="@drawable/bg_event_alert"
+                android:visibility="gone"
+                android:contentDescription="@null"/>
+
+            <TextView
+                android:id="@+id/tvTopBarEvent"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="#FFC107"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp"
+                android:background="@drawable/bg_event_alert"
+                android:maxLines="1"
+                android:gravity="center_vertical"
+                android:shadowColor="#FF000000"
+                android:shadowDx="0"
+                android:shadowDy="0"
+                android:shadowRadius="5.5"
+                android:visibility="gone"/>
+        </LinearLayout>
+        </HorizontalScrollView>
+
+        <!-- v19.3.28: 편집모드일 때만 보이는 드래그 핸들 - 상단바(FrameLayout)의 자식이라
+             상단바를 옮기면 자동으로 같이 움직이고, HorizontalScrollView 밖에 겹쳐 있어서
+             가로스크롤이 터치를 가로챌 일도 없음. #문제시 원복 -->
+        <Button
+            android:id="@+id/btnDragHandleTopBar"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_gravity="center_vertical|end"
+            android:layout_marginEnd="76dp"
+            android:text="▼"
+            android:textSize="19sp"
+            android:textColor="#FFFFFF"
+            android:shadowColor="#FF000000"
+            android:shadowDx="0"
+            android:shadowDy="0"
+            android:shadowRadius="5.5"
+            android:background="@drawable/bg_miniplayer_confirm"
+            android:visibility="gone"/>
+    </FrameLayout>
+
+    <!-- v3.0: 보조 패널을 llLeftHudPanel 밖으로 분리 (Tmap 화면과 동일 이유) -->
+    <!-- 재억 요청 - 애플(iOS) 액션시트 스타일. ID는 기존 그대로 유지. #문제시 원복 -->
+    <ScrollView
+        android:id="@+id/svSecondaryPanel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="60dp"
+        android:layout_marginEnd="4dp"
+        android:visibility="gone"
+        android:background="@android:color/transparent"
+        android:elevation="22dp"
+        android:overScrollMode="never"
+        android:maxHeight="460dp">
+
+        <LinearLayout
+            android:layout_width="270dp"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- v7.9: "로그 전송"은 상단바 고정 버튼(btnShareLogTopBar)으로 이동됨 -
+                 메뉴 밖으로 뺌 (재억 요청). -->
+
+            <!-- v4.23: "일부 모바일 폰에서 메뉴에 UI편집/설정이 안보임"(사용자 지적) -
+                 PanelDragHelper.wireEditToggleButton()이 필요로 하는 btnConfirmEditPosition/
+                 llLeftHudPanel이 이 레이아웃(세로 카카오)에도 이미 다 있어서, 가로 카카오/티맵과
+                 동일하게 추가. -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_action_sheet">
+
+                <Button
+                    android:id="@+id/btnEditPanelPosition"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="UI 편집"
+                    android:textSize="14sp"
+                    android:textColor="#F2F2F7"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="14dp"
+                    android:drawableStart="@drawable/ic_edit_pencil"
+                    android:drawableTint="#F2F2F7"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+                <View style="@style/ActionSheetDivider"/>
+
+                <!-- v3.8: 티맵 화면과 동일하게 업데이트확인/도움말/앱종료 추가
+                     (사용자 지적 2·3번: "카카오 화면 더보기가 티맵보다 항목이 적음"). -->
+                <Button
+                    android:id="@+id/btnCheckUpdate"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="업데이트"
+                    android:letterSpacing="0.2"
+                    android:textSize="14sp"
+                    android:textColor="#F2F2F7"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="14dp"
+                    android:drawableStart="@drawable/ic_refresh"
+                    android:drawableTint="#F2F2F7"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+                <View style="@style/ActionSheetDivider"/>
+
+                <Button
+                    android:id="@+id/btnHelp"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="업데이트 내역"
+                    android:textSize="14sp"
+                    android:textColor="#F2F2F7"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="14dp"
+                    android:drawableStart="@drawable/ic_help_info"
+                    android:drawableTint="#F2F2F7"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+
+            </LinearLayout>
+
+            <View android:layout_width="1dp" android:layout_height="8dp"/>
+
+            <!-- v4.14: 메뉴 순서 조정 - "설정"을 로그 전체 삭제와 도움말 사이로 이동
+                 (사용자 요청), v4.23: 세로 카카오에도 신규 추가. -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_action_sheet">
+
+                <Button
+                    android:id="@+id/btnEditKey"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="설정"
+                    android:textSize="14sp"
+                    android:textColor="#F2F2F7"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="14dp"
+                    android:drawableStart="@drawable/ic_settings_gear"
+                    android:drawableTint="#F2F2F7"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+                <View style="@style/ActionSheetDivider"/>
+
+                <Button
+                    android:id="@+id/btnGuideHelp"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="도움말"
+                    android:textSize="14sp"
+                    android:textColor="#F2F2F7"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="14dp"
+                    android:drawableStart="@drawable/ic_guide_book"
+                    android:drawableTint="#F2F2F7"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+
+            </LinearLayout>
+
+            <View android:layout_width="1dp" android:layout_height="8dp"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_action_sheet">
+
+                <Button
+                    android:id="@+id/btnDeleteAllLogs"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="로그 삭제"
+                    android:textSize="14sp"
+                    android:textColor="#FF453A"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="14dp"
+                    android:drawableStart="@drawable/ic_send_paperplane"
+                    android:drawableTint="#FF453A"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+                <View style="@style/ActionSheetDivider"/>
+
+                <Button
+                    android:id="@+id/btnExitApp"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="앱 종료"
+                    android:textSize="14sp"
+                    android:textColor="#FF453A"
+                    android:shadowColor="#FF000000"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="5.5"
+                    android:gravity="center_vertical|start"
+                    android:paddingStart="14dp"
+                    android:drawableStart="@drawable/ic_power_off"
+                    android:drawableTint="#FF453A"
+                    android:drawablePadding="12dp"
+                    android:background="@drawable/bg_action_row"/>
+
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tvAppVersion"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:text=""
+                android:textColor="#5C5C5E"
+                android:textSize="9sp"
+                android:layout_marginTop="8dp"/>
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- v3.1: 사용자 요청 - EVENT/SIGNAL/최근검색을 더보기 목록에서 제거하되 내부 로직은 유지. #문제시 원복 -->
+    <LinearLayout
+        android:id="@+id/llHiddenLegacyPanel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:id="@+id/llSdiInfo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+            <TextView android:id="@+id/tvSdiDescr" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="--"/>
+            <TextView android:id="@+id/tvSdiDist" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="--"/>
+            <TextView android:id="@+id/tvSdiSpeedLimit" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text=""/>
+            <LinearLayout
+                android:id="@+id/llBlockInfo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+                <TextView android:id="@+id/tvBlockAvgSpeed" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text=""/>
+                <TextView android:id="@+id/tvBlockDist" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text=""/>
+                <TextView android:id="@+id/tvBlockTime" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text=""/>
+            </LinearLayout>
+        </LinearLayout>
+
+        <View android:id="@+id/vTrafficLight" android:layout_width="12dp" android:layout_height="12dp"/>
+        <TextView android:id="@+id/tvCarrotVersion" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text=""/>
+        <TextView android:id="@+id/tvCarrotIp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="IP: -"/>
+
+        <LinearLayout
+            android:id="@+id/llRecentSearchPanel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+            <LinearLayout
+                android:id="@+id/llRecentSearchRows"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"/>
+            <Button android:id="@+id/btnMoreHistory" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="+ 더보기"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- v3.10: 편집모드 확정 체크버튼 - 항상 화면 위에 떠서 편집을 끝낼 수 있게 함. #문제시 원복 -->
+    <ImageButton
+        android:id="@+id/btnConfirmEditPosition"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="12dp"
+        android:src="@drawable/ic_check"
+        android:background="@drawable/bg_miniplayer_confirm"
+        android:scaleType="center"
+        android:elevation="30dp"
+        android:visibility="gone"/>
+
+    <!-- v19.3.37: 재억 요청 - 상단바 표시/숨김 플로팅 버튼(Tmap 화면과 동일).
+         v19.3.40: 크기를 44dp로 맞추고 아이콘 대신 "숨김"/"표시" 글자로 변경(Tmap과 동일). #문제시 원복 -->
+    <Button
+        android:id="@+id/btnToggleTopPanel"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="110dp"
+        android:minWidth="0dp"
+        android:minHeight="0dp"
+        android:insetLeft="0dp"
+        android:insetRight="0dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:paddingHorizontal="0dp"
+        android:paddingVertical="0dp"
+        android:text="숨김"
+        android:textSize="13sp"
+        android:textColor="#FFFFFF"
+        android:shadowColor="#FF000000"
+        android:shadowDx="0"
+        android:shadowDy="0"
+        android:shadowRadius="5.5"
+        android:background="@drawable/shape_circle_gray"
+        android:contentDescription="상단바 표시/숨김"
+        android:elevation="25dp"/>
+
+    <!-- v: 재억 요청(2026-08-26) - 카테고리 버튼을 앞으로, 경유지 버튼을 뒤로 순서 변경. #문제시 원복 -->
+    <LinearLayout
+        android:id="@+id/btnNearbyCategory"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:layout_gravity="top|start"
+        android:layout_marginTop="56dp"
+        android:layout_marginStart="18dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="@drawable/shape_rounded_gray"
+        android:contentDescription="주변 카테고리 검색"
+        android:tooltipText="주변 검색"
+        android:elevation="20dp"
+        android:clickable="true"
+        android:focusable="true">
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_category"
+            android:importantForAccessibility="no"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
+            android:text="주변"
+            android:textColor="#FFFFFF"
+            android:textSize="8sp"
+            android:shadowColor="#FF000000"
+            android:shadowDx="0"
+            android:shadowDy="0"
+            android:shadowRadius="4.5"
+            android:includeFontPadding="false"/>
+    </LinearLayout>
+
+    <!-- v19.3.80: 재억 요청 - 검색이력 창 안의 좁은 즐겨찾기 줄을 빼서 주변/경유지처럼 끌어 옮길 수 있는 아이콘으로. #문제시 원복 -->
+    <LinearLayout
+        android:id="@+id/btnFavorites"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:layout_gravity="top|start"
+        android:layout_marginTop="56dp"
+        android:layout_marginStart="126dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="@drawable/shape_rounded_gray"
+        android:contentDescription="즐겨찾기"
+        android:tooltipText="즐겨찾기"
+        android:elevation="20dp"
+        android:clickable="true"
+        android:focusable="true">
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="❤️"
+            android:textSize="18sp"
+            android:includeFontPadding="false"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="즐겨찾기"
+            android:textColor="#FFFFFF"
+            android:textSize="7sp"
+            android:shadowColor="#FF000000"
+            android:shadowDx="0"
+            android:shadowDy="0"
+            android:shadowRadius="4.5"
+            android:includeFontPadding="false"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/btnAddWaypoint"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:layout_gravity="top|start"
+        android:layout_marginTop="56dp"
+        android:layout_marginStart="72dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="@drawable/shape_rounded_gray"
+        android:contentDescription="경유지 추가"
+        android:tooltipText="경유지 추가"
+        android:elevation="20dp"
+        android:clickable="true"
+        android:focusable="true">
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_add_waypoint"
+            android:importantForAccessibility="no"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
+            android:text="경유지"
+            android:textColor="#FFFFFF"
+            android:textSize="8sp"
+            android:shadowColor="#FF000000"
+            android:shadowDx="0"
+            android:shadowDy="0"
+            android:shadowRadius="4.5"
+            android:includeFontPadding="false"/>
+    </LinearLayout>
+
+    <!-- v: 신규기능(경유지 취소 버튼) - 경유지가 실제로 추가돼 있을 때만 보임(코드에서
+         visibility 제어). #문제시 원복 -->
+    <LinearLayout
+        android:id="@+id/btnCancelWaypoint"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:layout_gravity="top|start"
+        android:layout_marginTop="56dp"
+        android:layout_marginStart="126dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="@drawable/shape_rounded_red"
+        android:contentDescription="경유지 취소"
+        android:tooltipText="경유지 취소"
+        android:visibility="gone"
+        android:elevation="20dp"
+        android:clickable="true"
+        android:focusable="true">
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_cancel_waypoint"
+            android:importantForAccessibility="no"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
+            android:text="취소"
+            android:textColor="#FFFFFF"
+            android:textSize="8sp"
+            android:shadowColor="#FF000000"
+            android:shadowDx="0"
+            android:shadowDy="0"
+            android:shadowRadius="4.5"
+            android:includeFontPadding="false"/>
+    </LinearLayout>
+
+    <!-- v: 신규기능(미니 플레이어) - 재억 요청. 현재 재생 중인 음악 앱(유튜브뮤직 등)의
+         정보(MediaSession)만 읽어와 자체 UI로 그림 - 다른 앱 화면을 가져오는 게 아니라
+         "지금 재생 중" 데이터만 구독하는 방식. 카드를 길게 누르면 "위치 이동"/"크기 조절"
+         메뉴가 뜨고, 확정(체크) 버튼/크기조절 핸들은 카드 왼쪽 모서리에 겹쳐서 배치함
+         (clipChildren=false로 카드 밖으로 살짝 튀어나오게). 재생 중인 미디어가 없으면
+         자동으로 숨김. #문제시 원복 -->
+    <FrameLayout
+        android:id="@+id/flMiniPlayerContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="40dp"
+        android:layout_marginBottom="40dp"
+        android:clipChildren="false"
+        android:elevation="24dp"
+        android:visibility="gone">
+
+    <LinearLayout
+        android:id="@+id/llMiniPlayer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/bg_miniplayer"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="8dp">
+
+        <ImageView
+            android:id="@+id/ivMiniPlayerArt"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:background="@drawable/shape_circle_gray"
+            android:scaleType="centerCrop"/>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="4dp">
+
+            <!-- v: 재억 제보(2026-08-28, 4차, 실기기 영상으로 확인) - 이 폭이 140dp로
+                 고정돼 있어서, 크기 조절로 글자가 커지면 좁은 칸 안에 눌려 카드가
+                 뒤죽박죽으로 보였음. maxWidth만 안전장치로 두고 폭 자체는 내용에 맞게
+                 늘어나도록(wrap_content) 바꿈. #문제시 원복 -->
+            <TextView
+                android:id="@+id/tvMiniPlayerTitle"
+                android:layout_width="220dp"
+                android:layout_height="wrap_content"
+                android:text="재생 중인 음악 없음"
+                android:textColor="#FFFFFF"
+                android:shadowColor="#FF000000"
+                android:shadowDx="0"
+                android:shadowDy="0"
+                android:shadowRadius="5.5"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:singleLine="true"
+                android:ellipsize="marquee"
+                android:marqueeRepeatLimit="marquee_forever"
+                android:focusable="true"
+                android:focusableInTouchMode="true"/>
+
+            <TextView
+                android:id="@+id/tvMiniPlayerArtist"
+                android:layout_width="220dp"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="#9AA1AC"
+                android:shadowColor="#FF000000"
+                android:shadowDx="0"
+                android:shadowDy="0"
+                android:shadowRadius="5.5"
+                android:textSize="10sp"
+                android:singleLine="true"
+                android:ellipsize="marquee"
+                android:marqueeRepeatLimit="marquee_forever"
+                android:focusable="true"
+                android:focusableInTouchMode="true"/>
+        </LinearLayout>
+
+        <ImageButton
+            android:id="@+id/btnMiniPlayerPrev"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@android:drawable/ic_media_previous"
+            android:background="@android:color/transparent"
+            android:scaleType="center"/>
+
+        <ImageButton
+            android:id="@+id/btnMiniPlayerPlayPause"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:layout_marginHorizontal="2dp"
+            android:src="@android:drawable/ic_media_pause"
+            android:background="@drawable/shape_circle_blue"
+            android:scaleType="center"/>
+
+        <ImageButton
+            android:id="@+id/btnMiniPlayerNext"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@android:drawable/ic_media_next"
+            android:background="@android:color/transparent"
+            android:scaleType="center"/>
+
+    </LinearLayout>
+
+    </FrameLayout>
+
+    <!-- v: 재억 제보(2026-08-29, 4차) - 이 두 버튼을 flMiniPlayerContainer 안에 두고
+         음수 여백으로 틀 밖으로 밀어냈더니, 그려지기는 해도 "터치가 전달되는 범위"는
+         여전히 원래 틀 크기(카드 크기) 그대로라 눌리지 않았음(clipChildren=false는 그림에만
+         적용되고 터치 판정 범위는 안 넓혀줌). 그래서 화면 전체(루트)의 직속 자식으로
+         옮기고, 위치는 카드 좌표를 기준으로 코드(MiniPlayerManager.repositionOverlayButtons)
+         에서 직접 계산해서 잡아줌 - 화면 전체는 항상 터치를 받을 수 있어서 이 문제가
+         생길 수 없음. #문제시 원복 -->
+    <ImageButton
+        android:id="@+id/btnMiniPlayerConfirm"
+        android:layout_width="46dp"
+        android:layout_height="46dp"
+        android:src="@drawable/ic_check"
+        android:background="@drawable/bg_miniplayer_confirm"
+        android:scaleType="center"
+        android:contentDescription="확정"
+        android:elevation="26dp"
+        android:visibility="gone"/>
+
+    <ImageButton
+        android:id="@+id/vMiniPlayerResizeHandle"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
+        android:src="@drawable/ic_resize"
+        android:background="@drawable/bg_miniplayer_resize"
+        android:scaleType="center"
+        android:contentDescription="크기 조절"
+        android:elevation="26dp"
+        android:visibility="gone"/>
+
+</FrameLayout>

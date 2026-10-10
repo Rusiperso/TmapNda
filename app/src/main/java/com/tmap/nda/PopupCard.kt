@@ -92,7 +92,7 @@ object PopupCard {
             if (primary) {
                 setTextColor(Color.parseColor("#212121"))
                 setTypeface(null, Typeface.BOLD)
-                background = roundedFill(context, "#FFD54F")
+                background = roundedFill(context, AppAccent.hex(context))
             } else {
                 setTextColor(Color.parseColor("#DDDDDD"))
                 background = roundedFill(context, "#1AFFFFFF")
@@ -183,6 +183,10 @@ object PopupCard {
      * 카드를 root 위에 띄우고(뒤에 투명 방패 뷰를 깔아 바깥을 누르면 닫힘), 닫는 함수를 돌려줌.
      * defaultGravityCenter가 true면 화면 가운데, false면 왼쪽 위(경유지 버튼 오른쪽)에 뜸.
      */
+    /** 팝업 카드가 떠 있는 동안 화면 위의 다른 박스(안내 박스 등)를 숨기고 싶을 때 쓰는 알림. 화면이 등록해 둔다. */
+    @Volatile var onPopupVisibilityChanged: ((visible: Boolean) -> Unit)? = null
+    private var openPopupCount = 0
+
     fun present(
         activity: Activity,
         root: ViewGroup,
@@ -212,10 +216,14 @@ object PopupCard {
         }
         root.addView(card, params)
         attachDrag(activity, card, root, prefKey)
+        openPopupCount++
+        onPopupVisibilityChanged?.invoke(true)
         var closed = false
         val close = {
             if (!closed) {
                 closed = true
+                openPopupCount = (openPopupCount - 1).coerceAtLeast(0)
+                if (openPopupCount == 0) onPopupVisibilityChanged?.invoke(false)
                 root.removeView(card)
                 root.removeView(scrim)
             }
@@ -292,7 +300,7 @@ object PopupCard {
                 if (primary) {
                     setTextColor(Color.parseColor("#212121"))
                     setTypeface(null, Typeface.BOLD)
-                    background = roundedFill(activity, "#FFD54F")
+                    background = roundedFill(activity, AppAccent.hex(activity))
                 } else {
                     setTextColor(Color.parseColor(if (destructive) "#FF8A80" else "#DDDDDD"))
                     background = roundedFill(activity, "#1AFFFFFF")

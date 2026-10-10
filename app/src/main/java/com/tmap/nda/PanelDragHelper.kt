@@ -774,19 +774,6 @@ object PanelDragHelper {
             setPadding(40, 0, 40, 32)
         }
 
-        // v: 재억 요청(2026-09-02) - "카카오 길안내를 기반으로 카메라를 매칭하고 싶다".
-        // 켜면 카카오 안내 중에는 카카오가 경로 위에서 잡은 카메라/방지턱만 콤마로 보내고,
-        // 티맵이 옆도로(고가도로 아래, 분기 진출로 등)에서 혼자 잡아온 이벤트는 안 보냄.
-        // 혹시 카카오가 놓치는 카메라가 있으면 꺼서 예전 동작(티맵 폴백)으로 되돌리면 됨. #문제시 원복
-        // v: 재억 질문(2026-09-02) - 기본을 꺼짐으로 둠. 꺼두면 티맵 카메라도 예전처럼 그대로
-        // 나가서 카메라를 놓칠 위험이 없고, 급감속의 원인이던 "티맵 카메라가 도로제한속도를
-        // 끌어내리는 통로"는 이 옵션과 무관하게 항상 막히기 때문. #문제시 원복
-        val kakaoOnlySdiCheckBox = android.widget.Switch(context).apply {
-            text = "카카오 안내 중 카메라는 카카오 것만 사용"
-            isChecked = pref.getBoolean("kakao_only_sdi_when_guiding", false)
-            setTextColor(android.graphics.Color.WHITE)
-            setPadding(40, 0, 40, 32)
-        }
 
         // v13.0-4: 재억 요청 - 즐겨찾기 5칸이 다 필요없는 사람도 있어서, 표시 개수를
         // -/+ 버튼으로 0~5까지 조절 가능하게 함. 집/회사는 상단바 고정이라 이 설정과
@@ -920,7 +907,7 @@ object PanelDragHelper {
                     val sel = m == dayNightMode
                     tv.setTextColor(if (sel) android.graphics.Color.parseColor("#212121") else android.graphics.Color.WHITE)
                     tv.setTypeface(null, if (sel) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
-                    tv.background = PopupCard.roundedFill(context, if (sel) "#FFD54F" else "#1AFFFFFF")
+                    tv.background = PopupCard.roundedFill(context, if (sel) AppAccent.hex(context) else "#1AFFFFFF")
                 }
             }
             options.forEachIndexed { i, (m, label) ->
@@ -952,16 +939,18 @@ object PanelDragHelper {
             settingGroups[title] = items
         }
 
+        // 길안내 선택(카카오 / 네이버): 고르면 그 엔진의 키 입력 팝업이 뜨고, 저장하면 앱이 다시 시작된다.
+        addAccordionGroup("길안내 선택", GuideEngineSettings.buildItems(context))
         addAccordionGroup("안전운전 알림", listOf(
             disableMobileCamCheckBox,   // 이동식카메라 감속
             checkBox,                   // 속도 10% 초과 시 경고음
             arrivalRadiusAlertCheckBox, // 목적지 근처 도착 알림 (소리+진동)
             showTopBarEventCheckBox,    // 상단바에 이벤트(카메라/구간단속/방지턱) 표시
-            kakaoOnlySdiCheckBox,       // 카카오 안내 중 카메라는 카카오 것만 사용
             // v: 재억 요청(2026-09-15) - "화면 표시"가 아니라 위험요소를 알려주는 기능이라
             // 상단바 이벤트 표시와 같은 그룹이 맞다는 지적으로 이동. #문제시 원복
             accidentAlertCheckBox,      // 사고/공사구간 알림 표시
             emergencyAlertCheckBox,     // 긴급차량 접근 알림 표시
+            // 아래 두 항목은 카카오 안내에만 있는 기능이라 네이버를 골랐을 때는 보이지 않게 한다.
             avoidSchoolZoneCheckBox,    // 스쿨존(어린이보호구역) 회피
             kakaoMinimalGuideCheckBox   // 최소 안내(카카오 음성 종류별 필터)
         ))
@@ -972,7 +961,6 @@ object PanelDragHelper {
             trafficInfoCheckBox,            // 티맵 교통 정보 (도로 정체 색깔 표시)
             distanceFormatKmCheckBox,       // 1000m 이상일 때 km 단위로 거리 표시
             unlockMapTouchCheckBox,         // 티맵 터치 잠금 해제 (핀치줌/드래그 허용) - 화면표시로 이동
-            showLaneOverlayTmapCheckBox,    // 차선 안내 오버레이 표시 (Tmap 화면 한정)
             showMiniPlayerCheckBox,          // 미니 플레이어 표시
             showToggleTopPanelButtonCheckBox, // 상단바 표시/숨김 플로팅 버튼 보이기
             blackScreenOnUsbConnectCheckBox   // 차량 연결시 폰 화면 블랙 처리
@@ -1069,6 +1057,7 @@ object PanelDragHelper {
         etcItems.add(carFuelSectionTitle)
         etcItems.add(carFuelHintText)
         etcItems.add(carFuelRow)
+        // 하이패스 요금은 카카오 통행료 계산에만 있는 기능이라 네이버를 골랐을 때는 보이지 않게 한다.
         etcItems.add(useHipassCheckBox)
 
         // 음성 보정: 폰이 자꾸 잘못 알아듣는 말을 직접 적어두는 표("틀린말=원래말" 한 줄에 하나).
@@ -1277,7 +1266,7 @@ object PanelDragHelper {
                     } else {
                         setTextColor(android.graphics.Color.WHITE)
                     }
-                    background = PopupCard.roundedFill(context, if (selected) "#FFD54F" else "#1AFFFFFF")
+                    background = PopupCard.roundedFill(context, if (selected) AppAccent.hex(context) else "#1AFFFFFF")
                     isClickable = true
                     setOnClickListener {
                         selectedGroup = title
@@ -1307,7 +1296,6 @@ object PanelDragHelper {
                     .putBoolean("auto_navi_drive_enabled", autoNaviDriveCheckBox.isChecked)
                     .putBoolean("auto_blinker_enabled", autoBlinkerCheckBox.isChecked)
                     .putBoolean("topbar_event_enabled", showTopBarEventCheckBox.isChecked)
-                    .putBoolean("lane_overlay_tmap_enabled", showLaneOverlayTmapCheckBox.isChecked)
                     .putBoolean("accident_alert_enabled", accidentAlertCheckBox.isChecked)
                     .putBoolean("emergency_alert_enabled", emergencyAlertCheckBox.isChecked)
                     .putBoolean("kakao_avoid_school_zone", avoidSchoolZoneCheckBox.isChecked)
@@ -1325,7 +1313,6 @@ object PanelDragHelper {
                     .putBoolean("tmap_satellite_view_enabled", satelliteViewCheckBox.isChecked)
                     .putBoolean("tmap_traffic_info_enabled", trafficInfoCheckBox.isChecked)
                     .putBoolean("route_line_display_enabled", routeLineDisplayCheckBox.isChecked)
-                    .putBoolean("kakao_only_sdi_when_guiding", kakaoOnlySdiCheckBox.isChecked)
                     .putBoolean("kakao_minimal_guide_enabled", kakaoMinimalGuideCheckBox.isChecked)
                     .putBoolean(com.tmap.nda.miniplayer.MiniPlayerManager.PREF_KEY_ENABLED, showMiniPlayerCheckBox.isChecked)
                     .putInt("quickslot_favorite_count", favoriteCount)

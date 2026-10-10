@@ -133,11 +133,8 @@ fun renderLaneSignalBar(
     val prefs = context.getSharedPreferences("TmapNdaPrefs", android.content.Context.MODE_PRIVATE)
     // v: 사용자 요청(2026-08-10) - 카카오 화면에서는 차선 안내 오버레이를 아예 안 띄우기로 함.
     // Tmap 화면에서만 켜고 끌 수 있게 남겨둠. #문제시 원복
-    val overlayEnabled = when (screenName) {
-        "tmap" -> prefs.getBoolean("lane_overlay_tmap_enabled", true)
-        "kakao" -> false
-        else -> false
-    }
+    // 차선 안내 오버레이 기능은 없앴다(어느 화면에서도 그리지 않는다).
+    val overlayEnabled = false
     if (!overlayEnabled) {
         LaneSignalRepository.resetIfStale()
         bar?.visibility = android.view.View.GONE

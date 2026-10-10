@@ -170,6 +170,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         NavLogger.appContext = applicationContext
+        TmapSearchKey.ensure(applicationContext)
         NavLogger.deleteLogsOlderThan3Days(applicationContext)
         // v: 재억 요청(2026-09-15) - 실사용자가 몇 명인지 대략이라도 알 수 있게, 하루 한 번
         // 익명 신호를 디스코드로 보냄(자동 오류 보고 꺼둔 사람은 안 감). #문제시 원복
@@ -227,8 +228,6 @@ class MainActivity : AppCompatActivity() {
 
         val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         val savedAppKey = sharedPref.getString("APP_KEY", "")
-        val savedKakaoKey = sharedPref.getString("kakao_rest_api_key", "")
-        val savedKakaoNativeKey = sharedPref.getString("kakao_native_app_key", "")
         val savedOpinetKey = sharedPref.getString("opinet_api_key", "")
         val savedEvChargerKey = sharedPref.getString("ev_charger_api_key", "")
         val savedTargetIp = sharedPref.getString("TARGET_IP", "255.255.255.255")
@@ -257,8 +256,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.etAppKey.setText(savedAppKey)
-        binding.etKakaoAppKey.setText(savedKakaoKey)
-        binding.etKakaoNativeAppKey.setText(savedKakaoNativeKey)
         binding.etOpinetApiKey.setText(savedOpinetKey)
         binding.etEvChargerApiKey.setText(savedEvChargerKey)
         binding.etTargetIp.setText(savedTargetIp)
@@ -347,8 +344,6 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnStartNavi.setOnClickListener {
             val appKey = binding.etAppKey.text.toString().trim()
-            val kakaoKey = binding.etKakaoAppKey.text.toString().trim()
-            val kakaoNativeKey = binding.etKakaoNativeAppKey.text.toString().trim()
             val opinetKey = binding.etOpinetApiKey.text.toString().trim()
             val evChargerKey = binding.etEvChargerApiKey.text.toString().trim()
             val targetIp = binding.etTargetIp.text.toString().trim()
@@ -363,11 +358,10 @@ class MainActivity : AppCompatActivity() {
 
             DiscordReporter.setNickname(this, binding.etNickname.text.toString())
 
+
             // Save to SharedPreferences
             sharedPref.edit().apply {
                 putString("APP_KEY", appKey)
-                putString("kakao_rest_api_key", kakaoKey)
-                putString("kakao_native_app_key", kakaoNativeKey)
                 putString("opinet_api_key", opinetKey)
                 putString("ev_charger_api_key", evChargerKey)
                 putString("TARGET_IP", targetIp)

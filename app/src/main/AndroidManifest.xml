@@ -133,6 +133,21 @@
         <!-- v: MapActivity와 동일한 이유(분할화면 등으로 화면 크기가 바뀔 때 액티비티가
              통째로 재생성되면서 카카오 SDK 델리게이트가 유실돼 Navdy HUD 데이터가
              끊기는 문제, 재억 제보 로그로 확인)로 여기도 동일하게 추가. #문제시 원복 -->
+        <!-- 앱 재시작용 중간 화면(별도 프로세스) -->
+        <activity
+            android:name=".RestartTrampolineActivity"
+            android:process=":restart"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- 네이버 길안내 화면 -->
+        <activity
+            android:name=".NaverNaviActivity"
+            android:exported="false"
+            android:screenOrientation="unspecified"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|density" />
+
         <activity
             android:name=".KakaoNaviActivity"
             android:exported="false"

@@ -13,8 +13,8 @@ android {
         applicationId = "com.tmap.nda"
         minSdk = 26
         targetSdk = 36
-        versionCode = 540
-        versionName = "19.4.30"
+        versionCode = 541
+        versionName = "19.4.31"
 
         // v: 재억 요청(2026-09-22) - 디스코드 웹훅 주소가 코드에 그대로 박혀 공개 저장소에
         // 커밋되면 스팸봇이 깃허브를 긁어서 찾아내 도배 → 디스코드가 웹훅을 자동 삭제하는
@@ -160,4 +160,6 @@ dependencies {
   implementation("com.airbnb.android:lottie:3.0.7")
   implementation("com.squareup.okio:okio:1.17.6")
   implementation("com.google.code.gson:gson:2.10.1")
+  // 네이버 지도(네이버 길안내 화면)
+  implementation("com.naver.maps:map-sdk:3.24.0")
 }

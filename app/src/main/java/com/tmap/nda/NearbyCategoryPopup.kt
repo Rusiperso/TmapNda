@@ -282,7 +282,7 @@ object NearbyCategoryPopup {
                         background = android.graphics.drawable.GradientDrawable().apply {
                             shape = android.graphics.drawable.GradientDrawable.OVAL
                             setColor(
-                                if (isCurrent) android.graphics.Color.parseColor("#FFD54F")
+                                if (isCurrent) android.graphics.Color.parseColor(AppAccent.hex(context))
                                 else android.graphics.Color.parseColor("#33FFFFFF")
                             )
                         }
@@ -642,7 +642,7 @@ object NearbyCategoryPopup {
                 val selected = item.label == currentSelectedLabel
                 val row = makeRow(context, item.label, null, true, 16f) { runSearch(item) }
                 row.tag = item
-                row.background = PopupCard.roundedFill(context, if (selected) "#FFD54F" else "#1AFFFFFF")
+                row.background = PopupCard.roundedFill(context, if (selected) AppAccent.hex(context) else "#1AFFFFFF")
                 ((row as? LinearLayout)?.getChildAt(0) as? TextView)?.apply {
                     setShadowLayer(0f, 0f, 0f, 0)
                     if (selected) {

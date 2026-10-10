@@ -69,38 +69,6 @@
 
     </com.google.android.material.textfield.TextInputLayout>
 
-    <com.google.android.material.textfield.TextInputLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="카카오 REST API 키 (목적지 검색용, 선택)"
-        app:helperTextEnabled="true"
-        app:helperText="⚠ 카카오 콘솔 [플랫폼 키]의 'REST API 키'만 넣으세요. JavaScript 키·네이티브 앱 키는 넣으면 안 됩니다."
-        android:layout_marginBottom="16dp">
-
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/etKakaoAppKey"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="text"/>
-
-    </com.google.android.material.textfield.TextInputLayout>
-
-    <com.google.android.material.textfield.TextInputLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="카카오 네이티브 앱 키 (길안내용, 선택 - 카카오 콘솔 각자 발급)"
-        app:helperTextEnabled="true"
-        app:helperText="⚠ 카카오 콘솔 [플랫폼 키]의 '네이티브 앱 키'만 넣으세요. JavaScript 키·REST API 키는 넣으면 안 됩니다."
-        android:layout_marginBottom="16dp">
-
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/etKakaoNativeAppKey"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="text"/>
-
-    </com.google.android.material.textfield.TextInputLayout>
-
     <!-- v: 신규기능(주유소 브랜드/유가 검색) - 오피넷 API도 각자 발급받아 넣는 방식(재억
          지적: 한 명 키를 공유하면 하루 1500건 한도가 금방 소진됨). #문제시 원복 -->
     <com.google.android.material.textfield.TextInputLayout
@@ -131,6 +99,7 @@
             android:inputType="text"/>
 
     </com.google.android.material.textfield.TextInputLayout>
+
 
     <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"

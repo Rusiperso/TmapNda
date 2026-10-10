@@ -274,9 +274,9 @@ class MapActivity : AppCompatActivity() {
             override fun currentBearing(): Float? = lastKnownBearing
             override fun switchScreen(toKakao: Boolean): String {
                 if (!toKakao) return "이미 티맵 화면이에요"
-                if (!KakaoRouteDataRepository.isFresh()) return "안내 중인 카카오 화면이 없어요"
-                this@MapActivity.startActivity(Intent(this@MapActivity, KakaoNaviActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
-                return "카카오 화면으로 갈게요"
+                if (!KakaoRouteDataRepository.isFresh()) return "안내 중인 화면이 없어요"
+                this@MapActivity.startActivity(Intent(this@MapActivity, if (GuideEngine.isNaver(this@MapActivity)) NaverNaviActivity::class.java else KakaoNaviActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+                return "안내 화면으로 갈게요"
             }
             override fun addWaypoint(entry: HistoryEntry) {
                 if (!KakaoRouteDataRepository.isFresh()) {
@@ -358,6 +358,7 @@ class MapActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         NavLogger.appContext = applicationContext
+        TmapSearchKey.ensure(applicationContext)
         // v: 재억 재제보(2026-08-30) - 15초짜리 시작 워치독으로는 "카카오 종료할 때 등"의
         // 멈춤을 못 잡아서, 앱 전체 수명 동안 계속 도는 전역 워치독(MainThreadWatchdog)으로
         // 교체. 여기서든 KakaoNaviActivity에서든 한 번만 시작되면 계속 돎. #문제시 원복
@@ -1095,7 +1096,7 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
-    private val httpClient by lazy { OkHttpClient() }
+    private val httpClient by lazy { OkHttpClient.Builder().addInterceptor(KakaoToTmapInterceptor(applicationContext)).build() }
 
     // 옵션 A: 카카오 REST API 키를 사용자별로 입력받아 SharedPreferences에 저장.
     // (앱에 고정 키를 박아넣으면 모든 설치자가 같은 키/같은 할당량을 공유하게 되는 문제 방지)
@@ -2916,6 +2917,8 @@ class MapActivity : AppCompatActivity() {
     // 네이티브 앱 키를 기기별 설정값으로 넣도록 변경. #문제시 원복
     // 네이티브 앱 키가 비어 있으면 SDK를 초기화하지 않는다.
     private fun getKakaoNativeAppKey(): String {
+        // 네이버를 고른 상태에선 카카오 SDK를 아예 켜지 않는다(키가 있어도 빈 값으로 취급).
+        if (GuideEngine.isNaver(this)) return ""
         val prefs = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         return prefs.getString("kakao_native_app_key", "").orEmpty().trim()
     }
@@ -3327,24 +3330,26 @@ class MapActivity : AppCompatActivity() {
         routeAvoidOption: Int = 0,
         parkedViewSavedAt: Long = 0L
     ) {
+        // 초기 화면에서 고른 길안내 엔진(카카오 / 네이버)에 맞는 안내 화면으로 연결한다.
+        val useNaver = GuideEngine.isNaver(this)
         val nativeAppKey = getKakaoNativeAppKey()
-
-        if (nativeAppKey.isBlank()) {
-            Toast.makeText(
-                this,
-                "카카오 네이티브 앱 키를 먼저 입력하세요.",
-                Toast.LENGTH_LONG
-            ).show()
+        if (useNaver) {
+            if (!com.tmap.nda.naver.NaverDirectionsClient.hasKeys(this)) {
+                Toast.makeText(this, "네이버 Key ID/Secret을 먼저 입력하세요.", Toast.LENGTH_LONG).show()
+                return
+            }
+        } else if (nativeAppKey.isBlank()) {
+            Toast.makeText(this, "카카오 네이티브 앱 키를 먼저 입력하세요.", Toast.LENGTH_LONG).show()
             return
         }
 
         dismissKeyboardAndSearchPanel()
 
-        val intent = Intent(this, KakaoNaviActivity::class.java).apply {
+        val intent = Intent(this, if (useNaver) NaverNaviActivity::class.java else KakaoNaviActivity::class.java).apply {
             putExtra("dest_name", name)
             putExtra("dest_lat", goalLat)
             putExtra("dest_lon", goalLon)
-            putExtra("kakao_native_app_key", nativeAppKey)
+            if (!useNaver) putExtra("kakao_native_app_key", nativeAppKey)
             if (parkedViewSavedAt > 0L) putExtra("parked_view_saved_at", parkedViewSavedAt)
             if (routePriorityName != null) {
                 putExtra("route_priority_name", routePriorityName)

@@ -20,16 +20,18 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import com.kakaomobility.knsdk.KNRouteAvoidOption
 import com.kakaomobility.knsdk.KNRoutePriority
-import com.kakaomobility.knsdk.KNSDK
-import com.kakaomobility.knsdk.KNSpeedOverAlertOption
-import com.kakaomobility.knsdk.common.objects.KNPOI
-import com.kakaomobility.knsdk.common.objects.KNError
-import com.kakaomobility.knsdk.common.util.FloatPoint
-import com.kakaomobility.knsdk.map.knmaprenderer.objects.KNMapCameraUpdate
-import com.kakaomobility.knsdk.map.uicustomsupport.renewal.KNMapMarker
-import com.kakaomobility.knsdk.ui.view.KNNaviView
-import com.tmap.nda.databinding.ActivityKakaoNaviBinding
+import com.tmap.nda.databinding.ActivityNaverNaviBinding
 import com.tmapmobility.tmap.tmapsdk.ui.util.TmapUISDK
+import com.tmap.nda.naver.LonLat
+import com.tmap.nda.naver.NaverDirectionsClient
+import com.tmap.nda.naver.NaverEta
+import com.tmap.nda.naver.NaverRouteOptions
+import com.tmap.nda.naver.NaverGuidanceEngine
+import com.tmap.nda.naver.NaverMapController
+import com.tmap.nda.naver.NaverNavigator
+import com.tmap.nda.naver.NaverRoute
+import com.tmap.nda.naver.NaverTurnMap
+import com.tmap.nda.naver.GuidanceState
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.OkHttpClient
@@ -57,7 +59,7 @@ import java.io.IOException
  * 경로요청 시점 스냅샷 위치에 계속 멈춰있던 것 - 이 Activity도 LocationListener로
  * 실시간 GPS를 구독해서 매번 KNSDK GPS 매니저에 전달하도록 함.
  */
-class KakaoNaviActivity : AppCompatActivity(), LocationListener {
+class NaverNaviActivity : AppCompatActivity(), LocationListener {
 
     // v19.3.25: 재억 제보(폴드4 외부화면) - 카카오 SDK가 화면을 태블릿급으로 오판해 UI가
     // 잘려 보이는 문제 대응. 자세한 이유는 CoverScreenConfigFix 주석 참고. #문제시 원복
@@ -65,9 +67,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         super.attachBaseContext(CoverScreenConfigFix.wrapIfDistorted(newBase))
     }
 
-    private lateinit var binding: ActivityKakaoNaviBinding
-    private lateinit var naviView: KNNaviView
-    private var kakaoGuidanceDelegate: KakaoGuidanceDelegate? = null
+    private lateinit var binding: ActivityNaverNaviBinding
+    private lateinit var naviView: android.widget.FrameLayout   // 네이버 지도가 들어가는 자리
+    private lateinit var naverMap: NaverMapController
+    private lateinit var guideOverlay: com.tmap.nda.naver.NaverGuideOverlay
     private var exitHookAttached = false
     private var wasTmapMuted = false
     private var kakaoMuted = false
@@ -77,7 +80,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private var etaQueueGeneration = 0
     // v19.3.72: 신규기능(경로 선택 팝업에 목적지 핀 표시, 재억 요청 2026-09-18) - 지금
     // 찍혀있는 목적지 핀을 기억해뒀다가 팝업이 닫힐 때 지우기 위한 참조.
-    private var destinationPinMarker: KNMapMarker? = null
     // v19.3.78: 재억 실기기 제보 - 경로선택 카드가 떠있는 상태(완료/취소 전)에서 경유지 등
     // 다른 목적지를 또 고르면, showRouteChoicePanel()이 매번 새 카드를 만들어서 root에
     // 추가만 하고 이전 카드는 안 지워서 두 카드가 겹쳐 보였음. 지금 떠있는 카드를 기억해두고,
@@ -91,7 +93,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 방식 - 경로 미리보기 중엔 지도 모드를 Top(진북고정 2D)으로 바꿔서 자동 추적을 잠깐
     // 멈추고, 끝나면 원래 모드로 되돌림. 이전에 썼던 "위치 갱신 자체를 끊는" 방식보다
     // 이게 원본이 검증한 진짜 방법. #문제시 원복
-    private var savedMapViewMode: com.kakaomobility.knsdk.ui.component.MapViewCameraMode? = null
     // v19.3.72: 화면이 방금 막 열려서 아직 안내를 시작한 적 없는 첫 목적지 확정
     // 단계인지 표시. 경로선택 카드에서 "취소"를 눌렀을 때 티맵으로 돌아갈지
     // (finish) 판단하는 데 씀 - 이미 안내 중이던 걸 바꾸려다 취소한 경우는 false로
@@ -263,8 +264,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 return true
             }
             override fun switchScreen(toKakao: Boolean): String {
-                if (toKakao) return "이미 카카오 화면이에요"
-                return "카카오 화면에서 티맵 화면으로 가려면 안내를 종료해야 해요. 안내를 종료할까요라고 말씀해 주세요"
+                if (toKakao) return "이미 안내 화면이에요"
+                return "안내 화면에서 티맵 화면으로 가려면 안내를 종료해야 해요. 안내를 종료할까요라고 말씀해 주세요"
             }
             override fun addWaypoint(entry: HistoryEntry) = addWaypointToActiveGuidance(entry)
             override fun addWaypointBySearch(query: String): Boolean {
@@ -281,7 +282,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 binding.btnToggleTopPanel?.visibility = if (prefs.getBoolean("show_toggle_top_panel_button", false)) View.VISIBLE else View.GONE
                 binding.flMiniPlayerContainer?.let { outer ->
                     com.tmap.nda.miniplayer.MiniPlayerManager.refresh(
-                        this@KakaoNaviActivity, outer,
+                        this@NaverNaviActivity, outer,
                         binding.ivMiniPlayerArt, binding.tvMiniPlayerTitle, binding.tvMiniPlayerArtist,
                         binding.btnMiniPlayerPlayPause
                     )
@@ -344,7 +345,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val destName = intent.getStringExtra("dest_name")
         val destLat = intent.getDoubleExtra("dest_lat", Double.NaN)
         val destLon = intent.getDoubleExtra("dest_lon", Double.NaN)
-        val nativeAppKey = intent.getStringExtra("kakao_native_app_key").orEmpty()
         // v13.1-2: 재억 요청 - 검색결과에서 "추천/고속도로우선/무료도로우선" 골랐으면
         // 그 값을 받아서 실제 안내 시작할 때 반영. 안 넘어오면(즐겨찾기 등 기존 경로는)
         // 그냥 기본값(추천) 그대로. #문제시 원복
@@ -380,59 +380,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         wasTmapMuted = sharedPref.getBoolean("tmap_muted", false)
         applyTmapMute(wasTmapMuted)
         kakaoMuted = sharedPref.getBoolean("kakao_muted", false)
+        NaverNavigator.muted = kakaoMuted
 
         // v3.13: 카카오 길안내 시작할 때마다 볼륨이 100%로 리셋되던 문제 - 저장해둔 값으로 다시 맞춤.
         // v: 재억 요청(2026-09-02, A안) - 미디어(음악) 볼륨을 건드리던 걸 길안내 음량만
         // 맞추는 것으로 교체. 음악 볼륨은 이제 앱이 절대 안 건드림. #문제시 원복
         VolumeHelper.applyGuideVolume(this)
 
-      KakaoSdkState.ensureInitialized(
-    application,
-    nativeAppKey
-) { success, message ->
-    if (isFinishing || isDestroyed) {
-        return@ensureInitialized
-    }
-
-    if (success) {
-        NavLogger.d(
-            this,
-            "KakaoNaviActivity: KNSDK 초기화 확인 완료"
-        )
-
-        try {
-            KNSDK.handleWillEnterForeground()
-            KNSDK.handleDidBecomeActive()
-        } catch (e: Exception) {
-            NavLogger.e(
-                this,
-                "KakaoNaviActivity: KNSDK 활성화 신호 전달 실패: ${e.message}"
-            )
-        }
-
-        setupContentAndStart(
-            destName,
-            destLat,
-            destLon,
-            routePriorityName
-        )
-    } else {
-        val errorMessage = message ?: "알 수 없는 오류"
-
-        NavLogger.e(
-            this,
-            "KakaoNaviActivity: KNSDK 초기화 실패: $errorMessage"
-        )
-
-        Toast.makeText(
-            this,
-            "카카오내비 초기화 실패: $errorMessage",
-            Toast.LENGTH_LONG
-        ).show()
-
-        finish()
-    }
-}
+        // 네이버 안내: 카카오 SDK 초기화를 기다릴 필요 없이 바로 화면을 만든다.
+        setupContentAndStart(destName, destLat, destLon, routePriorityName)
     }
 
     // 지도 낮/밤: 설정(자동/항상 낮/항상 밤)에 맞춰 카카오 화면 밤 모드(useDarkMode)를 켜고 끔.
@@ -450,26 +406,24 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         try {
             val night = DayNightHelper.isNight(this)
             if (!force && night == lastAppliedKakaoNight) return
-            naviView.useDarkMode = night
+            if (::naverMap.isInitialized) naverMap.setNight(night)
             lastAppliedKakaoNight = night
-            NavLogger.d(this, "[카카오낮밤] 적용됨: ${if (night) "밤" else "낮"} (설정=${DayNightHelper.mode(this)})")
+            NavLogger.d(this, "[네이버낮밤] 적용됨: ${if (night) "밤" else "낮"} (설정=${DayNightHelper.mode(this)})")
         } catch (e: Exception) {
-            NavLogger.e(this, "[카카오낮밤] 적용 예외: ${e.message}")
+            NavLogger.e(this, "[네이버낮밤] 적용 예외: ${e.message}")
         }
     }
 
     private fun setupContentAndStart(destName: String, destLat: Double, destLon: Double, routePriorityName: String?) {
-        binding = ActivityKakaoNaviBinding.inflate(layoutInflater)
+        binding = ActivityNaverNaviBinding.inflate(layoutInflater)
         setContentView(binding.root)
         inflatedOrientation = resources.configuration.orientation
         naviView = binding.naviView
-        // v19.3.25: 재억 제보 - "제한속도 60인데 61km/h만 돼도 카메라 500m 전부터 계속
-        // 경고음이 울린다"는 건 카카오 SDK가 그 카메라 소리를 재생하는 자체 코드라 우리
-        // 쪽(AudioFocusHacker의 playSoundEffect 후킹)으론 안 잡혔던 것 - SDK 클래스를 직접
-        // 뒤져보니 KNNaviView에 공식 공개 설정 safetyCameraAlert(KNSpeedOverAlertOption)가
-        // 있었음. 기본값(KNSpeedOverDefault)이 너무 민감해서 나던 소리로 보여, 우리가 이미
-        // 쓰고 있는 "제한속도 10% 초과" 기준과 맞춰 10%로 설정. #문제시 원복
-        naviView.safetyCameraAlert = KNSpeedOverAlertOption.KNSpeedOver_10_PERCENT
+        // 지도: 카카오 지도 대신 네이버 지도를 이 자리에 넣는다(UI는 그대로).
+        naverMap = NaverMapController(this, binding.naviView)
+        naverMap.init(NaverDirectionsClient.keyId(this), null) { }
+        guideOverlay = com.tmap.nda.naver.NaverGuideOverlay(this, binding.root)
+        PopupCard.onPopupVisibilityChanged = { visible -> runOnUiThread { guideOverlay.setObscured(visible) } }
         applyKakaoDayNight()
         window.decorView.removeCallbacks(kakaoDayNightTick)
         window.decorView.postDelayed(kakaoDayNightTick, 5 * 60 * 1000L)
@@ -592,13 +546,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
         binding.btnStopKakaoGuidance.setOnClickListener { finishGuidance() }
 
-        try {
-            KNSDK.handleWillEnterForeground()
-            KNSDK.handleDidBecomeActive()
-        } catch (e: Exception) {
-            NavLogger.e(this, "KNSDK 라이프사이클 전달 예외: ${e.message}")
-        }
-
         startRealtimeGpsForwarding()
         startMiniHudBinding()
         setupHudActionButtons()
@@ -613,148 +560,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             )
         }
 
-        // CarrotNavi 실제 동작 코드에서 확인된 핵심 패턴: naviView를 목적지가 확정된
-        // 시점에 initWithGuidance(trip=실제경로)로 처음 초기화하는 게 아니라,
-        // Activity가 뜨자마자(목적지 정보가 아직 없어도) trip=null로 "경로 없는 idle map"
-        // 상태로 먼저 initWithGuidance() 해버림. 그러면 실제 검색 결과(카카오 로컬 API
-        // 네트워크 왕복 몇 초)가 돌아올 때쯤엔 naviView/서페이스가 이미 완전히 살아있는
-        // 상태라 레이아웃/서페이스 타이밍 레이스가 원천적으로 안 생김. 실제 목적지가
-        // 잡히면 initWithGuidance()를 또 부르는 게 아니라 guideNewDestinations()로
-        // 이미 떠있는 세션에 목적지만 갈아끼움(이 방식이 정확히 CarrotNavi가 쓰는 방식).
-        // #문제시 원복
-        val guidance = KNSDK.sharedGuidance()
-        if (guidance == null) {
-            NavLogger.e(this, "setupContentAndStart: sharedGuidance() null")
-            finish()
-            return
-        }
-        hookSurfaceViewLifecycle(naviView)
-        // v1.0.95: KNNaviView 내장 설정 팝업의 "안내종료" 버튼이 눌러도 반응이 없다는
-        // 제보(재억) - v1.0.89 델리게이트 하이재킹(attachExitHook, 바로 아래 주석)이 지도
-        // 렌더링을 통째로 멈추게 했던 전례가 있어서, 이번엔 델리게이트는 절대 안 건드리고
-        // 화면에 "안내종료" 문구로 그려지는 View 자체를 찾아 우리 finishGuidance()를 클릭
-        // 리스너로 얹기만 함. SDK 팝업은 필요할 때(사용자가 설정 아이콘을 눌렀을 때)에만
-        // 새로 그려지므로, naviView 루트에 GlobalLayoutListener를 걸어 레이아웃이 바뀔
-        // 때마다(팝업이 뜰 때마다) 가볍게 재스캔. 이미 훅 붙인 View는 태그로 표시해서
-        // 중복 스캔해도 리스너를 다시 걸지 않게 함. #문제시 원복
-        attachNativeExitButtonHook(naviView)
-        // v1.0.89: attachExitHook()이 naviView.setStateDelegate/setGuideStateDelegate/
-        // setMapEventDelegate/setScaleDelegate 전부를 리플렉션으로 찾아 "로그만 찍고 아무
-        // 실제 동작도 안 하는" 더미 Proxy로 덮어쓰고 있었음. CarrotNavi 실제 코드를 보면
-        // naviView.stateDelegate = this@KakaoMapActivity 처럼 진짜 구현체를 등록해서 내부
-        // UI 컴포넌트(속도판/방향안내/표지판 등)를 갱신하는 데 씀 - 우리 더미 Proxy가 이
-        // 델리게이트 체인을 깨뜨려서 지도 타일은 뜨는데 안내 UI 컴포넌트들이 전부 숨김
-        // 상태(vis=8)로 멈춰있던 것으로 추정됨. 지금은 전용 "안내 종료" 버튼이 이미 있어서
-        // 리플렉션 exit-hook 자체가 필요 없음 - 완전히 제거. #문제시 원복
-        // attachExitHook(naviView)
-        val delegate = KakaoGuidanceDelegate(
-            this,
-            onGuideEnded = { finishGuidance() },
-            onGuideStarted = {},
-            isRouteGuideActive = { !kakaoMuted },
-            onRouteChanged = { showRerouteBanner() }
-        ).also { kakaoGuidanceDelegate = it }
-        delegate.naviView = naviView
-        guidance.guideStateDelegate = delegate
-        guidance.routeGuideDelegate = delegate
-        guidance.safetyGuideDelegate = delegate
-        guidance.voiceGuideDelegate = delegate
-        guidance.citsGuideDelegate = delegate
-        guidance.locationGuideDelegate = delegate
+        // 네이버 안내 엔진의 상태(다음 안내·남은 거리 등)를 이 화면에 보여주도록 연결한다.
+        NaverNavigator.setListener(naverGuidanceListener)
 
-        NavLogger.d(
-            this,
-            "[진단] naviView 인터페이스 구현 확인: " +
-                "LocationGuideDelegate=${naviView is com.kakaomobility.knsdk.guidance.knguidance.KNGuidance_LocationGuideDelegate} " +
-                "RouteGuideDelegate=${naviView is com.kakaomobility.knsdk.guidance.knguidance.KNGuidance_RouteGuideDelegate} " +
-                "GuideStateDelegate=${naviView is com.kakaomobility.knsdk.guidance.knguidance.KNGuidance_GuideStateDelegate}"
-        )
-
-        // v13.0: [조사] 재억 요청 - "고속도로/국도 우선" 선택 기능, "지금 고속도로 위인지"
-        // 표시 기능이 가능한지 확인하려고, 경로 우선순위(KNRoutePriority)/회피 옵션
-        // (KNRouteAvoidOption)에 실제로 어떤 선택지들이 있는지, 그리고 안내 중 도로
-        // 종류를 알려주는 값이 있는지 로그로 찍어봄. 아직 이 값들을 실제로 쓰는 코드는
-        // 없고, 조사만 하는 거라 동작에는 영향 없음. #문제시 원복
-        try {
-            val priorityValues = KNRoutePriority::class.java.enumConstants
-                ?.joinToString(", ") { it.name }
-            NavLogger.d(this, "[조사][경로우선순위] KNRoutePriority 선택지들: $priorityValues")
-        } catch (e: Exception) {
-            NavLogger.e(this, "[조사][경로우선순위] KNRoutePriority 조사 실패: ${e.message}")
-        }
-        try {
-            val avoidValues = KNRouteAvoidOption::class.java.enumConstants
-                ?.joinToString(", ") { "${it.name}(value=${it.value})" }
-            NavLogger.d(this, "[조사][회피옵션] KNRouteAvoidOption 선택지들: $avoidValues")
-        } catch (e: Exception) {
-            NavLogger.e(this, "[조사][회피옵션] KNRouteAvoidOption 조사 실패: ${e.message}")
-        }
-        try {
-            val rgCodeClass = Class.forName("com.kakaomobility.knsdk.guidance.knguidance.common.objects.KNRGCode")
-            val rgCodeValues = rgCodeClass.enumConstants?.joinToString(", ") { (it as Enum<*>).name }
-            NavLogger.d(this, "[조사][도로종류] KNRGCode 선택지들: $rgCodeValues")
-        } catch (e: Exception) {
-            NavLogger.e(this, "[조사][도로종류] KNRGCode 조사 실패: ${e.message}")
-        }
-        try {
-            val summaryClass = Class.forName("com.kakaomobility.knsdk.trip.knroute.KNRoute_Summary")
-            val summaryMethods = summaryClass.methods.joinToString(", ") { it.name }
-            NavLogger.d(this, "[조사][경로요약] KNRoute_Summary가 가진 함수들: $summaryMethods")
-        } catch (e: Exception) {
-            NavLogger.e(this, "[조사][경로요약] KNRoute_Summary 클래스 조사 실패: ${e.message}")
-        }
-
-        NavLogger.d(this, "setupContentAndStart: initWithGuidance(trip=null) idle map 선초기화")
-        naviView.initWithGuidance(
-            guidance,
-            null,
-            KNRoutePriority.KNRoutePriority_Recommand,
-            KNRouteAvoidOption.KNRouteAvoidOption_None.value
-        )
-        // v: 재억 제보 - "고정/이동식/구간단속 카메라 근처에서 10% 안 넘었는데도 계속
-        // 경고음이 운다"는 건 우리 코드가 아니라 카카오 SDK 자체 판단 함수
-        // (KNGuidance.judgeOverSpeedAlert, initWithGuidance가 내부적으로 등록)가 화면에
-        // 안 보이는 "그 카메라 하나에 박혀있는 카카오 자체 DB상의 제한속도"를 기준으로
-        // 10%를 계산해서 생기는 불일치였음(classes.jar를 javap로 까서 확인 - 우리
-        // SdiDataRepository 값과는 전혀 무관).
-        // v: 재억 재제보 - 위 방식(judgeOverSpeedAlert를 무조건 false)으로 껐더니 "000m 전방에
-        // 카메라가 있습니다" 카메라 음성 안내 자체가 통째로 같이 사라졌음(이 콜백이 카카오
-        // 자체 경고음뿐 아니라 카메라 음성 안내 재생 여부까지 같이 결정하는 것으로 보임).
-        // 재억이 실제로 거슬려했던 "300m/100m 전부터 띵띵" 반복음은 이 콜백이 아니라 우리
-        // 자체 로직(checkOverSpeedWarning, 카메라 하나당 300~500m/100m 두 번 반복)이었음 -
-        // 그건 onLocationChanged에서 이 화면(카카오)만 호출을 뺐음. 그래서 여기는 무조건
-        // true로 돌려서 카카오 음성 안내를 살림. initWithGuidance 호출 직후에 다시 세팅해야
-        // 카카오가 지 걸로 덮어쓴 걸 우리 걸로 다시 덮어쓸 수 있음. #문제시 원복
-        // v: 재억 재제보(2026-09-27) - "원인 찾았으면 왜 안 고치냐"는 지적에 다시 파봄.
-        // classes.jar를 javap로 다시 까보니 이 콜백의 진짜 시그니처가
-        // Function5<KNSafetyCode, Int, Int, Int, Boolean, Boolean>인 게 확인됨 - 즉 이
-        // 안에서 카카오가 우리에게 (안전코드, 정수 3개, 불리언 1개)를 실제로 넘겨주고
-        // 있었음. 근데 이 4개 인자 중 어느 게 "그 카메라의 제한속도"고 어느 게 "현재
-        // 속도"인지는 공식 문서가 없어 이름만으로는 확정 불가능(네이티브 계층에서 호출돼
-        // 자바 바이트코드로는 호출부 추적도 안 됨). 여기서 섣불리 "세 번째 인자가 속도"
-        // 식으로 추측해서 조건을 걸면, 추측이 틀렸을 때 카메라 음성 안내가 또 통째로
-        // 사라질 위험이 있음(#문제시 원복 - 예전에 이미 한 번 겪은 사고). 그래서 일단
-        // true는 그대로 유지하되, 인자 5개의 실제 값과 우리 쪽이 그 순간 알고 있는
-        // 진짜 제한속도/속도(SdiDataRepository, KakaoRouteDataRepository)를 나란히
-        // 로그로 남김 - 다음 실주행에서 "10% 안 넘었는데 울렸다"는 순간의 이 로그를
-        // 보면 인자 순서를 실측으로 확정할 수 있고, 그때 가서 진짜 조건식으로 바꿈. #문제시 원복
-        // 재억 요청(2026-09-28) - 9/27~28 실주행 로그 3145건으로 인자 뜻 확정: a=카메라 제한속도,
-        // b=현재속도, c=카메라까지 남은 거리(m), d=항상 false. 이 콜백은 속도가 제한을 "조금이라도"
-        // 넘을 때마다 불리는데(61/60 같은 1.7% 초과도 호출됨) 예전엔 무조건 true라 10% 안 넘어도
-        // 경고음이 났음. 이제 속도가 제한의 110%를 넘을 때만 true. 제한속도를 모르면(a<=0) 예전처럼 true.
-        // 주의: 예전에 이 콜백을 false로 껐더니 카메라 음성 안내까지 사라진 적이 있어서, 그런 증상이
-        // 다시 보이면 이 조건만 원복(항상 true). #문제시 원복
-        guidance.judgeOverSpeedAlert = { code, a, b, c, d ->
-            // 재억 요청(2026-09-30): 50으로 달리는데 1km 앞 30 카메라가 잡히면 1km 전부터 경고음이 났음.
-            // 시내에선 1km가 너무 멀어서 카메라까지 300m 이내일 때만 허용. 거리를 모르면(c<=0) 속도 조건만. #문제시 원복
-            val allow = a <= 0 || (b > a * 1.1 && (c <= 0 || c <= 300))
-            NavLogger.d(
-                this,
-                "[카카오과속알림진단] code=$code a=$a b=$b c=$c d=$d 허용=$allow " +
-                    "(참고)우리쪽limit=${SdiDataRepository.roadLimitSpeed} 우리쪽sdiLimit=${KakaoRouteDataRepository.safetySpeedLimit}"
-            )
-            allow
-        }
 
         // v4.16: [볼륨API스캔]으로도 확인됐지만, 카카오모빌리티 공식 문서
         // (사용자 맞춤 설정하기)에 명시된 공개 API였음 - KNNaviView.sndVolume(Float,
@@ -776,7 +584,21 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             runOnUiThread { showGuideVolumeIndicator(percent) }
         }
         applyKakaoSdkVolume()
-        naviView.post { logNaviViewDiagnostics("idle map 초기화 직후") }
+
+        // 안내가 이미 돌고 있는데 화면만 다시 만들어진 경우(가로↔세로 회전, 분할화면, 티맵 화면에서 돌아옴):
+        // 같은 목적지라면 길찾기를 새로 하지 않고 돌고 있는 안내에 화면만 다시 이어 붙인다.
+        val runningGoal = NaverNavigator.goalPoint
+        if (NaverNavigator.isRunning && runningGoal != null &&
+            NaverGuidanceEngine.distance(runningGoal, LonLat(destLon, destLat)) < 50.0
+        ) {
+            restoreWaypointsFromIntent()
+            NaverNavigator.currentRoute?.let { r ->
+                naverMap.showActiveRoute(r)
+                guideOverlay.show()
+            }
+            NaverNavigator.lastLocation?.let { naverMap.follow(it, animated = false) }
+            return
+        }
 
         // v: 화면이 다시 만들어진 경우(분할화면 전환 등) 경유지를 넣어둔 채였다면 그 경유지를
         // 포함해서 경로를 다시 짜야 함 - 그냥 목적지만 요청하면 경유지가 조용히 사라짐. #문제시 원복
@@ -815,40 +637,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
-    // v4.16: naviView.sndVolume은 float(0.0~1.0)라 VolumeHelper의 %(0~100) 값과 변환이
-    // 필요함. 이 함수를 초기화 시점뿐 아니라 실시간 볼륨 캡처(volumeChangeReceiver)에서도
-    // 같이 호출해서, 하드웨어 볼륨버튼으로 조절할 때마다 카카오 SDK 자체 볼륨도 같이
-    // 실시간으로 맞춰지게 함. 공식 문서 기준 이름은 "sndVolume"인데, 실제 설치된 SDK
-    // 버전(1.12.8-hotfix02)에서 정확히 이 이름이 맞는지 확인이 안 된 상태라, 직접 프로퍼티
-    // 접근(컴파일 타임 바인딩) 대신 리플렉션으로 안전하게 시도 - 이름이 다르면 컴파일이
-    // 깨지는 대신 로그만 남기고 조용히 스킵됨. #문제시 원복
-    private var sndVolumeSetterField: java.lang.reflect.Field? = null
-    private var sndVolumeSetterMethod: java.lang.reflect.Method? = null
-    private var sndVolumeLookupFailed = false
-    // v: 재억 요청(2026-09-02) - 카카오 자체 음량 메뉴에서 바꾼 값을 실시간으로 따라감.
-    // 카카오가 값을 바꾸면 우리 저장값도 같이 바꾸고, 화면에도 똑같이 표시해줌(어느 쪽에서
-    // 조절하든 같은 표시가 뜨도록). 우리가 방금 적용한 값과 같으면 아무 일도 안 함. #문제시 원복
-    private fun syncGuideVolumeFromKakaoNow() {
-        try {
-            if (!::naviView.isInitialized) return
-            if (!sndVolumeGetterLookupFailed && sndVolumeGetterMethod == null) {
-                try {
-                    sndVolumeGetterMethod = naviView.javaClass.getMethod("getSndVolume")
-                } catch (e: NoSuchMethodException) {
-                    sndVolumeGetterLookupFailed = true
-                    return
-                }
-            }
-            val snd = (sndVolumeGetterMethod?.invoke(naviView) as? Float) ?: return
-            val kakaoPercent = (snd * 100).toInt().coerceIn(0, 100)
-            val ourPercent = VolumeHelper.guideVolumePercent(this)
-            if (kotlin.math.abs(kakaoPercent - ourPercent) <= 1) return
-            VolumeHelper.syncGuideVolumeFromKakao(this, snd)
-            showGuideVolumeIndicator(kakaoPercent)
-        } catch (e: Exception) {
-            // 조용히 무시 - 250ms마다 도는 루프라 로그를 남기면 도배됨
-        }
-    }
+    // 카카오 SDK 자체 음량과 동기화하던 부분 - 네이버 안내는 우리 음량 값 하나만 쓰므로 필요 없다.
+    private fun syncGuideVolumeFromKakaoNow() {}
 
     // v: 재억 제보(2026-09-02) - 볼륨키를 길게 누를 때 값이 즉시 보이도록, 화면 가운데
     // 아래쪽에 잠깐 떴다 사라지는 표시를 직접 그림(토스트와 달리 밀리지 않고 바로 갱신됨).
@@ -895,500 +685,154 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     }
 
     // v: 재억 요청(2026-09-02, A안) - 이제 "길안내 음량"이 미디어 음량과 완전히 분리된
-    // 별도 값(VolumeHelper.guideVolumePercent)이라 그걸 읽어서 적용함. #문제시 원복
+    // 별도 값(VolumeHelper.guideVolumePercent)이라 그걸 읽어서 적용함. 네이버 안내 음성(TTS)에 적용. #문제시 원복
     private fun applyKakaoSdkVolume() {
         applyKakaoSdkVolume(VolumeHelper.guideVolumePercent(this) / 100f)
     }
 
     private fun applyKakaoSdkVolume(fractionIn: Float) {
-        try {
-            val fraction = fractionIn.coerceIn(0f, 1f)
-            val percent = (fraction * 100).toInt()
-
-            if (!sndVolumeLookupFailed && sndVolumeSetterMethod == null && sndVolumeSetterField == null) {
-                // Kotlin의 "var sndVolume: Float"는 바이트코드상 setSndVolume(float) 메서드로 컴파일됨
-                try {
-                    sndVolumeSetterMethod = naviView.javaClass.getMethod("setSndVolume", Float::class.javaPrimitiveType)
-                } catch (e: NoSuchMethodException) {
-                    try {
-                        sndVolumeSetterField = naviView.javaClass.getField("sndVolume")
-                    } catch (e2: NoSuchFieldException) {
-                        sndVolumeLookupFailed = true
-                        NavLogger.e(this, "[카카오SDK볼륨] setSndVolume/sndVolume 둘 다 못 찾음 - SDK 버전에서 이름이 다를 수 있음")
-                    }
-                }
-            }
-            when {
-                // v: 재억 요청(2026-09-03) - 이 두 줄은 실기기 로그 348줄 중 347줄이
-                // 직전 줄과 완전 동일했음(같은 음량을 계속 다시 적용하니 당연). 음량 값이
-                // 실제로 바뀔 때만 남김. #문제시 원복
-                sndVolumeSetterMethod != null -> {
-                    sndVolumeSetterMethod!!.invoke(naviView, fraction)
-                    NavLogger.dIfChanged(this, "카카오SDK볼륨", "[카카오SDK볼륨] setSndVolume($fraction) 호출됨 (저장된 ${percent}%)")
-                }
-                sndVolumeSetterField != null -> {
-                    sndVolumeSetterField!!.setFloat(naviView, fraction)
-                    NavLogger.dIfChanged(this, "카카오SDK볼륨", "[카카오SDK볼륨] sndVolume 필드에 $fraction 직접 대입 (저장된 ${percent}%)")
-                }
-            }
-        } catch (e: Exception) {
-            NavLogger.e(this, "[카카오SDK볼륨] 적용 예외: ${e.message}")
-        }
+        val fraction = fractionIn.coerceIn(0f, 1f)
+        NaverNavigator.guideVolume = fraction
+        NavLogger.dIfChanged(this, "안내음량", "[네이버안내음량] 적용 ${(fraction * 100).toInt()}%")
     }
 
-    // v: 재억 제보(2026-09-02) - "우리 앱에서 안내 음량을 올려도 카카오 메뉴에 있는 길 안내
-    // 음량과 동기화가 안 된다".
-    //
-    // SDK를 뜯어보니 음량이 서로 다른 두 개로 갈라져 있었음:
-    //   - sndVolume (0.0~1.0)  : 카카오 음성 자체 크기. 지금 우리 앱만 건드림(applyKakaoSdkVolume)
-    //   - 기기 볼륨(STREAM_MUSIC): 카카오 메뉴 하단 볼륨 +/- 버튼이 건드리는 값
-    //     (KNComponentBottomMenuView가 DeviceVolumeUseCase / trackingDeviceVolumeUseCase 사용)
-    // 서로 다른 값이라 한쪽을 바꿔도 다른 쪽에 반영이 안 됨.
-    //
-    // 고치기 전에 확인이 필요한 게 두 가지 있어서, 동작은 그대로 두고 값만 관찰함:
-    //   1) 카카오 메뉴에서 음량을 조절하면 sndVolume이 바뀌는가, 기기 볼륨이 바뀌는가(아니면 둘 다)
-    //   2) 두 값이 곱해지는가(둘 다 50%면 실제로 25%로 들리는지) - 이건 로그의 두 값 조합과
-    //      실제로 들리는 크기를 대조해야 알 수 있음
-    // 확인되면 "안내 음량" 값 하나로 세 곳(우리 저장값/sndVolume/기기 볼륨)을 함께 맞추는
-    // 양방향 동기화를 넣을 예정.
-    //
-    // 값이 바뀔 때만 남기므로 평소엔 로그가 거의 안 쌓임. #문제시 원복
-    private var sndVolumeGetterMethod: java.lang.reflect.Method? = null
-    private var sndVolumeGetterLookupFailed = false
+    // 예전 카카오 SDK 음량과의 양방향 동기화 진단 - 네이버 안내는 우리 값 하나만 쓰므로 할 일이 없다.
     private var lastVolumeDiagKey = ""
-    private fun logKakaoVolumeDiagnostics() {
-        try {
-            if (!::naviView.isInitialized) return
-            val am = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
-            val deviceCur = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
-            val deviceMax = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
-            val devicePercent = if (deviceMax > 0) (deviceCur * 100) / deviceMax else -1
-            val savedPercent = VolumeHelper.guideVolumePercent(this)
+    private fun logKakaoVolumeDiagnostics() {}
 
-            if (!sndVolumeGetterLookupFailed && sndVolumeGetterMethod == null) {
-                try {
-                    sndVolumeGetterMethod = naviView.javaClass.getMethod("getSndVolume")
-                } catch (e: NoSuchMethodException) {
-                    sndVolumeGetterLookupFailed = true
-                    NavLogger.e(this, "[안내음량진단] getSndVolume() 없음 - 이 SDK 버전에선 읽기 불가")
-                }
-            }
-            val sndVolume = try {
-                (sndVolumeGetterMethod?.invoke(naviView) as? Float)
-            } catch (e: Exception) { null }
+    // ===================== 네이버 길찾기 · 안내 시작 =====================
+    // 카카오 SDK(makeTripWithStart/guideNewDestinations)로 하던 경로 요청과 안내 시작을
+    // 네이버 길찾기 API + NaverNavigator(안내 엔진)로 바꾼 부분. 화면 UI는 그대로 쓴다.
 
-            // v: 재억 요청(2026-09-02, A안) - 카카오 자체 메뉴에서 안내 음량을 바꾼 경우도
-            // 앱 저장값에 그대로 반영해서 양쪽이 항상 같은 값을 가리키게 함(양방향 동기화).
-            // 우리가 방금 적용한 값과 같으면 아무 일도 안 일어남. #문제시 원복
-            if (sndVolume != null) {
-                VolumeHelper.syncGuideVolumeFromKakao(this, sndVolume)
-            }
+    /** 앱 전체가 쓰는 이동방식 이름(KNRoutePriority 이름·무료도로 회피 값)을 네이버 길찾기 옵션으로 바꾼다. */
+    private fun naverOptionFor(priority: KNRoutePriority, avoidOption: Int): String = when {
+        avoidOption != 0 -> "traavoidtoll"
+        priority == KNRoutePriority.KNRoutePriority_HighWay -> "trafast"
+        priority == KNRoutePriority.KNRoutePriority_WideWay -> "tracomfort"
+        else -> "traoptimal"
+    }
 
-            // 셋 중 하나라도 바뀌었을 때만 남김
-            val key = "$savedPercent/$devicePercent/${sndVolume?.let { String.format("%.2f", it) }}"
-            if (key == lastVolumeDiagKey) return
-            lastVolumeDiagKey = key
-            NavLogger.d(
-                this,
-                "[안내음량진단] 길안내음량=${savedPercent}% | 미디어(음악)음량=${deviceCur}/${deviceMax}(${devicePercent}%) | " +
-                    "카카오 sndVolume=${sndVolume ?: "읽기실패"}"
-            )
-        } catch (e: Exception) {
-            NavLogger.e(this, "[안내음량진단] 예외: ${e.message}")
-        }
+    private fun currentStartLonLat(): LonLat? {
+        NaverNavigator.ensureLocation(this)
+        val loc = NaverNavigator.currentFix() ?: com.tmap.nda.naver.FreshLocation.lastFresh(this) ?: return null
+        return LonLat(loc.longitude, loc.latitude)
     }
 
     private fun resolveCurrentPositionThenRequestRoute(destName: String, destLat: Double, destLon: Double, finishOnFailure: Boolean = true) {
-        // v: 안내 중에 목적지를 바꾸면(즐겨찾기/검색으로 새 안내 시작) 여기 넘어온 값이 진짜
-        // 지금 목적지인데, 예전엔 화면을 처음 열 때 받은 목적지만 들고 있었음. 그 상태로
-        // 화면이 다시 만들어지면(분할화면 전환 등) 처음 목적지로 되돌아갔음. #문제시 원복
+        // 안내 중에 목적지를 바꾸면(즐겨찾기/검색으로 새 안내 시작) 여기 넘어온 값이 진짜 지금 목적지다.
+        // 화면이 다시 만들어져도(분할화면 전환 등) 처음 목적지로 되돌아가지 않게 intent에도 갱신해 둔다.
         currentDestName = destName
         currentDestLat = destLat
         currentDestLon = destLon
         intent.putExtra("dest_name", destName)
         intent.putExtra("dest_lat", destLat)
         intent.putExtra("dest_lon", destLon)
-        // v: 재억 재지적(2026-08-29, 실기기 로그로 확인) - "추천/무료도로 골라도 실제
-        // 경로가 안 바뀌는 것 같다"는 강한 제보로 아래 "캐시된 경로 재사용" 최적화(v13.7-2)를
-        // 제거함. 이 캐시는 3가지 방식(추천/고속도로/무료도로)을 미리 계산할 때 "출발-도착
-        // 연결"만 한 번 만들어둔 원본 객체를 재사용하는 거였는데, 그 객체에 카카오 SDK가
-        // 내부적으로 "마지막으로 계산한 방식"의 상태를 남겨뒀다가 재사용 시점에 그대로
-        // 나갈 위험이 있음(3개 중 마지막 계산이 항상 같은 순서라 매번 같은 방식으로
-        // 굳어있을 수 있음) - 정확한 원인을 SDK 문서 없이 확정할 순 없지만, 사용자가
-        // 고른 이동방식이 100% 정확히 반영되는 게 1초 미만의 시작 속도보다 훨씬 중요해서
-        // 안전하게 매번 새로 계산하도록 되돌림. #문제시 원복
-        var startPoi: KNPOI? = null
-        val currentGps = KNSDK.sharedGpsManager()?.recentGpsData
-        if (currentGps != null && currentGps.pos.x > 0 && currentGps.pos.y > 0) {
-            startPoi = KNPOI("현 위치", currentGps.pos.x.toInt(), currentGps.pos.y.toInt(), "")
-        } else {
-            try {
-                val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
-                val loc = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
-                    ?: locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
-                if (loc != null) {
-                    val katec = KNSDK.convertWGS84ToKATEC(loc.longitude, loc.latitude)
-                    startPoi = KNPOI("현 위치", katec.x.toInt(), katec.y.toInt(), "")
-                }
-            } catch (e: SecurityException) {
-                NavLogger.e(this, "위치 권한 없음: ${e.message}")
-            }
-        }
 
-        if (startPoi == null) {
+        val from = currentStartLonLat()
+        if (from == null) {
             Toast.makeText(this, "GPS 확인 중입니다...", Toast.LENGTH_SHORT).show()
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 if (!isFinishing) resolveCurrentPositionThenRequestRoute(destName, destLat, destLon, finishOnFailure)
             }, 1000)
             return
         }
-
-        val katec = KNSDK.convertWGS84ToKATEC(destLon, destLat)
-        val goalPoi = KNPOI(destName, katec.x.toInt(), katec.y.toInt(), "")
-
-        KNSDK.makeTripWithStart(startPoi, goalPoi, null) { error, trip ->
+        val option = naverOptionFor(activeRoutePriority, activeRouteAvoidOption)
+        val vias = activeWaypoints.map { LonLat(it.lon, it.lat) }
+        val to = LonLat(destLon, destLat)
+        Thread {
+            val res = NaverDirectionsClient.requestRoute(this, from, to, vias, option)
             runOnUiThread {
-                if (error != null || trip == null) {
-                    NavLogger.e(this, "카카오 경로요청 실패: ${error?.msg ?: "알 수 없는 오류"}")
-                    Toast.makeText(this, "경로 탐색 실패: ${error?.msg ?: "알 수 없는 오류"}", Toast.LENGTH_SHORT).show()
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                val route = res.routes.firstOrNull()
+                if (!res.ok || route == null) {
+                    NavLogger.e(this, "네이버 경로요청 실패: code=${res.code} ${res.message}")
+                    Toast.makeText(this, "경로 탐색 실패(${res.code}): ${res.message}", Toast.LENGTH_SHORT).show()
                     if (finishOnFailure) finish()
                     return@runOnUiThread
                 }
-                // v: 재억 요청(2026-09-15) - 저장해둔 차종/연료를 이 경로에 적용. 안 하면
-                // SDK 기본값(승용차+휘발유)으로만 계산됨. #문제시 원복
-                trip.setRouteConfig(CarFuelSettings.buildRouteConfiguration(this))
-                NavLogger.d(this, "카카오 경로요청 성공, 안내 시작: $destName")
-                // v12.9: 안내 이어가기 - 안내가 실제로 시작되는 이 시점에 목적지를 저장.
-                // 정상 도착 또는 안내종료 버튼 - 어느 쪽이든 finishGuidance()에서 지워짐. #문제시 원복
-                ResumeGuidanceStore.save(this, HistoryEntry(destName, "", destLat, destLon, routePriorityName = activeRoutePriority.name, routeAvoidOption = activeRouteAvoidOption))
-                // naviView는 setupContentAndStart()에서 이미 initWithGuidance(trip=null)로
-                // 초기화돼있는 상태(idle map) - 여기서 또 initWithGuidance()를 부르면 안 되고
-                // guideNewDestinations()로 이미 떠있는 세션에 실제 목적지만 갈아끼움.
-                // (CarrotNavi 실제 동작 코드에서 확인된 패턴) #문제시 원복
-                //
-                // v1.0.86: guideNewDestinations()가 내부적으로 성공해도 KNNaviView가
-                // 화면을 다시 그리라는 신호를 못 받아 idle map 그대로 멈춰있을 수 있다는
-                // 의심(사용자 지적: GPS/위치 로그는 idle 상태에서도 계속 찍히므로 화면전환
-                // 증거가 안 됨) - requestLayout()/invalidate()를 명시적으로 강제하고,
-                // naviView의 실제 화면 상태(width/height/visibility/트립 식별자)를
-                // 별도로 로그에 남겨서 "idle로 멈춘 건지 실제 경로가 붙은 건지"를
-                // 로그만으로 구분할 수 있게 함. #문제시 원복
-                naviView.guideNewDestinations(
-                    trip,
-                    activeRoutePriority,
-                    RouteAvoidSettings.applySchoolZoneAvoid(this, activeRouteAvoidOption)
-                )
-                naviView.requestLayout()
-                naviView.invalidate()
-                // 카카오 SDK가 guideNewDestinations()로 새 길안내를 시작할 때 내부 음량을
-                // 자체적으로 기본값(100%)으로 되돌리는 것으로 보임(사용자: "안내 종료하고
-                // 다시 안내하면 조절해둔 음량이 아니라 임의로 조절됨") - initWithGuidance()
-                // 시점 1회만 적용하던 걸, 새 길안내 시작 직후에도 저장된 값으로 한 번 더
-                // 덮어써서 유지되게 함. #문제시 원복
-                applyKakaoSdkVolume()
-                logNaviViewDiagnostics("guideNewDestinations 직후")
-                naviView.postDelayed({
-                    naviView.requestLayout()
-                    naviView.invalidate()
-                    // 300ms 뒤에도 한 번 더 - SDK가 route 진입 애니메이션/초기화 과정에서
-                    // 음량을 뒤늦게 재설정하는 케이스까지 커버. #문제시 원복
-                    applyKakaoSdkVolume()
-                    logNaviViewDiagnostics("guideNewDestinations 300ms 후")
-                }, 300)
+                NavLogger.d(this, "네이버 경로요청 성공, 안내 시작: $destName (${route.distanceMeters}m)")
+                startNaverGuidance(route, destName, destLat, destLon)
             }
+        }.start()
+    }
+
+    /** 받아온 경로로 실제 안내를 시작한다(카카오 때의 guideNewDestinations 자리). */
+    private fun startNaverGuidance(route: NaverRoute, destName: String, destLat: Double, destLon: Double) {
+        // 안내 이어가기 - 안내가 실제로 시작되는 이 시점에 목적지를 저장. 도착/종료 때 finishGuidance()에서 지워진다.
+        ResumeGuidanceStore.save(this, HistoryEntry(destName, "", destLat, destLon, routePriorityName = activeRoutePriority.name, routeAvoidOption = activeRouteAvoidOption))
+        clearDestinationPin()
+        naverMap.showActiveRoute(route)
+        naverMap.resumeFollow()
+        NaverNavigator.begin(applicationContext, route, LonLat(destLon, destLat), destName, activeWaypoints.map { LonLat(it.lon, it.lat) })
+        guideOverlay.show()
+        applyKakaoSdkVolume()
+        NaverNavigator.lastLocation?.let { naverMap.follow(it, animated = false) }
+    }
+
+    // 안내 상태 문구(사용량·재탐색 등)를 알림창 대신 화면 아래에 5초 동안 띄운다(알림창은 최대 3.5초라 짧음).
+    private var statusBoxView: android.widget.TextView? = null
+    private val statusBoxHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private fun showStatusBox(text: String, durationMs: Long = 5000L) {
+        if (!::binding.isInitialized) return
+        val root = binding.root as? ViewGroup ?: return
+        var v = statusBoxView
+        if (v == null || v.parent == null) {
+            v = android.widget.TextView(this).apply {
+                setTextColor(android.graphics.Color.WHITE)
+                textSize = 16f
+                gravity = android.view.Gravity.CENTER
+                setPadding(PopupCard.dp(this@NaverNaviActivity, 22), PopupCard.dp(this@NaverNaviActivity, 12), PopupCard.dp(this@NaverNaviActivity, 22), PopupCard.dp(this@NaverNaviActivity, 12))
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(android.graphics.Color.parseColor("#E61B2430"))
+                    cornerRadius = PopupCard.dp(this@NaverNaviActivity, 22).toFloat()
+                }
+                elevation = 30f
+            }
+            root.addView(v, android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL
+                bottomMargin = PopupCard.dp(this@NaverNaviActivity, 48)
+            })
+            statusBoxView = v
         }
+        v.text = text
+        v.visibility = View.VISIBLE
+        statusBoxHandler.removeCallbacksAndMessages(null)
+        statusBoxHandler.postDelayed({ statusBoxView?.visibility = View.GONE }, durationMs)
     }
 
-    // v14.4: 예전에 "화면이 안 바뀐다" 문제를 진단하려고 3초마다 화면을 통째로 강제로
-    // 다시 그리게 하던 코드였음(startNaviStateDiagnosticLoop) - 진단 목적은 끝났고,
-    // 안내 내내 3초마다 불필요하게 다시 그리기를 강제해서 배터리/성능을 갉아먹고 있어서
-    // 통째로 제거함. #문제시 원복(git log 참고)
-
-    private fun logNaviViewDiagnostics(tag: String) {
-        try {
-            val curTrip = try {
-                KNSDK.sharedGuidance()?.let { g ->
-                    val m = g.javaClass.methods.firstOrNull { it.name.equals("getCurTrip", true) || it.name.equals("getTrip", true) }
-                    m?.invoke(g)
-                }
-            } catch (e: Exception) { "조회실패(${e.message})" }
-            val gps = try {
-                KNSDK.sharedGpsManager()?.recentGpsData?.let { "pos=(${it.pos.x},${it.pos.y}) speed=${it.speed} angle=${it.angle}" }
-            } catch (e: Exception) { "조회실패(${e.message})" }
-            val childTree = try {
-                dumpChildTree(naviView, 0)
-            } catch (e: Exception) { "덤프실패(${e.message})" }
-            NavLogger.d(
-                this,
-                "[naviView 진단:$tag] width=${naviView.width} height=${naviView.height} " +
-                    "visibility=${naviView.visibility} isAttachedToWindow=${naviView.isAttachedToWindow} " +
-                    "isShown=${naviView.isShown} curTrip=$curTrip gps=$gps childTree=$childTree"
-            )
-        } catch (e: Exception) {
-            NavLogger.e(this, "logNaviViewDiagnostics 예외($tag): ${e.message}")
+    /** NaverNavigator(안내 엔진)가 알려주는 상태를 이 화면에 그려준다. */
+    private val naverGuidanceListener = object : NaverNavigator.Listener {
+        override fun onLocation(loc: Location) {
+            if (!::naverMap.isInitialized) return
+            naverMap.setLocation(loc)
+            if (NaverNavigator.isRunning) naverMap.follow(loc)
         }
-    }
 
-    // naviView 내부에 실제로 어떤 자식 뷰들이 붙어있는지(경로선/방향안내 바 등 가이드 UI
-    // 구성요소가 실제로 attach됐는지) 확인하기 위한 트리 덤프. #문제시 원복
-    private fun dumpChildTree(view: View, depth: Int): String {
-        if (depth > 4) return ""
-        val self = "${view.javaClass.simpleName}(${view.width}x${view.height},vis=${view.visibility})"
-        if (view !is android.view.ViewGroup || view.childCount == 0) return self
-        val children = (0 until view.childCount).joinToString(",") { dumpChildTree(view.getChildAt(it), depth + 1) }
-        return "$self[$children]"
-    }
-
-    // 서페이스가 실제로 surfaceCreated/surfaceChanged까지 도달하는지 순수 진단용으로 로그만 남김.
-    // (이전 MapActivity 오버레이 방식 디버깅에서 이 로그가 근본 원인 진단에 핵심적이었음) #문제시 원복
-    private fun hookSurfaceViewLifecycle(root: View) {
-        try {
-            if (root is android.view.SurfaceView) {
-                NavLogger.d(this, "hookSurfaceViewLifecycle: SurfaceView 발견 (${root.javaClass.name}), holder.isCreating=${root.holder?.surface?.isValid}")
-                root.holder?.addCallback(object : android.view.SurfaceHolder.Callback {
-                    override fun surfaceCreated(holder: android.view.SurfaceHolder) {
-                        NavLogger.d(this@KakaoNaviActivity, "[SurfaceHolder ${root.javaClass.simpleName}] surfaceCreated")
-                    }
-                    override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, width: Int, height: Int) {
-                        NavLogger.d(this@KakaoNaviActivity, "[SurfaceHolder ${root.javaClass.simpleName}] surfaceChanged format=$format ${width}x$height")
-                    }
-                    override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {
-                        NavLogger.d(this@KakaoNaviActivity, "[SurfaceHolder ${root.javaClass.simpleName}] surfaceDestroyed")
-                    }
-                })
-            }
-            if (root is android.view.ViewGroup) {
-                for (i in 0 until root.childCount) {
-                    hookSurfaceViewLifecycle(root.getChildAt(i))
-                }
-            }
-        } catch (e: Exception) {
-            NavLogger.e(this, "hookSurfaceViewLifecycle 예외: ${e.message}")
+        override fun onState(state: GuidanceState, goalName: String) {
+            if (::guideOverlay.isInitialized) guideOverlay.update(state, goalName)
+            val total = NaverNavigator.currentRoute?.distanceMeters?.toDouble() ?: 0.0
+            if (total > 0) naverMap.setProgress(state.progressMeters / total)
         }
-    }
 
-    // v1.0.95: 델리게이트는 안 건드리고 View 트리에서 "안내종료" 텍스트를 가진 클릭 가능한
-    // View만 찾아서 finishGuidance()를 추가로 걸어줌(기존 SDK 내부 클릭 동작을 대체 -
-    // 눌러도 반응이 없던 버튼이라 대체해도 기존 동작을 깨뜨릴 게 없음). #문제시 원복
-    private val nativeExitHookTagKey = "tmapnda_exit_hooked".hashCode()
-    private fun attachNativeExitButtonHook(naviView: KNNaviView) {
-        try {
-            naviView.viewTreeObserver.addOnGlobalLayoutListener {
-                try {
-                    scanAndHookExitButton(naviView)
-                } catch (e: Exception) {
-                    NavLogger.e(this, "[안내종료훅] 스캔 예외: ${e.message}")
-                }
-            }
-        } catch (e: Exception) {
-            NavLogger.e(this, "[안내종료훅] 리스너 등록 예외: ${e.message}")
-        }
-    }
-
-    private fun scanAndHookExitButton(view: View) {
-        val text = try {
-            when (view) {
-                is android.widget.TextView -> view.text?.toString()
-                else -> null
-            }
-        } catch (e: Exception) { null }
-
-        if (text != null && (text == "안내종료" || text == "안내 종료")) {
-            if (view.getTag(nativeExitHookTagKey) == null) {
-                view.setTag(nativeExitHookTagKey, true)
-                view.isClickable = true
-                view.setOnClickListener {
-                    NavLogger.d(this, "[안내종료훅] 내장 안내종료 버튼 클릭 감지 - finishGuidance() 직접 호출")
-                    finishGuidance()
-                }
-            }
-            // v10.4: 로그로 실제 확인됨(재억, 2026-08-16) - "호스트=MaterialTextView(w=0,h=0)".
-            // 즉 host 탐색 로직이 글자(view) 자신에서 전혀 확장을 못 했고, 그 이유는 이 블록
-            // 전체가 view.getTag(...)==null 가드 안에 있어서 GlobalLayoutListener가 처음
-            // 호출된 딱 그 순간(=아직 하위 View들이 측정 전이라 width/height가 0)에만 실행되고
-            // 그 뒤로 레이아웃이 실제 최종 크기로 다 잡혀도 다시는 안 돌았기 때문. 클릭리스너
-            // 부착(한 번만 해도 되는 것)과 host 재탐색+터치리스너 부착(레이아웃 바뀔 때마다
-            // 최신 크기로 다시 계산해야 하는 것)을 분리 - 아래 블록은 태그 가드 밖으로 빼서
-            // GlobalLayoutListener가 부를 때마다(=레이아웃이 안정된 이후를 포함해) 매번
-            // 재계산하도록 함. setOnTouchListener는 그냥 덮어쓰기라 여러 번 걸어도 무해함. #문제시 원복
-            if (view.height > 0) {
-                // v9.6: 160dp까지 늘려도 실제로는 안 넓어진다는 재억 실차 영상 확인 결과 -
-                // 원인은 "바로 위 부모"가 원래 버튼만큼만 작아서, 그 부모 자체의 원래 테두리
-                // 바깥은 애초에 터치가 전달되지 않았던 것. 더 큰 조상(패널 폭만큼 넓은 View)을
-                // 찾아서 그쪽에 델리게이트를 걸어야 실제로 넓어짐. #문제시 원복
-                try {
-                    // v10.6: v10.5에서 "배경이 ColorDrawable(단색)인지"만 검사했더니 실차
-                    // 로그에서 파란배경탐지=false만 계속 찍힘(재억 확인) - 카카오 SDK가
-                    // 버튼 배경을 단색이 아니라 GradientDrawable(둥근모서리 도형)이나
-                    // RippleDrawable/LayerDrawable/InsetDrawable(선택효과 포함 배경) 같은
-                    // 감싸는 형태로 그리고 있을 가능성이 높음. 이런 래퍼 안쪽까지 벗겨서
-                    // 실제 단색을 찾도록 unwrapColor()를 추가. 파란색을 끝내 못 찾은 경우엔
-                    // 안전장치 없이 화면 전체까지 올라가버리던 v10.5 폴백 버그도 같이 고쳐서,
-                    // 예전처럼 적당한 크기 제한을 다시 둠(최소한 지금보다 나빠지진 않게).
-                    // 그리고 각 단계별 배경 타입을 로그로 남겨서, 이번에도 못 찾으면 다음
-                    // 로그에서 정확히 무슨 타입인지 바로 알 수 있게 함. #문제시 원복
-                    fun unwrapColor(d: android.graphics.drawable.Drawable?, depthLimit: Int = 5): Int? {
-                        if (d == null || depthLimit <= 0) return null
-                        return when (d) {
-                            is android.graphics.drawable.ColorDrawable -> d.color
-                            is android.graphics.drawable.GradientDrawable -> {
-                                try {
-                                    val f = android.graphics.drawable.GradientDrawable::class.java.getDeclaredField("mFillPaint")
-                                    f.isAccessible = true
-                                    (f.get(d) as? android.graphics.Paint)?.color
-                                } catch (e: Exception) { null }
-                            }
-                            is android.graphics.drawable.RippleDrawable -> {
-                                (0 until d.numberOfLayers).firstNotNullOfOrNull { unwrapColor(d.getDrawable(it), depthLimit - 1) }
-                            }
-                            is android.graphics.drawable.LayerDrawable -> {
-                                (0 until d.numberOfLayers).firstNotNullOfOrNull { unwrapColor(d.getDrawable(it), depthLimit - 1) }
-                            }
-                            is android.graphics.drawable.InsetDrawable -> unwrapColor(d.drawable, depthLimit - 1)
-                            is android.graphics.drawable.StateListDrawable -> {
-                                try {
-                                    val m = android.graphics.drawable.DrawableContainer::class.java.getDeclaredMethod("getCurrent")
-                                    unwrapColor(m.invoke(d) as? android.graphics.drawable.Drawable, depthLimit - 1)
-                                } catch (e: Exception) { null }
-                            }
-                            else -> null
-                        }
-                    }
-                    fun isBlue(color: Int): Boolean {
-                        val r = android.graphics.Color.red(color)
-                        val g = android.graphics.Color.green(color)
-                        val b = android.graphics.Color.blue(color)
-                        val a = android.graphics.Color.alpha(color)
-                        return a > 40 && b > r + 20 && b > g + 20 && b > 60
-                    }
-                    var host: android.view.View = view
-                    var blueHost: android.view.View? = null
-                    var cursor = view.parent
-                    var depth = 0
-                    // v10.5 폴백 버그 수정: 파란색을 못 찾았을 때 화면 전체까지 올라가버리는 것을
-                    // 막기 위한 안전장치(원래 버튼 크기의 6배, 최소 250px) - 아래 "host"(파란색
-                    // 아닌 일반 폴백) 후보 크기 제한용으로 계속 씀. #문제시 원복
-                    val maxFallbackSize = (view.height * 6).coerceAtLeast(250)
-                    // v14.4: 재억 지적 - v14.3의 "화면 위쪽 150px이면 상단바"라는 추측이
-                    // 틀렸음(메뉴 팝업의 안내종료도 화면 위쪽에 뜨는 경우가 있어서 똑같이
-                    // 걸려버림 - 다시 글자만 눌리는 걸로 좁아짐). 추측이 아니라, 우리 앱이
-                    // 실제로 그리는 상단바(binding.llTopBarRow)의 화면 좌표를 직접 구해서
-                    // "그 자리랑 진짜 겹치는지"로만 판단함. 진짜 상단바랑 겹칠 때만 제외하고,
-                    // 그 외(메뉴 팝업 등)는 크기·위치 상관없이 원래 카카오 SDK가 잡아준
-                    // 영역 그대로 씀. #문제시 원복
-                    val topBarRect = android.graphics.Rect()
-                    val topBarLoc = IntArray(2)
-                    try {
-                        binding.llTopBarRow.getLocationOnScreen(topBarLoc)
-                        topBarRect.set(
-                            topBarLoc[0], topBarLoc[1],
-                            topBarLoc[0] + binding.llTopBarRow.width,
-                            topBarLoc[1] + binding.llTopBarRow.height
-                        )
-                    } catch (e: Exception) {
-                        NavLogger.e(this, "[안내종료훅] 상단바 좌표 조회 예외: ${e.message}")
-                    }
-                    val screenLoc = IntArray(2)
-                    while (cursor is android.view.View && depth < 15) {
-                        val c = cursor
-                        val bg = c.background
-                        val color = unwrapColor(bg)
-                        if (color != null) {
-                            if (isBlue(color)) {
-                                c.getLocationOnScreen(screenLoc)
-                                val cRect = android.graphics.Rect(
-                                    screenLoc[0], screenLoc[1],
-                                    screenLoc[0] + c.width, screenLoc[1] + c.height
-                                )
-                                val overlapsRealTopBar = !topBarRect.isEmpty && android.graphics.Rect.intersects(cRect, topBarRect)
-                                if (!overlapsRealTopBar) {
-                                    blueHost = c
-                                    break
-                                }
-                            }
-                        }
-                        if ((c.width > host.width || c.height > host.height) &&
-                            c.width <= maxFallbackSize && c.height <= maxFallbackSize) {
-                            host = c
-                        }
-                        cursor = c.parent
-                        depth++
-                    }
-                    if (blueHost != null) {
-                        host = blueHost
-                    }
-                    // v10.2: "160dp로 넓혀도 여전히 글자에서만 눌린다"는 재억 실차 재확인 -
-                    // 원인 재파악: android.view.TouchDelegate는 "타겟 뷰의 바로 위 부모"에
-                    // 걸어야만 내부 좌표 변환(view.left/top 기준 단순 오프셋)이 맞게 동작함.
-                    // host는 여러 단계 위 조상이라 이 좌표 변환 자체가 어긋나서, 겉보기엔
-                    // 넓은 rect가 잡혀도 실제로는 원래 글자 부근만 반응했던 것. TouchDelegate의
-                    // 좌표 변환에 기대지 않고, host에 직접 터치리스너를 달아 "host 영역 안에서
-                    // 손을 뗐으면(ACTION_UP) view.performClick() 직접 호출"로 대체 - 몇 단계
-                    // 위 조상이든 좌표 오차 없이 확실하게 클릭이 전달됨. #문제시 원복
-                    host.setOnTouchListener { _, event ->
-                        when (event.action) {
-                            android.view.MotionEvent.ACTION_DOWN -> true
-                            android.view.MotionEvent.ACTION_UP -> {
-                                if (event.x >= 0 && event.x <= host.width &&
-                                    event.y >= 0 && event.y <= host.height
-                                ) {
-                                    view.performClick()
-                                }
-                                true
-                            }
-                            else -> true
-                        }
-                    }
-                } catch (e: Exception) {
-                    NavLogger.e(this, "[안내종료훅] 델리게이트 재계산 예외: ${e.message}")
-                }
+        override fun onRouteChanged(route: NaverRoute) {
+            if (!::naverMap.isInitialized) return
+            runOnUiThread {
+                naverMap.showActiveRoute(route)
+                showRerouteBanner()
             }
         }
 
-        if (view is android.view.ViewGroup) {
-            for (i in 0 until view.childCount) {
-                scanAndHookExitButton(view.getChildAt(i))
-            }
+        override fun onStatus(text: String) {
+            runOnUiThread { showStatusBox(text) }
+        }
+
+        override fun onFinished(arrived: Boolean) {
+            runOnUiThread { if (!isFinishing) finishGuidance() }
         }
     }
 
-    // KNNaviView 내장 "안내종료" 버튼은 우리 finishGuidance()와 안 이어져 있어서, 리플렉션으로
-    // 델리게이트 세터를 찾아 프록시를 걸고 exit/end 계열 콜백이 오면 finish() 처리. #문제시 원복
-    private fun attachExitHook(naviView: KNNaviView) {
-        if (exitHookAttached) return
-        try {
-            val setterCandidates = naviView.javaClass.methods.filter {
-                it.name.contains("Delegate", ignoreCase = true) &&
-                    it.parameterTypes.size == 1 &&
-                    it.parameterTypes[0].isInterface
-            }
-            for (setter in setterCandidates) {
-                val ifaceClass = setter.parameterTypes[0]
-                val proxy = java.lang.reflect.Proxy.newProxyInstance(
-                    ifaceClass.classLoader,
-                    arrayOf(ifaceClass)
-                ) { _, method, args ->
-                    val argsText = args?.joinToString { it?.toString() ?: "null" } ?: ""
-                    NavLogger.d(this, "[KNNaviView ${ifaceClass.simpleName}] ${method.name}($argsText)")
-                    if (argsText.contains("exit", true) || argsText.contains("end", true) ||
-                        method.name.contains("exit", true) || method.name.contains("finish", true)
-                    ) {
-                        runOnUiThread { finishGuidance() }
-                    }
-                    if (method.returnType == Boolean::class.javaPrimitiveType) true else null
-                }
-                try {
-                    setter.invoke(naviView, proxy)
-                    NavLogger.d(this, "KNNaviView 델리게이트 후킹 성공: ${setter.name}(${ifaceClass.simpleName})")
-                } catch (e: Exception) {
-                    NavLogger.e(this, "KNNaviView 델리게이트 후킹 실패(${setter.name}): ${e.message}")
-                }
-            }
-            exitHookAttached = true
-        } catch (e: Exception) {
-            NavLogger.e(this, "KNNaviView exit hook 예외: ${e.message}")
-        }
-    }
 
     // v1.0.94: 별도 Activity라 MapActivity 좌측 HUD가 구조적으로 안 비치는 문제를,
     // MapActivity와 동일한 앱 전역 싱글턴(OpenpilotStateRepository/SdiDataRepository)을
@@ -1558,7 +1002,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         if (distToNext < WAYPOINT_ARRIVAL_RADIUS_M) {
                             activeWaypoints.removeAt(0)
                             syncWaypointsToIntent()
-                            NavLogger.d(this@KakaoNaviActivity, "[경유지] 거리기반 통과 감지(${distToNext.toInt()}m): '${next.name}' 목록에서 제거 (남은 ${activeWaypoints.size}개)")
+                            NavLogger.d(this@NaverNaviActivity, "[경유지] 거리기반 통과 감지(${distToNext.toInt()}m): '${next.name}' 목록에서 제거 (남은 ${activeWaypoints.size}개)")
                             if (activeWaypoints.isEmpty()) {
                                 binding.btnCancelWaypoint?.visibility = View.GONE
                             }
@@ -1569,14 +1013,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // v: 재억 제보(2026-09-02) - 카카오 메뉴 음량과의 동기화. 이 1초 루프는
                 // 진단 로그용으로만 남기고, 실제 동기화는 아래 250ms 루프가 담당함. #문제시 원복
                 logKakaoVolumeDiagnostics()
-                naviViewDiagnosticTick++
-                if (naviViewDiagnosticTick >= 15) {
-                    naviViewDiagnosticTick = 0
-                    logNaviViewDiagnostics("주기(15초)")
-                }
                 hudPollHandler.postDelayed(this, 1000)
-                renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "kakao")
-                renderAlertBanners(this@KakaoNaviActivity, binding.llAccidentAlert, binding.tvAccidentAlert, binding.llEmergencyAlert, binding.tvEmergencyAlert)
+                renderLaneSignalBar(this@NaverNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "kakao")
+                renderAlertBanners(this@NaverNaviActivity, binding.llAccidentAlert, binding.tvAccidentAlert, binding.llEmergencyAlert, binding.tvEmergencyAlert)
                 updateNavNotification()
             }
         }
@@ -1619,7 +1058,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val channel = android.app.NotificationChannel(
                 NAV_NOTIFICATION_CHANNEL_ID,
-                "카카오 길안내",
+                "네이버 길안내",
                 android.app.NotificationManager.IMPORTANCE_LOW
             )
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
@@ -1637,7 +1076,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         try {
             val kr = KakaoRouteDataRepository
             val distText = if (kr.tbtDist in 1..9998) "${kr.tbtDist}m 앞" else "안내 중"
-            val mainText = kr.tbtMainText.ifEmpty { kr.roadName.ifEmpty { "카카오 안내" } }
+            val mainText = kr.tbtMainText.ifEmpty { kr.roadName.ifEmpty { "네이버 안내" } }
 
             val builder = NotificationCompat.Builder(this, NAV_NOTIFICATION_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_menu_directions)
@@ -1807,10 +1246,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
         binding.btnKakaoMuteToggle?.setOnClickListener {
             kakaoMuted = !kakaoMuted
+            NaverNavigator.muted = kakaoMuted
             getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).edit()
                 .putBoolean("kakao_muted", kakaoMuted).apply()
             updateMuteButtonStyle()
-            Toast.makeText(this, if (kakaoMuted) "카카오 안내음성 음소거" else "카카오 안내음성 켜짐", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, if (kakaoMuted) "안내음성 음소거" else "안내음성 켜짐", Toast.LENGTH_SHORT).show()
         }
 
         binding.btnOpenSearch?.setOnClickListener {
@@ -1989,7 +1429,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     // v4.17: 최근목적지 패널에서 "이미 있는" 항목을 다시 탭했을 때도
                     // save()를 안 불러서 순서가 안 바뀌던 문제(사용자 요청: 최신순 정렬) -
                     // 다시 탭해도 맨 위로 올라오게 재저장. #문제시 원복
-                    SearchHistoryStore.save(this@KakaoNaviActivity, entry)
+                    SearchHistoryStore.save(this@NaverNaviActivity, entry)
                     renderRecentDestinationsPanel()
                     // v: 재억 재지적(2026-08-28) - 길안내 화면 안의 "최근 목적지" 상시 패널도
                     // MapActivity의 동일 패널과 똑같이 팝업을 안 거치고 있었음. #문제시 원복
@@ -2108,7 +1548,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     }
                 }
                 timeoutHandler.postDelayed(timeoutRunnable, 8000L)
-                KakaoSdkState.computeEta(this, curLat, curLon, entry.lat, entry.lon) { minutes, _ ->
+                NaverEta.computeEta(this, curLat, curLon, entry.lat, entry.lon) { minutes, _ ->
                     if (settled) return@computeEta
                     settled = true
                     timeoutHandler.removeCallbacks(timeoutRunnable)
@@ -2140,14 +1580,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             override fun getItemId(position: Int) = position.toLong()
             override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
                 val entry = history[position]
-                val row = android.widget.LinearLayout(this@KakaoNaviActivity).apply {
+                val row = android.widget.LinearLayout(this@NaverNaviActivity).apply {
                     orientation = android.widget.LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
                     // v19.3.61: Tmap 화면과 동일 - 줄마다 따로 불투명 배경 씌우던 것 투명으로. #문제시 원복
                     setBackgroundColor(android.graphics.Color.TRANSPARENT)
                     setPadding(24, 20, 16, 20)
                 }
-                val nameText = android.widget.TextView(this@KakaoNaviActivity).apply {
+                val nameText = android.widget.TextView(this@NaverNaviActivity).apply {
                     setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = if (entry.addr.isNotBlank()) "${entry.name}\n${entry.addr}" else entry.name
                     setTextColor(android.graphics.Color.WHITE)
@@ -2174,7 +1614,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // v: 재억 요청(2026-08-22) - 이 화면(카카오)에는 원래 없었던 "저장"
                 // 버튼(티맵 화면 v14.4에만 있었음)을 이식하고, 새로 "경로추가"(지금 안내
                 // 중인 목적지는 그대로 두고 경유지로 끼워넣기) 버튼도 같이 추가. #문제시 원복
-                val saveText = android.widget.TextView(this@KakaoNaviActivity).apply {
+                val saveText = android.widget.TextView(this@NaverNaviActivity).apply {
                     setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = "저장"
                     textSize = 14f
@@ -2191,7 +1631,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         showKakaoQuickSlotPickerForSave(entry)
                     }
                 }
-                val addWaypointText = android.widget.TextView(this@KakaoNaviActivity).apply {
+                val addWaypointText = android.widget.TextView(this@NaverNaviActivity).apply {
                     setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = "경로추가"
                     textSize = 14f
@@ -2211,7 +1651,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 }
                 // v10.9-5: MapActivity와 동일 - "✕" 작은 글자 대신 배경 있는 "삭제" 버튼으로
                 // 바꾸고 누르는 영역도 넓힘(재억 지적). #문제시 원복
-                val deleteText = android.widget.TextView(this@KakaoNaviActivity).apply {
+                val deleteText = android.widget.TextView(this@NaverNaviActivity).apply {
                     setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                     text = "삭제"
                     textSize = 14f
@@ -2225,9 +1665,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     marginParams.marginStart = 16
                     layoutParams = marginParams
                     setOnClickListener {
-                        SearchHistoryStore.delete(this@KakaoNaviActivity, entry)
+                        SearchHistoryStore.delete(this@NaverNaviActivity, entry)
                         renderRecentDestinationsPanel()
-                        history = SearchHistoryStore.get(this@KakaoNaviActivity)
+                        history = SearchHistoryStore.get(this@NaverNaviActivity)
                         if (history.isEmpty()) {
                             dialog.dismiss()
                         } else {
@@ -2235,7 +1675,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         }
                     }
                 }
-                PopupCard.arrangeHistoryRow(row, nameText, listOf(saveText, addWaypointText, deleteText), PopupCard.isCompact(this@KakaoNaviActivity))
+                PopupCard.arrangeHistoryRow(row, nameText, listOf(saveText, addWaypointText, deleteText), PopupCard.isCompact(this@NaverNaviActivity))
                 return row
             }
         }
@@ -2251,7 +1691,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             gravity = android.view.Gravity.CENTER_VERTICAL
             setBackgroundResource(R.drawable.bg_dialog_title_top_rounded)
             setPadding(24, 24, 24, 20)
-            addView(android.widget.TextView(this@KakaoNaviActivity).apply {
+            addView(android.widget.TextView(this@NaverNaviActivity).apply {
                 setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 text = "최근 목적지"
                 textSize = 18f
@@ -2267,11 +1707,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             setCustomTitle(titleView)
             setContent(listView)
             setButton(PopupCard.CardDialog.BUTTON_POSITIVE, "전체 삭제", destructive = true) {
-                android.app.AlertDialog.Builder(this@KakaoNaviActivity, R.style.RoundedDialogTheme)
+                android.app.AlertDialog.Builder(this@NaverNaviActivity, R.style.RoundedDialogTheme)
                     .setTitle("최근 목적지 전체 삭제")
                     .setMessage("최근 목적지를 전부 삭제할까요?")
                     .setPositiveButton("삭제") { _, _ ->
-                        SearchHistoryStore.clear(this@KakaoNaviActivity)
+                        SearchHistoryStore.clear(this@NaverNaviActivity)
                         renderRecentDestinationsPanel()
                     }
                     .setNegativeButton("취소", null)
@@ -2310,7 +1750,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
             // v12.2: MapActivity와 동일 - 등록된 즐겨찾기 칸은 하트 대신 등록된 장소
             // 이름을 보여줌(재억 요청). #문제시 원복
-            val registeredEntry = QuickSlotStore.get(this@KakaoNaviActivity, slot)
+            val registeredEntry = QuickSlotStore.get(this@NaverNaviActivity, slot)
             val iconText = android.widget.TextView(this).apply {
                 setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 if (registeredEntry != null) {
@@ -2341,7 +1781,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 addView(iconText)
                 addView(etaText)
                 setOnClickListener {
-                    val existing = QuickSlotStore.get(this@KakaoNaviActivity, slot)
+                    val existing = QuickSlotStore.get(this@NaverNaviActivity, slot)
                     dialog.dismiss()
                     if (existing != null) {
                         // v: 재억 제보(2026-09-02) - 상단바 버튼과 동일하게, 안내 중이면
@@ -2406,7 +1846,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     }
                 }
                 timeoutHandler.postDelayed(timeoutRunnable, 8000L)
-                KakaoSdkState.computeEta(this, quickSlotCurLat, quickSlotCurLon, entry.lat, entry.lon) { minutes, _ ->
+                NaverEta.computeEta(this, quickSlotCurLat, quickSlotCurLon, entry.lat, entry.lon) { minutes, _ ->
                     if (settled) return@computeEta
                     settled = true
                     timeoutHandler.removeCallbacks(timeoutRunnable)
@@ -2427,13 +1867,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             for (i in 0 until cols) {
                 val cell = rowItems.getOrNull(i)?.second?.first ?: android.widget.Space(this)
                 cell.layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginEnd = if (i < cols - 1) PopupCard.dp(this@KakaoNaviActivity, 8) else 0
+                    marginEnd = if (i < cols - 1) PopupCard.dp(this@NaverNaviActivity, 8) else 0
                 }
                 row.addView(cell)
             }
             grid.addView(row, android.widget.LinearLayout.LayoutParams(
                 android.widget.LinearLayout.LayoutParams.MATCH_PARENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { if (r > 0) topMargin = PopupCard.dp(this@KakaoNaviActivity, 8) })
+            ).apply { if (r > 0) topMargin = PopupCard.dp(this@NaverNaviActivity, 8) })
         }
         val scroll = android.widget.ScrollView(this).apply { addView(grid) }
         dialog = PopupCard.CardDialog(this, binding.root as ViewGroup).apply {
@@ -2501,22 +1941,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 재억 요청(2026-09-30, 내 폰 시험): 경유지를 지나도 카카오 지도의 경유 표시가 남던 것을
     // 카카오 trip의 경유지 목록에서 직접 빼서 지워봄. 결과는 [경유지표시제거] 로그로 확인. #문제시 원복
     private fun removePassedViaFromKakaoTrip(name: String) {
-        try {
-            val g = KNSDK.sharedGuidance() ?: return
-            val trip = g.javaClass.methods.firstOrNull { it.name.equals("getCurTrip", true) || it.name.equals("getTrip", true) }?.invoke(g)
-            if (trip == null) { NavLogger.d(this, "[경유지표시제거] trip 없음"); return }
-            val getVias = trip.javaClass.methods.firstOrNull { it.name == "getVias" }
-            val before = (getVias?.invoke(trip) as? List<*>)?.size
-            val passed = (trip.javaClass.methods.firstOrNull { it.name == "passedVias" }?.invoke(trip) as? List<*>)?.size
-            NavLogger.d(this, "[경유지표시제거] '$name' 통과: 카카오 경유지 ${before}개, 카카오가 아는 통과분 ${passed}개")
-            if (before != null && before > 0) {
-                trip.javaClass.methods.firstOrNull { it.name == "removeViaAtIdx" }?.invoke(trip, 0)
-                val after = (getVias?.invoke(trip) as? List<*>)?.size
-                NavLogger.d(this, "[경유지표시제거] removeViaAtIdx(0) 호출 후 카카오 경유지 ${after}개")
-            }
-        } catch (e: Exception) {
-            NavLogger.e(this, "[경유지표시제거] 실패: ${e.javaClass.simpleName} ${e.cause?.message ?: e.message}")
-        }
+        // 네이버 안내: 지나간 경유지는 안내 엔진의 경유지 목록에서도 빼서, 이후 재탐색 때 다시 돌아가지 않게 한다.
+        NaverNavigator.dropPassedWaypoint()
+        NavLogger.d(this, "[경유지] '$name' 통과 - 안내 엔진 경유지 목록에서 제거")
     }
 
     private fun syncWaypointsToIntent() {
@@ -2708,7 +2135,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     setTextColor(android.graphics.Color.parseColor("#DDDDDD"))
                 }
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(android.graphics.Color.parseColor(if (which == 0) "#FFD54F" else "#1AFFFFFF"))
+                    setColor(android.graphics.Color.parseColor(if (which == 0) "#03C75A" else "#1AFFFFFF"))
                     cornerRadius = dp(12).toFloat()
                 }
                 isClickable = true
@@ -2780,34 +2207,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             Toast.makeText(this, "$logTag 실패: 목적지 정보 없음", Toast.LENGTH_SHORT).show()
             return false
         }
-        var startPoi: KNPOI? = null
-        val currentGps = KNSDK.sharedGpsManager()?.recentGpsData
-        if (currentGps != null && currentGps.pos.x > 0 && currentGps.pos.y > 0) {
-            startPoi = KNPOI("현 위치", currentGps.pos.x.toInt(), currentGps.pos.y.toInt(), "")
-        } else {
-            try {
-                val locationManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
-                val loc = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
-                    ?: locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
-                if (loc != null) {
-                    val katec = KNSDK.convertWGS84ToKATEC(loc.longitude, loc.latitude)
-                    startPoi = KNPOI("현 위치", katec.x.toInt(), katec.y.toInt(), "")
-                }
-            } catch (e: SecurityException) {
-                NavLogger.e(this, "[$logTag] 위치 권한 없음: ${e.message}")
-            }
+        // 네이버 길찾기(Directions 5)는 경유지를 5개까지만 받는다.
+        if (waypoints.size > 5) {
+            Toast.makeText(this, "경유지는 최대 5개까지 넣을 수 있어요", Toast.LENGTH_SHORT).show()
+            return false
         }
-        if (startPoi == null) {
+        val from = currentStartLonLat()
+        if (from == null) {
             Toast.makeText(this, "GPS 확인 중입니다. 잠시 후 다시 시도해주세요", Toast.LENGTH_SHORT).show()
             return false
         }
-
-        val viaPois = waypoints.map { w ->
-            val katec = KNSDK.convertWGS84ToKATEC(w.lon, w.lat)
-            KNPOI(w.name, katec.x.toInt(), katec.y.toInt(), "")
-        }.toMutableList()
-        val goalKatec = KNSDK.convertWGS84ToKATEC(currentDestLon, currentDestLat)
-        val goalPoi = KNPOI(currentDestName, goalKatec.x.toInt(), goalKatec.y.toInt(), "")
 
         val routeDesc = (listOf("현재위치") + waypoints.map { it.name } + currentDestName).joinToString(" -> ")
         NavLogger.d(this, "[$logTag] 요청: $routeDesc (경유지 ${waypoints.size}개)")
@@ -2815,25 +2224,25 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             Toast.makeText(this, "'$addedName' 경유지로 추가 중...", Toast.LENGTH_SHORT).show()
         }
 
-        // v: 재억 제보(2026-08-22) - 리플렉션 방식이 실제 기기에서 "메서드를 못 찾음"으로
-        // 매번 조용히 실패하고 있었음. 확인해보니 애초에 리플렉션이 필요 없었음 - 이 앱
-        // 다른 곳에서 이미 검증된 것과 동일하게 직접 호출. #문제시 원복
-        KNSDK.makeTripWithStart(startPoi, goalPoi, viaPois) { error, trip ->
+        val option = naverOptionFor(activeRoutePriority, activeRouteAvoidOption)
+        val vias = waypoints.map { LonLat(it.lon, it.lat) }
+        val to = LonLat(currentDestLon, currentDestLat)
+        Thread {
+            val res = NaverDirectionsClient.requestRoute(this, from, to, vias, option)
             runOnUiThread {
-                if (error != null || trip == null) {
-                    NavLogger.e(this, "[$logTag] 경로 재계산 실패: ${error?.msg ?: "알 수 없는 오류"}")
-                    Toast.makeText(this, "$logTag 실패: ${error?.msg ?: "알 수 없는 오류"}", Toast.LENGTH_SHORT).show()
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                val route = res.routes.firstOrNull()
+                if (!res.ok || route == null) {
+                    NavLogger.e(this, "[$logTag] 경로 재계산 실패: code=${res.code} ${res.message}")
+                    Toast.makeText(this, "$logTag 실패(${res.code}): ${res.message}", Toast.LENGTH_SHORT).show()
                     return@runOnUiThread
                 }
                 try {
-                    trip.setRouteConfig(CarFuelSettings.buildRouteConfiguration(this))
-                    naviView.guideNewDestinations(trip, activeRoutePriority, RouteAvoidSettings.applySchoolZoneAvoid(this, activeRouteAvoidOption))
-                    naviView.requestLayout()
-                    naviView.invalidate()
-                    NavLogger.d(this, "[$logTag] 성공 (경유지 ${waypoints.size}개)")
                     activeWaypoints.clear()
                     activeWaypoints.addAll(waypoints)
                     syncWaypointsToIntent()
+                    startNaverGuidance(route, currentDestName, currentDestLat, currentDestLon)
+                    NavLogger.d(this, "[$logTag] 성공 (경유지 ${waypoints.size}개)")
                     Toast.makeText(
                         this,
                         when {
@@ -2848,10 +2257,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         return@runOnUiThread
                     }
                     // v: 재억 재제보(2026-08-30, "경유지 도착 전인데 벌써 없어졌다") -
-                    // resolveNextStopInfo()가 실패하면 headingToFinalDestination을 안 건드리는데
-                    // 기본값이 true라서, 판단이 한 번이라도 실패하면 곧바로 "이미 최종목적지로
-                    // 향함"으로 오인해 버튼이 즉시 사라졌음. 경유지가 남아있는 이 순간 명시적으로
-                    // false로 잡아둬서, 진짜로 통과했다는 게 확인될 때까지는 안 지워지게 함. #문제시 원복
+                    // 경유지가 남아있는 이 순간 명시적으로 false로 잡아둬서, 진짜로 통과했다는 게
+                    // 확인될 때까지는 취소 버튼이 안 지워지게 함. #문제시 원복
                     KakaoRouteDataRepository.headingToFinalDestination = false
                     KakaoRouteDataRepository.passedViaCount = -1
                     val showCancelBtn = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
@@ -2863,11 +2270,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         }
                     }
                 } catch (e: Exception) {
-                    NavLogger.e(this, "[$logTag] guideNewDestinations 예외: ${e.message}")
+                    NavLogger.e(this, "[$logTag] 안내 시작 예외: ${e.message}")
                     Toast.makeText(this, "$logTag 실패(화면 반영 오류)", Toast.LENGTH_SHORT).show()
                 }
             }
-        }
+        }.start()
         return true
     }
 
@@ -2877,7 +2284,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 카카오 길안내 중에는 위치 전달을 끊어야 하는 기능이라 막음. #문제시 원복
     private var parkedActive = false
     private var parkedLaunchedFromTmap = false
-    private var parkedOverlay: ParkedCarOverlayView? = null
     private var parkedCloseButton: android.widget.TextView? = null
     private var parkedBackCallback: androidx.activity.OnBackPressedCallback? = null
     private var parkedGpsButton: android.widget.TextView? = null
@@ -2885,21 +2291,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private val parkedHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var parkedRefresh: Runnable? = null
 
-    private fun parkedKatec(lat: Double, lon: Double): FloatPoint {
-        val k = KNSDK.convertWGS84ToKATEC(lon, lat)
-        return FloatPoint(k.x.toFloat(), k.y.toFloat())
-    }
+    // 네이버 지도는 WGS84 좌표를 그대로 쓰므로 변환이 필요 없다(카카오 때의 KATEC 변환 자리).
+    private fun parkedPoint(lat: Double, lon: Double): Pair<Double, Double> = lat to lon
 
     // 카카오 지도 화면이 아직 준비 안 됐으면 0.3초마다 다시 시도(최대 20번)
+    // 네이버 지도가 아직 준비 안 됐으면 준비되는 즉시 실행
     private fun startParkedCarViewWhenReady(lat: Double, lon: Double, savedAt: Long, tries: Int) {
         if (isFinishing || isDestroyed) return
-        if (naviView.mapComponent.mapView != null && binding.root.width > 0) {
-            startParkedCarView(lat, lon, savedAt)
-        } else if (tries < 20) {
-            naviView.postDelayed({ startParkedCarViewWhenReady(lat, lon, savedAt, tries + 1) }, 300L)
-        } else {
-            NavLogger.e(this, "[내차위치] 지도가 준비되지 않아 표시 못 함")
-        }
+        naverMap.whenReady { if (!isFinishing && !isDestroyed) startParkedCarView(lat, lon, savedAt) }
     }
 
     private fun startParkedCarView(lat: Double, lon: Double, savedAt: Long) {
@@ -2907,22 +2306,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             Toast.makeText(this, "길안내 중에는 쓸 수 없어요", Toast.LENGTH_SHORT).show()
             return
         }
-        naviView.mapComponent.mapView ?: return
         closeParkedCarView(finishIfFromTmap = false)
         parkedActive = true
-        try {
-            if (savedMapViewMode == null) savedMapViewMode = naviView.mapViewMode
-            naviView.mapViewMode = com.kakaomobility.knsdk.ui.component.MapViewCameraMode.Top
-            kakaoGuidanceDelegate?.suppressLocationForward = true
-        } catch (e: Exception) {
-            NavLogger.e(this, "[내차위치] 지도모드 전환 실패: ${e.message}")
-        }
+        // 차 위치를 보는 동안은 안내용 자동 따라가기를 쉬고 진북 고정 2D로 보여준다.
+        naverMap.northUp2D()
+        naverMap.showParkedCar(lat, lon, "내 차")
         val root = binding.root as ViewGroup
-        val carPt = parkedKatec(lat, lon)
-        val overlay = ParkedCarOverlayView(this) { naviView.mapComponent.mapView }.apply { car = carPt }
-        parkedOverlay = overlay
-        root.addView(overlay, android.widget.FrameLayout.LayoutParams(
-            android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
 
         val timeText = java.text.SimpleDateFormat("M월 d일 a h:mm", java.util.Locale.KOREAN).format(java.util.Date(savedAt))
         Toast.makeText(this, "내 차 위치 ($timeText 저장)", Toast.LENGTH_LONG).show()
@@ -2936,8 +2325,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         parkedCloseButton = close
         root.addView(close, android.widget.FrameLayout.LayoutParams(btnW, btnH).apply {
             gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
-            marginEnd = PopupCard.dp(this@KakaoNaviActivity, 84) + btnW + PopupCard.dp(this@KakaoNaviActivity, 12)
-            bottomMargin = PopupCard.dp(this@KakaoNaviActivity, 84)
+            marginEnd = PopupCard.dp(this@NaverNaviActivity, 84) + btnW + PopupCard.dp(this@NaverNaviActivity, 12)
+            bottomMargin = PopupCard.dp(this@NaverNaviActivity, 84)
         })
         PopupCard.attachDrag(this, close, root, "parkedCloseButton") { closeParkedCarView(finishIfFromTmap = true) }
         val back = object : androidx.activity.OnBackPressedCallback(true) {
@@ -2947,42 +2336,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         onBackPressedDispatcher.addCallback(this, back)
 
         addParkedGpsButton()
-
-        val (meLat, meLon) = resolveCurrentWgs84LatLonForSearch()
-        if (meLat != null && meLon != null) overlay.me = parkedKatec(meLat, meLon)
-        parkedHandler.postDelayed({ if (parkedActive && parkedGpsStep == 0) moveParkedCamera(carPt) }, 500L)
-        val tick = object : Runnable {
-            override fun run() {
-                if (!parkedActive) return
-                val (la, lo) = resolveCurrentWgs84LatLonForSearch()
-                if (la != null && lo != null) parkedOverlay?.me = if (parkedGpsStep == 2) null else parkedKatec(la, lo)
-                parkedHandler.postDelayed(this, 3_000L)
-            }
-        }
-        parkedRefresh = tick
-        parkedHandler.postDelayed(tick, 3_000L)
+        parkedHandler.postDelayed({ if (parkedActive && parkedGpsStep == 0) moveParkedCamera(lat, lon) }, 300L)
     }
 
     // 대상 지점을 화면 가운데로, 화면 세로가 대략 300m 정도 보이게 확대해서 이동
-    private fun moveParkedCamera(target: FloatPoint) {
-        try {
-            val mapView = naviView.mapComponent.mapView ?: return
-            var update = KNMapCameraUpdate.Creator.targetTo(target).anchorTo(FloatPoint(0.5f, 0.5f)).tiltTo(0f).bearingTo(0f)
-            val h = mapView.height.toDouble()
-            if (h > 10) {
-                val a = mapView.katecToScreen(target)
-                val b = mapView.katecToScreen(FloatPoint(target.x + 100f, target.y))
-                val pxPer100 = Math.abs(b.x - a.x).toDouble()
-                if (pxPer100 >= 1.0) {
-                    val wantedPxPer100 = h / 300.0 * 100.0
-                    val z = (mapView.zoom * pxPer100 / wantedPxPer100).toFloat().coerceAtLeast(0.5f)
-                    update = update.zoomTo(z)
-                }
-            }
-            mapView.moveCamera(update, false, false)
-        } catch (e: Exception) {
-            NavLogger.e(this, "[내차위치] 카메라 이동 실패: ${e.message}")
-        }
+    private fun moveParkedCamera(lat: Double, lon: Double) {
+        // 화면 세로가 대략 300m 정도 보이는 확대 수준으로 이동
+        naverMap.moveTo(lat, lon, 16.8, animated = false)
     }
 
     private fun addParkedGpsButton() {
@@ -2997,8 +2357,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         parkedGpsButton = gps
         root.addView(gps, android.widget.FrameLayout.LayoutParams(btnW, btnH).apply {
             gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
-            marginEnd = PopupCard.dp(this@KakaoNaviActivity, 84)
-            bottomMargin = PopupCard.dp(this@KakaoNaviActivity, 84)
+            marginEnd = PopupCard.dp(this@NaverNaviActivity, 84)
+            bottomMargin = PopupCard.dp(this@NaverNaviActivity, 84)
         })
         // 짧게 누르면 GPS 동작, 끌면 옮겨지고 위치가 저장됨
         PopupCard.attachDrag(this, gps, root, "parkedGpsButton") { onParkedGpsPressed() }
@@ -3024,7 +2384,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     private fun updateParkedGpsStyle() {
         val gps = parkedGpsButton ?: return
-        gps.background = parkedButtonBackground(if (parkedGpsStep == 2) "#FFD54F" else "#CC28282C")
+        gps.background = parkedButtonBackground(if (parkedGpsStep == 2) "#03C75A" else "#CC28282C")
         gps.setTextColor(android.graphics.Color.parseColor(when (parkedGpsStep) {
             2 -> "#212121"
             1 -> "#FFD54F"
@@ -3033,17 +2393,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     }
 
     // 1번 누름: 현재 위치로 이동해서 보기 / 2번 누름: 움직임을 따라가기(카카오 원래 추적 모드 복원)
+    // 1번 누름: 현재 위치로 이동해서 보기 / 2번 누름: 움직임을 따라가기
     private fun onParkedGpsPressed() {
         if (parkedGpsButton == null) return
         if (parkedGpsStep == 1) {
             parkedGpsStep = 2
-            parkedOverlay?.me = null
-            try {
-                kakaoGuidanceDelegate?.suppressLocationForward = false
-                savedMapViewMode?.let { naviView.mapViewMode = it }
-            } catch (e: Exception) {
-                NavLogger.e(this, "[내차위치] 따라가기 전환 실패: ${e.message}")
-            }
+            naverMap.resumeFollow()
+            NaverNavigator.lastLocation?.let { naverMap.follow(it) }
             Toast.makeText(this, "내 위치를 따라가요", Toast.LENGTH_SHORT).show()
         } else {
             val (la, lo) = resolveCurrentWgs84LatLonForSearch()
@@ -3052,41 +2408,23 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 return
             }
             parkedGpsStep = 1
-            try {
-                naviView.mapViewMode = com.kakaomobility.knsdk.ui.component.MapViewCameraMode.Top
-                kakaoGuidanceDelegate?.suppressLocationForward = true
-            } catch (e: Exception) {
-                NavLogger.e(this, "[내차위치] 현재위치 전환 실패: ${e.message}")
-            }
-            val p = parkedKatec(la, lo)
-            parkedOverlay?.me = p
-            parkedHandler.postDelayed({ if (parkedActive && parkedGpsStep == 1) moveParkedCamera(p) }, 500L)
-            parkedHandler.postDelayed({ if (parkedActive && parkedGpsStep == 1) moveParkedCamera(p) }, 1300L)
+            naverMap.northUp2D()
+            parkedHandler.postDelayed({ if (parkedActive && parkedGpsStep == 1) moveParkedCamera(la, lo) }, 300L)
             Toast.makeText(this, "현재 위치로 이동", Toast.LENGTH_SHORT).show()
         }
         updateParkedGpsStyle()
     }
 
     private fun closeParkedCarView(finishIfFromTmap: Boolean) {
-        val wasActive = parkedActive
         parkedActive = false
         parkedRefresh?.let { parkedHandler.removeCallbacks(it) }
         parkedRefresh = null
         val root = binding.root as ViewGroup
-        parkedOverlay?.let { root.removeView(it) }
         parkedCloseButton?.let { root.removeView(it) }
         parkedBackCallback?.remove()
         removeParkedGpsButton()
-        parkedOverlay = null; parkedCloseButton = null; parkedBackCallback = null
-        if (wasActive) {
-            kakaoGuidanceDelegate?.suppressLocationForward = false
-            savedMapViewMode?.let {
-                try { naviView.mapViewMode = it } catch (e: Exception) {
-                    NavLogger.e(this, "[내차위치] 지도모드 복원 실패: ${e.message}")
-                }
-                savedMapViewMode = null
-            }
-        }
+        parkedCloseButton = null; parkedBackCallback = null
+        naverMap.clearParkedCar()
         if (finishIfFromTmap && parkedLaunchedFromTmap) finish()
     }
 
@@ -3097,30 +2435,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // KNSDK.convertWGS84ToKATEC로 변환. #문제시 원복
     private fun showDestinationPinOnMap(lat: Double, lon: Double) {
         try {
-            val mapView = naviView.mapComponent.mapView ?: return
-            // v19.3.72: 재억 실기기 제보 - mapViewMode=Top만으로는 자동 추적이 다 안 막혀서
-            // "경로가 잠깐 보였다가 내 위치로 도로 확 줌인된다"는 문제가 남아있었음. 지도
-            // 모드 전환에 더해 위치 포워딩도 같이 끊어서 확실히 고정되게 함. #문제시 원복
-            if (savedMapViewMode == null) {
-                savedMapViewMode = naviView.mapViewMode
-            }
-            naviView.mapViewMode = com.kakaomobility.knsdk.ui.component.MapViewCameraMode.Top
-            kakaoGuidanceDelegate?.suppressLocationForward = true
-            mapView.removeRoutesAll()
-            mapView.removeMarkersAll()
-            val katec = KNSDK.convertWGS84ToKATEC(lon, lat)
-            val point = FloatPoint(katec.x.toFloat(), katec.y.toFloat())
-            val marker = KNMapMarker(point)
-            mapView.addMarker(marker)
-            destinationPinMarker = marker
-            // v19.3.72: 카드가 다시 왼쪽 위로 돌아왔으니, 핀이 카드에 안 가리게 화면
-            // 오른쪽 아래로 살짝 치우친 지점에 오도록 조정. #문제시 원복
-            val cameraUpdate = KNMapCameraUpdate.Creator.targetTo(point)
-                .anchorTo(FloatPoint(0.62f, 0.55f))
-                .tiltTo(0f)
-                .bearingTo(0f)
-            mapView.moveCamera(cameraUpdate, false, false)
-            NavLogger.d(this, "[목적지핀][진단] point=(${point.x},${point.y}) mapViewMode=${naviView.mapViewMode} moveCamera 호출완료")
+            // 경로를 고르기 전에 목적지가 실제로 지도 어디인지 핀으로 먼저 보여준다(진북 고정 2D).
+            naverMap.clearAllRoutes()
+            naverMap.northUp2D()
+            naverMap.showPin(lat, lon, currentDestName)
+            naverMap.moveTo(lat, lon, 15.5, animated = false)
             addParkedGpsButton()
         } catch (e: Exception) {
             NavLogger.e(this, "[목적지핀] 표시 실패: ${e.message}")
@@ -3135,46 +2454,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         startLat: Double, startLon: Double, goalLat: Double, goalLon: Double,
         stillActive: () -> Boolean
     ) {
-        try {
-            val mapView = naviView.mapComponent.mapView ?: return
-            val a = KNSDK.convertWGS84ToKATEC(startLon, startLat)
-            val b = KNSDK.convertWGS84ToKATEC(goalLon, goalLat)
-            val center = FloatPoint(((a.x + b.x) / 2.0).toFloat(), ((a.y + b.y) / 2.0).toFloat())
-            val pa = FloatPoint(a.x.toFloat(), a.y.toFloat())
-            val pb = FloatPoint(b.x.toFloat(), b.y.toFloat())
-            val handler = android.os.Handler(android.os.Looper.getMainLooper())
-            // 실측 결과 zoom 값은 "확대 단계"가 아니라 화면 1픽셀당 길이 같은 값이어서,
-            // 두 점 사이 화면 거리가 zoom에 정확히 반비례함(zoom 1→93435px, 2→46717px,
-            // 8→11679px). 그래서 새 zoom = 현재 zoom ÷ (필요 배율)로 한 번에 계산. #문제시 원복
-            fun apply(zoom: Float?) {
-                var u = KNMapCameraUpdate.Creator.targetTo(center)
-                    .anchorTo(FloatPoint(0.5f, 0.5f)).tiltTo(0f).bearingTo(0f)
-                if (zoom != null) u = u.zoomTo(zoom)
-                mapView.moveCamera(u, false, false)
-            }
-            fun step(n: Int) {
-                if (!stillActive()) return
-                val w = mapView.width.toDouble()
-                val h = mapView.height.toDouble()
-                if (w < 10 || h < 10) { if (n < 8) handler.postDelayed({ step(n + 1) }, 150); return }
-                val sa = mapView.katecToScreen(pa)
-                val sb = mapView.katecToScreen(pb)
-                val sx = Math.abs(sa.x - sb.x).toDouble()
-                val sy = Math.abs(sa.y - sb.y).toDouble()
-                val tw = w * 0.70
-                val th = h * 0.55
-                val scale = minOf(if (sx < 1) 1e9 else tw / sx, if (sy < 1) 1e9 else th / sy)
-                val zoom = mapView.zoom
-                NavLogger.d(this, "[전체경로맞춤] n=$n zoom=$zoom span=(${sx.toInt()},${sy.toInt()}) view=(${w.toInt()},${h.toInt()}) scale=$scale")
-                if (n >= 5 || Math.abs(Math.log(scale)) < 0.06) return
-                apply((zoom / scale).toFloat().coerceAtLeast(0.5f))
-                handler.postDelayed({ step(n + 1) }, 200)
-            }
-            apply(null)
-            handler.postDelayed({ step(0) }, 250)
-        } catch (e: Exception) {
-            NavLogger.e(this, "[전체경로맞춤] 실패: ${e.message}")
-        }
+        if (!stillActive()) return
+        // 후보 경로가 이미 받아져 있으면 경로 전체를, 아니면 출발·목적지 두 점이 보이게 맞춘다.
+        naverMap.fitTo(listOf(com.naver.maps.geometry.LatLng(startLat, startLon), com.naver.maps.geometry.LatLng(goalLat, goalLon)))
     }
 
     // v19.3.72: 신규기능(재억 요청 2026-09-18) - "목적지 고르면 지도 위에 핀 찍고, 그
@@ -3212,7 +2494,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val panelMarginTop = dp(76).toFloat()
 
         // 칸 자리 순서(저장됨). 첫 칸의 방식이 처음 선택되고 자동 시작 때 쓰임.
-        val displayOrder = RouteChoiceOptions.loadOrder(this).toMutableList()
+        // 네이버 길찾기에 없는 방식(최단거리·선호경로)은 카드에서 뺀다. 저장된 칸 순서는 유지한다.
+        val naverSlots = NaverRouteOptions.OPTION_BY_SLOT.indices.filter { NaverRouteOptions.OPTION_BY_SLOT[it] != null }
+        val displayOrder = RouteChoiceOptions.loadOrder(this).filter { it in naverSlots }.toMutableList()
         var layoutTabs: () -> Unit = {}
         var selectedIndex = displayOrder[0]
         var panelView: View? = null
@@ -3264,21 +2548,20 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // fitViewToEndpoints가 따로 담당. 선택한 탭의 경로가 아직 계산 전이면 그리지 않음. #문제시 원복
         fun drawRouteAndFit() {
             try {
-                val route = routesArr.getOrNull(selectedIndex) as? com.kakaomobility.knsdk.trip.kntrip.knroute.KNRoute ?: return
-                val mv = naviView.mapComponent.mapView ?: return
-                mv.removeRoutesAll()
-                mv.setRoute(route)
+                // 받아둔 후보 경로를 네이버 지도에 그리고, 지금 고른 칸의 경로만 진하게 보여준다.
+                val routes = routesArr.filterIsInstance<NaverRoute>()
+                if (routes.isEmpty()) return
+                val sel = routesArr.getOrNull(selectedIndex) as? NaverRoute
+                naverMap.showPreview(routes, { naverColorFor(it.option) }, sel)
             } catch (e: Exception) {
                 NavLogger.e(this, "[경로선] 표시 실패: ${e.message}")
             }
         }
 
         // 재억 요청(2026-10-05): 추천 경로와 시간·거리가 똑같은 방식 칸은 흐리게 표시(고르나 마나 같은 길). #문제시 원복
-        fun routeKey(r: Any?): Pair<Int, Int>? {
-            if (r == null) return null
-            val t = (r.javaClass.methods.firstOrNull { it.name == "getTotalTime" && it.parameterCount == 0 }?.invoke(r) as? Number)?.toInt()
-            val d = (r.javaClass.methods.firstOrNull { it.name == "getTotalDist" && it.parameterCount == 0 }?.invoke(r) as? Number)?.toInt()
-            return if (t != null && d != null) t to d else null
+        fun routeKey(r: Any?): Pair<Long, Int>? {
+            val nr = r as? NaverRoute ?: return null
+            return nr.durationMs to nr.distanceMeters
         }
         fun sameAsRecommend(i: Int): Boolean {
             if (i == 0) return false
@@ -3296,7 +2579,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // 보였음. 배경 드로어블은 그대로 두고 색만 바꾸도록 수정. #문제시 원복
                 val bg = tv.background as android.graphics.drawable.GradientDrawable
                 if (i == selectedIndex) {
-                    bg.setColor(android.graphics.Color.parseColor("#FFD54F"))
+                    bg.setColor(android.graphics.Color.parseColor("#03C75A"))
                     tv.setTextColor(android.graphics.Color.parseColor("#212121"))
                     tv.setTypeface(null, android.graphics.Typeface.BOLD)
                 } else {
@@ -3307,14 +2590,15 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
             // 재억 요청(2026-10-05): 계산이 실패/시간초과된 칸(-1)은 "계산 중..."에 계속 머물지 않고 "계산 실패"로 표시. #문제시 원복
             val rawMinutes = minutesArr[selectedIndex]
-            val failed = rawMinutes != null && rawMinutes < 0
-            val minutes = if (failed) null else rawMinutes
+            val unsupported = rawMinutes == NaverRouteOptions.UNSUPPORTED
+            val failed = rawMinutes != null && rawMinutes < 0 && !unsupported
+            val minutes = if (failed || unsupported) null else rawMinutes
             val etaLine = SearchRanking.formatEtaMinutes(minutes)
             // v19.3.72: 재억 실기기 제보 - "계산실패?" - 실제로는 실패한 게 아니라, 거리가
             // 멀어서(평택-대구 등) 계산이 3초 넘게 걸린 것뿐이었는데 "계산 실패"라고 써놔서
             // 영영 안 되는 것처럼 보였음. 아직 값이 안 왔을 때는 "계산 중..."으로 바꾸고,
             // 값이 도착하면(아래 refresh 참고) 다시 그려서 실제 값으로 바뀌게 함. #문제시 원복
-            timeText.text = etaLine ?: if (failed) "계산 실패" else "계산 중..."
+            timeText.text = etaLine ?: if (unsupported) "네이버 안내엔 없는 방식" else if (failed) "계산 실패" else "계산 중..."
             etaText.text = if (minutes != null && sameAsRecommend(selectedIndex)) "추천 경로와 같음" else ""
             // v: 재억 재제보(2026-09-19) - "계산 중..."인 동안에도 안내시작 카운트다운이
             // 이미 돌고 있었음(패널 열리자마자 무조건 10초 시작). 이 탭의 실제 소요시간이
@@ -3468,7 +2752,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                                     val b = displayOrder.indexOf(target)
                                     displayOrder[a] = target
                                     displayOrder[b] = i
-                                    RouteChoiceOptions.saveOrder(this@KakaoNaviActivity, displayOrder)
+                                    RouteChoiceOptions.saveOrder(this@NaverNaviActivity, displayOrder + (0 until RouteChoiceOptions.count).filter { it !in displayOrder })
                                     layoutTabs()
                                 }
                                 applySameDim()
@@ -3605,7 +2889,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             textSize = 14f
             setPadding(0, dp(13), 0, dp(13))
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.parseColor("#FFD54F"))
+                setColor(android.graphics.Color.parseColor("#03C75A"))
                 cornerRadius = dp(12).toFloat()
             }
             isClickable = true
@@ -3691,46 +2975,17 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 지금 보이는 지도(전체 경로)에서 내 위치까지 durationMs 동안 부드럽게 확대한 뒤 action 실행.
     // 못 하면 바로 action 실행. 안내 배율(약 1.3)보다 조금 넓게(3)까지만 - 나머지는 카카오가 이어받음.
     private fun zoomToMyPositionThen(durationMs: Long, action: () -> Unit) {
-        try {
-            val mapView = naviView.mapComponent.mapView
-            val pos = KNSDK.sharedGpsManager()?.recentGpsData?.pos
-            if (mapView == null || pos == null) { action(); return }
-            val target = FloatPoint(pos.x.toFloat(), pos.y.toFloat())
-            val update = KNMapCameraUpdate.Creator.targetTo(target).zoomTo(3f).tiltTo(0f).bearingTo(0f)
-                .anchorTo(FloatPoint(0.5f, 0.6f))
-            mapView.animateCamera(update, durationMs, false, false)
-            NavLogger.d(this, "[안내시작모션] 내 위치로 ${durationMs}ms 동안 확대 시작")
-            naviView.postDelayed({ if (!isFinishing && !isDestroyed) action() }, durationMs + 100L)
-        } catch (e: Exception) {
-            NavLogger.e(this, "[안내시작모션] 실패: ${e.message}")
-            action()
-        }
+        // 전체 경로 화면에서 안내 화면으로 한 번에 확 넘어가지 않게, 내 위치로 먼저 부드럽게 확대한 뒤 안내를 시작한다.
+        val loc = NaverNavigator.lastLocation
+        if (loc == null) { action(); return }
+        naverMap.moveTo(loc.latitude, loc.longitude, 16.0, animated = true)
+        naviView.postDelayed({ if (!isFinishing && !isDestroyed) action() }, durationMs.coerceAtMost(800L))
     }
 
     private fun clearDestinationPin() {
         if (!parkedActive) removeParkedGpsButton()
-        kakaoGuidanceDelegate?.suppressLocationForward = false
-        // v19.3.72: CarrotNavi 원본과 동일 - 저장해둔 지도 모드로 복원. #문제시 원복
-        savedMapViewMode?.let {
-            try {
-                naviView.mapViewMode = it
-            } catch (e: Exception) {
-                NavLogger.e(this, "[경로선택] 지도모드 복원 실패: ${e.message}")
-            }
-            savedMapViewMode = null
-        }
-        try {
-            naviView.mapComponent.mapView?.removeRoutesAll()
-        } catch (e: Exception) {
-            NavLogger.e(this, "[경로선택] 미리보기 경로선 제거 실패: ${e.message}")
-        }
-        val marker = destinationPinMarker ?: return
-        destinationPinMarker = null
-        try {
-            naviView.mapComponent.mapView?.removeMarker(marker)
-        } catch (e: Exception) {
-            NavLogger.e(this, "[목적지핀] 제거 실패: ${e.message}")
-        }
+        naverMap.clearPin()
+        naverMap.clearPreview()
     }
 
     // 안내 중 경유지 추가 - 기존 경유지는 그대로 두고 맨 뒤에 이어붙임. #문제시 원복
@@ -3769,17 +3024,40 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val costArr = arrayOfNulls<Int>(RouteChoiceOptions.count)
         val routesArr = arrayOfNulls<Any>(RouteChoiceOptions.count)
         val refresh = showRouteChoicePanel(picked, optionLabels, minutesArr, costArr, routesArr, curLat, curLon, ::goDirectly, startButtonLabel = "경유지 추가", topLabel = "경유지로 추가")
-        KakaoSdkState.computeEtaForOptions(
-            this, curLat, curLon, picked.lat, picked.lon,
-            options = optionPriorities.zip(optionAvoidOptions)
-        ) { index, minutes, _, tollCostWon, route ->
-            runOnUiThread {
-                minutesArr[index] = minutes ?: -1
-                costArr[index] = tollCostWon
-                routesArr[index] = route
-                refresh()
+        // 경유지를 끼운 전체 경로(현재 위치 → 기존 경유지들 → 새 경유지 → 최종 목적지)를 네이버로 계산한다.
+        val goal = LonLat(currentDestLon, currentDestLat)
+        val vias = (activeWaypoints + picked).map { LonLat(it.lon, it.lat) }
+        computeNaverOptions(LonLat(curLon, curLat), goal, vias, minutesArr, costArr, routesArr, refresh)
+    }
+
+    /** 이동방식 카드의 칸별 소요시간·통행료·경로를 네이버로 구해 채운다(결과가 올 때마다 [refresh]). */
+    private fun computeNaverOptions(
+        from: LonLat, to: LonLat, vias: List<LonLat>,
+        minutesArr: Array<Int?>, costArr: Array<Int?>, routesArr: Array<Any?>,
+        refresh: () -> Unit
+    ) {
+        NaverRouteOptions.compute(this, from, to, vias) { slot, route, supported ->
+            if (isFinishing || isDestroyed) return@compute
+            when {
+                !supported -> minutesArr[slot] = NaverRouteOptions.UNSUPPORTED
+                route == null -> minutesArr[slot] = -1
+                else -> {
+                    minutesArr[slot] = Math.round(route.durationMs / 60000.0).toInt().coerceAtLeast(1)
+                    costArr[slot] = route.tollFare
+                    routesArr[slot] = route
+                }
             }
+            refresh()
         }
+    }
+
+    /** 후보 경로를 지도에 그릴 때 방식별로 쓰는 색(카드 색과 맞춘다). */
+    private fun naverColorFor(option: String): Int = when (option) {
+        "traoptimal" -> 0xFF2E7DFF.toInt()
+        "trafast" -> 0xFF00A86B.toInt()
+        "traavoidtoll" -> 0xFF8E24AA.toInt()
+        "tracomfort" -> 0xFFFF8F00.toInt()
+        else -> 0xFF607D8B.toInt()
     }
 
     private fun showInPlaceSearchDialog() {
@@ -3898,17 +3176,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             val costArr = arrayOfNulls<Int>(RouteChoiceOptions.count)
             val routesArr = arrayOfNulls<Any>(RouteChoiceOptions.count)
             val refresh = showRouteChoicePanel(picked, optionLabels, minutesArr, costArr, routesArr, curLat, curLon, ::goDirectly)
-            KakaoSdkState.computeEtaForOptions(
-                this, curLat, curLon, picked.lat, picked.lon,
-                options = optionPriorities.zip(optionAvoidOptions)
-            ) { index, minutes, _, tollCostWon, route ->
-                runOnUiThread {
-                    minutesArr[index] = minutes ?: -1
-                    costArr[index] = tollCostWon
-                    routesArr[index] = route
-                    refresh()
-                }
-            }
+            computeNaverOptions(
+                LonLat(curLon, curLat), LonLat(picked.lon, picked.lat),
+                activeWaypoints.map { LonLat(it.lon, it.lat) }, minutesArr, costArr, routesArr, refresh
+            )
             return
         }
 
@@ -3966,18 +3237,18 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }, 3000L)
         // v13.6: MapActivity와 동일 - "출발-도착 연결"을 한 번만 하고 그 위에서 3개
         // 우선순위만 각각 계산(재억 지적 - 계산 느림). #문제시 원복
-        KakaoSdkState.computeEtaForOptions(
-            this, curLat, curLon, picked.lat, picked.lon,
-            options = optionPriorities.zip(optionAvoidOptions)
-        ) { index, minutes, distanceMeters, tollCostWon, _ ->
-            runOnUiThread {
-                minutesArr[index] = minutes
-                distArr[index] = distanceMeters
-                costArr[index] = tollCostWon
-                receivedCount++
-                if (receivedCount == RouteChoiceOptions.count) {
-                    showPickerOnce()
-                }
+        NaverRouteOptions.compute(this, LonLat(curLon, curLat), LonLat(picked.lon, picked.lat)) { index, route, supported ->
+            if (isFinishing || isDestroyed) return@compute
+            minutesArr[index] = when {
+                !supported -> null
+                route == null -> null
+                else -> Math.round(route.durationMs / 60000.0).toInt().coerceAtLeast(1)
+            }
+            distArr[index] = route?.distanceMeters
+            costArr[index] = route?.tollFare
+            receivedCount++
+            if (receivedCount == RouteChoiceOptions.count) {
+                showPickerOnce()
             }
         }
     }
@@ -4022,22 +3293,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // 시스템 LocationManager)로 재사용하되, KNSDK GPS는 KATEC 좌표라 역변환
     // 함수가 없어 검색용으론 LocationManager 값만 사용. #문제시 원복
     private fun resolveCurrentWgs84LatLonForSearch(): Pair<Double?, Double?> {
-        return try {
-            val lm = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
-            val loc = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
-                ?: lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
-            if (loc != null) Pair(loc.latitude, loc.longitude) else Pair(null, null)
-        } catch (e: SecurityException) {
-            NavLogger.e(this, "위치 권한 없음(검색 거리순 정렬용): ${e.message}")
-            Pair(null, null)
-        }
+        // 안내 엔진이 받고 있는 최신 위치를 우선 쓰고, 없으면 최근 2분 안의 위치만 쓴다(몇 주 전 위치는 버림).
+        val loc = NaverNavigator.currentFix() ?: com.tmap.nda.naver.FreshLocation.lastFresh(this)
+        return if (loc != null) Pair(loc.latitude, loc.longitude) else Pair(null, null)
     }
 
     private fun performInPlaceSearch(query: String, page: Int = 1, accumulatedDocuments: MutableList<JSONObject> = mutableListOf()) {
         val restKey = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             .getString("kakao_rest_api_key", "") ?: ""
         if (restKey.isBlank()) {
-            Toast.makeText(this, "카카오 REST API 키가 없어 - 티맵 화면에서 검색을 한 번 먼저 설정해줘.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "검색을 시작할 수 없어요. 앱을 다시 시작해줘.", Toast.LENGTH_LONG).show()
             return
         }
         if (page == 1) {
@@ -4075,20 +3340,20 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             .build()
         searchHttpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                NavLogger.e(this@KakaoNaviActivity, "인라인 재검색 실패: ${e.message}")
-                runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 실패: ${e.message}", Toast.LENGTH_SHORT).show() }
+                NavLogger.e(this@NaverNaviActivity, "인라인 재검색 실패: ${e.message}")
+                runOnUiThread { Toast.makeText(this@NaverNaviActivity, "검색 실패: ${e.message}", Toast.LENGTH_SHORT).show() }
             }
 
             override fun onResponse(call: Call, response: okhttp3.Response) {
                 response.use {
                     if (!it.isSuccessful) {
-                        runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 실패(${it.code})", Toast.LENGTH_SHORT).show() }
+                        runOnUiThread { Toast.makeText(this@NaverNaviActivity, "검색 실패(${it.code})", Toast.LENGTH_SHORT).show() }
                         return@use
                     }
                     val json = JSONObject(it.body?.string() ?: "{}")
                     val documents = json.optJSONArray("documents")
                     if ((documents == null || documents.length() == 0) && accumulatedDocuments.isEmpty()) {
-                        NavLogger.d(this@KakaoNaviActivity, "카카오 키워드검색 결과 없음, 주소검색으로 재시도: query=$query")
+                        NavLogger.d(this@NaverNaviActivity, "카카오 키워드검색 결과 없음, 주소검색으로 재시도: query=$query")
                         performAddressSearchFallback(query, restKey)
                         return@use
                     }
@@ -4132,7 +3397,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         .sortedWith(compareBy { it.second })
                         .map { it.first }
                         .take(50)
-                    NavLogger.d(this@KakaoNaviActivity, "인라인 재검색 결과 ${hits.size}건: query=$query")
+                    NavLogger.d(this@NaverNaviActivity, "인라인 재검색 결과 ${hits.size}건: query=$query")
                     runOnUiThread { showInPlaceSearchResultsDialog(hits) }
                 }
             }
@@ -4150,20 +3415,20 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             .build()
         searchHttpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                NavLogger.e(this@KakaoNaviActivity, "카카오 종류검색 요청 실패: ${e.message}")
-                runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 실패: ${e.message}", Toast.LENGTH_SHORT).show() }
+                NavLogger.e(this@NaverNaviActivity, "카카오 종류검색 요청 실패: ${e.message}")
+                runOnUiThread { Toast.makeText(this@NaverNaviActivity, "검색 실패: ${e.message}", Toast.LENGTH_SHORT).show() }
             }
 
             override fun onResponse(call: Call, response: okhttp3.Response) {
                 response.use {
                     if (!it.isSuccessful) {
-                        runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 실패(${it.code})", Toast.LENGTH_SHORT).show() }
+                        runOnUiThread { Toast.makeText(this@NaverNaviActivity, "검색 실패(${it.code})", Toast.LENGTH_SHORT).show() }
                         return@use
                     }
                     val json = JSONObject(it.body?.string() ?: "{}")
                     val documents = json.optJSONArray("documents")
                     if (documents == null || documents.length() == 0) {
-                        runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 결과 없음", Toast.LENGTH_SHORT).show() }
+                        runOnUiThread { Toast.makeText(this@NaverNaviActivity, "검색 결과 없음", Toast.LENGTH_SHORT).show() }
                         return@use
                     }
                     val hits = (0 until documents.length()).map { idx ->
@@ -4176,7 +3441,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                             d.optString("distance").toDoubleOrNull()
                         )
                     }
-                    NavLogger.d(this@KakaoNaviActivity, "카카오 종류검색 결과 ${hits.size}건: category=$categoryCode")
+                    NavLogger.d(this@NaverNaviActivity, "카카오 종류검색 결과 ${hits.size}건: category=$categoryCode")
                     runOnUiThread { showInPlaceSearchResultsDialog(hits) }
                 }
             }
@@ -4195,22 +3460,22 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
         searchHttpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                NavLogger.e(this@KakaoNaviActivity, "카카오 주소검색 요청 실패: ${e.message}")
-                runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
+                NavLogger.e(this@NaverNaviActivity, "카카오 주소검색 요청 실패: ${e.message}")
+                runOnUiThread { Toast.makeText(this@NaverNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
             }
 
             override fun onResponse(call: Call, response: okhttp3.Response) {
                 response.use {
                     if (!it.isSuccessful) {
-                        NavLogger.e(this@KakaoNaviActivity, "카카오 주소검색 실패 code=${it.code}")
-                        runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
+                        NavLogger.e(this@NaverNaviActivity, "카카오 주소검색 실패 code=${it.code}")
+                        runOnUiThread { Toast.makeText(this@NaverNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
                         return@use
                     }
                     val json = JSONObject(it.body?.string() ?: "{}")
                     val documents = json.optJSONArray("documents")
                     if (documents == null || documents.length() == 0) {
-                        NavLogger.d(this@KakaoNaviActivity, "카카오 주소검색도 결과 없음: query=$query")
-                        runOnUiThread { Toast.makeText(this@KakaoNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
+                        NavLogger.d(this@NaverNaviActivity, "카카오 주소검색도 결과 없음: query=$query")
+                        runOnUiThread { Toast.makeText(this@NaverNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
                         return@use
                     }
                     val hits = (0 until documents.length()).map { idx ->
@@ -4223,7 +3488,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                             d.optDouble("x")
                         )
                     }
-                    NavLogger.d(this@KakaoNaviActivity, "카카오 주소검색 결과 ${hits.size}건: query=$query")
+                    NavLogger.d(this@NaverNaviActivity, "카카오 주소검색 결과 ${hits.size}건: query=$query")
                     runOnUiThread { showInPlaceSearchResultsDialog(hits) }
                 }
             }
@@ -4237,13 +3502,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         var currentPage = 0
         val lastPage = (hits.size - 1) / pageSize
 
-        val listView = android.widget.ListView(this@KakaoNaviActivity)
+        val listView = android.widget.ListView(this@NaverNaviActivity)
         listView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         listView.divider = android.graphics.drawable.ColorDrawable(android.graphics.Color.parseColor("#333333"))
         listView.dividerHeight = 1
 
         // v19.3.79: 재억 요청 - 검색결과 목록도 카드 형식으로. 이전/다음은 눌러도 안 닫힘. #문제시 원복
-        val pickDialog = PopupCard.CardDialog(this@KakaoNaviActivity, binding.root as ViewGroup).apply {
+        val pickDialog = PopupCard.CardDialog(this@NaverNaviActivity, binding.root as ViewGroup).apply {
             setContent(listView)
             setButton(PopupCard.CardDialog.BUTTON_NEGATIVE, "취소")
             setButton(PopupCard.CardDialog.BUTTON_NEUTRAL, "이전", autoClose = false)
@@ -4273,9 +3538,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             // 안내는 시작하지 않음(재억 지적 - 등록할 땐 안내까지 필요 없음). #문제시 원복
             val registeringSlot = pendingQuickSlotRegistration
             if (registeringSlot != null) {
-                QuickSlotStore.save(this@KakaoNaviActivity, registeringSlot, picked)
+                QuickSlotStore.save(this@NaverNaviActivity, registeringSlot, picked)
                 pendingQuickSlotRegistration = null
-                Toast.makeText(this@KakaoNaviActivity, "'${picked.name}' 등록 완료", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@NaverNaviActivity, "'${picked.name}' 등록 완료", Toast.LENGTH_SHORT).show()
                 binding.etDestination?.apply {
                     isFocusable = false
                     isFocusableInTouchMode = false
@@ -4298,7 +3563,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 isFocusableInTouchMode = true
                 setText("")
             }
-            SearchHistoryStore.save(this@KakaoNaviActivity, picked)
+            SearchHistoryStore.save(this@NaverNaviActivity, picked)
             renderRecentDestinationsPanel()
             // v: 재억 지적(2026-08-28) - "추천/고속도로/무료도로 고르는 팝업이 왜 안 뜨고
             // 바로 추천 경로로 안내가 시작되냐" - 티맵 화면(MapActivity)에서 검색했을 땐
@@ -4362,7 +3627,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                         val timeoutRunnable = Runnable {
                             if (!settled) {
                                 settled = true
-                                NavLogger.e(this@KakaoNaviActivity, "[검색결과소요시간] 8초 타임아웃 - 포기하고 다음으로: ${h.name}")
+                                NavLogger.e(this@NaverNaviActivity, "[검색결과소요시간] 8초 타임아웃 - 포기하고 다음으로: ${h.name}")
                                 etaActiveCount--
                                 runOnUiThread {
                                     currentLabels[index] = buildLabel(h, null)
@@ -4374,7 +3639,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                             }
                         }
                         timeoutHandler.postDelayed(timeoutRunnable, 8000L)
-                        KakaoSdkState.computeEta(this@KakaoNaviActivity, curLat, curLon, h.lat, h.lon) { minutes, _ ->
+                        NaverEta.computeEta(this@NaverNaviActivity, curLat, curLon, h.lat, h.lon) { minutes, _ ->
                             if (settled) return@computeEta
                             settled = true
                             timeoutHandler.removeCallbacks(timeoutRunnable)
@@ -4444,20 +3709,26 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
+    private var finishGuidanceRunning = false
     private fun finishGuidance() {
+        if (finishGuidanceRunning) return
+        finishGuidanceRunning = true
         ResumeGuidanceStore.clear(this)
         KakaoRouteDataRepository.reset()
         cancelNavNotification()
         try {
-            KNSDK.sharedGuidance()?.stop()
+            NaverNavigator.stop()
         } catch (e: Exception) {
-            NavLogger.e(this, "카카오 안내 중지 예외: ${e.message}")
+            NavLogger.e(this, "네이버 안내 중지 예외: ${e.message}")
         }
+        if (::guideOverlay.isInitialized) guideOverlay.hide()
+        if (::naverMap.isInitialized) naverMap.clearAllRoutes()
         if (!isFinishing) finish()
     }
 
     override fun onStart() {
         super.onStart()
+        if (::naverMap.isInitialized) naverMap.onStart()
         NavLogger.d(this, "[lifecycle] onStart")
         NavOverlayManager.activityStarted()
     }
@@ -4470,7 +3741,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             val muted = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 .getBoolean("tmap_muted", false)
             if (!muted) {
-                VolumeHelper.captureCurrentVolumePercent(this@KakaoNaviActivity)
+                VolumeHelper.captureCurrentVolumePercent(this@NaverNaviActivity)
                 // v4.16: 하드웨어 볼륨버튼으로 조절할 때마다 카카오 SDK 자체 볼륨
                 // (naviView.sndVolume)도 실시간으로 같이 맞춤. PR#9 병합 때 유실됐던 것 복원. #문제시 원복
                 if (::naviView.isInitialized) applyKakaoSdkVolume()
@@ -4489,34 +3760,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private var topBarDrag: PanelDragHelper.TopBarLongPressDrag? = null
     private var topBarSlotLabelListener: android.content.SharedPreferences.OnSharedPreferenceChangeListener? = null
 
-    private var lastPinchMoveLogMs = 0L
 
-    // v: 재억 제보(2026-09-22, [핀치진단] 로그 분석) - 엔미러 환경에서 두 손가락 터치가 SDK까지
-    // 오기 전에 계속 끊김("눌림→2개로 늘어남→살짝 움직임→1개로 줄어듦→뗌" 반복). 카카오 SDK
-    // 내장 핀치 처리(useZoomGesture)는 진짜 제스처가 끊기지 않고 쭉 이어진다고 가정하고 만들어져
-    // 있어서, 매번 새 제스처로 리셋되며 줌이 "조금씩 조금씩"만 반영됨. SDK 내장 핀치는 꺼두고
-    // (ensurePinchZoomBridge에서 useZoomGesture=false), 대신 우리가 직접 ScaleGestureDetector로
-    // 배율을 추적하면서 짧게 다시 잡히면 새 제스처로 리셋하지 않고 이전 배율에 이어붙임.
-    // v: 재억 제보(2026-09-22, 2차) - 400ms 기준으로 처음 만들었는데, 실제 로그(김반장님 기기)로
-    // 끊기는 간격을 재보니 대부분 0.5~1.6초였음(400ms보다 훨씬 김) - 그래서 다리 잇기가 거의
-    // 안 먹혀서 여전히 매번 리셋됐음. 기준을 1800ms로 크게 늘림. #문제시 원복
-    private var pinchZoomBase = 0f
-    private var pinchZoomLastEndAt = 0L
-    private val PINCH_BRIDGE_MS = 1800L
-    private var lastPinchScaleLogMs = 0L
-    // v: 재억 요청(2026-09-22, 3차, 김반장님 로그) - ScaleGestureDetector는 손가락 사이 거리가
-    // 일정 이상(터치 여유값) 벌어진 뒤에야 시작하는데, 엔미러에서 두 손가락이 20~500ms만 잡혔다
-    // 끊겨서 20번 넘게 집어도 시작된 게 2번뿐이었음. 그래서 거리 비율을 우리가 직접 계산해서
-    // 움직일 때마다 바로 반영함. 또 카카오 zoom 값은 "화면 1픽셀당 거리"라 클수록 멀리 보이는데
-    // 배율을 곱하고 있어서 벌리면 오히려 축소되던 방향 반대 버그도 같이 고침(나누기로). #문제시 원복
+    // 핀치 줌: 엔미러 같은 환경에선 두 손가락 터치가 자주 끊겨서 지도 내장 핀치로는 줌이 조금씩만 먹혔다.
+    // 그래서 지도 내장 줌 제스처는 끄고, 두 손가락 사이 거리의 비율을 직접 계산해 줌에 반영한다.
+    // 매번 "핀치 시작 시점"의 거리·줌을 기준으로 계산하므로 오차가 쌓여 줌이 튀지 않는다. 손을 뗀 뒤에도
+    // 일정 시간 줌을 유지한다(지도 컨트롤러의 zoomHoldUntil). #문제시 원복
     private var pinchLastSpan = 0f
-    // v: 재억 지시(2026-09-24, 재적용) - MOVE마다 "직전 값" 대비로 배율을 계산해서 나누기를
-    // 반복 적용하다 보니, 이벤트가 짧은 시간에 몰리면 작은 오차가 나누기 위에 나누기로 겹겹이
-    // 쌓여 실제 손가락 움직임보다 훨씬 크게 zoom이 튀었음("울컥울컥", 로그 예시: 0.7초 만에
-    // zoom 1.4→12.58). 매번 "핀치 시작 시점"의 손가락 거리/zoom을 기준으로 새로 비율을 계산하게
-    // 바꿔서 오차가 누적되지 않게 함. #문제시 원복
     private var pinchStartSpan = 0f
-    private var pinchStartZoom = 0f
+    private var pinchStartZoom = 0.0
+    private var pinchZoomGestureDisabled = false
+
     private fun pinchSpan(ev: android.view.MotionEvent): Float {
         if (ev.pointerCount < 2) return 0f
         val dx = ev.getX(0) - ev.getX(1)
@@ -4525,142 +3778,42 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     }
 
     private fun handlePinch(ev: android.view.MotionEvent) {
-        val mv = runCatching { naviView.mapComponent.mapView }.getOrNull() ?: return
+        val m = naverMap.map ?: return
         when (ev.actionMasked) {
             android.view.MotionEvent.ACTION_POINTER_DOWN -> {
                 if (ev.pointerCount == 2) {
-                    val bridging = System.currentTimeMillis() - pinchZoomLastEndAt <= PINCH_BRIDGE_MS
-                    // 재억 제보(2026-10-05, 폰 로그): 손 뗀 직후 지도가 스스로 줌을 되돌려(우리 7.92 / 지도 2.22) 다음
-                    // 핀치 때 낡은 값으로 이어붙이면 한 번에 점프("갈까말까"). 우리 값과 지도 실제 값이 25% 넘게 다르면
-                    // 지도 실제 값에서 시작. #문제시 원복
-                    val mapZoomNow = mv.zoom
-                    val drifted = pinchZoomBase > 0f && kotlin.math.abs(mapZoomNow - pinchZoomBase) > pinchZoomBase * 0.25f
-                    if (!bridging || pinchZoomBase == 0f || drifted) pinchZoomBase = mapZoomNow
-                    pinchZoomFrameCallback?.let { android.view.Choreographer.getInstance().removeFrameCallback(it) }
-                    pinchZoomFrameCallback = null
-                    kakaoGuidanceDelegate?.suppressForPinch = true
-                    pinchEndScheduler.postDelayed({
-                        if (pinchLastSpan == 0f && pinchZoomFrameCallback == null) kakaoGuidanceDelegate?.suppressForPinch = false
-                    }, 15000L)
                     pinchLastSpan = pinchSpan(ev)
                     pinchStartSpan = pinchLastSpan
-                    pinchStartZoom = pinchZoomBase
-                    pinchEndGeneration++ // 재입력 감지 - 예약해둔 "유지 모드 시작"을 무효화
-                    NavLogger.d(this, "[핀치줌브릿지] 시작 이어붙임=$bridging base=$pinchZoomBase 지도zoom=${mv.zoom}")
+                    pinchStartZoom = m.cameraPosition.zoom
+                    naverMap.holdZoom()
                 }
             }
             android.view.MotionEvent.ACTION_MOVE -> {
                 if (ev.pointerCount < 2 || pinchLastSpan < 1f) return
                 val span = pinchSpan(ev)
                 if (span < 1f) return
-                // v: 재억 제보(2026-09-23, 4차) - 완충장치 없이 두 손가락 거리를 매 이벤트마다 그대로
-                // 반영해서, 손 떨림 수준의 몇 픽셀짜리 미세한 움직임까지도 확대/축소 방향이 뒤집힌 걸로
-                // 잡아버림("줌인 할까 말까" 버벅임). 4픽셀 미만 변화는 무시(손 떨림으로 보고 그냥
-                // 넘어감 - pinchLastSpan도 안 바꿔서 다음 이벤트에서 다시 비교됨). #문제시 원복
+                // 손 떨림 수준(4px 미만)의 변화는 무시
                 if (kotlin.math.abs(span - pinchLastSpan) < 4f) return
                 pinchLastSpan = span
-                if (pinchZoomBase == 0f) pinchZoomBase = mv.zoom
-                if (pinchStartSpan < 1f) { pinchStartSpan = span; pinchStartZoom = pinchZoomBase }
+                if (pinchStartSpan < 1f) { pinchStartSpan = span; pinchStartZoom = m.cameraPosition.zoom }
                 val factor = span / pinchStartSpan
-                // v: 재억 제보(2026-09-23, 6차) - 0.3까지 허용했는데, SDK가 그 근처 값은 받아주지
-                // 않는 듯 화면에 반영이 안 됐음(우리 변수만 줄어들고 실제 지도는 그대로). SDK 진짜
-                // 하한선을 정확히 특정하긴 어려워서(자동 재조정 때문에 측정이 흔들림), 실측으로
-                // 확실히 잘 되는 범위(0.4~1.4)보다 여유 있게 좁힘. #문제시 원복
-                pinchZoomBase = (pinchStartZoom / factor).coerceIn(0.5f, 20f)
-                // v: 재억 제보(2026-09-23, 5차) - zoomTo()만 부르고 tiltTo()를 안 불러서, SDK가
-                // "기울기 지정 안 했으니 0(수평, 위에서 내려다보는 평면)으로 리셋"해버림 - 핀치
-                // 몇 번 하고 나면 운전 중 비스듬한 3D 시점이 사라지고 평면 뷰로 바뀌어 있었음
-                // ("비율이 달라 보인다"의 정체). 지금 기울기 값을 같이 넣어서 안 지워지게 함. #문제시 원복
-                runCatching { mv.moveCamera(KNMapCameraUpdate().zoomTo(pinchZoomBase).tiltTo(mv.tilt), false, false) }
-                val now = System.currentTimeMillis()
-                if (now - lastPinchScaleLogMs > 300) {
-                    lastPinchScaleLogMs = now
-                    NavLogger.d(this, "[핀치줌브릿지] 배율=$factor 결과zoom=$pinchZoomBase")
-                }
+                // 네이버 지도의 줌은 2배 확대 = +1 인 로그 단위
+                naverMap.setZoom((pinchStartZoom + Math.log(factor.toDouble()) / Math.log(2.0)).coerceIn(5.0, 20.0))
+                naverMap.holdZoom()
             }
             android.view.MotionEvent.ACTION_POINTER_UP -> {
                 if (ev.pointerCount == 2) {
                     pinchLastSpan = 0f
-                    pinchZoomLastEndAt = System.currentTimeMillis()
-                    NavLogger.d(this, "[핀치줌브릿지] 종료 최종zoom=$pinchZoomBase, ${PINCH_BRIDGE_MS}ms 안에 재입력 없으면 유지 모드 시작")
-                    // v: 재억 제보(2026-09-23, 3차) - 엔미러 환경에서 두 손가락이 계속 짧게 끊겼다
-                    // 재접촉하는데(이어붙이기로 원래 처리하던 상황), 손을 뗄 때마다 곧바로 "매 프레임
-                    // 유지 모드"가 켜져서 그 짧은 끊긴 순간마다 강하게 끼어들며 다음 재접촉과 충돌 -
-                    // "줌인 할까 말까" 버벅임으로 보였음. 진짜로 손을 뗀 게 맞는지(이어붙이기 시간 동안
-                    // 재입력이 없었는지) 확인한 뒤에만 유지 모드를 시작하도록 지연시킴. #문제시 원복
-                    // 재억 제보(2026-10-05): 1.8초 기다린 뒤에야 유지하면 그 사이 지도가 줌을 되돌려 "풀림". 손을 뗀
-                    // 즉시 유지 시작 - 새 손가락이 닿으면 POINTER_DOWN에서 바로 멈추고 이어받음. #문제시 원복
-                    pinchEndGeneration++
-                    startPinchZoomHold(pinchZoomBase)
+                    naverMap.holdZoom()
                 }
             }
         }
     }
 
-    private val pinchEndScheduler = android.os.Handler(android.os.Looper.getMainLooper())
-    private var pinchEndGeneration = 0
-
-    private var pinchZoomGestureDisabled = false
-    private var lastPinchBridgeFailLogMs = 0L
     private fun ensurePinchZoomBridge() {
         if (pinchZoomGestureDisabled) return
-        val result = runCatching { naviView.mapComponent.mapView }
-        val mv = result.getOrNull()
-        if (mv == null) {
-            // v: 재억 제보(2026-09-22) - 이전 버전에서 이 지점이 왜 실패하는지 로그가 없어서
-            // 원인 확정이 안 됐음. 1초에 한 번만 남겨서 도배 방지. #문제시 원복
-            val now = System.currentTimeMillis()
-            if (now - lastPinchBridgeFailLogMs > 1000) {
-                lastPinchBridgeFailLogMs = now
-                NavLogger.d(this, "[핀치줌브릿지] 실패: naviView초기화=${::naviView.isInitialized} 예외=${result.exceptionOrNull()?.javaClass?.simpleName}:${result.exceptionOrNull()?.message} mapView=null")
-            }
-            return
-        }
-        mv.useZoomGesture = false
+        naverMap.whenReady { it.uiSettings.isZoomGesturesEnabled = false }
         pinchZoomGestureDisabled = true
-        NavLogger.d(this, "[핀치줌브릿지] SDK 내장 핀치 끄고 자체 처리로 전환")
-    }
-
-    // v: 재억 제보(2026-09-22, 4차, 영상) - 손을 떼자마자 지도가 원래 확대 상태로 즉시
-    // 되돌아감. 원인은 카카오 SDK가 운전 중 위치가 갱신될 때마다(1초에 한 번꼴) 카메라
-    // zoom을 자체적으로 다시 계산해서 덮어쓰기 때문 - 우리가 zoomTo()로 바꿔놔도 다음 위치
-    // 갱신 틱에서 SDK가 그냥 지워버림. SDK에 "잠깐만 자동 줌 건들지 마" 같은 API가 없어서,
-    // 손을 뗀 뒤 일정 시간 동안 우리가 짧은 간격으로 계속 같은 zoom을 다시 밀어넣어(SDK가
-    // 덮어써도 바로 다음 틱에 우리가 또 덮어씀) 사용자 눈에는 몇 초간 유지되는 것처럼 보이게
-    // 함. 그 시간이 지나면 손을 놓고, SDK가 원래 하던 자동 추적으로 돌아감. #문제시 원복
-    private val PINCH_HOLD_MS = 10000L
-
-    // v: 재억 제보(2026-09-23, 2차) - 0.15초 간격으로는 그 사이에 SDK가 자기 내부 애니메이션으로
-    // 줌을 슬금슬금 움직이고 있어서(우리가 부르는 함수를 거치지 않는 자체 루프), "우리가 고정 →
-    // SDK가 그 사이 이동 → 우리가 또 홱 되돌림"이 반복되며 줌인/줌아웃을 반복하는 톱니 떨림으로
-    // 보였음(재억 확인). 0.15초마다 대신 화면이 그려질 때마다(Choreographer, 1초에 ~60번) 계속
-    // 눌러줘서 SDK가 움직일 틈 자체를 거의 없앰. #문제시 원복
-    private var pinchZoomFrameCallback: android.view.Choreographer.FrameCallback? = null
-
-    private fun startPinchZoomHold(zoom: Float) {
-        val choreographer = android.view.Choreographer.getInstance()
-        pinchZoomFrameCallback?.let { choreographer.removeFrameCallback(it) }
-        val until = System.currentTimeMillis() + PINCH_HOLD_MS
-        val cb = object : android.view.Choreographer.FrameCallback {
-            override fun doFrame(frameTimeNanos: Long) {
-                if (System.currentTimeMillis() >= until) { pinchZoomFrameCallback = null; kakaoGuidanceDelegate?.suppressForPinch = false; return }
-                // 그 사이에 새 핀치가 시작됐으면(pinchZoomLastEndAt이 갱신 안 되고 base만 바뀜) 멈춤
-                if (pinchLastSpan != 0f) { pinchZoomFrameCallback = null; return }
-                val mv = runCatching { naviView.mapComponent.mapView }.getOrNull()
-                // v: 재억 제보(2026-09-23, 7차) - 값이 안 어긋났는데도 프레임마다(초당 60번) 계속
-                // 같은 값을 다시 쓰고 있어서, 그 반복 자체가 미세한 떨림을 만들었음(재억 확인). 매
-                // 프레임 확인은 하되(SDK가 몰래 바꾸면 바로 잡아야 하니까), 실제로 어긋났을 때만
-                // 다시 씀. #문제시 원복
-                if (mv != null && kotlin.math.abs(mv.zoom - zoom) > 0.005f) {
-                    // v: 재억 제보(2026-09-23, 5차) - 여기서도 zoomTo()만 부르면 기울기가 0으로
-                    // 리셋됨(위와 동일 원인). 기울기값도 같이 넣음. #문제시 원복
-                    runCatching { mv.moveCamera(KNMapCameraUpdate().zoomTo(zoom).tiltTo(mv.tilt), false, false) }
-                }
-                choreographer.postFrameCallback(this)
-            }
-        }
-        pinchZoomFrameCallback = cb
-        choreographer.postFrameCallback(cb)
     }
 
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
@@ -4669,20 +3822,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // 초기화되기 전에 접근해 UninitializedPropertyAccessException으로 강제종료됨.
         // 그 타이밍의 터치는 어차피 곧 사라질 화면에 대한 것이니 그냥 무시. #문제시 원복
         if (!::binding.isInitialized) return super.dispatchTouchEvent(ev)
-        // 핀치 줌 진단(엔미러 환경): 두 번째 손가락이 앱까지 오는지 확인용. 이동 이벤트는 0.5초에 한 번만 기록.
-        val touchAct = ev.actionMasked
-        if (touchAct != android.view.MotionEvent.ACTION_MOVE) {
-            NavLogger.d(this, "[핀치진단] action=$touchAct 손가락수=${ev.pointerCount} source=0x${Integer.toHexString(ev.source)} device=${ev.deviceId}")
-        } else if (ev.pointerCount >= 2 && ev.eventTime - lastPinchMoveLogMs > 500) {
-            lastPinchMoveLogMs = ev.eventTime
-            NavLogger.d(this, "[핀치진단] MOVE 손가락수=${ev.pointerCount}")
-        }
         ensurePinchZoomBridge()
         if (pinchZoomGestureDisabled) {
             handlePinch(ev)
             if (ev.pointerCount >= 2) return true
         }
-        if (topBarDrag?.dispatch(ev) { super@KakaoNaviActivity.dispatchTouchEvent(it) } == true) return true
+        if (topBarDrag?.dispatch(ev) { super@NaverNaviActivity.dispatchTouchEvent(it) } == true) return true
         if (ev.action == android.view.MotionEvent.ACTION_DOWN) {
             val panel = binding.svSecondaryPanel
             if (panel != null && panel.visibility == View.VISIBLE) {
@@ -4723,27 +3868,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         return super.dispatchTouchEvent(ev)
     }
 
-    // v19.3.80(조사용 로그): 지도에서 주차장(실내 층별 지도) 데이터가 오는지 확인 - 지도를 움직여
-    // 큰 주차장/휴게소로 가면 카카오가 "포커스된 주차장" 목록을 이 받는이로 넘겨줌. #문제시 원복
-    private fun setupParkingLotProbe() {
-        try {
-            val mv = naviView.mapComponent.mapView ?: return
-            val props = mv.parkingLotProperties ?: return
-            props.isVisibleParkingLot = true
-            props.parkingLotReceiver = object : com.kakaomobility.knsdk.map.knmaploader.parking.idl.KNMapParkingLotReceiver {
-                override fun onReceiveFocusedParkingLots(
-                    mapView: com.kakaomobility.knsdk.map.knmapview.KNMapView?,
-                    parkingLots: List<com.kakaomobility.knsdk.map.knmaploader.parking.settings.deliver.KNMapParkingLot>
-                ) {
-                    NavLogger.d(this@KakaoNaviActivity, "[주차장] 수신 ${parkingLots.size}곳: " +
-                        parkingLots.joinToString { "${it.name}(id=${it.parkingLotId}, 층=${it.floors.size})" })
-                }
-            }
-            NavLogger.d(this, "[주차장] 조사 받는이 등록 완료")
-        } catch (e: Exception) {
-            NavLogger.e(this, "[주차장] 조사 등록 실패: ${e.message}")
-        }
-    }
 
     // 재억 요청(2026-10-05): 길안내 중 지도 중심(내 차 위치)을 화면 가운데가 아니라 운전자 쪽(왼쪽)으로 약간 치우치게.
     // 카카오 SDK가 정한 위치(왼쪽 정보패널 오른쪽 영역의 가운데, 약 0.56)를 카메라 앵커로 덮어씀. 가로 화면·분할화면 아님·
@@ -4758,28 +3882,18 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
     private fun applyDriverSideAnchor() {
-        try {
-            if (isFinishing || isDestroyed || !::naviView.isInitialized) return
-            if (!isGuidanceRunningNow() || activeRouteChoicePanel != null || parkedActive) return
-            if (resources.configuration.orientation != android.content.res.Configuration.ORIENTATION_LANDSCAPE) return
-            if (android.os.Build.VERSION.SDK_INT >= 24 && isInMultiWindowMode) return
-            val mv = naviView.mapComponent.mapView ?: return
-            val a = mv.anchor
-            if (kotlin.math.abs(a.x - DRIVER_SIDE_ANCHOR_X) < 0.01f) return
-            // getAnchor()의 y는 아래쪽 기준, anchorTo()의 y는 위쪽 기준이라 뒤집어 넣음(안 그러면 차가 위로 튐).
-            mv.moveCamera(
-                KNMapCameraUpdate().zoomTo(mv.zoom).tiltTo(mv.tilt).bearingTo(mv.bearing)
-                    .anchorTo(FloatPoint(DRIVER_SIDE_ANCHOR_X, 1f - a.y)), false, false
-            )
-        } catch (e: Exception) {
-            NavLogger.e(this, "[운전자쪽중심] 적용 실패: ${e.message}")
-        }
+        if (isFinishing || isDestroyed || !::naverMap.isInitialized) return
+        // 길안내 중 + 가로 화면 + 전체 화면일 때만 차를 운전자 쪽(왼쪽)으로 치우쳐 보이게 한다.
+        val active = isGuidanceRunningNow() && activeRouteChoicePanel == null && !parkedActive &&
+            resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE &&
+            !(android.os.Build.VERSION.SDK_INT >= 24 && isInMultiWindowMode)
+        naverMap.anchorXFraction = if (active) DRIVER_SIDE_ANCHOR_X else null
     }
 
     override fun onResume() {
         android.view.Choreographer.getInstance().removeFrameCallback(driverAnchorFrame); android.view.Choreographer.getInstance().postFrameCallback(driverAnchorFrame)
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ setupParkingLotProbe() }, 3000L)
         super.onResume()
+        if (::naverMap.isInitialized) naverMap.onResume()
         NavLogger.d(this, "[lifecycle] onResume")
         // v: 재억 제보(2026-09-02) - 티맵 화면에서 즐겨찾기를 눌러 "경유지 추가"를 고른 경우,
         // 그쪽엔 경로를 다시 짜는 코드가 없어서 요청만 남기고 화면을 닫음. 이 화면이 다시
@@ -4819,11 +3933,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // 오는 순간 최신 차선정보를 바로 그려주고, 이후 새 데이터가 들어올 때마다
         // 곧바로 반영되도록 "지금 활성화된 화면" 자리에 이 화면을 등록. #문제시 원복
         LaneSignalRepository.activeRenderer = {
-            renderLaneSignalBar(this@KakaoNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "kakao")
+            renderLaneSignalBar(this@NaverNaviActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "kakao")
         }
         LaneSignalRepository.notifyChanged()
         AccidentAlertRepository.activeRenderer = {
-            renderAlertBanners(this@KakaoNaviActivity, binding.llAccidentAlert, binding.tvAccidentAlert, binding.llEmergencyAlert, binding.tvEmergencyAlert)
+            renderAlertBanners(this@NaverNaviActivity, binding.llAccidentAlert, binding.tvAccidentAlert, binding.llEmergencyAlert, binding.tvEmergencyAlert)
         }
         EmergencyAlertRepository.activeRenderer = AccidentAlertRepository.activeRenderer
         AccidentAlertRepository.notifyChanged()
@@ -4853,8 +3967,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     override fun onPause() {
         android.view.Choreographer.getInstance().removeFrameCallback(driverAnchorFrame)
+        if (::naverMap.isInitialized) naverMap.onPause()
         super.onPause()
-        kakaoGuidanceDelegate?.suppressForPinch = false
         NavLogger.d(this, "[lifecycle] onPause")
         LaneSignalRepository.activeRenderer = null
         AccidentAlertRepository.activeRenderer = null
@@ -4867,6 +3981,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     }
 
     override fun onStop() {
+        if (::naverMap.isInitialized) naverMap.onStop()
         super.onStop()
         NavLogger.d(this, "[lifecycle] onStop")
         NavOverlayManager.activityStopped(this)
@@ -4915,17 +4030,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             recreate()
             return
         }
-        if (::naviView.isInitialized) {
-            MapSurfaceRefresher.onWindowResized(this, naviView, "카카오")
-        }
     }
 
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: android.content.res.Configuration) {
         super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
         NavLogger.d(this, "[lifecycle] 분할화면 ${if (isInMultiWindowMode) "진입" else "해제"}")
-        if (::naviView.isInitialized) {
-            MapSurfaceRefresher.onWindowResized(this, naviView, "카카오")
-        }
     }
 
     override fun onBackPressed() {
@@ -4947,7 +4056,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // v14.4: GPS 위치가 들어올 때마다(제한 없이, 최대한 빠르게) 매번 새로 메서드를
     // 찾던 것을 한 번만 찾아서 저장해두고 재사용하도록 캐싱. MapActivity.kt의
     // sdkManagerCompanion/getInstanceMethod 캐싱 방식과 동일한 패턴. #문제시 원복
-    private var gpsOnLocationChangedMethod: java.lang.reflect.Method? = null
 
     // 길안내 시작 후 GPS가 처음 잡히기까지 걸린 시간을 재기 위한 기록용(동작에는 영향 없음). #문제시 원복
     private var gpsWatchStartAt = 0L
@@ -5006,20 +4114,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
             binding.btnGpsStatus?.text = "GOOD (정확도 ${location.accuracy.toInt()}m)"
             binding.btnGpsStatus?.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
-            val gpsManager = KNSDK.sharedGpsManager()
-            if (gpsManager != null) {
-                if (gpsOnLocationChangedMethod == null) {
-                    gpsOnLocationChangedMethod = gpsManager.javaClass.getMethod("onLocationChanged", Location::class.java)
-                }
-                gpsOnLocationChangedMethod?.invoke(gpsManager, location)
-                NavLogger.trace(
-                    "gps",
-                    "[GPS] KNSDK로 전달됨: lat=${location.latitude} lon=${location.longitude} " +
-                        "speed=${location.speed} bearing=${location.bearing} accuracy=${location.accuracy}"
-                )
-            }
         } catch (e: Exception) {
-            NavLogger.e(this, "[GPS] KNSDK GPS 매니저 전달 예외: ${e.message}")
+            NavLogger.e(this, "[GPS] 위치 처리 예외: ${e.message}")
         }
     }
 
@@ -5049,7 +4145,6 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // v: 재억 지시(2026-09-27, GPS끊김워치독 추가하면서) - 델리게이트가 자체 Handler
         // 루프를 갖게 됐으니, 화면 종료 시 반드시 멈춰야 액티비티 재생성될 때마다 중복으로
         // 계속 도는 걸 막을 수 있음. #문제시 원복
-        try { kakaoGuidanceDelegate?.stopGpsWatchdog() } catch (e: Exception) { }
         cancelNavNotification()
         parkedRefresh?.let { parkedHandler.removeCallbacks(it) }
         hudPollHandler.removeCallbacksAndMessages(null)
@@ -5074,23 +4169,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         } catch (e: Exception) {
             NavLogger.e(this, "티맵 볼륨 복원 예외: ${e.message}")
         }
-        // v: 재억 제보(2026-08-28, 실기기 로그 분석) - 화면 크기 변화 등으로 이 액티비티가
-        // 짧은 시간에 여러 번 destroy/recreate되면, 예전 인스턴스의 onDestroy()가 뒤늦게
-        // 실행되면서 방금 새로 뜬 인스턴스가 막 등록한 델리게이트까지 같이 지워버릴 수
-        // 있었음(무조건 null 처리). 지금 SDK에 등록된 델리게이트가 진짜 "나 자신"일 때만
-        // 지우도록 바꿔서, 다른(더 최신) 인스턴스가 등록해놓은 델리게이트를 실수로
-        // 지우지 않게 함. #문제시 원복
-        try {
-            KNSDK.sharedGuidance()?.apply {
-                if (guideStateDelegate === kakaoGuidanceDelegate) guideStateDelegate = null
-                if (routeGuideDelegate === kakaoGuidanceDelegate) routeGuideDelegate = null
-                if (safetyGuideDelegate === kakaoGuidanceDelegate) safetyGuideDelegate = null
-                if (voiceGuideDelegate === kakaoGuidanceDelegate) voiceGuideDelegate = null
-                if (citsGuideDelegate === kakaoGuidanceDelegate) citsGuideDelegate = null
-                if (locationGuideDelegate === kakaoGuidanceDelegate) locationGuideDelegate = null
-            }
-        } catch (e: Exception) {
-            // KNSDK 상태에 따라 델리게이트 해제가 실패해도 앱 동작엔 영향 없음.
-        }
+        // 안내 엔진(NaverNavigator)은 화면과 별개로 계속 돌 수 있어서(티맵 화면으로 돌아가도 콤마·HUD 전송 유지)
+        // 멈추지 않고, 이 화면이 연결해 둔 리스너와 지도만 정리한다. 더 새 화면이 이미 리스너를 갈아 끼웠다면 건드리지 않는다.
+        NaverNavigator.clearListener(naverGuidanceListener)
+        PopupCard.onPopupVisibilityChanged = null
+        try { naverMap.onDestroy() } catch (e: Exception) { NavLogger.e(this, "지도 정리 예외: ${e.message}") }
+        if (!NaverNavigator.isRunning) NaverNavigator.releaseLocationIfIdle()
     }
 }
