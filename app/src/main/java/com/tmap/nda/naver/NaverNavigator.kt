@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import com.tmap.nda.KakaoRouteDataRepository
+import com.tmap.nda.GuideVoice
 import com.tmap.nda.NavLogger
 import com.tmap.nda.navdy.NavdySender
 import com.tmap.nda.nmirror.GuidanceSnapshot
@@ -55,6 +56,7 @@ object NaverNavigator {
     private var lastTrafficRefreshAt = 0L
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    private var appliedVoice = ""
     private val ttsPending = ArrayList<String>()
 
     var lastLocation: Location? = null
@@ -311,6 +313,7 @@ object NaverNavigator {
         tts = TextToSpeech(ctx) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale.KOREAN
+                tts?.let { GuideVoice.applySaved(ctx, it) }
                 tts?.setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
@@ -327,6 +330,11 @@ object NaverNavigator {
     private fun speak(text: String) {
         if (!ttsReady) { ttsPending.add(text); return }
         if (muted) return
+        // 설정에서 목소리를 바꿨으면 다음 안내부터 바로 적용
+        appContext?.let { c ->
+            val want = GuideVoice.saved(c)
+            if (want != appliedVoice) { tts?.let { GuideVoice.applySaved(c, it) }; appliedVoice = want }
+        }
         val params = Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, guideVolume.coerceIn(0f, 1f)) }
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "naver")
     }

@@ -1054,6 +1054,7 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 6)
         }
+        etcItems.addAll(GuideVoice.buildItems(context))
         etcItems.add(carFuelSectionTitle)
         etcItems.add(carFuelHintText)
         etcItems.add(carFuelRow)

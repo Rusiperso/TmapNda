@@ -185,6 +185,22 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
+    // 재억 요청: 티맵 SDK가 화면 맨 아래에 그리는 바(주행종료 · 현재 주소 · 메뉴)는 안 쓰니 숨겨서
+    // 지도가 그 자리까지 보이게 함. SDK가 상태가 바뀔 때 다시 보이게 할 수 있어서 레이아웃이
+    // 바뀔 때마다 숨김 상태를 다시 맞춤. #문제시 원복
+    private var sdkBarHideListener: android.view.ViewTreeObserver.OnGlobalLayoutListener? = null
+    private fun hideSdkBottomBar() {
+        val id = resources.getIdentifier("navigation_eta", "id", packageName)
+        if (id == 0) return
+        val host = binding.tmapUILayout
+        val hide = { host.findViewById<View>(id)?.let { if (it.visibility != View.GONE) it.visibility = View.GONE } }
+        hide()
+        sdkBarHideListener?.let { host.viewTreeObserver.removeOnGlobalLayoutListener(it) }
+        val l = android.view.ViewTreeObserver.OnGlobalLayoutListener { hide() }
+        sdkBarHideListener = l
+        host.viewTreeObserver.addOnGlobalLayoutListener(l)
+    }
+
     private fun installTopPanelAutoOffset() {
         binding.llLeftHudPanel.addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
             val panelHeight = bottom - top
@@ -3978,6 +3994,7 @@ class MapActivity : AppCompatActivity() {
         }
 
         setupDestinationSearchUi()
+        hideSdkBottomBar()
         updateRecentSearchPanel()
         applyTmapSatelliteViewSetting()
         applyTmapDayNight()
