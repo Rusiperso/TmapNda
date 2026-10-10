@@ -208,7 +208,7 @@ TmapNda를 쓰려면 **① Tmap AppKey**와, 고른 길안내 쪽 키(**② 카�
 
 **2.** 결제 수단 등록 — 우측 상단 내 계정 → **과금 정보 및 비용 관리** → 결제 수단(신용카드)을 등록합니다. 무료 이용량 안에서 쓰면 요금은 나오지 않지만, Maps 서비스를 쓰려면 결제 수단이 먼저 등록돼 있어야 합니다.
 
-<p align="center"><img src="docs/images/naver-cloud-account-menu.png" width="320" alt="계정 메뉴 - 과금 정보 및 비용 관리"></p>
+<p align="center"><img src="docs/images/naver-cloud-account-menu.jpg" width="320" alt="계정 메뉴 - 과금 정보 및 비용 관리"></p>
 
 <p align="center"><img src="docs/images/naver-cloud-billing.png" width="620" alt="결제 수단 등록 화면 (카드 정보는 가림)"></p>
 
@@ -224,15 +224,19 @@ TmapNda를 쓰려면 **① Tmap AppKey**와, 고른 길안내 쪽 키(**② 카�
    | API 선택 | **Dynamic Map**, **Directions 5** 체크 (Static Map·Geocoding은 필요 없습니다) |
    | Android 앱 패키지 이름 | `com.tmap.nda` 입력 후 **오른쪽 "+ 추가" 버튼을 꼭 누르기** (목록에 들어가야 등록 완료) |
 
-<p align="center"><img src="docs/images/naver-cloud-app-create.jpg" width="620" alt="Application 등록 화면 - Dynamic Map, Directions 5, 패키지 이름 com.tmap.nda"></p>
+<p align="center"><img src="docs/images/naver-cloud-app-create.png" width="620" alt="Application 등록 화면 - Dynamic Map, Directions 5, 패키지 이름 com.tmap.nda"></p>
 
    > Dynamic Map을 빼먹으면 지도에 429 오류가, 패키지 이름이 다르면 401 오류가 나서 지도가 뜨지 않습니다.
 
 **5.** 등록한 Application을 선택하면 **인증 정보**에서 **Client ID(Key ID)** 와 **Client Secret(Key Secret)** 을 볼 수 있습니다. 둘 다 복사합니다. (키는 다른 사람에게 공개하지 마세요.)
 
-<p align="center"><img src="docs/images/naver-cloud-app-list.jpg" width="620" alt="등록된 Application과 API별 사용량 화면"></p>
+<p align="center"><img src="docs/images/naver-cloud-app-list.png" width="620" alt="등록된 Application과 API별 사용량 화면"></p>
 
-**6.** TmapNda에서 **≡ 메뉴 → 설정 → 길안내 선택 → 네이버로 길 안내**를 누르면 키 입력 창이 뜹니다. Key ID와 Key Secret을 붙여넣고 **저장하고 재시작**을 누르세요. 앱이 다시 시작되면 길안내가 네이버로 동작합니다.
+**6.** 키는 **Application 이름 옆 인증 정보 버튼**을 누르면 나오는 창에서 복사합니다. 아래 사진의 **빨간 칸(Client ID, Client Secret)** 이 TmapNda에 넣을 값이고, 아래쪽 **Android 앱 패키지 이름이 `com.tmap.nda`** 로 되어 있는지도 여기서 꼭 확인하세요. 길안내가 "계산 실패"로 나오면 대부분 이 값이 틀렸거나 패키지 이름이 다른 경우입니다.
+
+<p align="center"><img src="docs/images/naver-cloud-auth-info.png" width="520" alt="인증 정보 창 - Client ID, Client Secret, Android 앱 패키지 이름 확인 위치"></p>
+
+**7.** TmapNda에서 **≡ 메뉴 → 설정 → 길안내 선택 → 네이버로 길 안내**를 누르면 키 입력 창이 뜹니다. Key ID와 Key Secret을 붙여넣고 **저장하고 재시작**을 누르세요. 앱이 다시 시작되면 길안내가 네이버로 동작합니다.
 
 > 카카오로 되돌리려면 같은 곳에서 **카카오로 길 안내**를 누르고 카카오 네이티브 앱 키를 넣으면 됩니다.
 
