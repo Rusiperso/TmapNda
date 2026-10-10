@@ -727,7 +727,13 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
 
     private fun currentStartLonLat(): LonLat? {
         NaverNavigator.ensureLocation(this)
-        val loc = NaverNavigator.currentFix() ?: com.tmap.nda.naver.FreshLocation.lastFresh(this) ?: return null
+        val loc = NaverNavigator.currentFix() ?: com.tmap.nda.naver.FreshLocation.lastFresh(this)
+            ?: com.tmap.nda.naver.FreshLocation.lastFresh(this, 600_000L)
+            ?: run {
+                // 저장된 위치도 없으면 위치를 직접 요청해 받아둔 값(10분 이내)을 씀
+                com.tmap.nda.naver.FreshLocation.startQuickFix(this)
+                com.tmap.nda.naver.FreshLocation.recentQuickFix()
+            } ?: return null
         return LonLat(loc.longitude, loc.latitude)
     }
 

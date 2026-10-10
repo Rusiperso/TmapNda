@@ -1036,6 +1036,17 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
 
         if (startPoi == null) {
+            // GPS·저장된 위치가 모두 비었으면 위치를 직접 요청해 받아둔 값(10분 이내)을 출발지로 씀
+            com.tmap.nda.naver.FreshLocation.startQuickFix(this)
+            val q = com.tmap.nda.naver.FreshLocation.recentQuickFix()
+            if (q != null) {
+                val katec = KNSDK.convertWGS84ToKATEC(q.longitude, q.latitude)
+                startPoi = KNPOI("현 위치", katec.x.toInt(), katec.y.toInt(), "")
+                NavLogger.d(this, "[GPS대기] SDK/저장 위치가 없어 직접 요청한 위치(${q.provider})로 출발")
+            }
+        }
+
+        if (startPoi == null) {
             Toast.makeText(this, "GPS 확인 중입니다...", Toast.LENGTH_SHORT).show()
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 if (!isFinishing) resolveCurrentPositionThenRequestRoute(destName, destLat, destLon, finishOnFailure)
@@ -2795,6 +2806,13 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 }
             } catch (e: SecurityException) {
                 NavLogger.e(this, "[$logTag] 위치 권한 없음: ${e.message}")
+            }
+        }
+        if (startPoi == null) {
+            com.tmap.nda.naver.FreshLocation.startQuickFix(this)
+            com.tmap.nda.naver.FreshLocation.recentQuickFix()?.let { q ->
+                val katec = KNSDK.convertWGS84ToKATEC(q.longitude, q.latitude)
+                startPoi = KNPOI("현 위치", katec.x.toInt(), katec.y.toInt(), "")
             }
         }
         if (startPoi == null) {
