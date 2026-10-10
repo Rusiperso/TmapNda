@@ -414,6 +414,13 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
+    // 설정의 "네이버 지도 위성지도 보기"를 지도에 반영(안내 시작 때와 설정 창을 닫을 때).
+    private fun applyNaverSatellite() {
+        val on = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("naver_satellite_view_enabled", false)
+        if (::naverMap.isInitialized) naverMap.setSatellite(on)
+        NavLogger.d(this, "[네이버위성지도] 적용됨: $on")
+    }
+
     private fun setupContentAndStart(destName: String, destLat: Double, destLon: Double, routePriorityName: String?) {
         binding = ActivityNaverNaviBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -422,6 +429,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         // 지도: 카카오 지도 대신 네이버 지도를 이 자리에 넣는다(UI는 그대로).
         naverMap = NaverMapController(this, binding.naviView)
         naverMap.init(NaverDirectionsClient.keyId(this), null) { }
+        applyNaverSatellite()
         guideOverlay = com.tmap.nda.naver.NaverGuideOverlay(this, binding.root)
         PopupCard.onPopupVisibilityChanged = { visible -> runOnUiThread { guideOverlay.setObscured(visible) } }
         applyKakaoDayNight()
@@ -1206,6 +1214,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
                 onDayNightChanged = { applyKakaoDayNight() }
             ) {
                 applyKakaoDayNight()
+                applyNaverSatellite()
                 val showWaypointButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                     .getBoolean("show_waypoint_button", true)
                 val showCategoryButton = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)

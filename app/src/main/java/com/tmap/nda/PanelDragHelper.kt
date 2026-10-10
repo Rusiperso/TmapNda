@@ -755,6 +755,14 @@ object PanelDragHelper {
             setPadding(40, 0, 40, 32)
         }
 
+        // 네이버 길안내 지도를 위성지도로 볼지(기본 꺼짐). 티맵 위성지도 설정과는 별개.
+        val naverSatelliteViewCheckBox = android.widget.Switch(context).apply {
+            text = "네이버 지도 위성지도 보기"
+            isChecked = pref.getBoolean("naver_satellite_view_enabled", false)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 32)
+        }
+
         // v9.2: 재억 요청 - 도로 위 초록/주황/빨강 실시간 정체 표시 켜고 끄기. SDK 안에 실제
         // 스위치가 있는지는 아직 조사 중이라(dumpTrafficApiCandidates), 우선 체크박스와 저장값만
         // 만들어둠 - 조사 결과 나오면 applyTmapSatelliteViewSetting()처럼 실제로 연결 예정. #문제시 원복
@@ -956,6 +964,7 @@ object PanelDragHelper {
         ))
         addAccordionGroup("화면 표시", listOfNotNull(
             satelliteViewCheckBox,          // 티맵 위성지도 보기
+            naverSatelliteViewCheckBox,     // 네이버 지도 위성지도 보기
             dayNightRow,                    // 지도 밝기 (자동/항상 낮/항상 밤)
             routeLineDisplayCheckBox,       // 경로선 콤마 화면에 표시
             trafficInfoCheckBox,            // 티맵 교통 정보 (도로 정체 색깔 표시)
@@ -1312,6 +1321,7 @@ object PanelDragHelper {
                     .putBoolean("show_cancel_waypoint_button", showCancelWaypointButtonCheckBox.isChecked)
                     .putBoolean("show_toggle_top_panel_button", showToggleTopPanelButtonCheckBox.isChecked)
                     .putBoolean("tmap_satellite_view_enabled", satelliteViewCheckBox.isChecked)
+                    .putBoolean("naver_satellite_view_enabled", naverSatelliteViewCheckBox.isChecked)
                     .putBoolean("tmap_traffic_info_enabled", trafficInfoCheckBox.isChecked)
                     .putBoolean("route_line_display_enabled", routeLineDisplayCheckBox.isChecked)
                     .putBoolean("kakao_minimal_guide_enabled", kakaoMinimalGuideCheckBox.isChecked)

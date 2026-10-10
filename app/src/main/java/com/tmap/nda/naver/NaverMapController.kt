@@ -88,6 +88,12 @@ class NaverMapController(private val activity: Activity, private val host: Frame
     fun onLowMemory() = mapView.onLowMemory()
     fun onDestroy() = mapView.onDestroy()
 
+    // ===== 위성지도 =====
+    /** 켜면 내비용 위성 지도(NaviHybrid), 끄면 내비용 일반 지도(Navi). */
+    fun setSatellite(on: Boolean) = whenReady {
+        it.mapType = if (on) NaverMap.MapType.NaviHybrid else NaverMap.MapType.Navi
+    }
+
     // ===== 낮/밤 =====
     fun setNight(night: Boolean) = whenReady { it.isNightModeEnabled = night }
 
