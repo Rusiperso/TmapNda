@@ -333,6 +333,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        onBackPressedDispatcher.addCallback(this, backCallback)
         NavLogger.appContext = applicationContext
         // v: 재억 재제보(2026-08-30) - "카카오 종료할 때 등"의 멈춤도 잡기 위해 여기서도
         // 시작 시도(이미 시작돼 있으면 내부에서 무시됨, MapActivity와 동일한 전역 워치독
@@ -1057,6 +1058,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val katec = KNSDK.convertWGS84ToKATEC(destLon, destLat)
         val goalPoi = KNPOI(destName, katec.x.toInt(), katec.y.toInt(), "")
 
+        KakaoUsage.countCall(this)
         KNSDK.makeTripWithStart(startPoi, goalPoi, null) { error, trip ->
             runOnUiThread {
                 if (error != null || trip == null) {
@@ -1069,6 +1071,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // SDK 기본값(승용차+휘발유)으로만 계산됨. #문제시 원복
                 trip.setRouteConfig(CarFuelSettings.buildRouteConfiguration(this))
                 NavLogger.d(this, "카카오 경로요청 성공, 안내 시작: $destName")
+                showKakaoStatusBox(KakaoUsage.label(this))
                 // v12.9: 안내 이어가기 - 안내가 실제로 시작되는 이 시점에 목적지를 저장.
                 // 정상 도착 또는 안내종료 버튼 - 어느 쪽이든 finishGuidance()에서 지워짐. #문제시 원복
                 ResumeGuidanceStore.save(this, HistoryEntry(destName, "", destLat, destLon, routePriorityName = activeRoutePriority.name, routeAvoidOption = activeRouteAvoidOption))
@@ -1194,6 +1197,42 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
         } catch (e: Exception) {
             NavLogger.e(this, "[안내종료훅] 리스너 등록 예외: ${e.message}")
+        }
+    }
+
+    // 사용량 같은 상태 문구를 알림창 대신 화면 아래에 5초 동안 띄운다(네이버 길안내 화면과 같은 모양).
+    private var kakaoStatusBoxView: android.widget.TextView? = null
+    private val kakaoStatusBoxHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private fun showKakaoStatusBox(text: String, durationMs: Long = 5000L) {
+        try {
+            val root = findViewById<android.widget.FrameLayout>(android.R.id.content) ?: return
+            var v = kakaoStatusBoxView
+            if (v == null || v.parent == null) {
+                v = android.widget.TextView(this).apply {
+                    setTextColor(android.graphics.Color.WHITE)
+                    textSize = 16f
+                    gravity = android.view.Gravity.CENTER
+                    setPadding(PopupCard.dp(this@KakaoNaviActivity, 22), PopupCard.dp(this@KakaoNaviActivity, 12), PopupCard.dp(this@KakaoNaviActivity, 22), PopupCard.dp(this@KakaoNaviActivity, 12))
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        setColor(android.graphics.Color.parseColor("#E61B2430"))
+                        cornerRadius = PopupCard.dp(this@KakaoNaviActivity, 22).toFloat()
+                    }
+                    elevation = 30f
+                }
+                root.addView(v, android.widget.FrameLayout.LayoutParams(
+                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL
+                    bottomMargin = PopupCard.dp(this@KakaoNaviActivity, 120)
+                })
+                kakaoStatusBoxView = v
+            }
+            v.text = text
+            v.visibility = View.VISIBLE
+            kakaoStatusBoxHandler.removeCallbacksAndMessages(null)
+            kakaoStatusBoxHandler.postDelayed({ kakaoStatusBoxView?.visibility = View.GONE }, durationMs)
+        } catch (e: Exception) {
+            NavLogger.e(this, "[사용량표시] 예외: ${e.message}")
         }
     }
 
@@ -2874,6 +2913,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // v: 재억 제보(2026-08-22) - 리플렉션 방식이 실제 기기에서 "메서드를 못 찾음"으로
         // 매번 조용히 실패하고 있었음. 확인해보니 애초에 리플렉션이 필요 없었음 - 이 앱
         // 다른 곳에서 이미 검증된 것과 동일하게 직접 호출. #문제시 원복
+        KakaoUsage.countCall(this)
         KNSDK.makeTripWithStart(startPoi, goalPoi, viaPois) { error, trip ->
             runOnUiThread {
                 if (error != null || trip == null) {
@@ -4985,10 +5025,18 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
-    override fun onBackPressed() {
+    private fun handleBackPress() {
         if (kakaoMenuSheet?.isShowing == true) { kakaoMenuSheet?.dismiss(); return }
         finishGuidance()
     }
+
+    // 안드로이드 16 기준 앱은 onBackPressed()가 호출되지 않고 곧바로 화면이 닫히므로, 뒤로 가기 콜백을 직접 등록한다.
+    private val backCallback = object : androidx.activity.OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() { handleBackPress() }
+    }
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun onBackPressed() { handleBackPress() }
 
     // v1.0.90: KNSDK.sharedGpsManager()는 안드로이드 실시간 GPS를 자동으로 받지 않음 -
     // 앱이 LocationManager로 직접 구독해서 매번 gpsManager.onLocationChanged(location)을

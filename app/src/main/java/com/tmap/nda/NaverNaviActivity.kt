@@ -461,6 +461,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
             }
         })
         naverMenuSheet.onShowingChanged = { showing -> guideOverlay.setObscured(showing) }
+        onBackPressedDispatcher.addCallback(this, backCallback)
         guideOverlay.onMenu = { naverMenuSheet.toggle() }
         guideOverlay.onRefresh = { NaverNavigator.refreshRoute() }
         guideOverlay.onRecenter = {
@@ -4127,7 +4128,8 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         NavLogger.d(this, "[lifecycle] 분할화면 ${if (isInMultiWindowMode) "진입" else "해제"}")
     }
 
-    override fun onBackPressed() {
+    /** 뒤로 가기 처리: 메뉴판 → 경로 선택창 → 안내 종료 순. 최신 안드로이드의 예측 뒤로 가기에서도 동작하도록 아래 콜백으로 연결한다. */
+    private fun handleBackPress() {
         if (::naverMenuSheet.isInitialized && naverMenuSheet.isShowing) { naverMenuSheet.dismiss(); return }
         // 경로 선택창이 떠 있으면 안내를 끝내지 않고 선택창만 닫는다(하던 안내가 있으면 그대로 이어감)
         val panel = activeRouteChoicePanel
@@ -4141,6 +4143,15 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         }
         finishGuidance()
     }
+
+    // 안드로이드 16 기준 앱은 onBackPressed()가 호출되지 않고 곧바로 화면이 닫혀 안내가 끝나므로,
+    // 뒤로 가기 콜백을 직접 등록해 같은 처리를 하게 한다(옛 방식으로 눌러도 같은 처리로 간다).
+    private val backCallback = object : androidx.activity.OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() { handleBackPress() }
+    }
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun onBackPressed() { handleBackPress() }
 
     // v1.0.90: KNSDK.sharedGpsManager()는 안드로이드 실시간 GPS를 자동으로 받지 않음 -
     // 앱이 LocationManager로 직접 구독해서 매번 gpsManager.onLocationChanged(location)을
