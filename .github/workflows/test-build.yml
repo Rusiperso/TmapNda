@@ -6,6 +6,8 @@ on:
   push:
     tags:
       - 'test-*'
+    branches:
+      - 'claude/eager-mccarthy-6jhvtm'
 
 permissions:
   contents: write
@@ -31,12 +33,25 @@ jobs:
           USAGE_WEBHOOK_URL: ${{ secrets.USAGE_WEBHOOK_URL }}
           CRASH_WEBHOOK_URL: ${{ secrets.CRASH_WEBHOOK_URL }}
 
+      - name: Decide test tag
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            VERSION=$(grep 'versionName' app/build.gradle.kts | grep -oP '"\K[^"]*')
+            TAG="test-${VERSION}-b${GITHUB_RUN_NUMBER}"
+          fi
+          echo "TEST_TAG=${TAG}" >> "$GITHUB_ENV"
+
       - name: Rename APK
-        run: mv app/build/outputs/apk/debug/app-debug.apk "app/build/outputs/apk/debug/TmapNda-${GITHUB_REF_NAME}.apk"
+        run: mv app/build/outputs/apk/debug/app-debug.apk "app/build/outputs/apk/debug/TmapNda-${TEST_TAG}.apk"
 
       - name: Create pre-release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TEST_TAG }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ env.TEST_TAG }}
           files: app/build/outputs/apk/debug/TmapNda-*.apk
           prerelease: true
           make_latest: false
