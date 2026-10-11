@@ -76,6 +76,9 @@ object GuideVoice {
 
     private fun shortName(name: String) = name.removePrefix("ko-kr-x-").removePrefix("ko-KR-").take(24)
 
+    /** 안내 중 메뉴판 등 다른 화면에서 목소리 고르기 창을 바로 띄운다. */
+    fun openPicker(context: Context, onSaved: () -> Unit = {}) = showPicker(context, onSaved)
+
     private fun showPicker(context: Context, onSaved: () -> Unit) {
         var tts: TextToSpeech? = null
         tts = TextToSpeech(context) { status ->

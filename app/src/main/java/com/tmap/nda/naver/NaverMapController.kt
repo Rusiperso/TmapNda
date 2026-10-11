@@ -16,6 +16,8 @@ import com.naver.maps.map.MapView
 import com.naver.maps.map.NaverMap
 import com.naver.maps.map.NaverMapSdk
 import com.naver.maps.map.overlay.Marker
+import com.naver.maps.map.overlay.MultipartPathOverlay
+import com.naver.maps.map.overlay.OverlayImage
 import com.naver.maps.map.overlay.PathOverlay
 
 /**
@@ -61,7 +63,11 @@ class NaverMapController(private val activity: Activity, private val host: Frame
                 isRotateGesturesEnabled = true; isTiltGesturesEnabled = true
             }
             m.locationOverlay.isVisible = true
-            m.locationOverlay.iconAlpha = 0.9f
+            m.locationOverlay.iconAlpha = 1f
+            m.locationOverlay.icon = OverlayImage.fromBitmap(NaverMapIcons.car(dp(56)))
+            m.locationOverlay.iconWidth = dp(56); m.locationOverlay.iconHeight = dp(56)
+            m.locationOverlay.circleRadius = 0
+            m.locationOverlay.zIndex = 50
             m.addOnCameraChangeListener { reason, _ ->
                 if (reason == CameraUpdate.REASON_GESTURE) {
                     val now = System.currentTimeMillis()
@@ -137,31 +143,119 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         previewPaths.clear()
     }
 
+    private var lastActiveRoute: NaverRoute? = null
+    private var activeMulti: MultipartPathOverlay? = null
+
     fun showActiveRoute(route: NaverRoute) = whenReady { m ->
+        lastActiveRoute = route
         clearPreview()
-        activePath?.map = null
+        activePath?.map = null; activePath = null
+        activeMulti?.map = null; activeMulti = null
+        val colored = activity.getSharedPreferences("TmapNdaPrefs", android.content.Context.MODE_PRIVATE)
+            .getBoolean("naver_route_traffic_color", false)
+        val blue = 0xFF2E7DFF.toInt(); val gray = 0xFFB0BEC5.toInt()
+        if (colored && route.sections.isNotEmpty() && route.path.size >= 2) {
+            // 구간별 막힘(원활=초록 · 서행=주황 · 정체=빨강)을 경로선에 입힌다. 구간 사이 빈 곳은 파란색.
+            val coords = ArrayList<List<LatLng>>(); val colors = ArrayList<MultipartPathOverlay.ColorPart>()
+            val last = route.path.size - 1
+            fun add(from: Int, to: Int, color: Int) {
+                if (to <= from) return
+                coords.add(latLngs(route.path.subList(from, minOf(to, last) + 1)))
+                colors.add(MultipartPathOverlay.ColorPart(color, Color.WHITE, gray, Color.WHITE))
+            }
+            var cursor = 0
+            route.sections.sortedBy { it.pointIndex }.forEach { sec ->
+                val from = sec.pointIndex.coerceIn(cursor, last)
+                val to = (sec.pointIndex + maxOf(1, sec.pointCount)).coerceIn(from, last)
+                add(cursor, from, blue)
+                val color = when (sec.congestion) { 1 -> 0xFF1DB954.toInt(); 2 -> 0xFFFFA000.toInt(); 3 -> 0xFFE53935.toInt(); else -> blue }
+                add(from, to, color)
+                cursor = to
+            }
+            add(cursor, last, blue)
+            activeMulti = MultipartPathOverlay(coords, colors).apply {
+                width = dp(11); outlineWidth = dp(2)
+                patternImage = OverlayImage.fromBitmap(NaverMapIcons.chevron(dp(14)))
+                patternInterval = dp(34)
+                isHideCollidedSymbols = true; isHideCollidedMarkers = true; isHideCollidedCaptions = true
+                this.map = m
+            }
+            return@whenReady
+        }
         activePath = PathOverlay().apply {
             coords = latLngs(route.path)
-            width = dp(11); color = 0xFF2E7DFF.toInt(); outlineWidth = dp(2); outlineColor = Color.WHITE
-            passedColor = 0xFFB0BEC5.toInt(); passedOutlineColor = Color.WHITE
+            width = dp(11); color = blue; outlineWidth = dp(2); outlineColor = Color.WHITE
+            passedColor = gray; passedOutlineColor = Color.WHITE
+            patternImage = OverlayImage.fromBitmap(NaverMapIcons.chevron(dp(14)))
+            patternInterval = dp(34)
             isHideCollidedSymbols = true; isHideCollidedMarkers = true; isHideCollidedCaptions = true
             this.map = m
         }
     }
 
+    /** 경로선 표시 옵션(교통 색 등)이 바뀌었을 때 지금 경로를 다시 그린다. */
+    fun redrawActiveRoute() { lastActiveRoute?.let { showActiveRoute(it) } }
+
     fun setProgress(fraction: Double) {
         activePath?.progress = fraction.coerceIn(0.0, 1.0)
+        activeMulti?.progress = fraction.coerceIn(0.0, 1.0)
     }
 
     fun clearAllRoutes() {
         clearPreview()
         activePath?.map = null; activePath = null
+        activeMulti?.map = null; activeMulti = null
+        clearDestination()
     }
+
+    /** 안내 중 도착지 표시(안내 시작 때 지워지던 핀 대신 끝까지 유지). */
+    private var destMarker: Marker? = null
+    fun showDestination(lat: Double, lon: Double, caption: String) = whenReady { m ->
+        destMarker?.map = null
+        destMarker = Marker().apply {
+            position = LatLng(lat, lon)
+            icon = OverlayImage.fromBitmap(NaverMapIcons.arrival(dp(46), dp(58)))
+            width = dp(46); height = dp(58)
+            isForceShowIcon = true
+            zIndex = 100
+            this.map = m
+        }
+    }
+
+    /** 다음 회전 지점에 표지(흰 네모 + 화살표)를 놓는다. 같은 지점·종류면 다시 만들지 않는다. */
+    private var turnSign: Marker? = null
+    private var turnSignKey: String? = null
+    fun showTurnSign(lat: Double, lon: Double, code: Int) = whenReady { m ->
+        val key = "$lat,$lon,$code"
+        if (key == turnSignKey) return@whenReady
+        turnSignKey = key
+        turnSign?.map = null
+        turnSign = Marker().apply {
+            position = LatLng(lat, lon)
+            icon = OverlayImage.fromBitmap(NaverMapIcons.turnSign(code, dp(44)))
+            width = dp(44); height = dp(44)
+            isForceShowIcon = true
+            zIndex = 90
+            this.map = m
+        }
+    }
+
+    fun clearTurnSign() { turnSign?.map = null; turnSign = null; turnSignKey = null }
+
+    fun clearDestination() { clearTurnSign(); destMarker?.map = null; destMarker = null }
 
     // ===== 핀 / 마커 =====
     fun showPin(lat: Double, lon: Double, caption: String) = whenReady { m ->
         pin?.map = null
-        pin = Marker().apply { position = LatLng(lat, lon); captionText = caption; this.map = m }
+        pin = Marker().apply {
+            position = LatLng(lat, lon)
+            icon = OverlayImage.fromBitmap(NaverMapIcons.arrival(dp(46), dp(58)))
+            width = dp(46); height = dp(58)
+            captionText = caption
+            isForceShowIcon = true
+            zIndex = 100
+            this.map = m
+        }
     }
 
     fun clearPin() { pin?.map = null; pin = null }
@@ -205,7 +299,7 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         if (now < followPausedUntil) return@whenReady
         val speedKmh = if (loc.hasSpeed()) loc.speed * 3.6 else 0.0
         val moving = loc.hasSpeed() && loc.speed > 1.5f
-        val zoom = if (now < zoomHoldUntil) m.cameraPosition.zoom else when {
+        val zoom = if (now < zoomHoldUntil) m.cameraPosition.zoom else if (nearTurn) 17.4 else when {
             speedKmh > 90 -> 14.8; speedKmh > 50 -> 15.6; speedKmh > 15 -> 16.4; else -> 17.0
         }
         val bearing = if (moving && loc.hasBearing()) loc.bearing.toDouble() else m.cameraPosition.bearing
@@ -215,9 +309,12 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         val ax = anchorXFraction
         val rightPad = if (ax != null) ((1f - 2f * ax) * host.width).toInt().coerceAtLeast(0) else 0
         m.setContentPadding(0, topInsetPx, rightPad, bottomPad)
-        val upd = CameraUpdate.toCameraPosition(CameraPosition(LatLng(loc.latitude, loc.longitude), zoom, if (flat) 0.0 else 40.0, bearing))
+        val upd = CameraUpdate.toCameraPosition(CameraPosition(LatLng(loc.latitude, loc.longitude), zoom, if (flat || nearTurn) 0.0 else 40.0, bearing))
         m.moveCamera(if (animated) upd.animate(CameraAnimation.Linear, 900) else upd)
     }
+
+    /** 회전이 200m 안으로 다가오면 네이버 앱처럼 지도를 평면으로 확대한다. */
+    @Volatile var nearTurn = false
 
     fun resumeFollow() { followPausedUntil = 0L; zoomHoldUntil = 0L }
 

@@ -92,8 +92,8 @@ object NaverDirectionsClient {
         val result = try {
             conn = (URL(url).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
-                connectTimeout = 5000
-                readTimeout = 8000
+                connectTimeout = 3000
+                readTimeout = 6000
                 setRequestProperty("x-ncp-apigw-api-key-id", id)
                 setRequestProperty("x-ncp-apigw-api-key", secret)
             }
@@ -124,7 +124,7 @@ object NaverDirectionsClient {
     /** 설정의 차종을 네이버 통행료 등급(1~6)으로 바꾼다. 이륜차 등 대응이 없는 것은 1종. */
     private fun carTypeCode(context: Context): Int {
         val name = com.tmap.nda.CarFuelSettings.getCarType(context).name
-        return Regex("""KNCarType_(d)""").find(name)?.groupValues?.get(1)?.toIntOrNull()?.coerceIn(1, 6) ?: 1
+        return Regex("""KNCarType_(\d)""").find(name)?.groupValues?.get(1)?.toIntOrNull()?.coerceIn(1, 6) ?: 1
     }
 
     internal fun buildUrl(version: String, start: LonLat, goal: LonLat, waypoints: List<LonLat>, option: String, carType: Int = 1): String {

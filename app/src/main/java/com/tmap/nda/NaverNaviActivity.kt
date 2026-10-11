@@ -71,6 +71,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
     private lateinit var naviView: android.widget.FrameLayout   // 네이버 지도가 들어가는 자리
     private lateinit var naverMap: NaverMapController
     private lateinit var guideOverlay: com.tmap.nda.naver.NaverGuideOverlay
+    private lateinit var naverMenuSheet: com.tmap.nda.naver.NaverMenuSheet
     private var exitHookAttached = false
     private var wasTmapMuted = false
     private var kakaoMuted = false
@@ -436,6 +437,37 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         naverMap.init(NaverDirectionsClient.keyId(this), null) { }
         applyNaverSatellite()
         guideOverlay = com.tmap.nda.naver.NaverGuideOverlay(this, binding.root)
+        guideOverlay.pausedProvider = { ::naverMap.isInitialized && System.currentTimeMillis() < naverMap.followPausedUntil }
+        naverMenuSheet = com.tmap.nda.naver.NaverMenuSheet(this, binding.root as android.widget.FrameLayout, object : com.tmap.nda.naver.NaverMenuSheet.Actions {
+            override fun onOtherRoute() {
+                if (currentDestLat.isNaN() || currentDestLon.isNaN()) return
+                showRoutePriorityDialog(HistoryEntry(currentDestName, "", currentDestLat, currentDestLon))
+            }
+            override fun onVoiceSettings() { GuideVoice.openPicker(this@NaverNaviActivity) }
+            override fun onDetailSettings() { binding.btnEditKey?.performClick() }
+            override fun onEndGuidance() { finishGuidance() }
+            override fun onOptionChanged(key: String) {
+                when (key) {
+                    com.tmap.nda.naver.NaverMenuSheet.KEY_DAYNIGHT -> applyKakaoDayNight()
+                    com.tmap.nda.naver.NaverMenuSheet.KEY_ROUTE_TRAFFIC_COLOR -> naverMap.redrawActiveRoute()
+                    com.tmap.nda.naver.NaverMenuSheet.KEY_TURN_SIGN -> naverMap.clearTurnSign()
+                    else -> applyNaverSatellite()
+                }
+            }
+            override fun guideVolumePercent() = VolumeHelper.guideVolumePercent(this@NaverNaviActivity)
+            override fun setGuideVolumePercent(p: Int) {
+                VolumeHelper.setGuideVolumePercent(this@NaverNaviActivity, p)
+                applyKakaoSdkVolume(p / 100f)
+            }
+        })
+        naverMenuSheet.onShowingChanged = { showing -> guideOverlay.setObscured(showing) }
+        guideOverlay.onMenu = { naverMenuSheet.toggle() }
+        guideOverlay.onRefresh = { NaverNavigator.refreshRoute() }
+        guideOverlay.onRecenter = {
+            naverMap.resumeFollow()
+            com.tmap.nda.naver.NaverNavigator.lastLocation?.let { naverMap.follow(it, animated = true) }
+            guideOverlay.setRecenterVisible(false)
+        }
         PopupCard.onPopupVisibilityChanged = { visible -> runOnUiThread { guideOverlay.setObscured(visible) } }
         applyKakaoDayNight()
         window.decorView.removeCallbacks(kakaoDayNightTick)
@@ -777,10 +809,14 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
 
     /** 받아온 경로로 실제 안내를 시작한다(카카오 때의 guideNewDestinations 자리). */
     private fun startNaverGuidance(route: NaverRoute, destName: String, destLat: Double, destLon: Double) {
+        isFirstTimeDestinationChoice = false   // 안내가 시작됐으니 이후 선택창을 취소해도 안내는 유지한다
         // 안내 이어가기 - 안내가 실제로 시작되는 이 시점에 목적지를 저장. 도착/종료 때 finishGuidance()에서 지워진다.
         ResumeGuidanceStore.save(this, HistoryEntry(destName, "", destLat, destLon, routePriorityName = activeRoutePriority.name, routeAvoidOption = activeRouteAvoidOption))
         clearDestinationPin()
         naverMap.showActiveRoute(route)
+        naverMap.showDestination(destLat, destLon, destName)
+        guideOverlay.setRoute(route)
+        NaverNavigator.lastLocation?.let { naverMap.setLocation(it) }
         naverMap.resumeFollow()
         NaverNavigator.begin(applicationContext, route, LonLat(destLon, destLat), destName, activeWaypoints.map { LonLat(it.lon, it.lat) })
         guideOverlay.show()
@@ -821,16 +857,36 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         statusBoxHandler.postDelayed({ statusBoxView?.visibility = View.GONE }, durationMs)
     }
 
+    /** 다음 회전 지점에 지도 표지를 놓고, 200m 안이면 지도를 평면으로 확대한다. */
+    private fun updateTurnSign(state: GuidanceState) {
+        val g = state.nextGuide
+        val code = if (g == null) com.tmap.nda.naver.NaverTurnMap.NONE else com.tmap.nda.naver.NaverTurnMap.toOpenpilotCode(g.type)
+        val route = NaverNavigator.currentRoute
+        val signOn = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean(com.tmap.nda.naver.NaverMenuSheet.KEY_TURN_SIGN, true)
+        val real = signOn && g != null && route != null && code != com.tmap.nda.naver.NaverTurnMap.NONE && code != 201 && g.pointIndex in route.path.indices
+        naverMap.nearTurn = real && state.nextGuideDistMeters <= 200
+        if (real) {
+            val pt = route!!.path[g!!.pointIndex]
+            runOnUiThread { naverMap.showTurnSign(pt.lat, pt.lon, code) }
+        } else {
+            runOnUiThread { naverMap.clearTurnSign() }
+        }
+    }
+
     /** NaverNavigator(안내 엔진)가 알려주는 상태를 이 화면에 그려준다. */
     private val naverGuidanceListener = object : NaverNavigator.Listener {
         override fun onLocation(loc: Location) {
             if (!::naverMap.isInitialized) return
             naverMap.setLocation(loc)
+            if (::guideOverlay.isInitialized) guideOverlay.onLocation(loc)
             if (NaverNavigator.isRunning) naverMap.follow(loc)
         }
 
         override fun onState(state: GuidanceState, goalName: String) {
-            if (::guideOverlay.isInitialized) guideOverlay.update(state, goalName)
+            if (::guideOverlay.isInitialized) {
+                guideOverlay.update(state, goalName)
+            }
+            updateTurnSign(state)
             val total = NaverNavigator.currentRoute?.distanceMeters?.toDouble() ?: 0.0
             if (total > 0) naverMap.setProgress(state.progressMeters / total)
         }
@@ -839,6 +895,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
             if (!::naverMap.isInitialized) return
             runOnUiThread {
                 naverMap.showActiveRoute(route)
+                if (::guideOverlay.isInitialized) guideOverlay.setRoute(route)
                 showRerouteBanner()
             }
         }
@@ -2898,6 +2955,8 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
                 // 교체(이 시점엔 아직 실제 안내가 시작 전이라 stop()을 불러도 안전함). #문제시 원복
                 if (isFirstTimeDestinationChoice) {
                     finishGuidance()
+                } else {
+                    restoreActiveGuidanceView()
                 }
             }
         }
@@ -3000,6 +3059,17 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         if (loc == null) { action(); return }
         naverMap.moveTo(loc.latitude, loc.longitude, 16.0, animated = true)
         naviView.postDelayed({ if (!isFinishing && !isDestroyed) action() }, durationMs.coerceAtMost(800L))
+    }
+
+    /** "다른 경로" 같은 선택창을 취소·뒤로가기로 닫았을 때, 지금 하던 안내(경로선·도착 표시·화면)를 그대로 되돌린다. */
+    private fun restoreActiveGuidanceView() {
+        val r = NaverNavigator.currentRoute
+        if (!NaverNavigator.isRunning || r == null) return
+        naverMap.showActiveRoute(r)
+        if (!currentDestLat.isNaN() && !currentDestLon.isNaN()) naverMap.showDestination(currentDestLat, currentDestLon, currentDestName)
+        naverMap.resumeFollow()
+        if (::guideOverlay.isInitialized) { guideOverlay.setRoute(r); guideOverlay.show() }
+        NaverNavigator.lastLocation?.let { naverMap.follow(it, animated = false) }
     }
 
     private fun clearDestinationPin() {
@@ -4058,6 +4128,17 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
     }
 
     override fun onBackPressed() {
+        if (::naverMenuSheet.isInitialized && naverMenuSheet.isShowing) { naverMenuSheet.dismiss(); return }
+        // 경로 선택창이 떠 있으면 안내를 끝내지 않고 선택창만 닫는다(하던 안내가 있으면 그대로 이어감)
+        val panel = activeRouteChoicePanel
+        if (panel != null) {
+            activeRouteChoicePanelCancel?.invoke()
+            (panel.parent as? ViewGroup)?.removeView(panel)
+            activeRouteChoicePanel = null; activeRouteChoicePanelCancel = null
+            clearDestinationPin()
+            if (isFirstTimeDestinationChoice || !NaverNavigator.isRunning) finishGuidance() else restoreActiveGuidanceView()
+            return
+        }
         finishGuidance()
     }
 

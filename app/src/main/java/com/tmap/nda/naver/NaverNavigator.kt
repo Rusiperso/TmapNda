@@ -49,9 +49,12 @@ object NaverNavigator {
     private var goal: LonLat? = null
     private var waypoints: List<LonLat> = emptyList()
     private var option: String = "traoptimal"
-    private val gate = RerouteGate()
+    private val gate = RerouteGate(offRouteMeters = 30.0, confirmMs = 1_500, minIntervalMs = 8_000)
     private val planner = AnnouncePlanner()
     private var rerouting = false
+    /** 진행 중인 재탐색의 사유와 번호. 교통 갱신 중에 길을 벗어나면 이탈 재탐색이 앞지르고, 늦게 온 옛 결과는 버린다. */
+    private var reroutingReason = ""
+    private var rerouteSeq = 0
     private var lastState: GuidanceState? = null
     private var lastTrafficRefreshAt = 0L
     private var tts: TextToSpeech? = null
@@ -189,28 +192,42 @@ object NaverNavigator {
         }
 
         // GPS 오차가 큰 날에는 이탈 판단을 느슨하게 한다
-        val offLimit = maxOf(40.0, loc.accuracy.toDouble() * 2)
+        val offLimit = maxOf(30.0, loc.accuracy.toDouble() * 1.5)
         // 차가 서 있거나(속도 0) 속도 정보가 없는 위치(네트워크 위치)에서는 재탐색하지 않는다 - 건물 안에서 흔들리는 위치로 호출을 낭비하지 않기 위해
         val moving = loc.hasSpeed() && loc.speed > 1.5f
         val effective = if (!moving || s.offRouteMeters < offLimit) s.copy(offRouteMeters = 0.0) else s
-        if (!rerouting && gate.shouldReroute(now, effective)) {
+        if ((!rerouting || reroutingReason == "교통갱신") && gate.shouldReroute(now, effective)) {
             reroute(ctx, loc, "이탈")
-        } else if (!rerouting && now - lastTrafficRefreshAt > TRAFFIC_REFRESH_MS && lastTrafficRefreshAt > 0) {
+        } else if (!rerouting && now - lastTrafficRefreshAt > TRAFFIC_REFRESH_MS && lastTrafficRefreshAt > 0 &&
+            ctx.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("naver_traffic_reroute_enabled", true)) {
             reroute(ctx, loc, "교통갱신")
         }
+    }
+
+    /** 아래 바 새로고침 버튼: 지금 위치에서 경로를 다시 받는다(짧아지지 않아도 새 경로로 바꾼다). */
+    fun refreshRoute() {
+        val ctx = appContext ?: return
+        val loc = lastLocation ?: return
+        if (rerouting || engine == null) return
+        reroute(ctx, loc, "수동")
     }
 
     private fun reroute(ctx: Context, loc: Location, reason: String) {
         val to = goal ?: return
         rerouting = true
+        reroutingReason = reason
+        val seq = ++rerouteSeq
         if (reason == "이탈") gate.noteRequested(System.currentTimeMillis())
+        // 응답을 기다리는 동안 바로 알려줘서 반응이 빠르게 느껴지게 한다
+        if (reason == "이탈") speak("경로를 재탐색합니다")
         lastTrafficRefreshAt = System.currentTimeMillis()
         val from = LonLat(loc.longitude, loc.latitude)
-        listener?.onStatus(if (reason == "이탈") "경로를 벗어나 다시 찾는 중…" else "교통 상황 갱신 중…")
+        listener?.onStatus(when (reason) { "이탈" -> "경로를 벗어나 다시 찾는 중…"; "수동" -> "경로를 새로고침하는 중…"; else -> "교통 상황 갱신 중…" })
         NavLogger.d(ctx, "[네이버] 재탐색 요청 사유=$reason")
         io.execute {
             val res = NaverDirectionsClient.requestRoute(ctx, from, to, waypoints, option)
             main.post {
+                if (seq != rerouteSeq) return@post   // 더 새 재탐색이 이미 시작됐다
                 rerouting = false
                 val route = res.routes.firstOrNull()
                 if (!res.ok || route == null) {
@@ -223,8 +240,10 @@ object NaverNavigator {
                     return@post
                 }
                 attachRoute(route)
-                if (reason == "이탈") speak("경로를 재탐색합니다") else speak("더 빠른 경로로 안내합니다")
-                listener?.onStatus("재탐색 완료: 남은 ${route.distanceMeters}m")
+                if (reason == "교통갱신") speak("더 빠른 경로로 안내합니다")
+                val km = route.distanceMeters / 1000.0
+                val remainText = if (route.distanceMeters >= 1000) java.lang.String.format(java.util.Locale.US, "%.1fkm", km) else "${route.distanceMeters}m"
+                listener?.onStatus("재탐색 완료: 남은 $remainText")
             }
         }
     }

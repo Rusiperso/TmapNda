@@ -1190,9 +1190,47 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 } catch (e: Exception) {
                     NavLogger.e(this, "[안내종료훅] 스캔 예외: ${e.message}")
                 }
+                hookKakaoMenuButton(naviView)
             }
         } catch (e: Exception) {
             NavLogger.e(this, "[안내종료훅] 리스너 등록 예외: ${e.message}")
+        }
+    }
+
+    // 아래 바 ☰(SDK 이름 bottom_drive_btn_menu)를 누르면 우리 옵션 판이 먼저 뜨고, 거기서
+    // "카카오 메뉴 열기"를 누르면 SDK 원래 메뉴가 열리게 한다. SDK의 클릭 동작은 건드리지 않고
+    // 터치만 가로채며, 원래 메뉴는 performClick()으로 그대로 연다. 버튼을 못 찾으면 아무것도 안 바뀐다.
+    private val kakaoMenuHookTagKey = "tmapnda_menu_hooked".hashCode()
+    private var kakaoMenuSheet: KakaoMenuSheet? = null
+    private fun hookKakaoMenuButton(naviView: View) {
+        try {
+            val id = resources.getIdentifier("bottom_drive_btn_menu", "id", packageName)
+            if (id == 0) return
+            val btn = naviView.findViewById<View>(id) ?: return
+            if (btn.getTag(kakaoMenuHookTagKey) == true) return
+            btn.setTag(kakaoMenuHookTagKey, true)
+            btn.setOnTouchListener { v, event ->
+                when (event.action) {
+                    android.view.MotionEvent.ACTION_DOWN -> true
+                    android.view.MotionEvent.ACTION_UP -> {
+                        if (event.x >= 0 && event.x <= v.width && event.y >= 0 && event.y <= v.height) {
+                            val host = findViewById<android.widget.FrameLayout>(android.R.id.content)
+                            val bundled = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("kakao_options_in_menu", true)
+                            if (host != null && bundled) {
+                                val sheet = kakaoMenuSheet?.takeIf { true } ?: KakaoMenuSheet(this, host) { btn.performClick() }.also { kakaoMenuSheet = it }
+                                if (sheet.isShowing) sheet.dismiss() else sheet.show()
+                            } else {
+                                btn.performClick()
+                            }
+                        }
+                        true
+                    }
+                    else -> true
+                }
+            }
+            NavLogger.d(this, "[카카오메뉴훅] 아래 바 메뉴 버튼에 우리 옵션 판 연결됨")
+        } catch (e: Exception) {
+            NavLogger.e(this, "[카카오메뉴훅] 예외: ${e.message}")
         }
     }
 
@@ -4948,6 +4986,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     }
 
     override fun onBackPressed() {
+        if (kakaoMenuSheet?.isShowing == true) { kakaoMenuSheet?.dismiss(); return }
         finishGuidance()
     }
 

@@ -776,6 +776,27 @@ object PanelDragHelper {
             setPadding(40, 0, 40, 32)
         }
 
+        // 네이버/카카오 전용 옵션을 길안내 화면 메뉴(☰)에 묶을지. 켜면(기본) 옵션이 그 메뉴로 가고 설정 창은 단순해지며,
+        // 끄면 옵션이 설정 창의 "네이버 설정"/"카카오 설정" 탭에 나온다.
+        val naverBundleSwitch = android.widget.Switch(context).apply {
+            text = "네이버 옵션을 길안내 메뉴(☰)에 묶기"
+            isChecked = pref.getBoolean("naver_options_in_menu", true)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 32)
+        }
+        val kakaoBundleSwitch = android.widget.Switch(context).apply {
+            text = "카카오 옵션을 길안내 메뉴(☰)에 묶기"
+            isChecked = pref.getBoolean("kakao_options_in_menu", true)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 32)
+        }
+        val bundleHint = android.widget.TextView(context).apply {
+            text = "켜면 옵션을 안내 화면 메뉴에서 바꾸고, 끄면 설정 창의 네이버/카카오 설정 탭에서 바꿔요. 저장하면 적용돼요."
+            setTextColor(android.graphics.Color.parseColor("#999999"))
+            textSize = 12f
+            setPadding(40, 0, 40, 24)
+        }
+
         // v9.2: 재억 요청 - 도로 위 초록/주황/빨강 실시간 정체 표시 켜고 끄기. SDK 안에 실제
         // 스위치가 있는지는 아직 조사 중이라(dumpTrafficApiCandidates), 우선 체크박스와 저장값만
         // 만들어둠 - 조사 결과 나오면 applyTmapSatelliteViewSetting()처럼 실제로 연결 예정. #문제시 원복
@@ -966,7 +987,7 @@ object PanelDragHelper {
         fun naverOnly(vararg v: View): List<View> = if (naverSelected) v.toList() else emptyList()
 
         // 길안내 선택(카카오 / 네이버): 고르면 그 엔진의 키 입력 팝업이 뜨고, 저장하면 앱이 다시 시작된다.
-        addAccordionGroup("길안내 선택", GuideEngineSettings.buildItems(context))
+        addAccordionGroup("길안내 선택", GuideEngineSettings.buildItems(context) + listOf<View>(naverBundleSwitch, kakaoBundleSwitch, bundleHint))
         // 공통 설정 안에 소제목으로 구역을 나눈다. 길안내(카카오/네이버)별 항목은 아래에서 따로 묶는다.
         fun sectionHeader(text: String) = android.widget.TextView(context).apply {
             setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
@@ -1208,33 +1229,61 @@ object PanelDragHelper {
             put("안전운전", safetyItems)
             put("화면", displayCommonItems)
             put("버튼", buttonItems)
-            put("자동주행", listOf(autoNaviDriveCheckBox, autoBlinkerCheckBox))
             put("음성", voiceFixItems)
             put("기타", etcItems)
+            put("자율주행", listOf<View>(
+                android.widget.TextView(context).apply {
+                    text = "⚠ 이 자율주행은 완전하지 않습니다. 사용에 따른 모든 책임은 본인에게 있습니다.\n방향지시등(깜빡이)도 켜지지 않을 수 있으니, 필요하면 직접 켜 주세요."
+                    setTextColor(android.graphics.Color.parseColor("#FF8A80"))
+                    textSize = 14f
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                    setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
+                    setPadding(40, 14, 40, 14)
+                },
+                autoNaviDriveCheckBox, autoBlinkerCheckBox
+            ))
         }
         var selectedCommonSection = commonSections.keys.first()
-        addAccordionGroup("공통 설정", commonSections.values.flatten())
-        addAccordionGroup("티맵 설정", tmapItems)
-        if (naverSelected) {
-            addAccordionGroup("네이버 설정", ArrayList<View>().apply {
+        // 공통 설정의 소제목(안전운전/화면/버튼/음성/기타/자율주행)을 위쪽 작은 탭 대신 왼쪽 목록에 하나씩 펼친다.
+        // 네이버/카카오 전용 옵션은 길안내 화면의 메뉴(☰)로 옮겼으므로 여기서는 보여주지 않는다
+        // (옵션 값은 같은 저장 위치를 그대로 쓴다).
+        val engineItems: List<View> = if (naverSelected) {
+            ArrayList<View>().apply {
                 add(naverSatelliteViewCheckBox); add(naverTrafficCheckBox); add(naverFlatCheckBox)
                 addAll(naverVoiceItems)
-            })
+            }
         } else {
-            addAccordionGroup("카카오 설정", listOf<View>(
+            listOf<View>(
                 avoidSchoolZoneCheckBox,    // 스쿨존(어린이보호구역) 회피
                 kakaoMinimalGuideCheckBox,  // 최소 안내(카카오 음성 종류별 필터)
                 routeLineDisplayCheckBox,   // 경로선 콤마 화면에 표시(카카오 경로 좌표만 전송됨)
                 useHipassCheckBox           // 하이패스 장착(카카오 통행료 계산)
-            ))
+            )
         }
+        // 고른 길안내의 "메뉴에 묶기" 스위치 상태에 따라 왼쪽 목록 구성이 바뀐다. 스위치를 누르는 즉시 다시 짠다.
+        val currentBundleSwitch = if (naverSelected) naverBundleSwitch else kakaoBundleSwitch
+        val fixedGroups = LinkedHashMap(settingGroups)   // "길안내 선택"
+        fun rebuildGroups() {
+            settingGroups.clear()
+            settingGroups.putAll(fixedGroups)
+            addAccordionGroup("티맵 설정", tmapItems)
+            if (currentBundleSwitch.isChecked) {
+                // 옵션이 길안내 메뉴에 묶여 있으면: 공통 설정의 소제목을 왼쪽 목록에 하나씩 펼치고, 네이버/카카오 탭은 없다.
+                commonSections.forEach { (name, items) -> addAccordionGroup(name, items) }
+            } else {
+                // 묶지 않으면: 공통 설정(위쪽 작은 탭) + 네이버/카카오 설정 탭이 예전처럼 나온다.
+                addAccordionGroup("공통 설정", commonSections.values.flatten())
+                addAccordionGroup(if (naverSelected) "네이버 설정" else "카카오 설정", engineItems)
+            }
+        }
+        rebuildGroups()
 
         // v19.3.79: 재억 요청 - 설정 창을 카드형 2단(왼쪽: 그룹 고르기 / 오른쪽: 그 그룹 항목)으로.
         // 켜진 스위치는 노란색으로 보이게 색을 입힘. 저장/취소 동작은 그대로. 바깥을 눌러
         // 닫으면 취소와 같음(저장 안 된 변경은 버려짐). #문제시 원복
         val gold = android.graphics.Color.parseColor("#FFD54F")
         val switchStates = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
-        settingGroups.values.flatten().forEach { v ->
+        (settingGroups.values.flatten() + engineItems + commonSections.values.flatten()).distinct().forEach { v ->
             if (v is android.widget.Switch) {
                 // 켬: 초록 + 흰 손잡이 / 끔: 회색 + 연회색 손잡이(어두운 카드 위에서 잘 보이게, 재억 요청).
                 // 기본 스위치는 트랙이 30% 투명으로 그려져 색을 입혀도 희미해서, 트랙/손잡이를
@@ -1308,6 +1357,7 @@ object PanelDragHelper {
 
         var selectedGroup = settingGroups.keys.first()
         fun renderGroups() {
+            if (selectedGroup !in settingGroups.keys) selectedGroup = settingGroups.keys.first()
             headerTitle.text = selectedGroup
             leftList.removeAllViews()
             settingGroups.keys.forEach { title ->
@@ -1397,6 +1447,8 @@ object PanelDragHelper {
                     .putBoolean("show_toggle_top_panel_button", showToggleTopPanelButtonCheckBox.isChecked)
                     .putBoolean("tmap_satellite_view_enabled", satelliteViewCheckBox.isChecked)
                     .putBoolean("naver_satellite_view_enabled", naverSatelliteViewCheckBox.isChecked)
+                    .putBoolean("naver_options_in_menu", naverBundleSwitch.isChecked)
+                    .putBoolean("kakao_options_in_menu", kakaoBundleSwitch.isChecked)
                     .putBoolean("naver_traffic_enabled", naverTrafficCheckBox.isChecked)
                     .putBoolean("naver_flat_view_enabled", naverFlatCheckBox.isChecked)
                     .putBoolean("tmap_traffic_info_enabled", trafficInfoCheckBox.isChecked)
@@ -1425,6 +1477,14 @@ object PanelDragHelper {
         applyNow = doSave
         settingGroups.values.flatten().forEach { v ->
             if (v is android.widget.Switch) v.setOnCheckedChangeListener { _, _ -> doSave() }
+        }
+        // 묶기 스위치는 저장과 함께 왼쪽 목록도 바로 다시 짠다. (위 반복문은 길안내 선택 그룹 항목 전체에 저장 리스너를 달기 때문에,
+        // 이 스위치는 그 뒤에 따로 달아야 목록 다시 짜기가 덮어써지지 않는다.)
+        listOf(naverBundleSwitch, kakaoBundleSwitch).forEach { sw ->
+            sw.setOnCheckedChangeListener { _, _ ->
+                doSave()
+                if (sw === currentBundleSwitch) { rebuildGroups(); renderGroups() }
+            }
         }
         // v: 신규기능(미니 플레이어) - 켰는데 "알림 접근" 권한이 아직 없으면, 어디로 가서
         // 허용해야 하는지 바로 안내. 권한 자체는 런타임 요청이 안 되는 특수권한이라 시스템
