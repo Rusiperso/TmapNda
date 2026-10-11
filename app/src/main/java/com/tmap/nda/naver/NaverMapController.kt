@@ -45,7 +45,7 @@ class NaverMapController(private val activity: Activity, private val host: Frame
     @Volatile var zoomHoldUntil = 0L
     /** 상단 바가 가리는 만큼 위로 비워두는 여백(px)과, 차가 놓일 위치를 아래로 내리는 비율(0~0.5). */
     var topInsetPx = 0
-    var driverAnchorBottomFraction = 0.0
+    var driverAnchorBottomFraction = 0.4 // 0.4 → 차가 화면 높이의 약 70% 지점
     /** 가로 화면에서 차를 놓을 가로 위치 비율(0.5=가운데, 작을수록 왼쪽). null이면 가운데. */
      var anchorXFraction: Float? = null
 
@@ -305,10 +305,11 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         val bearing = if (moving && loc.hasBearing()) loc.bearing.toDouble() else m.cameraPosition.bearing
         // 차를 화면 아래쪽으로 내려서 앞이 더 보이게(여백으로 구현)
         val h = host.height
-        val bottomPad = (h * driverAnchorBottomFraction).toInt()
+        // 위쪽 여백을 키워야 지도 중심(=차)이 아래로 내려간다. 가로/세로 모드 공통.
+        val topPad = topInsetPx + (h * driverAnchorBottomFraction).toInt()
         val ax = anchorXFraction
         val rightPad = if (ax != null) ((1f - 2f * ax) * host.width).toInt().coerceAtLeast(0) else 0
-        m.setContentPadding(0, topInsetPx, rightPad, bottomPad)
+        m.setContentPadding(0, topPad, rightPad, 0)
         val upd = CameraUpdate.toCameraPosition(CameraPosition(LatLng(loc.latitude, loc.longitude), zoom, if (flat || nearTurn) 0.0 else 40.0, bearing))
         m.moveCamera(if (animated) upd.animate(CameraAnimation.Linear, 900) else upd)
     }
