@@ -54,7 +54,7 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         onReadyCallbacks.add(onReady)
         mapView.getMapAsync { m ->
             map = m
-            m.mapType = NaverMap.MapType.Navi
+            m.mapType = NaverMap.MapType.Basic
             m.uiSettings.apply {
                 isCompassEnabled = false; isScaleBarEnabled = false
                 isZoomControlEnabled = false; isLocationButtonEnabled = false
@@ -90,9 +90,9 @@ class NaverMapController(private val activity: Activity, private val host: Frame
     fun onDestroy() = mapView.onDestroy()
 
     // ===== 위성지도 =====
-    /** 켜면 내비용 위성 지도(NaviHybrid), 끄면 내비용 일반 지도(Navi). */
+    /** 켜면 일반 위성 지도(Hybrid), 끄면 일반 지도(Basic). */
     fun setSatellite(on: Boolean) = whenReady {
-        it.mapType = if (on) NaverMap.MapType.NaviHybrid else NaverMap.MapType.Navi
+        it.mapType = if (on) NaverMap.MapType.Hybrid else NaverMap.MapType.Basic
     }
 
     // ===== 기울기 / 교통 / 위치 아이콘 =====
