@@ -3,6 +3,7 @@ name: Test Build (pre-release)
 # test-* 태그를 푸시하면 정식 릴리즈/디스코드 공지 없이
 # 테스트 APK만 프리릴리즈로 올린다 (보드앱 "테스트 배포"용).
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'test-*'
