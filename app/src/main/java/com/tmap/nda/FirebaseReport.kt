@@ -72,7 +72,7 @@ object FirebaseReport {
         }
     }
 
-    // 2026-10-09 재억 지시: 보관 중인 로그(4일치)를 통째로 원격 요청으로 받기. 새 경로는 파이어베이스 규칙상
+    // 2026-10-09 재억 지시: 보관 중인 로그(지금은 5일치)를 통째로 원격 요청으로 받기. 새 경로는 파이어베이스 규칙상
     // 막혀 있어서 logs/<ID> 아래에 조각(part)으로 올림. 파일별로 gzip(여러 조각을 이어붙여도 유효한 gzip)
     // 후 base64 -> 90만 글자씩. 최신 파일부터 담아 총 8MB 압축분까지만(넘으면 오래된 것 생략).
     // 마지막에 평소 형식 항목(log=끝부분)을 한 번 더 올려서 기존 Board의 "최신 1건" 읽기는 그대로 동작.
@@ -132,7 +132,8 @@ object FirebaseReport {
                         Thread { try { uploadFullLogs(appContextSafe, db, id) } catch (e: Exception) { } }.start()
                         return
                     }
-                    val logText = try { DiscordReporter.tailOfLogFile(NavLogger.activeLogFile(appContextSafe)) } catch (e: Exception) { "" }
+                    // 재억 지시(2026-10-11): 보드 "최신로그"는 오늘(0시~지금) 분량만. 비면 예전처럼 끝부분. #문제시 원복
+                    val logText = try { NavLogger.todayLogText(appContextSafe).ifEmpty { DiscordReporter.tailOfLogFile(NavLogger.activeLogFile(appContextSafe)) } } catch (e: Exception) { "" }
                     val logRef = db.getReference("logs/$id").push()
                     val logKey = logRef.key
                     logRef.setValue(

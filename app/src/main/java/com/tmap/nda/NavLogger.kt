@@ -106,6 +106,34 @@ object NavLogger {
     fun allLogFilesChronological(context: Context): List<File> =
         allLogFiles(context).sortedBy { if (it.name == "tmapnda_log.txt") Long.MAX_VALUE else it.lastModified() }
 
+    /**
+     * 재억 지시(2026-10-11) 보드 "최신로그" = 오늘(0시 이후) 줄만. 현재 파일이 오늘 도중에 회전돼 시작됐으면 직전 파일도 이어서 본다.
+     * 자정 직후라 오늘 분량이 [minChars]보다 적으면 그 앞 기록 끝부분을 덧붙여 거의 빈 로그가 안 나가게 함. [maxChars] 넘으면 끝부분만. #문제시 원복
+     */
+    fun todayLogText(context: Context, maxChars: Int = 1_500_000, minChars: Int = 200_000): String {
+        return try {
+            val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            var todayPart = ""
+            var before = ""
+            for (f in allLogFilesChronological(context).reversed()) { // 최신 -> 오래된
+                val len = f.length()
+                val skip = (len - 4L * maxChars).coerceAtLeast(0L)
+                val text = java.io.RandomAccessFile(f, "r").use { raf ->
+                    raf.seek(skip)
+                    val buf = ByteArray((len - skip).toInt()); raf.readFully(buf)
+                    String(buf, Charsets.UTF_8)
+                }
+                val idx = if (text.startsWith(today)) 0 else text.indexOf("\n$today").let { if (it < 0) -1 else it + 1 }
+                if (idx < 0) { before = text; break }              // 이 파일엔 오늘 줄이 없음 = 전부 오늘 이전
+                todayPart = text.substring(idx) + todayPart
+                if (idx > 0 || skip > 0L) { before = text.substring(0, idx); break }
+                // idx == 0: 파일이 오늘 줄로 시작 -> 직전(더 오래된) 파일도 이어서 봄
+            }
+            val out = if (todayPart.length >= minChars) todayPart else before.takeLast(minChars - todayPart.length) + todayPart
+            if (out.length > maxChars) out.takeLast(maxChars) else out
+        } catch (e: Exception) { "" }
+    }
+
     /** 현재 쓰고 있는 로그 파일(회전 안 된 최신 파일). 디스코드 자동 보고 등 외부에서 첨부용으로 씀. */
     fun activeLogFile(context: Context): File = logFile(context)
 
@@ -328,7 +356,8 @@ object NavLogger {
     // (MainActivity.onCreate) 이 함수를 불러서, 마지막으로 수정된 지 3일 지난 로그 파일만
     // 지움 - 최근 며칠치 주행 기록은 남아있고, 저장공간은 계속 늘어나지 않게 함. #문제시 원복
     // 2026-10-09 재억 지시: 3일 -> 4일 보관(원격 4일치 로그 요청용). 함수 이름은 그대로 둠. #문제시 원복
-    private const val LOG_MAX_AGE_MS = 4L * 24 * 60 * 60 * 1000
+    // 2026-10-11 재억 지시: 4일 -> 5일("지난로그"=최근 5일치). #문제시 원복
+    private const val LOG_MAX_AGE_MS = 5L * 24 * 60 * 60 * 1000
 
     fun deleteLogsOlderThan3Days(context: Context) {
         try {

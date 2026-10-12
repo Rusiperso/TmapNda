@@ -201,6 +201,50 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
     }
 
     /** 상단 HUD 자동 확장 시 카카오 지도·플로팅 UI도 같은 만큼 아래로 이동한다. */
+    // 재억 제보(2026-10-11): 플립 겉 화면처럼 좁은(384dp) 세로 화면에서 상단바가 옆으로 넘쳐 앞쪽(속도 등)이 잘리고
+    // 메뉴·안내종료만 오른쪽에 남음. 폭이 모자라면 덜 중요한 칸(검색창→검색 버튼→음소거→연결상태→GPS)을 차례로 숨겨서
+    // 속도/집/회사/메뉴/안내종료가 항상 한 화면에 다 보이게 함. 폭이 넉넉해지면(가로 등) 다시 보임. #문제시 원복
+    private val topBarFitHidden = HashSet<View>()
+    private var topBarFitWidth = -1
+    private fun installTopBarFit() {
+        val row = binding.llTopBarRow
+        row.addOnLayoutChangeListener { _, l, _, r, _, ol, _, or2, _ ->
+            val w = r - l
+            if (w > 0 && (w != topBarFitWidth || (ol == 0 && or2 == 0))) {
+                topBarFitWidth = w
+                row.post { fitTopBar() }
+            }
+        }
+    }
+    private fun fitTopBar() {
+        if (isFinishing || isDestroyed) return
+        val row = binding.llTopBarRow
+        val content = row.getChildAt(0) as? View ?: return
+        val avail = row.width
+        if (avail <= 0) return
+        val cands = listOfNotNull(
+            binding.etDestination?.parent as? View,
+            binding.btnOpenSearch as? View,
+            binding.btnKakaoMuteToggle as? View,
+            binding.tvConnectionStatus?.parent?.parent as? View,
+            binding.btnGpsStatus as? View
+        )
+        topBarFitHidden.forEach { it.visibility = View.VISIBLE }
+        topBarFitHidden.clear()
+        fun needed(): Int {
+            content.measure(
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+            )
+            return content.measuredWidth
+        }
+        for (v in cands) {
+            if (needed() <= avail) break
+            if (v.visibility == View.VISIBLE) { v.visibility = View.GONE; topBarFitHidden.add(v) }
+        }
+        row.scrollTo(0, 0)
+    }
+
     private fun installTopPanelAutoOffset() {
         binding.llLeftHudPanel.addOnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
             val panelHeight = bottom - top
@@ -451,6 +495,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
                     com.tmap.nda.naver.NaverMenuSheet.KEY_DAYNIGHT -> applyKakaoDayNight()
                     com.tmap.nda.naver.NaverMenuSheet.KEY_ROUTE_TRAFFIC_COLOR -> naverMap.redrawActiveRoute()
                     com.tmap.nda.naver.NaverMenuSheet.KEY_TURN_SIGN -> naverMap.clearTurnSign()
+                    com.tmap.nda.naver.NaverMenuSheet.KEY_MINIMAL -> {}
                     else -> applyNaverSatellite()
                 }
             }
@@ -466,7 +511,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         guideOverlay.onRefresh = { NaverNavigator.refreshRoute() }
         guideOverlay.onRecenter = {
             naverMap.resumeFollow()
-            com.tmap.nda.naver.NaverNavigator.lastLocation?.let { naverMap.follow(it, animated = true) }
+            com.tmap.nda.naver.NaverNavigator.lastLocation?.let { naverMap.follow(snapped(it), animated = true) }
             guideOverlay.setRecenterVisible(false)
         }
         PopupCard.onPopupVisibilityChanged = { visible -> runOnUiThread { guideOverlay.setObscured(visible) } }
@@ -589,6 +634,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         }
         ViewCompat.requestApplyInsets(binding.root)
         installTopPanelAutoOffset()
+        installTopBarFit()
 
         binding.btnStopKakaoGuidance.setOnClickListener { finishGuidance() }
 
@@ -642,7 +688,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
                 naverMap.showActiveRoute(r)
                 guideOverlay.show()
             }
-            NaverNavigator.lastLocation?.let { naverMap.follow(it, animated = false) }
+            NaverNavigator.lastLocation?.let { naverMap.follow(snapped(it), animated = false) }
             return
         }
 
@@ -817,12 +863,12 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         naverMap.showActiveRoute(route)
         naverMap.showDestination(destLat, destLon, destName)
         guideOverlay.setRoute(route)
-        NaverNavigator.lastLocation?.let { naverMap.setLocation(it) }
+        NaverNavigator.lastLocation?.let { naverMap.setLocation(snapped(it)) }
         naverMap.resumeFollow()
         NaverNavigator.begin(applicationContext, route, LonLat(destLon, destLat), destName, activeWaypoints.map { LonLat(it.lon, it.lat) })
         guideOverlay.show()
         applyKakaoSdkVolume()
-        NaverNavigator.lastLocation?.let { naverMap.follow(it, animated = false) }
+        NaverNavigator.lastLocation?.let { naverMap.follow(snapped(it), animated = false) }
     }
 
     // 안내 상태 문구(사용량·재탐색 등)를 알림창 대신 화면 아래에 5초 동안 띄운다(알림창은 최대 3.5초라 짧음).
@@ -874,13 +920,23 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
+    // 재억 제보(2026-10-11): 내 차 심볼이 파란 경로선에서 옆으로 어긋나 보임 - GPS 좌표를 그대로 찍던 게 원인.
+    // 안내 중엔 경로선 위의 가장 가까운 점으로 붙여서 그린다(경로에서 멀면 진짜 이탈이라 원래 좌표). #문제시 원복
+    private val routeSnap = com.tmap.nda.naver.RouteSnap()
+    private fun snapped(loc: Location): Location {
+        if (!NaverNavigator.isRunning) return loc
+        val limit = maxOf(30.0, loc.accuracy.toDouble() * 1.5)
+        return try { routeSnap.snap(loc, NaverNavigator.currentRoute, limit) } catch (_: Exception) { loc }
+    }
+
     /** NaverNavigator(안내 엔진)가 알려주는 상태를 이 화면에 그려준다. */
     private val naverGuidanceListener = object : NaverNavigator.Listener {
         override fun onLocation(loc: Location) {
             if (!::naverMap.isInitialized) return
-            naverMap.setLocation(loc)
+            val sl = snapped(loc)
+            naverMap.setLocation(sl)
             if (::guideOverlay.isInitialized) guideOverlay.onLocation(loc)
-            if (NaverNavigator.isRunning) naverMap.follow(loc)
+            if (NaverNavigator.isRunning) naverMap.follow(sl)
         }
 
         override fun onState(state: GuidanceState, goalName: String) {
@@ -2477,7 +2533,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         if (parkedGpsStep == 1) {
             parkedGpsStep = 2
             naverMap.resumeFollow()
-            NaverNavigator.lastLocation?.let { naverMap.follow(it) }
+            NaverNavigator.lastLocation?.let { naverMap.follow(snapped(it)) }
             Toast.makeText(this, "내 위치를 따라가요", Toast.LENGTH_SHORT).show()
         } else {
             val (la, lo) = resolveCurrentWgs84LatLonForSearch()
@@ -3070,7 +3126,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         if (!currentDestLat.isNaN() && !currentDestLon.isNaN()) naverMap.showDestination(currentDestLat, currentDestLon, currentDestName)
         naverMap.resumeFollow()
         if (::guideOverlay.isInitialized) { guideOverlay.setRoute(r); guideOverlay.show() }
-        NaverNavigator.lastLocation?.let { naverMap.follow(it, animated = false) }
+        NaverNavigator.lastLocation?.let { naverMap.follow(snapped(it), animated = false) }
     }
 
     private fun clearDestinationPin() {

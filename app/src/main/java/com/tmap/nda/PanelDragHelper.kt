@@ -769,6 +769,12 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 32)
         }
+        val naverMinimalGuideCheckBox = android.widget.Switch(context).apply {
+            text = "최소 안내 (회전 안내만 말하기)"
+            isChecked = pref.getBoolean("naver_minimal_guide_enabled", false)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 32)
+        }
         val naverFlatCheckBox = android.widget.Switch(context).apply {
             text = "네이버 지도 평면으로 보기"
             isChecked = pref.getBoolean("naver_flat_view_enabled", false)
@@ -1249,7 +1255,7 @@ object PanelDragHelper {
         // (옵션 값은 같은 저장 위치를 그대로 쓴다).
         val engineItems: List<View> = if (naverSelected) {
             ArrayList<View>().apply {
-                add(naverSatelliteViewCheckBox); add(naverTrafficCheckBox); add(naverFlatCheckBox)
+                add(naverSatelliteViewCheckBox); add(naverTrafficCheckBox); add(naverFlatCheckBox); add(naverMinimalGuideCheckBox)
                 addAll(naverVoiceItems)
             }
         } else {
@@ -1451,6 +1457,7 @@ object PanelDragHelper {
                     .putBoolean("kakao_options_in_menu", kakaoBundleSwitch.isChecked)
                     .putBoolean("naver_traffic_enabled", naverTrafficCheckBox.isChecked)
                     .putBoolean("naver_flat_view_enabled", naverFlatCheckBox.isChecked)
+                    .putBoolean("naver_minimal_guide_enabled", naverMinimalGuideCheckBox.isChecked)
                     .putBoolean("tmap_traffic_info_enabled", trafficInfoCheckBox.isChecked)
                     .putBoolean("route_line_display_enabled", routeLineDisplayCheckBox.isChecked)
                     .putBoolean("kakao_minimal_guide_enabled", kakaoMinimalGuideCheckBox.isChecked)

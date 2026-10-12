@@ -30,6 +30,13 @@ object NaverTurnMap {
         else -> NONE
     }
 
+    /**
+     * 콤마로 내보낼 회전 코드. "자동 길안내 주행(시험)"이 꺼져 있으면 도시고속도로 진출은 갈림길로 내보내지 않는다
+     * (카카오의 도시고속도로 진출 처리와 같은 규칙). 화면에 그리는 화살표는 [toOpenpilotCode]를 그대로 쓴다.
+     */
+    fun toCommaCode(type: Int, autoDrive: Boolean): Int =
+        if (!autoDrive && (type == 60 || type == 69)) NONE else toOpenpilotCode(type)
+
     /** 화면·음성에 쓰는 짧은 한국어 이름. */
     fun label(type: Int): String = when (type) {
         1 -> "직진"

@@ -43,6 +43,7 @@ class NaverMenuSheet(
         const val KEY_TRAFFIC_REROUTE = "naver_traffic_reroute_enabled"
         const val KEY_ROUTE_TRAFFIC_COLOR = "naver_route_traffic_color"
         const val KEY_TURN_SIGN = "naver_turn_sign_enabled"
+        const val KEY_MINIMAL = "naver_minimal_guide_enabled"
         const val KEY_DAYNIGHT = "map_daynight_mode"
     }
 
@@ -248,6 +249,8 @@ class NaverMenuSheet(
         val s = open()
         s.addView(switchRow("실시간 교통상황에 따라 경로 변경", "실시간 교통정보를 반영하여 최적의 경로로 변경합니다.", KEY_TRAFFIC_REROUTE, true))
         s.addView(divider(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
+        s.addView(switchRow("최소 안내", "꼭 필요한 음성 안내만 해요.", KEY_MINIMAL, false))
+        s.addView(divider(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
         s.addView(switchRow("주행선에 교통정보 표시", "경로안내선에 교통정보 색상을 표시합니다.", KEY_ROUTE_TRAFFIC_COLOR, false))
         s.addView(divider(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
         s.addView(switchRow("지도 위에 차로정보 표시", "경로안내선 위에 중요한 회전 표지를 표시합니다.", KEY_TURN_SIGN, true))
@@ -318,7 +321,8 @@ class NaverMenuSheet(
             switchRow("지도 위에 차로정보 표시", "경로안내선 위에 중요한 회전 표지를 표시합니다.", KEY_TURN_SIGN, true)
         ))
         body.addView(section("길안내",
-            switchRow("실시간 교통상황에 따라 경로 변경", "실시간 교통정보를 반영하여 최적의 경로로 변경합니다.", KEY_TRAFFIC_REROUTE, true)
+            switchRow("실시간 교통상황에 따라 경로 변경", "실시간 교통정보를 반영하여 최적의 경로로 변경합니다.", KEY_TRAFFIC_REROUTE, true),
+            switchRow("최소 안내", "꼭 필요한 음성 안내만 해요.", KEY_MINIMAL, false)
         ))
         body.addView(section("앱",
             linkRow("앱 전체 설정 열기") { dismiss(); actions.onDetailSettings() }

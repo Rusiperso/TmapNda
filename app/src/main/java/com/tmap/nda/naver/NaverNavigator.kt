@@ -168,6 +168,7 @@ object NaverNavigator {
         goal = null
         currentRoute = null
         planner.reset()
+        camAnnounced = 0; camLastDist = Int.MAX_VALUE; camLastType = -1
         KakaoRouteDataRepository.reset()
         listener?.onFinished(arrived)
         releaseLocationIfIdle()
@@ -184,6 +185,8 @@ object NaverNavigator {
         publish(ctx, s)
         listener?.onState(s, goalName)
         planner.next(s, speedKmh)?.let { speak(it) }
+        checkCameraSpeedBeep(ctx, speedKmh)
+        announceCamera(ctx)
 
         if (s.arrived) {
             speak("목적지에 도착했습니다")
@@ -201,6 +204,73 @@ object NaverNavigator {
         } else if (!rerouting && now - lastTrafficRefreshAt > TRAFFIC_REFRESH_MS && lastTrafficRefreshAt > 0 &&
             ctx.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("naver_traffic_reroute_enabled", true)) {
             reroute(ctx, loc, "교통갱신")
+        }
+    }
+
+    private var lastCameraBeepAt = 0L
+
+    private var camAnnounced = 0
+    private var camLastDist = Int.MAX_VALUE
+    private var camLastType = -1
+
+    /**
+     * 단속 카메라 음성. 네이버엔 카메라 정보가 없어 티맵 데이터를 쓰며, 티맵 안내음성이 꺼져 있을 때만 말한다(켜져 있으면 티맵이 직접 말함).
+     * 시끄럽지 않게 안전정보 하나당 최대 2번(600m 안에서 한 번, 200m 안에서 한 번)만 말한다 - 카카오 최소 안내와 같은 기준.
+     */
+    private fun announceCamera(ctx: Context) {
+        val type = com.tmap.nda.SdiDataRepository.sdiType
+        val dist = com.tmap.nda.SdiDataRepository.sdiDistance
+        val limit = com.tmap.nda.SdiDataRepository.sdiSpeedLimit
+        // 티맵이 알려주는 안전·도로 정보(카메라·방지턱·구간단속·어린이보호구역·휴게소·톨게이트 등)를 전부 말한다.
+        val name = when (type) {
+            0 -> "신호 과속 단속 카메라"; 1 -> "과속 단속 카메라"; 2 -> "구간 단속 시작"; 3 -> "구간 단속 종료"; 4 -> "구간 단속 중"
+            6 -> "신호 단속 카메라"; 7 -> "이동식 단속 카메라"; 8 -> "과속 위험 구간"; 9 -> "버스 전용차로 단속"; 11 -> "갓길 감시"
+            12 -> "끼어들기 금지 단속"; 13 -> "교통정보 수집"; 15 -> "과적 차량 단속"; 16 -> "적재 불량 단속"; 17 -> "주차 단속"
+            19 -> "철길 건널목"; 20 -> "어린이 보호구역"; 22 -> "과속 방지턱"; 25 -> "휴게소"; 26 -> "톨게이트"; 27 -> "안개 주의 구간"; 29 -> "사고 다발 구간"
+            30 -> "급커브 구간"; 32 -> "급경사 구간"; 33 -> "야생동물 사고 구간"
+            else -> null
+        }
+        if (name == null || dist <= 0) { camAnnounced = 0; camLastDist = Int.MAX_VALUE; camLastType = -1; return }
+        // 거리가 다시 멀어졌거나 종류가 바뀌면 다른 카메라로 본다
+        if (type != camLastType || dist > camLastDist + 150) camAnnounced = 0
+        camLastType = type; camLastDist = dist
+        if (camAnnounced >= 2) return
+        if (!ctx.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("tmap_muted", false)) return
+        val limitText = if (limit >= 30) ", 제한속도 $limit" else ""
+        when {
+            camAnnounced == 0 && dist <= 600 -> {
+                val d = (dist / 100 * 100).coerceAtLeast(100)
+                speak("전방 ${d}미터 앞 $name$limitText", queue = true)
+                camAnnounced = if (dist <= 200) 2 else 1
+            }
+            camAnnounced == 1 && dist <= 200 -> {
+                speak("잠시 후 $name$limitText", queue = true)
+                camAnnounced = 2
+            }
+        }
+    }
+
+    /**
+     * 단속 카메라 300m 안에서 속도가 그 카메라 제한속도의 110%를 넘는 동안 2초마다 경고음을 낸다(카카오 길안내와 같은 규칙).
+     * 속도를 110% 이내로 줄이거나 카메라를 지나면 멈춘다. 설정의 "속도 10% 초과 시 경고음"을 따른다.
+     */
+    private fun checkCameraSpeedBeep(ctx: Context, speedKmh: Double) {
+        val limit = com.tmap.nda.SdiDataRepository.sdiSpeedLimit
+        val dist = com.tmap.nda.SdiDataRepository.sdiDistance
+        val near = com.tmap.nda.SdiDataRepository.sdiType > 0 && limit >= 30 && dist in 1..300
+        if (!near || muted || speedKmh <= limit * 1.1) return
+        val nowMs = android.os.SystemClock.elapsedRealtime()
+        if (nowMs - lastCameraBeepAt < 2000L) return
+        if (!ctx.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("over_speed_warning_enabled", true)) return
+        lastCameraBeepAt = nowMs
+        NavLogger.e(ctx, "[과속경고음발생][네이버화면] speedKph=${speedKmh.toInt()} limit=$limit (limit*1.1=${limit * 1.1}) dist=$dist")
+        try {
+            val volumePercent = com.tmap.nda.VolumeHelper.guideVolumePercent(ctx).coerceIn(1, 100)
+            val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, volumePercent)
+            tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
+            main.postDelayed({ tone.release() }, 500)
+        } catch (e: Exception) {
+            NavLogger.e(ctx, "[네이버] 속도경고음 재생 예외: ${e.message}")
         }
     }
 
@@ -240,7 +310,7 @@ object NaverNavigator {
                     return@post
                 }
                 attachRoute(route)
-                if (reason == "교통갱신") speak("더 빠른 경로로 안내합니다")
+                if (reason == "교통갱신") speak("더 빠른 경로로 안내합니다", essential = false)
                 val km = route.distanceMeters / 1000.0
                 val remainText = if (route.distanceMeters >= 1000) java.lang.String.format(java.util.Locale.US, "%.1fkm", km) else "${route.distanceMeters}m"
                 listener?.onStatus("재탐색 완료: 남은 $remainText")
@@ -282,7 +352,8 @@ object NaverNavigator {
         val g = s.nextGuide
         val second = s.secondGuide
         val type = g?.type ?: 0
-        val turnCode = if (g != null) NaverTurnMap.toOpenpilotCode(type) else NaverTurnMap.NONE
+        val autoDrive = ctx.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("auto_navi_drive_enabled", false)
+        val turnCode = if (g != null) NaverTurnMap.toCommaCode(type, autoDrive) else NaverTurnMap.NONE
         val mainText = g?.instructions.orEmpty().ifBlank { NaverTurnMap.label(type) }.ifBlank { s.roadName }
         val nextText = second?.instructions.orEmpty().ifBlank { NaverTurnMap.label(second?.type ?: 0) }
 
@@ -346,7 +417,10 @@ object NaverNavigator {
         }
     }
 
-    private fun speak(text: String) {
+    /** "최소 안내"가 켜져 있으면 회전 안내만 말하고, "더 빠른 경로로 안내합니다"(교통 반영 경로 변경) 멘트는 건너뛴다(시작·재탐색·도착 멘트는 그대로 말한다). */
+    private fun speak(text: String, essential: Boolean = true, queue: Boolean = false) {
+        if (!essential && appContext?.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+                ?.getBoolean("naver_minimal_guide_enabled", false) == true) return
         if (!ttsReady) { ttsPending.add(text); return }
         if (muted) return
         // 설정에서 목소리를 바꿨으면 다음 안내부터 바로 적용
@@ -355,6 +429,6 @@ object NaverNavigator {
             if (want != appliedVoice) { tts?.let { GuideVoice.applySaved(c, it) }; appliedVoice = want }
         }
         val params = Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, guideVolume.coerceIn(0f, 1f)) }
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "naver")
+        tts?.speak(text, if (queue) TextToSpeech.QUEUE_ADD else TextToSpeech.QUEUE_FLUSH, params, "naver")
     }
 }
