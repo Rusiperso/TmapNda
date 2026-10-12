@@ -307,8 +307,8 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         if (entryMs > 0) entryUntil = now + entryMs
         val speedKmh = if (loc.hasSpeed()) loc.speed * 3.6 else 0.0
         val moving = loc.hasSpeed() && loc.speed > 1.5f
-        val zoom = if (now < zoomHoldUntil) m.cameraPosition.zoom else if (nearTurn) 18.0 else when {
-            speedKmh > 90 -> 15.8; speedKmh > 50 -> 16.6; speedKmh > 15 -> 17.3; else -> 17.8
+        val zoom = if (now < zoomHoldUntil) m.cameraPosition.zoom else if (nearTurn) 17.4 else when {
+            speedKmh > 90 -> 14.8; speedKmh > 50 -> 15.6; speedKmh > 15 -> 16.4; else -> 17.0
         }
         val bearing = if (moving && loc.hasBearing()) loc.bearing.toDouble() else m.cameraPosition.bearing
         // 차를 화면 아래쪽으로 내려서 앞이 더 보이게(여백으로 구현)
@@ -317,7 +317,7 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         val ax = anchorXFraction
         // 운전자 쪽 치우침은 오른쪽 여백(엔진이 몇 초에 걸쳐 천천히 반영해 차가 미끄러져 보임) 대신, 카메라 이동 때 차가 놓일 자리(pivot)로 한 번에 맞춤
         m.setContentPadding(0, topInsetPx, 0, bottomPad)
-        val upd = CameraUpdate.toCameraPosition(CameraPosition(LatLng(loc.latitude, loc.longitude), zoom, if (flat || nearTurn) 0.0 else 50.0, bearing))
+        val upd = CameraUpdate.toCameraPosition(CameraPosition(LatLng(loc.latitude, loc.longitude), zoom, if (flat || nearTurn) 0.0 else 40.0, bearing))
         upd.pivot(android.graphics.PointF(ax ?: 0.5f, carAnchorY))
         // entryMs>0: 안내 시작 진입 - 위치·확대·기울기를 한 번에 부드럽게(툭툭 끊김 방지)
         // 멀리(전체 경로 화면 등)서 날아오면 타일이 흐릿하게 늦게 떠서 오히려 끊겨 보임 -> 멀거나 배율 차가 크면 한 번에 맞추고, 가까울 때만 부드럽게
