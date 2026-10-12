@@ -41,6 +41,7 @@ class NaverMapController(private val activity: Activity, private val host: Frame
 
     /** 사용자가 손으로 지도를 움직이면 이 시각까지 자동 따라가기를 쉰다. */
     @Volatile var followPausedUntil = 0L
+    @Volatile private var entryUntil = 0L
     /** 핀치 줌 직후 이 시각까지는 자동 줌을 하지 않고 사용자가 맞춘 줌을 유지한다. */
     @Volatile var zoomHoldUntil = 0L
     /** 상단 바가 가리는 만큼 위로 비워두는 여백(px)과, 차가 놓일 위치를 아래로 내리는 비율(0~0.5). */
@@ -98,24 +99,27 @@ class NaverMapController(private val activity: Activity, private val host: Frame
     // ===== 위성지도 =====
     /** 켜면 일반 위성 지도(Hybrid), 끄면 일반 지도(Basic). */
     fun setSatellite(on: Boolean) = whenReady {
-        it.mapType = if (on) NaverMap.MapType.Hybrid else NaverMap.MapType.Basic
+        val t = if (on) NaverMap.MapType.Hybrid else NaverMap.MapType.Basic
+        if (it.mapType != t) it.mapType = t   // 같은 값 재설정도 지도를 통째로 다시 그려 하얗게 비므로 바뀔 때만
     }
 
     // ===== 기울기 / 교통 / 위치 아이콘 =====
     /** 켜면 지도를 눕히지 않고 위에서 내려다보는 평면으로, 끄면 안내 중 40도 기울기. */
     @Volatile private var flat = false
     fun setFlat(on: Boolean) = whenReady { m ->
+        val same = flat == on && m.maxTilt == (if (on) 0.0 else 60.0)
         flat = on
+        if (same) return@whenReady
         m.maxTilt = if (on) 0.0 else 60.0
         val c = m.cameraPosition
         m.moveCamera(CameraUpdate.toCameraPosition(CameraPosition(c.target, c.zoom, if (on) 0.0 else 40.0, c.bearing)))
     }
 
     /** 네이버 실시간 교통 정보(도로 정체 색) 레이어. */
-    fun setTraffic(on: Boolean) = whenReady { it.setLayerGroupEnabled(NaverMap.LAYER_GROUP_TRAFFIC, on) }
+    fun setTraffic(on: Boolean) = whenReady { if (it.isLayerGroupEnabled(NaverMap.LAYER_GROUP_TRAFFIC) != on) it.setLayerGroupEnabled(NaverMap.LAYER_GROUP_TRAFFIC, on) }
 
     // ===== 낮/밤 =====
-    fun setNight(night: Boolean) = whenReady { it.isNightModeEnabled = night }
+    fun setNight(night: Boolean) = whenReady { if (it.isNightModeEnabled != night) it.isNightModeEnabled = night }
 
     // ===== 경로선 =====
     private fun latLngs(path: List<LonLat>) = path.map { LatLng(it.lat, it.lon) }
@@ -294,9 +298,11 @@ class NaverMapController(private val activity: Activity, private val host: Frame
     }
 
     /** 안내 중 내 위치를 따라간다. 사용자가 손으로 움직인 뒤 10초간은 쉬고, 핀치로 맞춘 줌은 그동안 유지한다. */
-    fun follow(loc: Location, animated: Boolean = true) = whenReady { m ->
+    fun follow(loc: Location, animated: Boolean = true, entryMs: Long = 0L) = whenReady { m ->
         val now = System.currentTimeMillis()
         if (now < followPausedUntil) return@whenReady
+        if (entryMs <= 0 && now < entryUntil) return@whenReady   // 진입 애니메이션 중엔 끼어들지 않음
+        if (entryMs > 0) entryUntil = now + entryMs
         val speedKmh = if (loc.hasSpeed()) loc.speed * 3.6 else 0.0
         val moving = loc.hasSpeed() && loc.speed > 1.5f
         val zoom = if (now < zoomHoldUntil) m.cameraPosition.zoom else if (nearTurn) 17.4 else when {
@@ -307,10 +313,16 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         val h = host.height
         val bottomPad = (h * driverAnchorBottomFraction).toInt()
         val ax = anchorXFraction
-        val rightPad = if (ax != null) ((1f - 2f * ax) * host.width).toInt().coerceAtLeast(0) else 0
-        m.setContentPadding(0, topInsetPx, rightPad, bottomPad)
+        // 운전자 쪽 치우침은 오른쪽 여백(엔진이 몇 초에 걸쳐 천천히 반영해 차가 미끄러져 보임) 대신, 카메라 이동 때 차가 놓일 자리(pivot)로 한 번에 맞춤
+        m.setContentPadding(0, topInsetPx, 0, bottomPad)
         val upd = CameraUpdate.toCameraPosition(CameraPosition(LatLng(loc.latitude, loc.longitude), zoom, if (flat || nearTurn) 0.0 else 40.0, bearing))
-        m.moveCamera(if (animated) upd.animate(CameraAnimation.Linear, 900) else upd)
+        if (ax != null) upd.pivot(android.graphics.PointF(ax, 0.5f))
+        // entryMs>0: 안내 시작 진입 - 위치·확대·기울기를 한 번에 부드럽게(툭툭 끊김 방지)
+        // 멀리(전체 경로 화면 등)서 날아오면 타일이 흐릿하게 늦게 떠서 오히려 끊겨 보임 -> 멀거나 배율 차가 크면 한 번에 맞추고, 가까울 때만 부드럽게
+        val cp = m.cameraPosition
+        val near = entryMs > 0 && cp.target.distanceTo(LatLng(loc.latitude, loc.longitude)) < 1500.0 && Math.abs(cp.zoom - zoom) < 2.5
+        if (entryMs > 0 && !near) entryUntil = 0L
+        m.moveCamera(if (near) upd.animate(CameraAnimation.Easing, entryMs) else if (entryMs > 0) upd else if (animated) upd.animate(CameraAnimation.Linear, 900) else upd)
     }
 
     /** 회전이 200m 안으로 다가오면 네이버 앱처럼 지도를 평면으로 확대한다. */

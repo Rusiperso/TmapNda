@@ -868,7 +868,9 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         NaverNavigator.begin(applicationContext, route, LonLat(destLon, destLat), destName, activeWaypoints.map { LonLat(it.lon, it.lat) })
         guideOverlay.show()
         applyKakaoSdkVolume()
-        NaverNavigator.lastLocation?.let { naverMap.follow(snapped(it), animated = false) }
+        // 운전자 쪽 앵커를 먼저 켜고, 위치·확대·기울기·여백을 한 번에 부드럽게 이동(전엔 순간이동 후 앵커가 늦게 켜져 두세 번 끊김)
+        applyDriverSideAnchor()
+        NaverNavigator.lastLocation?.let { naverMap.follow(snapped(it), entryMs = 1300L) }
     }
 
     // 안내 상태 문구(사용량·재탐색 등)를 알림창 대신 화면 아래에 5초 동안 띄운다(알림창은 최대 3.5초라 짧음).
@@ -4031,7 +4033,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
     private fun applyDriverSideAnchor() {
         if (isFinishing || isDestroyed || !::naverMap.isInitialized) return
         // 길안내 중 + 가로 화면 + 전체 화면일 때만 차를 운전자 쪽(왼쪽)으로 치우쳐 보이게 한다.
-        val active = isGuidanceRunningNow() && activeRouteChoicePanel == null && !parkedActive &&
+        val active = (isGuidanceRunningNow() || NaverNavigator.isRunning) && activeRouteChoicePanel == null && !parkedActive &&
             resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE &&
             !(android.os.Build.VERSION.SDK_INT >= 24 && isInMultiWindowMode)
         naverMap.anchorXFraction = if (active) DRIVER_SIDE_ANCHOR_X else null
