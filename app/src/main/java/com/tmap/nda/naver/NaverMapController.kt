@@ -316,7 +316,8 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         // 운전자 쪽 치우침은 오른쪽 여백(엔진이 몇 초에 걸쳐 천천히 반영해 차가 미끄러져 보임) 대신, 카메라 이동 때 차가 놓일 자리(pivot)로 한 번에 맞춤
         m.setContentPadding(0, topInsetPx, 0, bottomPad)
         val upd = CameraUpdate.toCameraPosition(CameraPosition(LatLng(loc.latitude, loc.longitude), zoom, if (flat || nearTurn) 0.0 else 40.0, bearing))
-        if (ax != null) upd.pivot(android.graphics.PointF(ax, 0.5f))
+        // 차를 화면 아래쪽(0.5=가운데, 클수록 아래)에 두어 앞길이 더 많이 보이게. 가로 위치는 ax(없으면 가운데)
+        upd.pivot(android.graphics.PointF(ax ?: 0.5f, DRIVER_ANCHOR_Y))
         // entryMs>0: 안내 시작 진입 - 위치·확대·기울기를 한 번에 부드럽게(툭툭 끊김 방지)
         // 멀리(전체 경로 화면 등)서 날아오면 타일이 흐릿하게 늦게 떠서 오히려 끊겨 보임 -> 멀거나 배율 차가 크면 한 번에 맞추고, 가까울 때만 부드럽게
         val cp = m.cameraPosition
@@ -327,6 +328,9 @@ class NaverMapController(private val activity: Activity, private val host: Frame
 
     /** 회전이 200m 안으로 다가오면 네이버 앱처럼 지도를 평면으로 확대한다. */
     @Volatile var nearTurn = false
+
+    /** 안내 중 차가 놓일 세로 위치 비율(0=위, 1=아래). */
+    private val DRIVER_ANCHOR_Y = 0.72f
 
     fun resumeFollow() { followPausedUntil = 0L; zoomHoldUntil = 0L }
 
