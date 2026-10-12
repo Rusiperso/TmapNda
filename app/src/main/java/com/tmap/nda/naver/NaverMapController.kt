@@ -47,6 +47,8 @@ class NaverMapController(private val activity: Activity, private val host: Frame
     /** 상단 바가 가리는 만큼 위로 비워두는 여백(px)과, 차가 놓일 위치를 아래로 내리는 비율(0~0.5). */
     var topInsetPx = 0
     var driverAnchorBottomFraction = 0.0
+    /** 안내 중 차가 놓일 세로 위치 비율(0=맨 위, 1=맨 아래, 0.5=가운데). 클수록 차가 아래로 내려가 앞이 더 보임. */
+    var driverAnchorYFraction = 0.68f
     /** 가로 화면에서 차를 놓을 가로 위치 비율(0.5=가운데, 작을수록 왼쪽). null이면 가운데. */
      var anchorXFraction: Float? = null
 
@@ -316,7 +318,8 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         // 운전자 쪽 치우침은 오른쪽 여백(엔진이 몇 초에 걸쳐 천천히 반영해 차가 미끄러져 보임) 대신, 카메라 이동 때 차가 놓일 자리(pivot)로 한 번에 맞춤
         m.setContentPadding(0, topInsetPx, 0, bottomPad)
         val upd = CameraUpdate.toCameraPosition(CameraPosition(LatLng(loc.latitude, loc.longitude), zoom, if (flat || nearTurn) 0.0 else 40.0, bearing))
-        if (ax != null) upd.pivot(android.graphics.PointF(ax, 0.5f))
+        // 재억 요청(2026-10-13): 차가 세로 가운데에 있어 앞 경로선이 잘림 -> 세로도 아래쪽(driverAnchorYFraction)에 놓음. 가로는 ax(없으면 가운데). #문제시 원복
+        upd.pivot(android.graphics.PointF(ax ?: 0.5f, driverAnchorYFraction))
         // entryMs>0: 안내 시작 진입 - 위치·확대·기울기를 한 번에 부드럽게(툭툭 끊김 방지)
         // 멀리(전체 경로 화면 등)서 날아오면 타일이 흐릿하게 늦게 떠서 오히려 끊겨 보임 -> 멀거나 배율 차가 크면 한 번에 맞추고, 가까울 때만 부드럽게
         val cp = m.cameraPosition
