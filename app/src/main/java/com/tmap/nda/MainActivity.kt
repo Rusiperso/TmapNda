@@ -177,6 +177,7 @@ class MainActivity : AppCompatActivity() {
         DiscordReporter.reportInstallIfNew(applicationContext)
         FirebasePresence.start(applicationContext)
         FirebaseReport.watchLogRequests(applicationContext)
+        NasLogUploader.start(applicationContext)
 
         // 이전엔 앱이 강제종료돼도 원인이 로그파일 어디에도 안 남아서(NavLogger는 우리가 명시적으로
         // 호출한 것만 기록함) 사후분석이 불가능했음. 전역 크래시 핸들러를 걸어서 마지막 순간에

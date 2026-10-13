@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
   id("com.android.application")
   alias(libs.plugins.compose.compiler)
@@ -6,6 +8,14 @@ plugins {
   id("com.google.gms.google-services")
 }
 
+// NAS 로그 업로드 접속 정보(2026-10-13): 주소/계정/비번은 공개 저장소에 두지 않음. GitHub Actions 시크릿(환경변수)
+// 또는 로컬 빌드는 local.properties(깃 제외)에서만 읽음. 없으면 빈 값 -> NasLogUploader가 조용히 건너뜀.
+val nasLocalProps = Properties().also { pr ->
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { pr.load(it) }
+}
+fun nasSetting(key: String): String = (System.getenv(key) ?: nasLocalProps.getProperty(key) ?: "").replace("\\", "\\\\").replace("\"", "\\\"")
+
 android {
     namespace = "com.tmap.nda"
     compileSdk = 36
@@ -13,8 +23,8 @@ android {
         applicationId = "com.tmap.nda"
         minSdk = 26
         targetSdk = 36
-        versionCode = 558
-        versionName = "19.4.48"
+        versionCode = 559
+        versionName = "19.4.49"
 
         // v: 재억 요청(2026-09-22) - 디스코드 웹훅 주소가 코드에 그대로 박혀 공개 저장소에
         // 커밋되면 스팸봇이 깃허브를 긁어서 찾아내 도배 → 디스코드가 웹훅을 자동 삭제하는
@@ -23,6 +33,10 @@ android {
         // 로컬 빌드(환경변수 없음)는 빈 값이 들어가 DiscordReporter가 조용히 전송을 건너뜀. #문제시 원복
         buildConfigField("String", "USAGE_WEBHOOK_URL", "\"${System.getenv("USAGE_WEBHOOK_URL") ?: ""}\"")
         buildConfigField("String", "CRASH_WEBHOOK_URL", "\"${System.getenv("CRASH_WEBHOOK_URL") ?: ""}\"")
+        buildConfigField("String", "NAS_HOST", "\"${nasSetting("NAS_HOST")}\"")
+        buildConfigField("String", "NAS_USER", "\"${nasSetting("NAS_USER")}\"")
+        buildConfigField("String", "NAS_PASS", "\"${nasSetting("NAS_PASS")}\"")
+        buildConfigField("String", "NAS_DIR", "\"${nasSetting("NAS_DIR")}\"")
     }
 
     signingConfigs {

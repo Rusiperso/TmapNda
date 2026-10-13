@@ -31,6 +31,10 @@ jobs:
         env:
           USAGE_WEBHOOK_URL: ${{ secrets.USAGE_WEBHOOK_URL }}
           CRASH_WEBHOOK_URL: ${{ secrets.CRASH_WEBHOOK_URL }}
+          NAS_HOST: ${{ secrets.NAS_HOST }}
+          NAS_USER: ${{ secrets.NAS_USER }}
+          NAS_PASS: ${{ secrets.NAS_PASS }}
+          NAS_DIR: ${{ secrets.NAS_DIR }}
 
       - name: Upload log on failure (temp diagnostic)
         if: env.BUILD_EXIT != '0'
