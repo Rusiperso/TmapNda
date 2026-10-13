@@ -42,7 +42,8 @@ class RouteSnap {
         val out = Location(loc)
         out.latitude = loc.latitude + r.third[1] / mPerLat
         out.longitude = loc.longitude + r.third[0] / mPerLon
-        if (loc.hasSpeed() && loc.speed > 1.5f) {
+        // 서 있을 때도 경로 방향으로 맞춰야 지도가 삐뚤어지지 않는다(멈춘 GPS 방향은 엉뚱하게 튄다)
+        if (r.third[2] != 0.0 || r.third[3] != 0.0) {
             val brg = Math.toDegrees(Math.atan2(r.third[2], r.third[3]))
             out.bearing = ((brg + 360.0) % 360.0).toFloat()
         }

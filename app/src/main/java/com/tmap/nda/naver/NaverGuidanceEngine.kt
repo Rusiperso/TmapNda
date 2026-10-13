@@ -199,10 +199,11 @@ class AnnouncePlanner {
     private val said = HashSet<Long>()
 
     /** 지금 말해야 할 문장이 있으면 돌려주고, 없으면 null. [speedKmh]가 빠르면 더 먼 거리에서 먼저 알려준다. */
-    fun next(state: GuidanceState, speedKmh: Double): String? {
+    fun next(state: GuidanceState, speedKmh: Double, minimal: Boolean = false): String? {
         val g = state.nextGuide ?: return null
         val dist = state.nextGuideDistMeters
-        val thresholds = if (speedKmh >= 80) HIGHWAY else URBAN
+        val fast = speedKmh >= 80
+        val thresholds = if (minimal) (if (fast) MIN_HIGHWAY else MIN_URBAN) else if (fast) HIGHWAY else URBAN
         val label = NaverTurnMap.label(g.type)
         if (label.isEmpty()) return null
         // 가장 가까운 단계부터 확인: 이미 그 안으로 들어왔고 아직 안 말한 단계 중 제일 작은 것
@@ -214,6 +215,8 @@ class AnnouncePlanner {
         for (t in thresholds) if (t >= stage) said.add(base + t)
         val action = spoken(label)
         return when {
+            // 최소 안내: 마지막 단계는 "잠시 후"로 말한다
+            minimal && stage == thresholds.minOrNull() -> "잠시 후 $action"
             stage <= NOW_M -> "잠시 후 $action"
             stage >= 1000 -> "${stage / 1000}킬로미터 앞에서 $action"
             else -> "${stage}미터 앞에서 $action"
@@ -237,5 +240,8 @@ class AnnouncePlanner {
         private const val NOW_M = 40
         private val URBAN = intArrayOf(300, 100, NOW_M)
         private val HIGHWAY = intArrayOf(1000, 500, 200, NOW_M)
+        // 최소 안내: 말하는 횟수를 줄인다(시내 2번, 고속도로 3번)
+        private val MIN_URBAN = intArrayOf(300, 100)
+        private val MIN_HIGHWAY = intArrayOf(2000, 1000, 300)
     }
 }

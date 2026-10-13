@@ -770,7 +770,7 @@ object PanelDragHelper {
             setPadding(40, 0, 40, 32)
         }
         val naverMinimalGuideCheckBox = android.widget.Switch(context).apply {
-            text = "최소 안내 (회전 안내만 말하기)"
+            text = "최소 안내 (말하는 횟수 줄이기)"
             isChecked = pref.getBoolean("naver_minimal_guide_enabled", false)
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 32)
@@ -1517,7 +1517,7 @@ object PanelDragHelper {
         PopupCard.pendingEmbeddedHost = null
         if (host != null) {
             host.showSubPage(
-                customTitle, twoPane, maxDp = 480, reserveDp = 150, widthDp = 600,
+                customTitle, twoPane, maxDp = 440, reserveDp = 200, widthDp = 600,
                 buttons = listOf(
                     PopupCard.SubButton("닫기", primary = true) { host.close() }
                 )

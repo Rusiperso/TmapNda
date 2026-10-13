@@ -1304,7 +1304,9 @@ class KakaoGuidanceDelegate(
     // 카메라가 바뀌기 전까진 값이 그대로 유지됨)를 카메라 식별키로 써서, 같은 카메라는
     // 최소안내 켜져 있을 때 최대 2번까지만 재생되게 제한. #문제시 원복
     private var lastMinimalGuideCameraKey = Int.MIN_VALUE
-    private var minimalGuideCameraPlayCount = 0
+    private var minimalCameraStageUsed = 0
+    private var lastMinimalTurnKey = Int.MIN_VALUE
+    private var minimalTurnStageUsed = 0
     override fun guidanceDidUpdateSafetyGuide(guidance: KNGuidance, safetyGuide: KNGuide_Safety?) {
         try {
             val safetyList = safetyGuide?.let { findGetter(it, "getSafetiesOnGuide") } as? List<*>
@@ -1476,18 +1478,35 @@ class KakaoGuidanceDelegate(
             // v: 재억 요청(2026-09-28) - 2초마다 반복되는 경고음(Alert)과 회전(Turn) 안내가 횟수를
             // 먼저 다 써버려서 정작 "카메라 단속구간입니다"(Safety)가 전부 차단됐음. 말로 하는
             // 카메라 안내(Safety)만 세고, 카메라 식별키를 못 구한(-1) 경우엔 제한 안 함. #문제시 원복
-            if (allow && voiceGuide.voiceCode == KNVoiceCode.KNVoiceCode_Safety &&
-                KakaoRouteDataRepository.safetyEventDistFromS >= 0) {
-                val cameraKey = KakaoRouteDataRepository.safetyEventDistFromS
-                if (cameraKey != lastMinimalGuideCameraKey) {
-                    lastMinimalGuideCameraKey = cameraKey
-                    minimalGuideCameraPlayCount = 0
-                }
-                if (minimalGuideCameraPlayCount >= 2) {
-                    allow = false
-                    NavLogger.d(context, "[최소안내] 같은 카메라(key=$cameraKey) 2회 초과 안내 차단")
+            // 재억 요청(2026-10-13) - 최소 안내 = 말하는 횟수 줄이기(네이버와 동일): 시내 300m·100m 2번, 고속도로(도로 제한 80↑) 2km·1km·300m 3번.
+            // 카카오가 말하려는 회전/카메라 음성이 아직 안 쓴 단계 안(남은 거리 이하)에 들어왔을 때만 통과시키고, 단계는 한 번씩만 쓴다. #문제시 원복
+            val isTurn = voiceGuide.voiceCode == KNVoiceCode.KNVoiceCode_Turn
+            val isSafety = voiceGuide.voiceCode == KNVoiceCode.KNVoiceCode_Safety
+            if (allow && (isTurn || isSafety)) {
+                val fast = SdiDataRepository.kakaoRoadLimitSpeed >= 80
+                val stages = if (fast) intArrayOf(2000, 1000, 300) else intArrayOf(300, 100)
+                val dist: Int
+                val key: Int
+                if (isTurn) {
+                    dist = KakaoRouteDataRepository.tbtDist
+                    key = KakaoRouteDataRepository.currentDistFromS.let { if (it >= 0 && dist > 0) it + dist else -1 }
                 } else {
-                    minimalGuideCameraPlayCount++
+                    dist = KakaoRouteDataRepository.safetyDist
+                    key = KakaoRouteDataRepository.safetyEventDistFromS
+                }
+                if (dist > 0 && key >= 0) {
+                    val lastKey = if (isTurn) lastMinimalTurnKey else lastMinimalGuideCameraKey
+                    var used = if (isTurn) minimalTurnStageUsed else minimalCameraStageUsed
+                    // 같은 지점인지(경로상 위치가 50m 이내로 같으면 같은 것) 판단, 다르면 새로 센다
+                    if (kotlin.math.abs(key - lastKey) > 50 || lastKey == Int.MIN_VALUE) used = 0
+                    val idx = stages.indexOfLast { dist <= it }
+                    if (idx < 0 || idx < used) {
+                        allow = false
+                        NavLogger.d(context, "[최소안내] ${if (isTurn) "회전" else "카메라"} 안내 차단 dist=$dist 단계=$idx 사용=$used")
+                    } else {
+                        used = idx + 1
+                    }
+                    if (isTurn) { lastMinimalTurnKey = key; minimalTurnStageUsed = used } else { lastMinimalGuideCameraKey = key; minimalCameraStageUsed = used }
                 }
             }
         }

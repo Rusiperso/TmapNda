@@ -263,9 +263,9 @@ object NaverNavigator {
 
         publish(ctx, s)
         listener?.onState(s, goalName)
-        planner.next(s, speedKmh)?.let { speak(it) }
+        planner.next(s, speedKmh, minimalOn(ctx))?.let { speak(it) }
         checkCameraSpeedBeep(ctx, speedKmh)
-        announceCamera(ctx)
+        announceCamera(ctx, speedKmh)
         trackSafety(s)
 
         if (s.arrived) {
@@ -296,6 +296,9 @@ object NaverNavigator {
     private const val SAFETY_PASSED_M = 30.0
     private const val SAFETY_MATCH_M = 100.0
     private const val SAFETY_MAX_SHOWN = 4
+    /** 티맵과 카카오는 같은 카메라를 서로 다른 종류 번호로 알려줄 수 있어, 단속 카메라 계열은 같은 종류로 본다. */
+    private val CAMERA_KIND = setOf(0, 1, 6, 7, 9, 11, 12, 15, 16, 17)
+    private fun sameKind(a: Int, b: Int) = a == b || (a in CAMERA_KIND && b in CAMERA_KIND)
     /** 카카오 목록 항목은 이 거리(m) 안으로 다가오면 지도에 올린다. */
     private const val KAKAO_SAFETY_MAX_AHEAD_M = 3000
 
@@ -310,7 +313,7 @@ object NaverNavigator {
             if (type == 22 && dist == 150) return
             val abs = progress + dist
             val at = eng.pointAt(abs) ?: return
-            val i = safety.indexOfFirst { it.type == type && kotlin.math.abs(it.absMeters - abs) < SAFETY_MATCH_M }
+            val i = safety.indexOfFirst { sameKind(it.type, type) && kotlin.math.abs(it.absMeters - abs) < SAFETY_MATCH_M }
             val p = SafetyPoint(if (i >= 0) safety[i].id else ++safetySeq, type, limit, abs, at.lon, at.lat, dist)
             if (i >= 0) safety[i] = p else safety.add(p)
         }
@@ -324,17 +327,23 @@ object NaverNavigator {
             if (ahead > KAKAO_SAFETY_MAX_AHEAD_M) continue
             if (NaverMapIcons.safetyLabel(k.sdiType, k.speedLimit) == null) { kakaoSeeded.add(idx); continue }
             kakaoSeeded.add(idx)
-            if (safety.any { it.type == k.sdiType && kotlin.math.abs(it.absMeters - k.alongM) < SAFETY_MATCH_M }) continue
+            if (safety.any { sameKind(it.type, k.sdiType) && kotlin.math.abs(it.absMeters - k.alongM) < SAFETY_MATCH_M }) continue
             safety.add(SafetyPoint(++safetySeq, k.sdiType, k.speedLimit, k.alongM.toDouble(), k.lon, k.lat, ahead.toInt()))
         }
         val r = com.tmap.nda.SdiDataRepository
         feed(r.sdiType, r.sdiDistance, r.sdiSpeedLimit)
         feed(r.sdi2Type, r.sdi2Distance, r.sdi2SpeedLimit)
-        val out = safety
+        // 그래도 겹쳐 들어온 같은 계열 항목은 화면에서 하나만 보이게 한다(100m 안).
+        val sortedAll = safety
             .map { it.copy(aheadMeters = kotlin.math.max(0, (it.absMeters - progress).toInt())) }
             .sortedBy { it.absMeters }
-            .take(SAFETY_MAX_SHOWN)
-        listener?.onSafety(out)
+        val out = ArrayList<SafetyPoint>()
+        for (p in sortedAll) {
+            if (out.any { sameKind(it.type, p.type) && kotlin.math.abs(it.absMeters - p.absMeters) < SAFETY_MATCH_M }) continue
+            out.add(p)
+        }
+        val shown = out.take(SAFETY_MAX_SHOWN)
+        listener?.onSafety(shown)
     }
 
     private var lastCameraBeepAt = 0L
@@ -347,7 +356,10 @@ object NaverNavigator {
      * 단속 카메라 음성. 네이버엔 카메라 정보가 없어 티맵 데이터를 쓰며, 티맵 안내음성이 꺼져 있을 때만 말한다(켜져 있으면 티맵이 직접 말함).
      * 시끄럽지 않게 안전정보 하나당 최대 2번(600m 안에서 한 번, 200m 안에서 한 번)만 말한다 - 카카오 최소 안내와 같은 기준.
      */
-    private fun announceCamera(ctx: Context) {
+    private fun minimalOn(ctx: Context) =
+        ctx.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("naver_minimal_guide_enabled", false)
+
+    private fun announceCamera(ctx: Context, speedKmh: Double) {
         val type = com.tmap.nda.SdiDataRepository.sdiType
         val dist = com.tmap.nda.SdiDataRepository.sdiDistance
         val limit = com.tmap.nda.SdiDataRepository.sdiSpeedLimit
@@ -364,17 +376,33 @@ object NaverNavigator {
         // 거리가 다시 멀어졌거나 종류가 바뀌면 다른 카메라로 본다
         if (type != camLastType || dist > camLastDist + 150) camAnnounced = 0
         camLastType = type; camLastDist = dist
-        if (camAnnounced >= 2) return
+        if (!minimalOn(ctx) && camAnnounced >= 2) return
         if (!ctx.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("tmap_muted", false)) return
-        val limitText = if (limit >= 30) ", 제한속도 $limit" else ""
+        val limitSay = if (limit >= 30) ". 제한속도 ${limit}킬로미터입니다" else ""
+        if (minimalOn(ctx)) {
+            // 최소 안내: 시내 300m·100m("잠시 후") 2번, 고속도로 2km·1km·300m("잠시 후") 3번
+            val stages = if (speedKmh >= 80) intArrayOf(2000, 1000, 300) else intArrayOf(300, 100)
+            // 이미 지나온 먼 단계는 말한 것으로 친다
+            val idx = stages.indexOfLast { dist <= it }
+            if (idx < 0 || camAnnounced > idx) return
+            camAnnounced = idx + 1
+            val st = stages[idx]
+            val say = when {
+                idx == stages.size - 1 -> "잠시 후 ${name}입니다$limitSay"
+                st >= 1000 -> "전방 ${st / 1000}킬로미터 앞 ${name}입니다$limitSay"
+                else -> "전방 ${st}미터 앞 ${name}입니다$limitSay"
+            }
+            speak(say, queue = true)
+            return
+        }
         when {
             camAnnounced == 0 && dist <= 600 -> {
                 val d = (dist / 100 * 100).coerceAtLeast(100)
-                speak("전방 ${d}미터 앞 $name$limitText", queue = true)
+                speak("전방 ${d}미터 앞 ${name}입니다${if (limit >= 30) ". 제한속도 ${limit}킬로미터입니다" else ""}", queue = true)
                 camAnnounced = if (dist <= 200) 2 else 1
             }
             camAnnounced == 1 && dist <= 200 -> {
-                speak("잠시 후 $name$limitText", queue = true)
+                speak("잠시 후 ${name}입니다${if (limit >= 30) ". 제한속도 ${limit}킬로미터입니다" else ""}", queue = true)
                 camAnnounced = 2
             }
         }
@@ -549,7 +577,7 @@ object NaverNavigator {
         }
     }
 
-    /** "최소 안내"가 켜져 있으면 회전 안내만 말하고, "더 빠른 경로로 안내합니다"(교통 반영 경로 변경) 멘트는 건너뛴다(시작·재탐색·도착 멘트는 그대로 말한다). */
+    /** "최소 안내"가 켜져 있으면 "더 빠른 경로로 안내합니다" 멘트는 건너뛰고, 회전·카메라 안내는 말하는 횟수를 줄인다. */
     private fun speak(text: String, essential: Boolean = true, queue: Boolean = false) {
         if (!essential && appContext?.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 ?.getBoolean("naver_minimal_guide_enabled", false) == true) return

@@ -338,7 +338,7 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         val zoom = if (now < zoomHoldUntil) m.cameraPosition.zoom else if (nearTurn) 17.4 else when {
             speedKmh > 90 -> 14.8; speedKmh > 50 -> 15.6; speedKmh > 15 -> 16.4; else -> 17.0
         }
-        val bearing = if (moving && loc.hasBearing()) loc.bearing.toDouble() else m.cameraPosition.bearing
+        val bearing = if (loc.hasBearing()) loc.bearing.toDouble() else m.cameraPosition.bearing
         // 차를 화면 아래쪽으로 내려서 앞이 더 보이게(여백으로 구현)
         val h = host.height
         val bottomPad = (h * driverAnchorBottomFraction).toInt()

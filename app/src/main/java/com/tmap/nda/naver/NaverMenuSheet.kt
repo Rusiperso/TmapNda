@@ -249,7 +249,7 @@ class NaverMenuSheet(
         val s = open()
         s.addView(switchRow("실시간 교통상황에 따라 경로 변경", "실시간 교통정보를 반영하여 최적의 경로로 변경합니다.", KEY_TRAFFIC_REROUTE, true))
         s.addView(divider(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
-        s.addView(switchRow("최소 안내", "꼭 필요한 음성 안내만 해요.", KEY_MINIMAL, false))
+        s.addView(switchRow("최소 안내", "안내 말하는 횟수를 줄여요.", KEY_MINIMAL, false))
         s.addView(divider(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
         s.addView(switchRow("주행선에 교통정보 표시", "경로안내선에 교통정보 색상을 표시합니다.", KEY_ROUTE_TRAFFIC_COLOR, false))
         s.addView(divider(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
@@ -322,7 +322,7 @@ class NaverMenuSheet(
         ))
         body.addView(section("길안내",
             switchRow("실시간 교통상황에 따라 경로 변경", "실시간 교통정보를 반영하여 최적의 경로로 변경합니다.", KEY_TRAFFIC_REROUTE, true),
-            switchRow("최소 안내", "꼭 필요한 음성 안내만 해요.", KEY_MINIMAL, false)
+            switchRow("최소 안내", "안내 말하는 횟수를 줄여요.", KEY_MINIMAL, false)
         ))
         body.addView(section("앱",
             linkRow("앱 전체 설정 열기") { dismiss(); actions.onDetailSettings() }
