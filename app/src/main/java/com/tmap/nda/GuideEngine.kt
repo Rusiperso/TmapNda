@@ -21,7 +21,9 @@ object GuideEngine {
     }
 
     fun set(context: Context, engine: String) {
+        val changed = get(context) != engine
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, engine).apply()
+        if (changed) GuideExclusive.onEngineSelected(context.applicationContext, engine)
     }
 
     fun isNaver(context: Context) = get(context) == NAVER

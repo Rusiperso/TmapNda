@@ -333,6 +333,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        GuideExclusive.registerKakaoActivity(this)
         onBackPressedDispatcher.addCallback(this, backCallback)
         NavLogger.appContext = applicationContext
         // v: 재억 재제보(2026-08-30) - "카카오 종료할 때 등"의 멈춤도 잡기 위해 여기서도
@@ -1071,10 +1072,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // SDK 기본값(승용차+휘발유)으로만 계산됨. #문제시 원복
                 trip.setRouteConfig(CarFuelSettings.buildRouteConfiguration(this))
                 NavLogger.d(this, "카카오 경로요청 성공, 안내 시작: $destName")
+                GuideExclusive.stopNaver(this)
                 showKakaoStatusBox(KakaoUsage.label(this))
                 // v12.9: 안내 이어가기 - 안내가 실제로 시작되는 이 시점에 목적지를 저장.
                 // 정상 도착 또는 안내종료 버튼 - 어느 쪽이든 finishGuidance()에서 지워짐. #문제시 원복
-                ResumeGuidanceStore.save(this, HistoryEntry(destName, "", destLat, destLon, routePriorityName = activeRoutePriority.name, routeAvoidOption = activeRouteAvoidOption))
+                ResumeGuidanceStore.save(this, HistoryEntry(destName, "", destLat, destLon, routePriorityName = activeRoutePriority.name, routeAvoidOption = activeRouteAvoidOption), waypointsJsonNow())
                 // naviView는 setupContentAndStart()에서 이미 initWithGuidance(trip=null)로
                 // 초기화돼있는 상태(idle map) - 여기서 또 initWithGuidance()를 부르면 안 되고
                 // guideNewDestinations()로 이미 떠있는 세션에 실제 목적지만 갈아끼움.
@@ -2607,7 +2609,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
-    private fun syncWaypointsToIntent() {
+    /** 지금 경유지 목록을 JSON 문자열로(화면 재생성 복원·안내 이어가기 저장에 같이 쓴다). */
+    private fun waypointsJsonNow(): String {
         val arr = org.json.JSONArray()
         activeWaypoints.forEach {
             arr.put(
@@ -2618,7 +2621,14 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     .put("lon", it.lon)
             )
         }
-        intent.putExtra("active_waypoints_json", arr.toString())
+        return arr.toString()
+    }
+
+    private fun syncWaypointsToIntent() {
+        val json = waypointsJsonNow()
+        intent.putExtra("active_waypoints_json", json)
+        // 앱이 꺼졌다 켜져도(크래시·업데이트·엔진 전환) 경유지를 이어가도록 안내 이어가기 저장소에도 같이 갱신
+        ResumeGuidanceStore.updateWaypointsJson(this, json)
     }
 
     private fun restoreWaypointsFromIntent() {
@@ -5149,6 +5159,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     override fun onDestroy() {
         super.onDestroy()
+        GuideExclusive.unregisterKakaoActivity(this)
         // v4.24: MapActivity와 동일 이유로 추가. #문제시 원복
         NavLogger.d(this, "[KakaoNaviActivity lifecycle] onDestroy (isFinishing=$isFinishing, isChangingConfigurations=$isChangingConfigurations)")
         try { voiceAssistant.shutdown() } catch (e: Exception) { }

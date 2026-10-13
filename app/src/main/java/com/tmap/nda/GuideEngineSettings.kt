@@ -101,12 +101,15 @@ object GuideEngineSettings {
         val kakaoNative = field("카카오 네이티브 앱 키 (길안내용)", prefs.getString("kakao_native_app_key", "").orEmpty())
         val naverId = field("네이버 Key ID (Client ID)", NaverDirectionsClient.keyId(context))
         val naverSecret = field("네이버 Key Secret", NaverDirectionsClient.keySecret(context))
+        val kakaoNativeOptional = field("카카오 네이티브 앱 키 (선택 · 안전정보 표시용)", prefs.getString("kakao_native_app_key", "").orEmpty())
 
         if (naver) {
             box.addView(naverId)
             box.addView(note("네이버 클라우드 플랫폼 Application에서 Directions와 Dynamic Map을 체크하고, Android 패키지 이름에 이 앱의 패키지 이름(${context.packageName})을 등록하세요."))
             box.addView(naverSecret)
             box.addView(note("장소 검색은 티맵 검색을 씁니다(카카오 키 불필요)."))
+            box.addView(kakaoNativeOptional)
+            box.addView(note("⚠ 카카오 SDK(네이티브 앱 키)가 있어야 카메라·방지턱·구간단속 같은 안전정보가 지도에 표시됩니다. 비워두면 안전정보 표시만 빠지고 길안내는 그대로 됩니다."))
         } else {
             box.addView(kakaoNative)
             box.addView(note("카카오 콘솔 [플랫폼 키]의 '네이티브 앱 키'만 넣으세요."))
@@ -131,6 +134,8 @@ object GuideEngineSettings {
                     return@setOnClickListener
                 }
                 NaverDirectionsClient.saveKeys(context, id, secret)
+                val optionalKakao = kakaoNativeOptional.text.toString().trim()
+                if (optionalKakao.isNotEmpty()) prefs.edit().putString("kakao_native_app_key", optionalKakao).apply()
             } else {
                 val nativeKey = kakaoNative.text.toString().trim()
                 if (nativeKey.isEmpty()) {

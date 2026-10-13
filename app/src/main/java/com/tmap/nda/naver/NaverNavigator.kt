@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import com.tmap.nda.KakaoRouteDataRepository
+import com.tmap.nda.KakaoSdkState
 import com.tmap.nda.GuideVoice
 import com.tmap.nda.NavLogger
 import com.tmap.nda.navdy.NavdySender
@@ -32,6 +33,7 @@ object NaverNavigator {
         fun onLocation(loc: Location) {}
         fun onState(state: GuidanceState, goalName: String) {}
         fun onRouteChanged(route: NaverRoute) {}
+        fun onSafetyItems(items: List<RouteSafetyItem>) {}
         fun onStatus(text: String) {}
         fun onFinished(arrived: Boolean) {}
     }
@@ -147,6 +149,7 @@ object NaverNavigator {
     fun begin(context: Context, route: NaverRoute, to: LonLat, toName: String, via: List<LonLat> = emptyList()) {
         val ctx = context.applicationContext
         appContext = ctx
+        com.tmap.nda.GuideExclusive.stopKakao(ctx)
         ensureLocation(ctx)
         ensureTts(ctx)
         goal = to; goalName = toName; waypoints = via; option = route.option
@@ -160,14 +163,85 @@ object NaverNavigator {
         lastLocation?.let { onLocation(it) }
     }
 
+
+    /** 지금 경로 위의 안전정보(카카오 경로에서 가져와 네이버 경로선 위의 것만 남김). 지도 표시용. */
+    @Volatile var safetyItems: List<RouteSafetyItem> = emptyList()
+        private set
+    private var safetySeq = 0
+
+    /**
+     * 같은 출발·도착으로 카카오에 경로만 받아(길안내 시작 안 함) 안전정보 목록을 얻고, 네이버 경로선 25m 안의 것만 남긴다.
+     * 경유지는 넘기지 않으므로 경유지 이후 구간은 카카오 경로와 달라 일부 빠질 수 있다.
+     */
+    private fun fetchKakaoSafety(ctx: Context, route: NaverRoute) {
+        val to = goal ?: return
+        val start = route.path.firstOrNull() ?: return
+        val seq = ++safetySeq
+        safetyItems = emptyList()
+        listener?.onSafetyItems(emptyList())
+        // 안전정보는 카카오 SDK가 있어야 얻는다: 카카오 네이티브 앱 키가 없으면 지도에 표시할 수 없다고 한 번 알려준다.
+        val kakaoKey = ctx.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getString("kakao_native_app_key", "").orEmpty().trim()
+        if (kakaoKey.isEmpty()) {
+            NavLogger.d(ctx, "[카카오안전정보] 카카오 키 없음 - 건너뜀")
+            if (!safetyNoKeyWarned) {
+                safetyNoKeyWarned = true
+                listener?.onStatus("카카오 SDK(네이티브 앱 키)가 있어야 카메라 등 안전정보가 지도에 표시돼요. 설정에서 카카오 키를 넣어주세요.")
+            }
+            return
+        }
+        val app = ctx as? android.app.Application ?: return
+        KakaoSdkState.ensureInitialized(app, kakaoKey) { ok, msg ->
+            if (seq != safetySeq || engine == null) return@ensureInitialized
+            if (!ok) { NavLogger.d(ctx, "[카카오안전정보] 카카오 SDK 준비 실패: $msg"); return@ensureInitialized }
+            requestKakaoSafety(ctx, route, start, to, seq)
+        }
+    }
+
+    private var safetyNoKeyWarned = false
+
+    private fun requestKakaoSafety(ctx: Context, route: NaverRoute, start: LonLat, to: LonLat, seq: Int) {
+        try {
+            KakaoSdkState.computeEtaForOptions(
+                ctx, start.lat, start.lon, to.lat, to.lon,
+                listOf(com.kakaomobility.knsdk.KNRoutePriority.KNRoutePriority_Recommand to 0),
+                reportFailures = false
+            ) { _, _, _, _, kRoute ->
+                main.post {
+                    if (seq != safetySeq || engine == null) return@post
+                    try {
+                        val r = kRoute as? com.kakaomobility.knsdk.trip.kntrip.knroute.KNRoute
+                        if (r == null) { NavLogger.d(ctx, "[카카오안전정보] 경로 못 받음"); return@post }
+                        val total = r.safetyList()?.size ?: -1
+                        val items = RouteSafety.build(r, route)
+                        NavLogger.d(ctx, "[카카오안전정보] 카카오경로 ${r.totalDist}m/네이버경로 ${route.distanceMeters}m, 카카오목록 ${total}개 → 네이버선 ${RouteSafety.MAX_OFF_ROUTE_M.toInt()}m 안·같은방향 ${items.size}개")
+                        items.take(15).forEach { NavLogger.d(ctx, "[카카오안전정보] 종류=${it.sdiType} 제한=${it.speedLimit} 경로위치=${it.alongM}m 선까지=${it.offM}m") }
+                        safetyItems = items
+                        listener?.onSafetyItems(items)
+                    } catch (e: Exception) {
+                        NavLogger.e(ctx, "[카카오안전정보] 읽기 예외: ${e.message}")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            NavLogger.e(ctx, "[카카오안전정보] 요청 예외: ${e.message}")
+        }
+    }
+
     /** 지나간 첫 경유지를 목록에서 뺀다(이후 재탐색 때 다시 돌아가지 않게). */
     fun dropPassedWaypoint() { if (waypoints.isNotEmpty()) waypoints = waypoints.drop(1) }
+
+    /** 말하던 음성과 대기 중인 음성을 바로 끊는다(다른 안내로 넘어갈 때). */
+    fun silence() {
+        ttsPending.clear()
+        try { tts?.stop() } catch (_: Exception) {}
+    }
 
     fun stop(arrived: Boolean = false) {
         engine = null
         goal = null
         currentRoute = null
         planner.reset()
+        safetySeq++; safetyItems = emptyList()
         camAnnounced = 0; camLastDist = Int.MAX_VALUE; camLastType = -1
         KakaoRouteDataRepository.reset()
         listener?.onFinished(arrived)
@@ -332,6 +406,7 @@ object NaverNavigator {
         KakaoRouteDataRepository.routeCoordinates = thin(route.path)
         KakaoRouteDataRepository.routeCoordinatesUpdatedAt = System.currentTimeMillis()
         listener?.onRouteChanged(route)
+        appContext?.let { fetchKakaoSafety(it, route) }
     }
 
     /** 콤마로 보내는 경로선은 점이 너무 많지 않게 솎는다. 약 20m 간격, 최대 800점. */

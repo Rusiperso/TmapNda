@@ -32,7 +32,25 @@ object ResumeGuidanceStore {
         }
     }
 
-    fun save(context: Context, entry: HistoryEntry) {
+    /** 안내 중이던 경유지 목록(JSON 문자열). 없거나 비어 있으면 null. */
+    fun getWaypointsJson(context: Context): String? {
+        val raw = prefs(context).getString(KEY, null) ?: return null
+        return try {
+            JSONObject(raw).optString("waypoints", "").takeIf { it.isNotBlank() && it != "[]" }
+        } catch (e: Exception) { null }
+    }
+
+    /** 저장된 안내가 있을 때만 경유지 목록을 갱신한다(경유지 추가·삭제·통과 때마다 호출). */
+    fun updateWaypointsJson(context: Context, json: String) {
+        val raw = prefs(context).getString(KEY, null) ?: return
+        try {
+            val obj = JSONObject(raw)
+            obj.put("waypoints", json)
+            prefs(context).edit().putString(KEY, obj.toString()).apply()
+        } catch (e: Exception) { }
+    }
+
+    fun save(context: Context, entry: HistoryEntry, waypointsJson: String? = null) {
         val obj = JSONObject()
         obj.put("name", entry.name)
         obj.put("addr", entry.addr)
@@ -46,6 +64,7 @@ object ResumeGuidanceStore {
             obj.put("routePriorityName", entry.routePriorityName)
             obj.put("routeAvoidOption", entry.routeAvoidOption)
         }
+        if (!waypointsJson.isNullOrBlank()) obj.put("waypoints", waypointsJson)
         prefs(context).edit().putString(KEY, obj.toString()).apply()
     }
 

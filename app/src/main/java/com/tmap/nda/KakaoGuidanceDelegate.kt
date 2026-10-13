@@ -1249,49 +1249,6 @@ class KakaoGuidanceDelegate(
     // 가능성이 높음. getCode()(KNSafetyCode enum)/getLocation().getDistFromS()(경로상
     // 거리)로 정확한 경로로 다시 짬 + KNSafetyCode → Tmap/openpilot 고유 nSdiType 스킴으로
     // 번역(carrot_serv.py의 _get_sdi_descr 표 기준, 확실한 것만 매핑). #문제시 원복
-    private fun mapKakaoSafetyCodeToSdiType(kakaoCodeName: String?): Int {
-        if (kakaoCodeName == null) return -1
-        return when (kakaoCodeName) {
-            "KNSafetyCode_SpeedViolationCamera" -> 1          // 과속(고정식)
-            "KNSafetyCode_SpeedViolationSectionInCamera" -> 2 // 구간단속 시작
-            "KNSafetyCode_SpeedViolationSectionOutCamera" -> 3 // 구간단속 끝
-            "KNSafetyCode_SpeedViolationSection" -> 4         // 구간단속중
-            "KNSafetyCode_SpeedViolationSectionHalf" -> 4
-            "KNSafetyCode_MovableSpeedViolationCamera" -> 7   // 과속(이동식)
-            "KNSafetyCode_BoxedSpeedViolationCamera" -> 8     // 고정식 과속위험구간(박스형)
-            // v10.1: "신호과속" 카메라를 nSdiType=0으로 매핑해뒀었는데, openpilot 쪽에서
-            // 0은 "카메라 없음"으로 해석됨(UdpSenderService.kt의 Tmap측 "sdiType==0인데
-            // speedLimit/dist는 있으면 1로 강제" 로직이 그 증거 - 이미 알려진 문제였음).
-            // 근데 그 강제보정은 Tmap 분기에만 있고 카카오 우선채택 분기엔 없어서, 신호+과속
-            // 동시단속 카메라를 만날 때만 조용히 감속이 안 됐음(재억 로그로 확인:
-            // KNSafetyCode_SignalAndSpeedViolationCamera -> nSdiType=0). 속도단속이 핵심이니
-            // 고정식 과속카메라(1)와 동일하게 매핑. #문제시 원복
-            "KNSafetyCode_SignalAndSpeedViolationCamera",
-            "KNSafetyCode_SignalAndSpeedViolationBackwardCamera" -> 1 // 신호과속(속도단속 기준 적용)
-            "KNSafetyCode_SignalViolationCamera" -> 6         // 신호단속
-            "KNSafetyCode_BuslaneViolationCamera",
-            "KNSafetyCode_BuslaneAndSpeedViolationCamera" -> 9 // 버스전용차로
-            "KNSafetyCode_ShoulderLaneViolationCamera" -> 11  // 갓길감시
-            "KNSafetyCode_CutInViolationCamera" -> 12         // 끼어들기금지
-            "KNSafetyCode_TrafficCollectionCamera" -> 13      // 교통정보수집
-            "KNSafetyCode_OverloadViolationCamera" -> 15      // 과적차량
-            "KNSafetyCode_CargoViolationCamera" -> 16         // 적재불량
-            "KNSafetyCode_ParkingViolationCamera" -> 17       // 주차단속
-            "KNSafetyCode_RailroadCrossing" -> 19             // 철길건널목
-            "KNSafetyCode_ChildrenProtectionZone" -> 20       // 어린이보호구역
-            "KNSafetyCode_Hump" -> 22                         // 과속방지턱
-            "KNSafetyCode_RestArea" -> 25                     // 휴게소
-            "KNSafetyCode_OneTollingGate" -> 26                // 톨게이트
-            "KNSafetyCode_FogArea", "KNSafetyCode_FogAreaLive" -> 27 // 안개주의
-            "KNSafetyCode_TrafficAccidentPos", "KNSafetyCode_CarAccidentPos",
-            "KNSafetyCode_PedestrianAccidentPos", "KNSafetyCode_ChildrenAccidentPos",
-            "KNSafetyCode_DrowsyDrivingAccidentPos", "KNSafetyCode_IntentTrafficAccident" -> 29 // 사고다발
-            "KNSafetyCode_SharpTurnSection" -> 30              // 급커브지역
-            "KNSafetyCode_SteepDownhillSection" -> 32          // 급경사구간
-            "KNSafetyCode_AnimalsAppearingCaution" -> 33       // 야생동물 사고 잦은 구간
-            else -> -1 // 확신 없는 코드는 억지로 안 채움(잘못된 라벨/감속 유발 위험) - 로그로 수집
-        }
-    }
 
     // v: 재억 요청(2026-09-15) - 사고/공사구간 자동 팝업용. 이미 받고 있던 사고 코드를
     // 화면 알림으로도 보여줌. #문제시 원복
@@ -1688,5 +1645,50 @@ class KakaoGuidanceDelegate(
         NavLogger.d(context, "[신호등?] didUpdateCitsGuide 호출됨: $citsGuide | $fieldDump")
         NavLogger.d(context, "[신호등?][아이템상세] $itemDump")
         naviView?.didUpdateCitsGuide(guidance, citsGuide)
+    }
+}
+
+// 길안내 중 카카오 안전정보 코드 -> 티맵/openpilot nSdiType (네이버 지도 표시에서도 같이 씀)
+internal fun mapKakaoSafetyCodeToSdiType(kakaoCodeName: String?): Int {
+    if (kakaoCodeName == null) return -1
+    return when (kakaoCodeName) {
+        "KNSafetyCode_SpeedViolationCamera" -> 1          // 과속(고정식)
+        "KNSafetyCode_SpeedViolationSectionInCamera" -> 2 // 구간단속 시작
+        "KNSafetyCode_SpeedViolationSectionOutCamera" -> 3 // 구간단속 끝
+        "KNSafetyCode_SpeedViolationSection" -> 4         // 구간단속중
+        "KNSafetyCode_SpeedViolationSectionHalf" -> 4
+        "KNSafetyCode_MovableSpeedViolationCamera" -> 7   // 과속(이동식)
+        "KNSafetyCode_BoxedSpeedViolationCamera" -> 8     // 고정식 과속위험구간(박스형)
+        // v10.1: "신호과속" 카메라를 nSdiType=0으로 매핑해뒀었는데, openpilot 쪽에서
+        // 0은 "카메라 없음"으로 해석됨(UdpSenderService.kt의 Tmap측 "sdiType==0인데
+        // speedLimit/dist는 있으면 1로 강제" 로직이 그 증거 - 이미 알려진 문제였음).
+        // 근데 그 강제보정은 Tmap 분기에만 있고 카카오 우선채택 분기엔 없어서, 신호+과속
+        // 동시단속 카메라를 만날 때만 조용히 감속이 안 됐음(재억 로그로 확인:
+        // KNSafetyCode_SignalAndSpeedViolationCamera -> nSdiType=0). 속도단속이 핵심이니
+        // 고정식 과속카메라(1)와 동일하게 매핑. #문제시 원복
+        "KNSafetyCode_SignalAndSpeedViolationCamera",
+        "KNSafetyCode_SignalAndSpeedViolationBackwardCamera" -> 1 // 신호과속(속도단속 기준 적용)
+        "KNSafetyCode_SignalViolationCamera" -> 6         // 신호단속
+        "KNSafetyCode_BuslaneViolationCamera",
+        "KNSafetyCode_BuslaneAndSpeedViolationCamera" -> 9 // 버스전용차로
+        "KNSafetyCode_ShoulderLaneViolationCamera" -> 11  // 갓길감시
+        "KNSafetyCode_CutInViolationCamera" -> 12         // 끼어들기금지
+        "KNSafetyCode_TrafficCollectionCamera" -> 13      // 교통정보수집
+        "KNSafetyCode_OverloadViolationCamera" -> 15      // 과적차량
+        "KNSafetyCode_CargoViolationCamera" -> 16         // 적재불량
+        "KNSafetyCode_ParkingViolationCamera" -> 17       // 주차단속
+        "KNSafetyCode_RailroadCrossing" -> 19             // 철길건널목
+        "KNSafetyCode_ChildrenProtectionZone" -> 20       // 어린이보호구역
+        "KNSafetyCode_Hump" -> 22                         // 과속방지턱
+        "KNSafetyCode_RestArea" -> 25                     // 휴게소
+        "KNSafetyCode_OneTollingGate" -> 26                // 톨게이트
+        "KNSafetyCode_FogArea", "KNSafetyCode_FogAreaLive" -> 27 // 안개주의
+        "KNSafetyCode_TrafficAccidentPos", "KNSafetyCode_CarAccidentPos",
+        "KNSafetyCode_PedestrianAccidentPos", "KNSafetyCode_ChildrenAccidentPos",
+        "KNSafetyCode_DrowsyDrivingAccidentPos", "KNSafetyCode_IntentTrafficAccident" -> 29 // 사고다발
+        "KNSafetyCode_SharpTurnSection" -> 30              // 급커브지역
+        "KNSafetyCode_SteepDownhillSection" -> 32          // 급경사구간
+        "KNSafetyCode_AnimalsAppearingCaution" -> 33       // 야생동물 사고 잦은 구간
+        else -> -1 // 확신 없는 코드는 억지로 안 채움(잘못된 라벨/감속 유발 위험) - 로그로 수집
     }
 }

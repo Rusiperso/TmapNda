@@ -329,6 +329,7 @@ object KakaoSdkState {
         trip: Any,
         priority: KNRoutePriority,
         avoidOption: Int,
+        reportFailures: Boolean = true,
         callback: (etaMinutes: Int?, distanceMeters: Int?, tollCostWon: Int?, route: Any?) -> Unit
     ) {
         try {
@@ -337,7 +338,7 @@ object KakaoSdkState {
             }
             if (routeMethod == null) {
                 NavLogger.e(context, "[소요시간계산] routeWithPriority(3개 인자) 함수를 못 찾음")
-                DiscordReporter.reportRouteCalcFailure(context, "routeWithPriority(3개 인자) 함수를 못 찾음")
+                if (reportFailures) DiscordReporter.reportRouteCalcFailure(context, "routeWithPriority(3개 인자) 함수를 못 찾음")
                 callback(null, null, null, null)
                 return
             }
@@ -388,7 +389,7 @@ object KakaoSdkState {
             routeMethod.invoke(trip, priority, avoidOption, proxy)
         } catch (e: Exception) {
             NavLogger.e(context, "[소요시간계산] routeWithPriority 호출 예외: ${e.message}")
-            DiscordReporter.reportRouteCalcFailure(context, "routeWithPriority 호출 예외: ${e.message}")
+            if (reportFailures) DiscordReporter.reportRouteCalcFailure(context, "routeWithPriority 호출 예외: ${e.message}")
             callback(null, null, null, null)
         }
     }
@@ -409,17 +410,18 @@ object KakaoSdkState {
         options: List<Pair<KNRoutePriority, Int>>,
         retryCount: Int = 0,
         onTripReady: (Any?) -> Unit = {},
+        reportFailures: Boolean = true,
         callback: (index: Int, etaMinutes: Int?, distanceMeters: Int?, tollCostWon: Int?, route: Any?) -> Unit
     ) {
         if (!initialized) {
             NavLogger.d(context, "[소요시간계산] KNSDK 아직 초기화 안 됨(재시도 $retryCount/10)")
             if (retryCount < 10) {
                 Handler(Looper.getMainLooper()).postDelayed({
-                    computeEtaForOptions(context, startLat, startLon, destLat, destLon, options, retryCount + 1, onTripReady, callback)
+                    computeEtaForOptions(context, startLat, startLon, destLat, destLon, options, retryCount + 1, onTripReady, reportFailures, callback)
                 }, 500)
             } else {
                 NavLogger.e(context, "[소요시간계산] 10번 재시도해도 KNSDK 준비 안 됨 - 포기")
-                DiscordReporter.reportRouteCalcFailure(context, "10번 재시도해도 KNSDK 준비 안 됨")
+                if (reportFailures) DiscordReporter.reportRouteCalcFailure(context, "10번 재시도해도 KNSDK 준비 안 됨")
                 onTripReady(null)
                 options.indices.forEach { callback(it, null, null, null, null) }
             }
@@ -433,21 +435,21 @@ object KakaoSdkState {
             KNSDK.makeTripWithStart(startPoi, goalPoi, null) { error, trip ->
                 if (error != null || trip == null) {
                     NavLogger.e(context, "[소요시간계산] makeTripWithStart 실패: ${error?.msg ?: "trip=null"}")
-                    DiscordReporter.reportRouteCalcFailure(context, "makeTripWithStart 실패: ${error?.msg ?: "trip=null"}")
+                    if (reportFailures) DiscordReporter.reportRouteCalcFailure(context, "makeTripWithStart 실패: ${error?.msg ?: "trip=null"}")
                     onTripReady(null)
                     options.indices.forEach { callback(it, null, null, null, null) }
                     return@makeTripWithStart
                 }
                 onTripReady(trip)
                 options.forEachIndexed { index, (priority, avoidOption) ->
-                    invokeRouteWithPriority(context, trip, priority, avoidOption) { minutes, distanceMeters, tollCostWon, route ->
+                    invokeRouteWithPriority(context, trip, priority, avoidOption, reportFailures) { minutes, distanceMeters, tollCostWon, route ->
                         callback(index, minutes, distanceMeters, tollCostWon, route)
                     }
                 }
             }
         } catch (e: Exception) {
             NavLogger.e(context, "[소요시간계산] 경로계산 요청 자체 예외: ${e.message}")
-            DiscordReporter.reportRouteCalcFailure(context, "경로계산 요청 자체 예외: ${e.message}")
+            if (reportFailures) DiscordReporter.reportRouteCalcFailure(context, "경로계산 요청 자체 예외: ${e.message}")
             onTripReady(null)
             options.indices.forEach { callback(it, null, null, null, null) }
         }

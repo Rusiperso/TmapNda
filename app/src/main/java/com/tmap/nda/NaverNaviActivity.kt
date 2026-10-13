@@ -858,7 +858,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
     private fun startNaverGuidance(route: NaverRoute, destName: String, destLat: Double, destLon: Double) {
         isFirstTimeDestinationChoice = false   // 안내가 시작됐으니 이후 선택창을 취소해도 안내는 유지한다
         // 안내 이어가기 - 안내가 실제로 시작되는 이 시점에 목적지를 저장. 도착/종료 때 finishGuidance()에서 지워진다.
-        ResumeGuidanceStore.save(this, HistoryEntry(destName, "", destLat, destLon, routePriorityName = activeRoutePriority.name, routeAvoidOption = activeRouteAvoidOption))
+        ResumeGuidanceStore.save(this, HistoryEntry(destName, "", destLat, destLon, routePriorityName = activeRoutePriority.name, routeAvoidOption = activeRouteAvoidOption), waypointsJsonNow())
         clearDestinationPin()
         naverMap.showActiveRoute(route)
         naverMap.showDestination(destLat, destLon, destName)
@@ -948,6 +948,12 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
             updateTurnSign(state)
             val total = NaverNavigator.currentRoute?.distanceMeters?.toDouble() ?: 0.0
             if (total > 0) naverMap.setProgress(state.progressMeters / total)
+            naverMap.updateSafetyProgress(state.progressMeters)
+        }
+
+        override fun onSafetyItems(items: List<com.tmap.nda.naver.RouteSafetyItem>) {
+            if (!::naverMap.isInitialized) return
+            runOnUiThread { naverMap.showSafety(items) }
         }
 
         override fun onRouteChanged(route: NaverRoute) {
@@ -2082,7 +2088,8 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         NavLogger.d(this, "[경유지] '$name' 통과 - 안내 엔진 경유지 목록에서 제거")
     }
 
-    private fun syncWaypointsToIntent() {
+    /** 지금 경유지 목록을 JSON 문자열로(화면 재생성 복원·안내 이어가기 저장에 같이 쓴다). */
+    private fun waypointsJsonNow(): String {
         val arr = org.json.JSONArray()
         activeWaypoints.forEach {
             arr.put(
@@ -2093,7 +2100,14 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
                     .put("lon", it.lon)
             )
         }
-        intent.putExtra("active_waypoints_json", arr.toString())
+        return arr.toString()
+    }
+
+    private fun syncWaypointsToIntent() {
+        val json = waypointsJsonNow()
+        intent.putExtra("active_waypoints_json", json)
+        // 앱이 꺼졌다 켜져도(크래시·업데이트·엔진 전환) 경유지를 이어가도록 안내 이어가기 저장소에도 같이 갱신
+        ResumeGuidanceStore.updateWaypointsJson(this, json)
     }
 
     private fun restoreWaypointsFromIntent() {

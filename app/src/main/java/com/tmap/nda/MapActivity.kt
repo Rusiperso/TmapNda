@@ -742,12 +742,19 @@ class MapActivity : AppCompatActivity() {
         // v12.9: 안내 이어가기 - 앱을 새로 열었을 때 이전에 안내 중이던 목적지가
         // 저장돼 있으면 "이어서 안내할까요?" 물어봄(재억 요청). 자동으로 바로 시작하지
         // 않고 꼭 물어봐서, 다른 곳으로 갈 상황이면 그냥 무시하고 새로 검색할 수 있게 함. #문제시 원복
+        // 운전 중 길안내 엔진(카카오/네이버)을 바꿔서 앱이 다시 시작된 경우엔 묻지 않고 바로 새 엔진으로 이어간다.
+        val switchResume = GuideExclusive.consumeResumeAfterSwitch(this)
         ResumeGuidanceStore.get(this)?.let { saved ->
+            if (switchResume) {
+                NavLogger.d(this, "[안내배타] 엔진 전환 후 자동 이어가기: ${saved.name}")
+                startKakaoOverlayGuidance(saved.name, saved.lat, saved.lon, saved.routePriorityName, saved.routeAvoidOption, waypointsJson = ResumeGuidanceStore.getWaypointsJson(this))
+                return@let
+            }
             android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
                 .setTitle("안내 이어가기")
-                .setMessage("${saved.name}(으)로 가던 중이었어요. 이어서 안내할까요?")
+                .setMessage("${saved.name}(으)로 가던 중이었어요." + (ResumeGuidanceStore.getWaypointsJson(this)?.let { j -> try { org.json.JSONArray(j).let { arr -> if (arr.length() > 0) " (경유지 ${arr.length()}곳 포함)" else "" } } catch (e: Exception) { "" } } ?: "") + " 이어서 안내할까요?")
                 .setPositiveButton("이어서 안내") { _, _ ->
-                    startKakaoOverlayGuidance(saved.name, saved.lat, saved.lon, saved.routePriorityName, saved.routeAvoidOption)
+                    startKakaoOverlayGuidance(saved.name, saved.lat, saved.lon, saved.routePriorityName, saved.routeAvoidOption, waypointsJson = ResumeGuidanceStore.getWaypointsJson(this))
                 }
                 .setNegativeButton("아니요") { _, _ ->
                     ResumeGuidanceStore.clear(this)
@@ -3344,7 +3351,8 @@ class MapActivity : AppCompatActivity() {
         // 선택하는 기능 추가. Intent로는 enum을 직접 못 넘기니 이름(String)으로 넘김. #문제시 원복
         routePriorityName: String? = null,
         routeAvoidOption: Int = 0,
-        parkedViewSavedAt: Long = 0L
+        parkedViewSavedAt: Long = 0L,
+        waypointsJson: String? = null
     ) {
         // 초기 화면에서 고른 길안내 엔진(카카오 / 네이버)에 맞는 안내 화면으로 연결한다.
         val useNaver = GuideEngine.isNaver(this)
@@ -3367,6 +3375,8 @@ class MapActivity : AppCompatActivity() {
             putExtra("dest_lon", goalLon)
             if (!useNaver) putExtra("kakao_native_app_key", nativeAppKey)
             if (parkedViewSavedAt > 0L) putExtra("parked_view_saved_at", parkedViewSavedAt)
+            // 이어가기: 저장해 둔 경유지를 같이 넘기면 안내 화면이 그 경유지를 거쳐 경로를 다시 짠다
+            if (!waypointsJson.isNullOrBlank()) putExtra("active_waypoints_json", waypointsJson)
             if (routePriorityName != null) {
                 putExtra("route_priority_name", routePriorityName)
                 putExtra("route_avoid_option", routeAvoidOption)
