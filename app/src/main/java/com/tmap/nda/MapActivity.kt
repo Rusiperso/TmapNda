@@ -3959,6 +3959,8 @@ class MapActivity : AppCompatActivity() {
         binding.llGuidanceBar?.visibility = View.GONE
     }
 
+    private var safeDriveFragmentAddQueued = false
+
     private fun startSafeDriveMode() {
         if (isFinishing || isDestroyed) {
             NavLogger.d(this, "startSafeDriveMode 호출됐지만 Activity 이미 종료됨 - 무시")
@@ -3990,6 +3992,10 @@ class MapActivity : AppCompatActivity() {
             navigationFragment = restoredFragment
         } else {
             navigationFragment = getFragment() as NavigationFragment
+            // 재억 제보(2026-10-13): 네이버 안내 종료 → 티맵 화면이 가로/세로 전환으로 다시 만들어질 때 "Fragment already added"로 꺼짐.
+            // 추가 요청(commit)은 바로 실행되지 않아 findFragmentById가 못 잡으므로, 이미 요청했거나 같은 화면에 붙어 있으면 다시 추가하지 않음. #문제시 원복
+            val alreadyQueued = safeDriveFragmentAddQueued || supportFragmentManager.fragments.contains(navigationFragment)
+            safeDriveFragmentAddQueued = true
 
             // v19.3.33: 폴드4 외부화면 크래시 제보 - 화면 재생성이 짧은 간격으로 겹치면
             // 티맵 SDK가 내부적으로 재사용하는 NavigationFragment 인스턴스가 아직 이전
@@ -3998,7 +4004,7 @@ class MapActivity : AppCompatActivity() {
             // 자체는 줄였지만, 혹시 남은 경우에도 최소한 크래시는 안 나게 방어. 실패하면
             // 이번엔 못 붙이고 넘어가지만, 다음 재생성 때 정상적으로 다시 시도됨. #문제시 원복
             try {
-                supportFragmentManager.beginTransaction()
+                if (!alreadyQueued) supportFragmentManager.beginTransaction()
                     .add(R.id.tmapUILayout, navigationFragment!!)
                     .commitAllowingStateLoss()
             } catch (e: IllegalStateException) {

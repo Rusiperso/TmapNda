@@ -48,7 +48,7 @@ class NaverMapController(private val activity: Activity, private val host: Frame
     var topInsetPx = 0
     var driverAnchorBottomFraction = 0.0
     /** 안내 중 차가 놓일 세로 위치 비율(0=맨 위, 1=맨 아래, 0.5=가운데). 클수록 차가 아래로 내려가 앞이 더 보임. */
-    var driverAnchorYFraction = 0.68f
+    var driverAnchorYFraction = 0.79f
     /** 가로 화면에서 차를 놓을 가로 위치 비율(0.5=가운데, 작을수록 왼쪽). null이면 가운데. */
      var anchorXFraction: Float? = null
 

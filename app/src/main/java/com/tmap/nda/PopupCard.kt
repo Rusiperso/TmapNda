@@ -56,19 +56,19 @@ object PopupCard {
         )
         name.textSize = 13f
         row.addView(name)
+        // 재억 제보(2026-10-13): 분할화면 팝업에서 버튼이 안 눌리고 "삭제"가 잘림. 목록 안의 좌우 스크롤 영역이
+        // 터치를 가로채고 폭도 넘쳐서, 스크롤 없이 버튼을 같은 폭으로 나눠 한 줄에 놓음. #문제시 원복
         val chipRow = LinearLayout(row.context).apply { orientation = LinearLayout.HORIZONTAL }
         chips.forEachIndexed { i, c ->
             c.textSize = 12f
-            c.setPadding(24, 14, 24, 14)
-            c.layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = 10; marginStart = if (i == 0) 0 else 12 }
+            c.setPadding(4, 14, 4, 14)
+            c.gravity = Gravity.CENTER
+            c.maxLines = 1
+            c.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                .apply { topMargin = 10; marginStart = if (i == 0) 0 else 12 }
             chipRow.addView(c)
         }
-        row.addView(android.widget.HorizontalScrollView(row.context).apply {
-            isHorizontalScrollBarEnabled = false
-            addView(chipRow)
-        }, LinearLayout.LayoutParams(
+        row.addView(chipRow, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ))
     }
