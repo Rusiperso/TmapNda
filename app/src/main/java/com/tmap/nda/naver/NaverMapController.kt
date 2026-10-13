@@ -255,8 +255,10 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         val gone = safetyMarkers.keys.filter { it !in keep }
         for (id in gone) { safetyMarkers.remove(id)?.map = null }
         for (p in points) {
+            if (p.lat.isNaN() || p.lon.isNaN()) continue
             val mk = safetyMarkers.getOrPut(p.id) {
                 Marker().apply {
+                    position = LatLng(p.lat, p.lon)
                     icon = OverlayImage.fromBitmap(NaverMapIcons.safety(p.type, p.speedLimit, dp(40)))
                     width = dp(40); height = dp(40)
                     isForceShowIcon = true
