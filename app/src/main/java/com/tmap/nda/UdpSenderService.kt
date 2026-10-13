@@ -1163,6 +1163,10 @@ class UdpSenderService : Service() {
                         val plusType = plusJson.optInt("nSdiType", 0)
                         var plusDist = plusJson.optInt("nSdiDist", 0)
                         if (plusType == 22 && plusDist <= 0) plusDist = 150
+                        // 지도 표시용: 티맵이 준 거리 그대로(임시로 넣는 150 같은 값은 쓰지 않음). #문제시 원복
+                        SdiDataRepository.sdi2Type = plusType
+                        SdiDataRepository.sdi2SpeedLimit = plusJson.optInt("nSdiSpeedLimit", 0)
+                        SdiDataRepository.sdi2Distance = plusJson.optInt("nSdiDist", 0)
 
                         if (plusJson.has("nSdiType")) json.put("nSdiPlusType", plusJson.get("nSdiType"))
                         if (plusJson.has("nSdiSpeedLimit")) json.put("nSdiPlusSpeedLimit", plusJson.get("nSdiSpeedLimit"))
@@ -1170,6 +1174,10 @@ class UdpSenderService : Service() {
                         if (plusJson.has("nSdiSection")) json.put("nSdiPlusBlockType", plusJson.get("nSdiSection"))
                         if (plusJson.has("nSdiBlockSpeed")) json.put("nSdiPlusBlockSpeed", plusJson.get("nSdiBlockSpeed"))
                         if (plusJson.has("nSdiBlockDist")) json.put("nSdiPlusBlockDist", plusJson.get("nSdiBlockDist"))
+                    } else {
+                        SdiDataRepository.sdi2Type = 0
+                        SdiDataRepository.sdi2SpeedLimit = 0
+                        SdiDataRepository.sdi2Distance = 0
                     }
 
                     // 목적지까지 남은 거리(m)와 남은 시간(초)

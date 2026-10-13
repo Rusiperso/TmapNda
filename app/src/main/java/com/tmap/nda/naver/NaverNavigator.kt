@@ -32,6 +32,8 @@ object NaverNavigator {
         fun onLocation(loc: Location) {}
         fun onState(state: GuidanceState, goalName: String) {}
         fun onRouteChanged(route: NaverRoute) {}
+        /** 지도에 찍을 앞쪽 안전정보(가까운 순). 지나가면 목록에서 빠진다. */
+        fun onSafety(points: List<SafetyPoint>) {}
         fun onStatus(text: String) {}
         fun onFinished(arrived: Boolean) {}
     }
@@ -170,6 +172,8 @@ object NaverNavigator {
         planner.reset()
         camAnnounced = 0; camLastDist = Int.MAX_VALUE; camLastType = -1
         KakaoRouteDataRepository.reset()
+        safety.clear()
+        listener?.onSafety(emptyList())
         listener?.onFinished(arrived)
         releaseLocationIfIdle()
     }
@@ -187,6 +191,7 @@ object NaverNavigator {
         planner.next(s, speedKmh)?.let { speak(it) }
         checkCameraSpeedBeep(ctx, speedKmh)
         announceCamera(ctx)
+        trackSafety(s)
 
         if (s.arrived) {
             speak("목적지에 도착했습니다")
@@ -205,6 +210,41 @@ object NaverNavigator {
             ctx.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("naver_traffic_reroute_enabled", true)) {
             reroute(ctx, loc, "교통갱신")
         }
+    }
+
+    // ===== 지도에 찍을 안전정보 =====
+    // 티맵은 가장 가까운 안전정보 2개만 "앞으로 몇 m"로 알려준다. 그 거리를 경로선 위 거리로 바꿔 한 번 본 것은 기억해 두었다가,
+    // 지나가면(내 위치가 그 지점을 넘으면) 지운다. 그래서 연달아 나오는 2~3개도 하나씩 이어서 보인다.
+    private val safety = ArrayList<SafetyPoint>()
+    private var safetySeq = 0L
+    private const val SAFETY_MAX_AHEAD_M = 1500
+    private const val SAFETY_PASSED_M = 30.0
+    private const val SAFETY_MATCH_M = 100.0
+    private const val SAFETY_MAX_SHOWN = 4
+
+    private fun trackSafety(s: GuidanceState) {
+        val eng = engine ?: return
+        val progress = s.progressMeters
+        safety.removeAll { it.absMeters < progress - SAFETY_PASSED_M }
+        fun feed(type: Int, dist: Int, limit: Int) {
+            if (dist <= 0 || dist > SAFETY_MAX_AHEAD_M) return
+            if (NaverMapIcons.safetyLabel(type, limit) == null) return
+            // 방지턱은 티맵이 거리를 안 주면 앱이 임시로 150을 넣는다. 진짜 거리가 아니므로 지도에는 찍지 않는다.
+            if (type == 22 && dist == 150) return
+            val abs = progress + dist
+            val at = eng.pointAt(abs) ?: return
+            val i = safety.indexOfFirst { it.type == type && kotlin.math.abs(it.absMeters - abs) < SAFETY_MATCH_M }
+            val p = SafetyPoint(if (i >= 0) safety[i].id else ++safetySeq, type, limit, abs, at.lon, at.lat, dist)
+            if (i >= 0) safety[i] = p else safety.add(p)
+        }
+        val r = com.tmap.nda.SdiDataRepository
+        feed(r.sdiType, r.sdiDistance, r.sdiSpeedLimit)
+        feed(r.sdi2Type, r.sdi2Distance, r.sdi2SpeedLimit)
+        val out = safety
+            .map { it.copy(aheadMeters = kotlin.math.max(0, (it.absMeters - progress).toInt())) }
+            .sortedBy { it.absMeters }
+            .take(SAFETY_MAX_SHOWN)
+        listener?.onSafety(out)
     }
 
     private var lastCameraBeepAt = 0L
@@ -328,6 +368,7 @@ object NaverNavigator {
         engine = NaverGuidanceEngine(route)
         currentRoute = route
         planner.reset()
+        safety.clear()
         lastTrafficRefreshAt = System.currentTimeMillis()
         KakaoRouteDataRepository.routeCoordinates = thin(route.path)
         KakaoRouteDataRepository.routeCoordinatesUpdatedAt = System.currentTimeMillis()

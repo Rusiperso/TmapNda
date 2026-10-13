@@ -32,6 +32,7 @@ import com.tmap.nda.naver.NaverNavigator
 import com.tmap.nda.naver.NaverRoute
 import com.tmap.nda.naver.NaverTurnMap
 import com.tmap.nda.naver.GuidanceState
+import com.tmap.nda.naver.SafetyPoint
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.OkHttpClient
@@ -948,6 +949,10 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
             updateTurnSign(state)
             val total = NaverNavigator.currentRoute?.distanceMeters?.toDouble() ?: 0.0
             if (total > 0) naverMap.setProgress(state.progressMeters / total)
+        }
+
+        override fun onSafety(points: List<SafetyPoint>) {
+            if (::naverMap.isInitialized) naverMap.setSafetyPoints(points)
         }
 
         override fun onRouteChanged(route: NaverRoute) {

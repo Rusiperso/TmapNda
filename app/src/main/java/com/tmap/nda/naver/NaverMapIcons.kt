@@ -201,6 +201,42 @@ object NaverMapIcons {
         strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
     }
 
+    /** 지도에 찍는 안전정보의 색과 글자. null이면 지도에 표시하지 않는다. */
+    fun safetyLabel(type: Int, limit: Int): Pair<Int, String>? {
+        val red = 0xFFE5322D.toInt(); val orange = 0xFFF29900.toInt(); val blue = BLUE
+        val speed = if (limit >= 30) limit.toString() else "단속"
+        return when (type) {
+            0, 1, 6, 7, 8 -> Pair(red, speed)
+            2, 3, 4 -> Pair(red, "구간")
+            9, 11, 12, 15, 16, 17 -> Pair(red, "단속")
+            22 -> Pair(orange, "턱")
+            20 -> Pair(orange, "스쿨")
+            19 -> Pair(orange, "철길")
+            27, 29, 30, 32, 33 -> Pair(orange, "주의")
+            25 -> Pair(blue, "휴")
+            26 -> Pair(blue, "톨")
+            else -> null
+        }
+    }
+
+    /** 지도에 찍는 안전정보 아이콘: 흰 바탕에 종류별 색 테두리와 글자(제한속도가 있으면 숫자). */
+    fun safety(type: Int, limit: Int, size: Int): Bitmap {
+        val (color, text) = safetyLabel(type, limit) ?: Pair(0xFF888888.toInt(), "!")
+        return bmp(size, size) { c ->
+            val s = size.toFloat(); val r = s / 2f
+            c.drawCircle(r, r, r * 0.95f, fill(0x33000000))
+            c.drawCircle(r, r, r * 0.88f, fill(Color.WHITE))
+            c.drawCircle(r, r, r * 0.80f, stroke(color, s * 0.12f))
+            val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                this.color = Color.BLACK
+                textAlign = Paint.Align.CENTER
+                typeface = Typeface.DEFAULT_BOLD
+                textSize = if (text.length >= 3) s * 0.30f else s * 0.36f
+            }
+            c.drawText(text, r, r - (tp.descent() + tp.ascent()) / 2f, tp)
+        }
+    }
+
     /** 스피커 그림. [waves]가 0이면 음소거 모양, 2면 큰 소리 모양. */
     fun speaker(size: Int, color: Int, waves: Int): Bitmap = bmp(size, size) { c ->
         val s = size.toFloat()

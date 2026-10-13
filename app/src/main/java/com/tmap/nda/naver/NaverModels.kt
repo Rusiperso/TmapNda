@@ -12,6 +12,17 @@ data class NaverGuide(
     val durationMs: Long
 )
 
+/** 지도에 찍을 안전정보 한 개. [id]는 같은 대상을 계속 같은 번호로 따라가기 위한 번호, [absMeters]는 경로 시작점부터의 거리. */
+data class SafetyPoint(
+    val id: Long,
+    val type: Int,
+    val speedLimit: Int,
+    val absMeters: Double,
+    val lon: Double,
+    val lat: Double,
+    val aheadMeters: Int
+)
+
 /** 큰 도로 구간. 도로 이름과 혼잡도 표시용. */
 data class NaverSection(
     val pointIndex: Int,

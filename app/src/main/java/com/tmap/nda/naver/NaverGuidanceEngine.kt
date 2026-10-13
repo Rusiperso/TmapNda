@@ -40,6 +40,19 @@ class NaverGuidanceEngine(val route: NaverRoute) {
 
     val totalMeters: Double get() = totalLen
 
+    /** 경로를 따라 시작점에서 [meters]만큼 간 곳의 좌표. 경로 밖이면 null. */
+    fun pointAt(meters: Double): LonLat? {
+        if (n < 2 || meters < 0.0 || meters > totalLen) return null
+        var i = 1
+        while (i < n - 1 && cum[i] < meters) i++
+        val seg = cum[i] - cum[i - 1]
+        val t = if (seg > 0.0) (meters - cum[i - 1]) / seg else 0.0
+        return LonLat(
+            path[i - 1].lon + (path[i].lon - path[i - 1].lon) * t,
+            path[i - 1].lat + (path[i].lat - path[i - 1].lat) * t
+        )
+    }
+
     /** [accuracyM]는 GPS 오차 반경(m). 클수록 이탈 판단이 느슨해지도록 호출하는 쪽이 쓴다. */
     fun update(lon: Double, lat: Double): GuidanceState {
         val m = match(lon, lat)

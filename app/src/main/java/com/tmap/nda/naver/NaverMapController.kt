@@ -246,6 +246,31 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         }
     }
 
+    /** 앞쪽 안전정보(카메라·방지턱·구간단속 등)를 경로 위에 찍는다. 목록에서 빠지면(지나가면) 지도에서도 없어진다. */
+    private val safetyMarkers = HashMap<Long, Marker>()
+    fun setSafetyPoints(points: List<SafetyPoint>) = whenReady { m ->
+        val keep = HashSet<Long>()
+        for (p in points) keep.add(p.id)
+        val gone = safetyMarkers.keys.filter { it !in keep }
+        for (id in gone) { safetyMarkers.remove(id)?.map = null }
+        for (p in points) {
+            val mk = safetyMarkers.getOrPut(p.id) {
+                Marker().apply {
+                    icon = OverlayImage.fromBitmap(NaverMapIcons.safety(p.type, p.speedLimit, dp(40)))
+                    width = dp(40); height = dp(40)
+                    isForceShowIcon = true
+                    zIndex = 80
+                    captionTextSize = 12f
+                    captionColor = Color.BLACK
+                    captionHaloColor = Color.WHITE
+                    this.map = m
+                }
+            }
+            mk.position = LatLng(p.lat, p.lon)
+            mk.captionText = if (p.aheadMeters >= 1000) String.format("%.1fkm", p.aheadMeters / 1000.0) else "${p.aheadMeters / 10 * 10}m"
+        }
+    }
+
     fun clearTurnSign() { turnSign?.map = null; turnSign = null; turnSignKey = null }
 
     fun clearDestination() { clearTurnSign(); destMarker?.map = null; destMarker = null }
