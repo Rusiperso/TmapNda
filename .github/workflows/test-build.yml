@@ -9,6 +9,9 @@ on:
       - 'test-*'
     branches:
       - 'claude/home-project-memory-gatwhs'
+    paths-ignore:
+      - '.github/inspect-sdk.trigger'
+      - '.github/workflows/inspect-sdk.yml'
 
 permissions:
   contents: write

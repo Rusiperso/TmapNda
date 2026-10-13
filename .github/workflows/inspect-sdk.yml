@@ -1,0 +1,50 @@
+name: Inspect Kakao SDK (read-only)
+
+# 카카오 SDK에 안전정보(카메라/방지턱) 목록 API가 있는지 읽기만 하는 조사용. 빌드·릴리즈 없음.
+on:
+  push:
+    branches:
+      - 'claude/home-project-memory-gatwhs'
+    paths:
+      - '.github/inspect-sdk.trigger'
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - name: Download and list SDK classes
+        run: |
+          set +e
+          B=https://devrepo.kakaomobility.com/repository/kakao-mobility-android-knsdk-public/com/kakaomobility/knsdk
+          V=1.12.8-hotfix03
+          mkdir -p /tmp/sdk && cd /tmp/sdk
+          curl -fsSL "$B/knsdk_ui/$V/knsdk_ui-$V.pom" -o ui.pom && grep -E "artifactId|<version>" ui.pom | head -30
+          for m in knsdk_ui knsdk_common knsdk_core knsdk_map knsdk_guidance knsdk_route; do
+            curl -fsSL "$B/$m/$V/$m-$V.aar" -o "$m.aar" 2>/dev/null && echo "got $m.aar $(stat -c%s $m.aar)"
+          done
+          for a in *.aar; do
+            [ -f "$a" ] || continue
+            mkdir -p "x_$a" && unzip -q -o "$a" -d "x_$a"
+          done
+          ls -d x_* 2>/dev/null
+          for d in x_*; do
+            for j in "$d"/classes.jar "$d"/libs/*.jar; do
+              [ -f "$j" ] || continue
+              echo "=== $j"
+              unzip -l "$j" | grep -E "KNRoute|KNSafety|SafetyGuide|safetyguide" | awk '{print $4}' | head -60
+            done
+          done
+          echo "##### javap"
+          for d in x_*; do
+            for j in "$d"/classes.jar "$d"/libs/*.jar; do
+              [ -f "$j" ] || continue
+              for c in $(unzip -l "$j" | awk '{print $4}' | grep -E "KNRoute\.class|KNSafety\.class|KNSafety_Camera\.class|KNSafety_Caution\.class|KNRoute[A-Za-z_]*\.class|KNGuide_Safety[A-Za-z_]*\.class" | sed 's/\.class$//' | head -40); do
+                echo "----- $c"
+                javap -public -classpath "$j" "$(echo $c | tr / .)" 2>&1 | head -60
+              done
+            done
+          done
