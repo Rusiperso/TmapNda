@@ -1,38 +1,22 @@
 package com.tmap.nda
 
 import android.content.Context
-import android.util.Base64
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
-import java.security.KeyFactory
-import java.security.SecureRandom
-import java.security.spec.MGF1ParameterSpec
-import java.security.spec.X509EncodedKeySpec
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import java.util.zip.GZIPOutputStream
-import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.OAEPParameterSpec
-import javax.crypto.spec.PSource
 
 /**
- * 재억 지시(2026-10-13) - 로그를 NAS에 날짜별로 매일 올림(최신=오늘 1일치, 지난=7일치, 7일 지난 건 삭제).
- * 파일은 재억만 열 수 있게 암호화해서 올림: 파일마다 새 AES-256-GCM 키로 잠그고, 그 키를 앱에 든 공개키(RSA)로 다시 잠금.
- * 푸는 열쇠(비밀키)는 재억 PC에만 있음 -> NAS 주인/앱을 뜯어본 사람도 내용은 못 읽음.
- * 파일 형식: "TNL1" | 열쇠길이(2바이트) | RSA로 잠근 AES키 | IV(12) | AES-GCM(gzip(로그 글)).
- * 접속 정보(NAS_*)가 비어 있으면 아무것도 안 함. #문제시 원복
+ * 재억 지시(2026-10-13) - 로그를 NAS에 날짜별 txt로 5분마다 올림(최신=오늘 1일치, 지난=7일치, 7일 지난 건 삭제).
+ * 처음엔 암호화해서 올렸으나 재억 지시로 일반 txt로 바꿈(옛 .tnl 파일은 7일 지나면 정리 대상). 접속 정보(NAS_*)가 비면 아무것도 안 함. #문제시 원복
  */
 object NasLogUploader {
-    private const val PUBLIC_KEY_B64 = "MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAyYgPsc9z6JrkDEXFKicz012xlLMZdNdoZpTrusy1Su4Fj/kwr5dn42Uvuxboq5eXSkSGJmnOP0p/ijyVXrFPbumfC3acxEVFLtt/dWxNt1bOC0A/BVTrNzL7HGdxSG9eygyYDS7qNLf9rUyj2SgFMjrrwvRp6gZpXw0K5P3r+jvCIwxP5VPhWNqVeo17qJT76JFNsr6EbhNZkGo9pLlgPDVHnqv2IQ70JOvhxqYCzNL2k5HUT/c95IfI3ovOSELK5/pfs3DlvhUoxrCDUIluAOrsUJd8G1J2ZpLjxtTe4+nyYPPuLIrAdGdc6+2rU228IUlwBMxJzz6Jp0nYnwl8ZY/6+6y36NxFUpbgyxNywyCNDx8ySsYmhidTMjvfdOnLna1u2uQ2e7uKP6YqHPVNtjR0TpfUU4ghMAQZ8SX9+qCm1Dt7lCwrbrbi5qdLEh80k3vkZTIGXPheKO/KIIwDJ4l8SYvGssi1j48b5cMWMq+sSPMU3vDOG5NEmkMgBFLbAgMBAAE="
     private const val KEEP_DAYS = 7
     private const val PREFS = "TmapNdaPrefs"
 
@@ -50,7 +34,7 @@ object NasLogUploader {
             } catch (e: Exception) {
                 try { NavLogger.d(app, "NasLogUploader 실패: ${e.javaClass.simpleName} ${e.message}") } catch (_: Exception) {}
             }
-        }, 90, 3 * 60 * 60L, TimeUnit.SECONDS)
+        }, 90, 5 * 60L, TimeUnit.SECONDS)
     }
 
     private fun recentDays(): Set<String> {
@@ -74,37 +58,84 @@ object NasLogUploader {
             }
         }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val todo = byDay.filter { (d, sb) -> prefs.getInt("nas_sig_$d", -1) != sb.length }
+        val todo = byDay.filter { (d, sb) -> prefs.getInt("nas_txt_sig_$d", -1) != sb.length }
         val id = DiscordReporter.installId(context)
-        val base = BuildConfig.NAS_DIR.ifBlank { "/tndalogs" }.trimEnd('/') + "/" + id
+        val root = BuildConfig.NAS_DIR.ifBlank { "/tndalogs" }.trimEnd('/')
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date())
+        // 올릴 게 없고 오늘 폴더 확인·정리도 끝났으면 NAS에 접속하지 않음.
+        if (todo.isEmpty() && prefs.getString("nas_cleaned", null) == today && prefs.getString("nas_folder_checked", null) == today) return
         val sid = login()
         try {
-            for ((d, sb) in todo) {
-                upload(sid, base, "$d.tnl", encrypt(sb.toString().toByteArray(Charsets.UTF_8)))
-                prefs.edit().putInt("nas_sig_$d", sb.length).apply()
+            // 5분마다 도는 만큼 NAS 호출을 줄임: 닉네임이 그대로면 저장해둔 폴더를 그대로 쓰고, 폴더 확인은 하루 한 번만 함.
+            val desired = folderName(context, id)
+            val cachedFolder = prefs.getString("nas_folder", null)
+            val base = if (cachedFolder != null && prefs.getString("nas_folder_nick", null) == desired && prefs.getString("nas_folder_checked", null) == today) {
+                "$root/$cachedFolder"
+            } else {
+                resolveFolder(context, sid, root, id, desired).also {
+                    prefs.edit().putString("nas_folder_nick", desired).putString("nas_folder_checked", today).apply()
+                }
             }
-            deleteOld(sid, base, days)
+            for ((d, sb) in todo) {
+                upload(sid, base, "$d.txt", sb.toString().toByteArray(Charsets.UTF_8))
+                prefs.edit().putInt("nas_txt_sig_$d", sb.length).apply()
+            }
+            if (prefs.getString("nas_cleaned", null) != today) { deleteOld(sid, base, days); prefs.edit().putString("nas_cleaned", today).apply() }
         } finally {
             try { logout(sid) } catch (_: Exception) {}
         }
     }
 
-    // ---- 암호화 ----
-    private fun encrypt(plain: ByteArray): ByteArray {
-        val gz = ByteArrayOutputStream().also { o -> GZIPOutputStream(o).use { it.write(plain) } }.toByteArray()
-        val aesKey = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
-        val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
-        val aes = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, aesKey, GCMParameterSpec(128, iv)) }
-        val body = aes.doFinal(gz)
-        val pub = KeyFactory.getInstance("RSA").generatePublic(X509EncodedKeySpec(Base64.decode(PUBLIC_KEY_B64, Base64.DEFAULT)))
-        val rsa = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding").apply {
-            init(Cipher.ENCRYPT_MODE, pub, OAEPParameterSpec("SHA-256", "MGF1", MGF1ParameterSpec.SHA256, PSource.PSpecified.DEFAULT))
-        }
-        val wrapped = rsa.doFinal(aesKey.encoded)
-        return ByteArrayOutputStream().also { o ->
-            o.write("TNL1".toByteArray()); o.write(wrapped.size shr 8); o.write(wrapped.size and 0xFF)
-            o.write(wrapped); o.write(iv); o.write(body)
-        }.toByteArray()
+    // 폴더 이름 = 닉네임(없으면 설치ID). 같은 폴더인지는 안에 든 빈 표식 파일 "id_<설치ID>"로 알아봄:
+    // 닉네임이 바뀌면 그 폴더 이름만 고치고, 다른 사람과 닉네임이 겹치면 뒤에 2,3을 붙임. 예전 이름(설치ID 또는 "닉네임_설치ID")도 인식해 이름을 바꿔줌.
+    private fun folderName(context: Context, id: String): String {
+        val nick = DiscordReporter.getNickname(context).replace(Regex("[\\\\/:*?\"<>|,]"), "").trim().take(30)
+        return if (nick.isEmpty()) id else nick
+    }
+
+    private fun listDir(sid: String, path: String): List<Pair<String, Boolean>>? {
+        val r = postForm(mapOf("api" to "SYNO.FileStation.List", "version" to "2", "method" to "list", "folder_path" to path, "_sid" to sid))
+        if (!r.optBoolean("success")) return null
+        val files = r.getJSONObject("data").optJSONArray("files") ?: return emptyList()
+        return (0 until files.length()).map { files.getJSONObject(it).let { f -> f.optString("name") to f.optBoolean("isdir") } }
+    }
+
+    private fun resolveFolder(context: Context, sid: String, root: String, id: String, desired: String): String {
+        try {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val top = listDir(sid, root) ?: return "$root/$desired"
+            val dirs = top.filter { it.second && !it.first.startsWith("#") && !it.first.startsWith("@") }.map { it.first }
+            val cached = prefs.getString("nas_folder", null)
+            var own: String? = null
+            var needMarker = false
+            val order = (listOfNotNull(cached).filter { it in dirs } + dirs.filter { it == id || it.endsWith("_$id") } + dirs).distinct()
+            for (c in order) {
+                val inner = listDir(sid, "$root/$c") ?: continue
+                if (inner.any { it.first == "id_$id" }) { own = c; break }
+                if (c == id || c.endsWith("_$id")) { own = c; needMarker = true; break }
+            }
+            fun unique(base: String, taken: List<String>): String {
+                var n = base; var i = 2
+                while (taken.any { it.equals(n, ignoreCase = true) }) { n = base + i; i++ }
+                return n
+            }
+            val result: String
+            if (own == null) {
+                result = unique(desired, dirs)
+                needMarker = true
+            } else if (own.equals(desired, ignoreCase = true)) {
+                result = own
+            } else {
+                val target = unique(desired, dirs.filter { it != own })
+                val rn = postForm(mapOf("api" to "SYNO.FileStation.Rename", "version" to "2", "method" to "rename",
+                    "path" to "$root/$own", "name" to target, "_sid" to sid))
+                result = if (rn.optBoolean("success")) target else own
+            }
+            if (needMarker) upload(sid, "$root/$result", "id_$id", "1".toByteArray())
+            prefs.edit().putString("nas_folder", result).apply()
+            return "$root/$result"
+        } catch (_: Exception) {}
+        return "$root/$desired"
     }
 
     // ---- 시놀로지 File Station 통신 ----
@@ -152,13 +183,13 @@ object NasLogUploader {
         if (!r.optBoolean("success")) throw IllegalStateException("NAS 업로드 실패 code=${r.optJSONObject("error")?.optInt("code")}")
     }
 
-    // 7일 지난 날짜 파일 삭제. 폴더 안 목록을 받아 "yyyy-MM-dd.tnl"만 대상으로 함(다른 파일은 안 건드림).
+    // 7일 지난 날짜 파일 삭제. 폴더 안 목록을 받아 "yyyy-MM-dd.txt(예전 .tnl 포함)"만 대상으로 함(다른 파일은 안 건드림).
     private fun deleteOld(sid: String, base: String, keep: Set<String>) {
         val r = postForm(mapOf("api" to "SYNO.FileStation.List", "version" to "2", "method" to "list",
             "folder_path" to base, "_sid" to sid))
         if (!r.optBoolean("success")) return
         val files = r.getJSONObject("data").optJSONArray("files") ?: return
-        val nameRe = Regex("^(\\d{4}-\\d{2}-\\d{2})\\.tnl$")
+        val nameRe = Regex("^(\\d{4}-\\d{2}-\\d{2})\\.(tnl|txt)$")
         val old = ArrayList<String>()
         for (i in 0 until files.length()) {
             val n = files.getJSONObject(i).optString("name")
