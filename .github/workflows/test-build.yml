@@ -7,8 +7,6 @@ on:
   push:
     tags:
       - 'test-*'
-    branches:
-      - 'claude/home-project-memory-gatwhs'
 
 permissions:
   contents: write

@@ -212,7 +212,7 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         activePath?.map = null; activePath = null
         activeMulti?.map = null; activeMulti = null
         clearDestination()
-        clearSafety()
+        setSafetyPoints(emptyList())
     }
 
     /** 안내 중 도착지 표시(안내 시작 때 지워지던 핀 대신 끝까지 유지). */
@@ -247,42 +247,34 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         }
     }
 
+    /** 앞쪽 안전정보(카메라·방지턱·구간단속 등)를 경로 위에 찍는다. 목록에서 빠지면(지나가면) 지도에서도 없어진다. */
+    private val safetyMarkers = HashMap<Long, Marker>()
+    fun setSafetyPoints(points: List<SafetyPoint>) = whenReady { m ->
+        val keep = HashSet<Long>()
+        for (p in points) keep.add(p.id)
+        val gone = safetyMarkers.keys.filter { it !in keep }
+        for (id in gone) { safetyMarkers.remove(id)?.map = null }
+        for (p in points) {
+            val mk = safetyMarkers.getOrPut(p.id) {
+                Marker().apply {
+                    icon = OverlayImage.fromBitmap(NaverMapIcons.safety(p.type, p.speedLimit, dp(40)))
+                    width = dp(40); height = dp(40)
+                    isForceShowIcon = true
+                    zIndex = 80
+                    captionTextSize = 12f
+                    captionColor = Color.BLACK
+                    captionHaloColor = Color.WHITE
+                    this.map = m
+                }
+            }
+            mk.position = LatLng(p.lat, p.lon)
+            mk.captionText = if (p.aheadMeters >= 1000) String.format("%.1fkm", p.aheadMeters / 1000.0) else "${p.aheadMeters / 10 * 10}m"
+        }
+    }
+
     fun clearTurnSign() { turnSign?.map = null; turnSign = null; turnSignKey = null }
 
     fun clearDestination() { clearTurnSign(); destMarker?.map = null; destMarker = null }
-
-    /** 경로 위 안전정보 표시(카메라·구간단속·방지턱 등). 지나간 것은 [updateSafetyProgress]로 숨긴다. */
-    private val safetyMarkers = ArrayList<Pair<RouteSafetyItem, Marker>>()
-    private val safetyIcons = HashMap<String, OverlayImage>()
-    fun showSafety(items: List<RouteSafetyItem>) = whenReady { m ->
-        clearSafety()
-        for (it in items) {
-            val key = "${it.sdiType}/${it.speedLimit}"
-            val img = safetyIcons.getOrPut(key) { OverlayImage.fromBitmap(NaverMapIcons.safety(it.sdiType, it.speedLimit, dp(34))) }
-            val mk = Marker().apply {
-                position = LatLng(it.lat, it.lon)
-                icon = img
-                width = dp(34); height = dp(34)
-                anchor = android.graphics.PointF(0.5f, 0.5f)
-                isForceShowIcon = true
-                isHideCollidedMarkers = true
-                zIndex = 60
-                this.map = m
-            }
-            safetyMarkers.add(it to mk)
-        }
-    }
-
-    /** 내가 경로를 [progressMeters]만큼 갔을 때, 30m 넘게 지나친 안전정보는 지도에서 뺀다. */
-    fun updateSafetyProgress(progressMeters: Double) {
-        val m = map ?: return
-        for ((it, mk) in safetyMarkers) {
-            val show = it.alongM > progressMeters - 30
-            if ((mk.map != null) != show) mk.map = if (show) m else null
-        }
-    }
-
-    fun clearSafety() { safetyMarkers.forEach { it.second.map = null }; safetyMarkers.clear() }
 
     // ===== 핀 / 마커 =====
     fun showPin(lat: Double, lon: Double, caption: String) = whenReady { m ->

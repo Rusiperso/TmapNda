@@ -70,52 +70,6 @@ object NaverMapIcons {
         })
     }
 
-    private val SAFE_RED = 0xFFE5322D.toInt()
-    private val SAFE_YELLOW = 0xFFFFC107.toInt()
-
-    /**
-     * 경로 위 안전정보 표시. 단속 카메라류는 흰 바탕+빨간 테두리(제한속도가 있으면 숫자, 없으면 카메라 그림, 구간단속은 "구간 시작/끝"),
-     * 방지턱·철길·어린이보호구역·사고다발은 노란 바탕+검은 그림. [sdiType]은 티맵/openpilot nSdiType 번호.
-     */
-    fun safety(sdiType: Int, speedLimit: Int, size: Int): Bitmap = bmp(size, size) { c ->
-        val s = size.toFloat(); val r = s / 2f
-        val warn = sdiType in intArrayOf(19, 20, 22, 29)
-        c.drawCircle(r, r, r * 0.95f, fill(0x33000000))
-        c.drawCircle(r, r, r * 0.88f, fill(if (warn) SAFE_YELLOW else Color.WHITE))
-        val ringW = s * (if (warn) 0.05f else 0.12f)
-        c.drawCircle(r, r, r * 0.88f - ringW / 2f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = ringW; color = if (warn) 0xFF222222.toInt() else SAFE_RED
-        })
-        val ink = 0xFF111111.toInt()
-        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = ink; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
-        fun text(t: String, cy: Float, sz: Float) {
-            val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ink; textAlign = Paint.Align.CENTER; typeface = Typeface.DEFAULT_BOLD; textSize = sz }
-            c.drawText(t, r, cy - (p.ascent() + p.descent()) / 2f, p)
-        }
-        when (sdiType) {
-            22 -> { // 과속방지턱: 도로선 위의 둥근 턱
-                stroke.strokeWidth = s * 0.07f
-                c.drawLine(s * 0.22f, s * 0.66f, s * 0.78f, s * 0.66f, stroke)
-                c.drawArc(RectF(s * 0.28f, s * 0.32f, s * 0.72f, s * 0.80f), 180f, 180f, false, stroke)
-            }
-            19 -> { // 철길건널목: X
-                stroke.strokeWidth = s * 0.09f
-                c.drawLine(s * 0.30f, s * 0.30f, s * 0.70f, s * 0.70f, stroke); c.drawLine(s * 0.70f, s * 0.30f, s * 0.30f, s * 0.70f, stroke)
-            }
-            20 -> text("어린이", r, s * 0.24f)
-            29 -> text("!", r, s * 0.62f)
-            2, 3 -> { text("구간", r - s * 0.13f, s * 0.24f); text(if (sdiType == 2) "시작" else "끝", r + s * 0.14f, s * 0.24f) }
-            else -> if (speedLimit >= 30) {
-                text(speedLimit.toString(), r, s * (if (speedLimit >= 100) 0.30f else 0.38f))
-            } else { // 카메라 그림
-                val body = RectF(s * 0.27f, s * 0.38f, s * 0.73f, s * 0.64f)
-                c.drawRoundRect(body, s * 0.05f, s * 0.05f, fill(ink))
-                c.drawRoundRect(RectF(s * 0.38f, s * 0.31f, s * 0.54f, s * 0.40f), s * 0.03f, s * 0.03f, fill(ink))
-                c.drawCircle(r, s * 0.51f, s * 0.08f, fill(Color.WHITE))
-            }
-        }
-    }
-
     /** 회전 화살표 그림. [code]는 NaverTurnMap.toOpenpilotCode 값. 투명 배경에 [color]로 그린다. */
     fun turnArrow(code: Int, size: Int, color: Int): Bitmap = bmp(size, size) { c ->
         val s = size.toFloat()
@@ -245,6 +199,42 @@ object NaverMapIcons {
     private fun stroke(color: Int, w: Float) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; strokeWidth = w; this.color = color
         strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
+    }
+
+    /** 지도에 찍는 안전정보의 색과 글자. null이면 지도에 표시하지 않는다. */
+    fun safetyLabel(type: Int, limit: Int): Pair<Int, String>? {
+        val red = 0xFFE5322D.toInt(); val orange = 0xFFF29900.toInt(); val blue = BLUE
+        val speed = if (limit >= 30) limit.toString() else "단속"
+        return when (type) {
+            0, 1, 6, 7, 8 -> Pair(red, speed)
+            2, 3, 4 -> Pair(red, "구간")
+            9, 11, 12, 15, 16, 17 -> Pair(red, "단속")
+            22 -> Pair(orange, "턱")
+            20 -> Pair(orange, "스쿨")
+            19 -> Pair(orange, "철길")
+            27, 29, 30, 32, 33 -> Pair(orange, "주의")
+            25 -> Pair(blue, "휴")
+            26 -> Pair(blue, "톨")
+            else -> null
+        }
+    }
+
+    /** 지도에 찍는 안전정보 아이콘: 흰 바탕에 종류별 색 테두리와 글자(제한속도가 있으면 숫자). */
+    fun safety(type: Int, limit: Int, size: Int): Bitmap {
+        val (color, text) = safetyLabel(type, limit) ?: Pair(0xFF888888.toInt(), "!")
+        return bmp(size, size) { c ->
+            val s = size.toFloat(); val r = s / 2f
+            c.drawCircle(r, r, r * 0.95f, fill(0x33000000))
+            c.drawCircle(r, r, r * 0.88f, fill(Color.WHITE))
+            c.drawCircle(r, r, r * 0.80f, stroke(color, s * 0.12f))
+            val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                this.color = Color.BLACK
+                textAlign = Paint.Align.CENTER
+                typeface = Typeface.DEFAULT_BOLD
+                textSize = if (text.length >= 3) s * 0.30f else s * 0.36f
+            }
+            c.drawText(text, r, r - (tp.descent() + tp.ascent()) / 2f, tp)
+        }
     }
 
     /** 스피커 그림. [waves]가 0이면 음소거 모양, 2면 큰 소리 모양. */

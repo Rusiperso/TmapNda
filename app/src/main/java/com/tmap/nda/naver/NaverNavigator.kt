@@ -33,7 +33,8 @@ object NaverNavigator {
         fun onLocation(loc: Location) {}
         fun onState(state: GuidanceState, goalName: String) {}
         fun onRouteChanged(route: NaverRoute) {}
-        fun onSafetyItems(items: List<RouteSafetyItem>) {}
+        /** 지도에 찍을 앞쪽 안전정보(가까운 순). 지나가면 목록에서 빠진다. */
+        fun onSafety(points: List<SafetyPoint>) {}
         fun onStatus(text: String) {}
         fun onFinished(arrived: Boolean) {}
     }
@@ -167,7 +168,9 @@ object NaverNavigator {
     /** 지금 경로 위의 안전정보(카카오 경로에서 가져와 네이버 경로선 위의 것만 남김). 지도 표시용. */
     @Volatile var safetyItems: List<RouteSafetyItem> = emptyList()
         private set
-    private var safetySeq = 0
+    private var kakaoSafetySeq = 0
+    /** 카카오 목록에서 이미 지도용 목록으로 옮긴(또는 티맵 값과 겹쳐 건너뛴) 항목 번호. 같은 항목을 다시 올리지 않는다. */
+    private val kakaoSeeded = HashSet<Int>()
 
     /**
      * 같은 출발·도착으로 카카오에 경로만 받아(길안내 시작 안 함) 안전정보 목록을 얻고, 네이버 경로선 25m 안의 것만 남긴다.
@@ -176,9 +179,9 @@ object NaverNavigator {
     private fun fetchKakaoSafety(ctx: Context, route: NaverRoute) {
         val to = goal ?: return
         val start = route.path.firstOrNull() ?: return
-        val seq = ++safetySeq
+        val seq = ++kakaoSafetySeq
         safetyItems = emptyList()
-        listener?.onSafetyItems(emptyList())
+        kakaoSeeded.clear()
         // 안전정보는 카카오 SDK가 있어야 얻는다: 카카오 네이티브 앱 키가 없으면 지도에 표시할 수 없다고 한 번 알려준다.
         val kakaoKey = ctx.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getString("kakao_native_app_key", "").orEmpty().trim()
         if (kakaoKey.isEmpty()) {
@@ -191,7 +194,7 @@ object NaverNavigator {
         }
         val app = ctx as? android.app.Application ?: return
         KakaoSdkState.ensureInitialized(app, kakaoKey) { ok, msg ->
-            if (seq != safetySeq || engine == null) return@ensureInitialized
+            if (seq != kakaoSafetySeq || engine == null) return@ensureInitialized
             if (!ok) { NavLogger.d(ctx, "[카카오안전정보] 카카오 SDK 준비 실패: $msg"); return@ensureInitialized }
             requestKakaoSafety(ctx, route, start, to, seq)
         }
@@ -207,7 +210,7 @@ object NaverNavigator {
                 reportFailures = false
             ) { _, _, _, _, kRoute ->
                 main.post {
-                    if (seq != safetySeq || engine == null) return@post
+                    if (seq != kakaoSafetySeq || engine == null) return@post
                     try {
                         val r = kRoute as? com.kakaomobility.knsdk.trip.kntrip.knroute.KNRoute
                         if (r == null) { NavLogger.d(ctx, "[카카오안전정보] 경로 못 받음"); return@post }
@@ -216,7 +219,7 @@ object NaverNavigator {
                         NavLogger.d(ctx, "[카카오안전정보] 카카오경로 ${r.totalDist}m/네이버경로 ${route.distanceMeters}m, 카카오목록 ${total}개 → 네이버선 ${RouteSafety.MAX_OFF_ROUTE_M.toInt()}m 안·같은방향 ${items.size}개")
                         items.take(15).forEach { NavLogger.d(ctx, "[카카오안전정보] 종류=${it.sdiType} 제한=${it.speedLimit} 경로위치=${it.alongM}m 선까지=${it.offM}m") }
                         safetyItems = items
-                        listener?.onSafetyItems(items)
+                        kakaoSeeded.clear()
                     } catch (e: Exception) {
                         NavLogger.e(ctx, "[카카오안전정보] 읽기 예외: ${e.message}")
                     }
@@ -241,9 +244,11 @@ object NaverNavigator {
         goal = null
         currentRoute = null
         planner.reset()
-        safetySeq++; safetyItems = emptyList()
+        kakaoSafetySeq++; safetyItems = emptyList()
         camAnnounced = 0; camLastDist = Int.MAX_VALUE; camLastType = -1
         KakaoRouteDataRepository.reset()
+        safety.clear()
+        listener?.onSafety(emptyList())
         listener?.onFinished(arrived)
         releaseLocationIfIdle()
     }
@@ -261,6 +266,7 @@ object NaverNavigator {
         planner.next(s, speedKmh)?.let { speak(it) }
         checkCameraSpeedBeep(ctx, speedKmh)
         announceCamera(ctx)
+        trackSafety(s)
 
         if (s.arrived) {
             speak("목적지에 도착했습니다")
@@ -279,6 +285,56 @@ object NaverNavigator {
             ctx.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("naver_traffic_reroute_enabled", true)) {
             reroute(ctx, loc, "교통갱신")
         }
+    }
+
+    // ===== 지도에 찍을 안전정보 =====
+    // 티맵은 가장 가까운 안전정보 2개만 "앞으로 몇 m"로 알려준다. 그 거리를 경로선 위 거리로 바꿔 한 번 본 것은 기억해 두었다가,
+    // 지나가면(내 위치가 그 지점을 넘으면) 지운다. 그래서 연달아 나오는 2~3개도 하나씩 이어서 보인다.
+    private val safety = ArrayList<SafetyPoint>()
+    private var safetySeq = 0L
+    private const val SAFETY_MAX_AHEAD_M = 1500
+    private const val SAFETY_PASSED_M = 30.0
+    private const val SAFETY_MATCH_M = 100.0
+    private const val SAFETY_MAX_SHOWN = 4
+    /** 카카오 목록 항목은 이 거리(m) 안으로 다가오면 지도에 올린다. */
+    private const val KAKAO_SAFETY_MAX_AHEAD_M = 3000
+
+    private fun trackSafety(s: GuidanceState) {
+        val eng = engine ?: return
+        val progress = s.progressMeters
+        safety.removeAll { it.absMeters < progress - SAFETY_PASSED_M }
+        fun feed(type: Int, dist: Int, limit: Int) {
+            if (dist <= 0 || dist > SAFETY_MAX_AHEAD_M) return
+            if (NaverMapIcons.safetyLabel(type, limit) == null) return
+            // 방지턱은 티맵이 거리를 안 주면 앱이 임시로 150을 넣는다. 진짜 거리가 아니므로 지도에는 찍지 않는다.
+            if (type == 22 && dist == 150) return
+            val abs = progress + dist
+            val at = eng.pointAt(abs) ?: return
+            val i = safety.indexOfFirst { it.type == type && kotlin.math.abs(it.absMeters - abs) < SAFETY_MATCH_M }
+            val p = SafetyPoint(if (i >= 0) safety[i].id else ++safetySeq, type, limit, abs, at.lon, at.lat, dist)
+            if (i >= 0) safety[i] = p else safety.add(p)
+        }
+        // 카카오 경로에서 받아 둔 먼 곳 안전정보를 같은 목록에 먼저 올린다(티맵보다 멀리서부터 보임).
+        // 이미 같은 종류가 100m 안에 있으면(티맵이 알려준 것) 겹친 것으로 보고 건너뛴다. 올린 항목은 다시 올리지 않는다.
+        val kItems = safetyItems
+        for ((idx, k) in kItems.withIndex()) {
+            if (idx in kakaoSeeded) continue
+            val ahead = k.alongM - progress
+            if (ahead < -SAFETY_PASSED_M) { kakaoSeeded.add(idx); continue }
+            if (ahead > KAKAO_SAFETY_MAX_AHEAD_M) continue
+            if (NaverMapIcons.safetyLabel(k.sdiType, k.speedLimit) == null) { kakaoSeeded.add(idx); continue }
+            kakaoSeeded.add(idx)
+            if (safety.any { it.type == k.sdiType && kotlin.math.abs(it.absMeters - k.alongM) < SAFETY_MATCH_M }) continue
+            safety.add(SafetyPoint(++safetySeq, k.sdiType, k.speedLimit, k.alongM.toDouble(), k.lon, k.lat, ahead.toInt()))
+        }
+        val r = com.tmap.nda.SdiDataRepository
+        feed(r.sdiType, r.sdiDistance, r.sdiSpeedLimit)
+        feed(r.sdi2Type, r.sdi2Distance, r.sdi2SpeedLimit)
+        val out = safety
+            .map { it.copy(aheadMeters = kotlin.math.max(0, (it.absMeters - progress).toInt())) }
+            .sortedBy { it.absMeters }
+            .take(SAFETY_MAX_SHOWN)
+        listener?.onSafety(out)
     }
 
     private var lastCameraBeepAt = 0L
@@ -402,6 +458,7 @@ object NaverNavigator {
         engine = NaverGuidanceEngine(route)
         currentRoute = route
         planner.reset()
+        safety.clear()
         lastTrafficRefreshAt = System.currentTimeMillis()
         KakaoRouteDataRepository.routeCoordinates = thin(route.path)
         KakaoRouteDataRepository.routeCoordinatesUpdatedAt = System.currentTimeMillis()

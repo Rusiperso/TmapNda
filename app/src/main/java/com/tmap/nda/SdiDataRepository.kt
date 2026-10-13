@@ -44,6 +44,10 @@ object SdiDataRepository {
         return kakaoRoadLimitSpeed >= 30 &&
             (System.currentTimeMillis() - kakaoRoadLimitSpeedUpdatedAt) < maxAgeMs
     }
+    /** 티맵이 알려주는 두 번째로 가까운 안전정보(지도 표시용, 거리는 티맵이 준 값 그대로). */
+    @Volatile var sdi2Type: Int = 0
+    @Volatile var sdi2SpeedLimit: Int = 0
+    @Volatile var sdi2Distance: Int = 0
     var sdiType: Int = 0
     var sdiSpeedLimit: Int = 0
     var sdiDistance: Int = 0
