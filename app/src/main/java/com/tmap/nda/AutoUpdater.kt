@@ -193,6 +193,10 @@ object AutoUpdater {
         }
     }
 
+    // 재억 요청(2026-10-13): 너무 오래된 버전은 업데이트 안 하면 문제가 생길 수 있다는 경고를 업데이트 창에 덧붙임.
+    // 강제 차단은 아니고(나중에 버튼 유지), 이 버전보다 낮을 때만 경고문이 나옴. 기준은 필요할 때 이 값만 올림. #문제시 원복
+    private const val WARN_BELOW_VERSION = "19.4.30"
+
     private fun isNewerVersion(current: String, remote: String): Boolean {
         val currentParts = current.split(".").map { it.toIntOrNull() ?: 0 }
         val remoteParts = remote.split(".").map { it.toIntOrNull() ?: 0 }
