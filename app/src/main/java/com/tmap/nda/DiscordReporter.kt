@@ -68,6 +68,18 @@ object DiscordReporter {
 
     fun setNickname(context: Context, nickname: String) {
         prefs(context).edit().putString(KEY_NICKNAME, nickname.trim()).apply()
+        // 재억 지시(2026-10-14): 닉네임을 바꾸면 다음 연결을 기다리지 않고 바로 파이어베이스에 반영(보드·NAS 업로드 판단용). #문제시 원복
+        val app = context.applicationContext
+        reportExecutor.execute {
+            try {
+                if (!ensureAnonymousAuth()) return@execute
+                val v = getNickname(app).ifBlank { "(미입력)" }
+                val id = installId(app)
+                FirebaseDatabase.getInstance().getReference("devices/$id/nickname").setValue(v)
+            } catch (e: Exception) {
+                // 조용히 무시(다음 연결 때 다시 반영됨)
+            }
+        }
     }
 
     private fun ensureAnonymousAuth(): Boolean = try {

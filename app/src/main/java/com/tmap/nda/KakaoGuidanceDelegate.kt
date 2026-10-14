@@ -1663,9 +1663,56 @@ class KakaoGuidanceDelegate(
         }
         NavLogger.d(context, "[신호등?] didUpdateCitsGuide 호출됨: $citsGuide | $fieldDump")
         NavLogger.d(context, "[신호등?][아이템상세] $itemDump")
+        // v: 재억 요청(2026-10-14) - 카카오 서버가 이 경로에 신호등을 몇 개 알려줬는지(500m 밖 것 포함) 확인용. #문제시 원복
+        logKakaoServerSignals(context, guidance)
         naviView?.didUpdateCitsGuide(guidance, citsGuide)
     }
 }
+
+private var lastCitsServerLogMs = 0L
+
+/**
+ * 카카오 SDK 안의 신호등 담당(KNCitsManager)이 서버에서 받아둔 신호등 목록을 로그로 남긴다.
+ * (SDK 내부 값이라 리플렉션으로 읽음. 못 읽으면 "읽기 실패"만 남기고 끝.) 10초에 한 번만.
+ */
+private fun logKakaoServerSignals(context: Context, guidance: Any) {
+    val now = System.currentTimeMillis()
+    if (now - lastCitsServerLogMs < 10_000) return
+    lastCitsServerLogMs = now
+    try {
+        var mgr: Any? = null
+        var cls: Class<*>? = guidance.javaClass
+        while (cls != null && mgr == null) {
+            for (f in cls.declaredFields) {
+                if (f.type.name == "com.kakaomobility.knsdk.guidance.kncitsmanager.KNCitsManager") {
+                    f.isAccessible = true
+                    mgr = f.get(guidance)
+                    break
+                }
+            }
+            cls = cls.superclass
+        }
+        if (mgr == null) { NavLogger.d(context, "[신호등서버] 신호등 담당 객체 없음(아직 안 만들어짐)"); return }
+        val parts = ArrayList<String>()
+        for (f in mgr.javaClass.declaredFields) {
+            f.isAccessible = true
+            val v = f.get(mgr)
+            if (v is List<*>) {
+                val items = v.take(8).joinToString(" / ") { it?.let { o -> describeCitsItem(o) } ?: "null" }
+                parts.add("${f.name}[${v.size}개]=$items")
+            }
+        }
+        NavLogger.d(context, "[신호등서버] ${if (parts.isEmpty()) "목록 필드 없음" else parts.joinToString(" | ")}")
+    } catch (e: Exception) {
+        NavLogger.d(context, "[신호등서버] 읽기 실패: ${e.javaClass.simpleName} ${e.message}")
+    }
+}
+
+private fun describeCitsItem(o: Any): String = try {
+    val g = { n: String -> try { o.javaClass.getMethod(n).invoke(o) } catch (e: Exception) { "?" } }
+    "${o.javaClass.simpleName}(지역=${g("getRegionId")} 교차로=${g("getIntersectionId")} 그룹=${g("getSignalGroup")} " +
+        "종류=${g("getSignalCategory")} 거리=${g("getDistFromS")} 상태=${g("getState")} 시간정보=${g("getSpats")})"
+} catch (e: Exception) { o.javaClass.simpleName }
 
 // 길안내 중 카카오 안전정보 코드 -> 티맵/openpilot nSdiType (네이버 지도 표시에서도 같이 씀)
 internal fun mapKakaoSafetyCodeToSdiType(kakaoCodeName: String?): Int {

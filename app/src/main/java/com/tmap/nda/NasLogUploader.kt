@@ -1,7 +1,12 @@
 package com.tmap.nda
 
 import android.content.Context
+import com.google.android.gms.tasks.Tasks
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.FirebaseDatabase
+import org.json.JSONArray
 import org.json.JSONObject
+import java.text.Normalizer
 import java.io.DataOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -43,7 +48,41 @@ object NasLogUploader {
         return (0 until KEEP_DAYS).map { fmt.format(c.time).also { c.add(Calendar.DAY_OF_YEAR, -1) } }.toSet()
     }
 
+    // 재억 지시(2026-10-14): NAS에는 "닉네임이 있고, 보드가 디코 멤버로 확인했고, 보드에서 제거하지 않은" 기기만 올림(내 기기 닉네임은 항상 허용).
+    // 디코 멤버 닉네임 목록·제거 목록은 보드가 파이어베이스 boardShared/disc에 올려둔 것을 읽음(1시간 캐시). 못 읽으면 이번 회차는 안 올리고 다음에 다시 시도. #문제시 원복
+    private val OWNER_NICKS = setOf("주인장", "주인장1", "주인장2")
+    private fun norm(s: String) = Normalizer.normalize(s, Normalizer.Form.NFKC).lowercase(Locale.ROOT).replace(Regex("\\s+"), "")
+
+    private fun fetchDiscList(): String? = try {
+        val auth = FirebaseAuth.getInstance()
+        if (auth.currentUser == null) Tasks.await(auth.signInAnonymously(), 5, TimeUnit.SECONDS)
+        val snap = Tasks.await(FirebaseDatabase.getInstance().getReference("boardShared/disc").get(), 10, TimeUnit.SECONDS)
+        if (!snap.exists()) null else {
+            val matched = snap.child("matched").children.mapNotNull { it.getValue(String::class.java) }
+            val hidden = snap.child("hidden").children.mapNotNull { it.key }
+            JSONObject().put("matched", JSONArray(matched)).put("hidden", JSONArray(hidden)).toString()
+        }
+    } catch (e: Exception) { null }
+
+    private fun isAllowed(context: Context, id: String): Boolean {
+        val nick = DiscordReporter.getNickname(context).trim()
+        if (nick.isEmpty()) return false
+        if (nick in OWNER_NICKS) return true
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        var json = prefs.getString("nas_disc_json", null)
+        if (json == null || System.currentTimeMillis() - prefs.getLong("nas_disc_at", 0L) > 60 * 60 * 1000L) {
+            fetchDiscList()?.let { json = it; prefs.edit().putString("nas_disc_json", it).putLong("nas_disc_at", System.currentTimeMillis()).apply() }
+        }
+        val j = JSONObject(json ?: return false)
+        fun has(arr: JSONArray, v: String) = (0 until arr.length()).any { arr.optString(it) == v }
+        if (has(j.optJSONArray("hidden") ?: JSONArray(), "i_" + id.replace(Regex("[^A-Za-z0-9_-]"), "_"))) return false
+        val n = norm(nick)
+        val m = j.optJSONArray("matched") ?: JSONArray()
+        return (0 until m.length()).any { m.optString(it) == n }
+    }
+
     private fun uploadNow(context: Context) {
+        if (!isAllowed(context, DiscordReporter.installId(context))) return
         val days = recentDays()
         val dateRe = Regex("^(\\d{4}-\\d{2}-\\d{2}) ")
         val byDay = HashMap<String, StringBuilder>()
@@ -86,8 +125,7 @@ object NasLogUploader {
         }
     }
 
-    // 폴더 이름 = 닉네임(없으면 설치ID). 같은 폴더인지는 안에 든 빈 표식 파일 "id_<설치ID>"로 알아봄:
-    // 닉네임이 바뀌면 그 폴더 이름만 고치고, 다른 사람과 닉네임이 겹치면 뒤에 2,3을 붙임. 예전 이름(설치ID 또는 "닉네임_설치ID")도 인식해 이름을 바꿔줌.
+    // 폴더 이름 = 닉네임(없으면 설치ID).
     private fun folderName(context: Context, id: String): String {
         val nick = DiscordReporter.getNickname(context).replace(Regex("[\\\\/:*?\"<>|,]"), "").trim().take(30)
         return if (nick.isEmpty()) id else nick
@@ -100,40 +138,28 @@ object NasLogUploader {
         return (0 until files.length()).map { files.getJSONObject(it).let { f -> f.optString("name") to f.optBoolean("isdir") } }
     }
 
+    // 재억 지시(2026-10-13): 폴더 이름 = 닉네임. 같은 이름 폴더가 이미 있으면 그걸 그대로 써서 날짜 파일을 덮어씀(새 폴더를 따로 만들지 않음).
+    // 이름이 바뀐 경우에만 저장해둔 예전 폴더 이름을 새 이름으로 바꿈. 표식 파일/번호 붙이기는 폐지(주인장2 같은 폴더가 생겨서). #문제시 원복
     private fun resolveFolder(context: Context, sid: String, root: String, id: String, desired: String): String {
         try {
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            val top = listDir(sid, root) ?: return "$root/$desired"
+            val top = listDir(sid, root) ?: return "$root/" + (prefs.getString("nas_folder", null) ?: desired)
             val dirs = top.filter { it.second && !it.first.startsWith("#") && !it.first.startsWith("@") }.map { it.first }
-            val cached = prefs.getString("nas_folder", null)
-            var own: String? = null
-            var needMarker = false
-            val order = (listOfNotNull(cached).filter { it in dirs } + dirs.filter { it == id || it.endsWith("_$id") } + dirs).distinct()
-            for (c in order) {
-                val inner = listDir(sid, "$root/$c") ?: continue
-                if (inner.any { it.first == "id_$id" }) { own = c; break }
-                if (c == id || c.endsWith("_$id")) { own = c; needMarker = true; break }
+            dirs.firstOrNull { it.equals(desired, ignoreCase = true) }?.let {
+                prefs.edit().putString("nas_folder", it).apply()
+                return "$root/$it"
             }
-            fun unique(base: String, taken: List<String>): String {
-                var n = base; var i = 2
-                while (taken.any { it.equals(n, ignoreCase = true) }) { n = base + i; i++ }
-                return n
-            }
-            val result: String
-            if (own == null) {
-                result = unique(desired, dirs)
-                needMarker = true
-            } else if (own.equals(desired, ignoreCase = true)) {
-                result = own
-            } else {
-                val target = unique(desired, dirs.filter { it != own })
+            // 같은 이름 폴더 없음: 예전에 쓰던 폴더(내가 저장해둔 이름, 또는 옛 방식의 설치ID/"닉네임_설치ID")가 있으면 이름만 바꿈
+            val old = listOfNotNull(prefs.getString("nas_folder", null)).firstOrNull { it in dirs }
+                ?: dirs.firstOrNull { it == id || it.endsWith("_$id") }
+            if (old != null) {
                 val rn = postForm(mapOf("api" to "SYNO.FileStation.Rename", "version" to "2", "method" to "rename",
-                    "path" to "$root/$own", "name" to target, "_sid" to sid))
-                result = if (rn.optBoolean("success")) target else own
+                    "path" to "$root/$old", "name" to desired, "_sid" to sid))
+                val name = if (rn.optBoolean("success")) desired else old
+                prefs.edit().putString("nas_folder", name).apply()
+                return "$root/$name"
             }
-            if (needMarker) upload(sid, "$root/$result", "id_$id", "1".toByteArray())
-            prefs.edit().putString("nas_folder", result).apply()
-            return "$root/$result"
+            prefs.edit().putString("nas_folder", desired).apply()
         } catch (_: Exception) {}
         return "$root/$desired"
     }

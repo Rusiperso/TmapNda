@@ -154,8 +154,8 @@
         android:id="@+id/tilNickname"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="내 닉네임 (선택 - 사용현황에 같이 표시됨)"
-        android:layout_marginBottom="16dp">
+        android:hint="내 닉네임"
+        android:layout_marginBottom="4dp">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/etNickname"
@@ -164,6 +164,17 @@
             android:inputType="text"/>
 
     </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- 재억 지시(2026-10-13): 닉네임을 디스코드 닉네임과 똑같이 적도록 빨간 안내 문구. #문제시 원복 -->
+    <TextView
+        android:id="@+id/tvNicknameNotice"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="디스코드 닉네임과 동일하게 맞춰 주세요"
+        android:textColor="#E53935"
+        android:textSize="12sp"
+        android:layout_marginStart="4dp"
+        android:layout_marginBottom="16dp"/>
 
     <TextView
         android:id="@+id/tvAppVersion"
