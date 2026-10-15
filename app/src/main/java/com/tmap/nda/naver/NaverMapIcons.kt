@@ -209,7 +209,8 @@ object NaverMapIcons {
             0, 1, 6, 7, 8 -> Pair(red, speed)
             2, 3, 4 -> Pair(red, "구간")
             9, 11, 12, 15, 16, 17 -> Pair(red, "단속")
-            22 -> Pair(orange, "턱")
+            22 -> Pair(orange, "방지턱")
+            13 -> Pair(orange, "교통정보")
             20 -> Pair(orange, "스쿨")
             19 -> Pair(orange, "철길")
             27, 29, 30, 32, 33 -> Pair(orange, "주의")
@@ -231,7 +232,7 @@ object NaverMapIcons {
                 this.color = Color.BLACK
                 textAlign = Paint.Align.CENTER
                 typeface = Typeface.DEFAULT_BOLD
-                textSize = if (text.length >= 3) s * 0.30f else s * 0.36f
+                textSize = if (text.length >= 4) s * 0.22f else if (text.length >= 3) s * 0.28f else s * 0.36f
             }
             c.drawText(text, r, r - (tp.descent() + tp.ascent()) / 2f, tp)
         }
