@@ -13,7 +13,7 @@ object NaverTurnMap {
 
     const val NONE = 51
 
-    fun toOpenpilotCode(type: Int): Int = when (type) {
+    fun toOpenpilotCode(type: Int): Int = if (isRotary(type)) rotaryPlainCode(type) else when (type) {
         1 -> 11
         2, 8, 11, 12, 13 -> 12                // 좌회전, 비보호 좌회전, 8·9·11시 방향
         3, 14, 15, 16 -> 13                   // 우회전, 1·3·4시 방향
@@ -34,8 +34,95 @@ object NaverTurnMap {
      * 콤마로 내보낼 회전 코드. "자동 길안내 주행(시험)"이 꺼져 있으면 도시고속도로 진출은 갈림길로 내보내지 않는다
      * (카카오의 도시고속도로 진출 처리와 같은 규칙). 화면에 그리는 화살표는 [toOpenpilotCode]를 그대로 쓴다.
      */
-    fun toCommaCode(type: Int, autoDrive: Boolean): Int =
-        if (!autoDrive && (type == 60 || type == 69)) NONE else toOpenpilotCode(type)
+    fun toCommaCode(type: Int, autoDrive: Boolean): Int = when {
+        isRotary(type) -> rotaryCommaCode(type)
+        !autoDrive && (type == 60 || type == 69) -> NONE
+        else -> toOpenpilotCode(type)
+    }
+
+    // ===== 로터리(21~34)·회전교차로(91~104) =====
+    // 두 묶음은 번호만 70 차이 나고 방향 구성이 같다. 기준 번호(base) 1=직진 2=유턴 3=7시 4=8시 ... 8=12시 9=1시 ... 14=6시.
+
+    fun isRotary(type: Int): Boolean = type in 21..34 || type in 91..104
+
+    private fun rotaryBase(type: Int): Int = when (type) {
+        in 21..34 -> type - 20
+        in 91..104 -> type - 90
+        else -> 0
+    }
+
+    /** 시계 방향 시각(1~12). 직진·유턴이거나 로터리가 아니면 0. */
+    fun rotaryClock(type: Int): Int {
+        val base = rotaryBase(type)
+        return if (base in 3..14) (base + 3) % 12 + 1 else 0
+    }
+
+    /** 폰 화면용 단순 화살표: 직진 11, 왼쪽 12, 오른쪽 13, 유턴·6시 14. */
+    private fun rotaryPlainCode(type: Int): Int {
+        val base = rotaryBase(type)
+        if (base == 1) return 11
+        if (base == 2) return 14
+        return when (rotaryClock(type)) {
+            12 -> 11
+            6 -> 14
+            in 1..5 -> 13
+            else -> 12
+        }
+    }
+
+    /** 콤마로 내보내는 로터리 전용 코드(131~142). 카카오 로터리 변환(KakaoGuidanceDelegate)과 같은 값을 쓴다. */
+    private fun rotaryCommaCode(type: Int): Int {
+        val base = rotaryBase(type)
+        if (base == 1) return 142
+        if (base == 2) return 14
+        return when (rotaryClock(type)) {
+            12 -> 142
+            1, 2 -> 131
+            3 -> 133
+            4, 5 -> 134
+            6 -> 138
+            7, 8 -> 136
+            9 -> 139
+            else -> 140
+        }
+    }
+
+    /** 로터리 방향 글자. 예: "회전교차로 오른쪽 3시 방향". 로터리가 아니면 빈 문자열. */
+    fun rotaryText(type: Int): String {
+        if (!isRotary(type)) return ""
+        val name = if (type in 21..34) "로터리" else "회전교차로"
+        val base = rotaryBase(type)
+        val dir = when {
+            base == 1 -> "직진 방향"
+            base == 2 -> "유턴"
+            else -> when (val h = rotaryClock(type)) {
+                12, 6 -> "${h}시 방향"
+                in 1..5 -> "오른쪽 ${h}시 방향"
+                else -> "왼쪽 ${h}시 방향"
+            }
+        }
+        return "$name $dir"
+    }
+
+    /**
+     * 네이버 안내 문구에서 "방면" 앞의 이름을 뽑는다.
+     * 예: "머내공원사거리에서 '서분당(고기)IC' 방면으로 우회전" → "서분당(고기)IC". 방면이 없으면 빈 문자열.
+     */
+    fun bangmyeonName(instructions: String): String {
+        if (!instructions.contains("방면")) return ""
+        val quoted = Regex("['‘’\"“”]([^'‘’\"“”]+)['‘’\"“”]\\s*방면").find(instructions)
+        if (quoted != null) return quoted.groupValues[1].trim()
+        return Regex("(\\S+)\\s*방면").find(instructions)?.groupValues?.get(1)?.trim().orEmpty()
+    }
+
+    /** 콤마 카드의 방면·방향 줄. 로터리는 시각 방향, 그 밖에는 "OO 방면 우회전"처럼. 보여줄 게 없으면 빈 문자열. */
+    fun directionLine(type: Int, instructions: String): String {
+        if (isRotary(type)) return rotaryText(type)
+        val name = bangmyeonName(instructions)
+        if (name.isBlank()) return ""
+        val turn = label(type)
+        return if (turn.isBlank()) "$name 방면" else "$name 방면 $turn"
+    }
 
     /** 화면·음성에 쓰는 짧은 한국어 이름. */
     fun label(type: Int): String = when (type) {
@@ -48,7 +135,7 @@ object NaverTurnMap {
         8 -> "비보호 좌회전"
         11, 12, 13 -> "좌회전"
         14, 15, 16 -> "우회전"
-        in 21..34, in 91..104 -> "회전교차로"
+        in 21..34, in 91..104 -> rotaryText(type)
         41 -> "왼쪽 도로 진입"
         42 -> "오른쪽 도로 진입"
         47 -> "휴게소 진입"
