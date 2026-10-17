@@ -44,20 +44,24 @@ object NaverMapIcons {
     }
 
     /** 도착지 표시: 네이버 지도처럼 빨간 핀 머리 안에 흰 글씨 "도착". 핀 끝(아래 가운데)이 목적지 좌표. */
-    fun arrival(w: Int, h: Int): Bitmap = bmp(w, h) { c ->
+    fun arrival(w: Int, h: Int): Bitmap = labeledPin(w, h, 0xFFF0463C.toInt(), "도착")
+
+    /** 경유지 표시: 도착 표시와 같은 모양에 주황색 머리, 흰 글씨 "경유". 핀 끝이 경유지 좌표. */
+    fun via(w: Int, h: Int): Bitmap = labeledPin(w, h, 0xFFF08A24.toInt(), "경유")
+
+    private fun labeledPin(w: Int, h: Int, color: Int, label: String): Bitmap = bmp(w, h) { c ->
         val r = w / 2f - 2f
         val cx = w / 2f; val cy = r + 2f
-        val red = 0xFFF0463C.toInt()
         val path = Path().apply {
             addCircle(cx, cy, r, Path.Direction.CW)
             moveTo(cx - r * 0.62f, cy + r * 0.78f); lineTo(cx, h.toFloat() - 1f); lineTo(cx + r * 0.62f, cy + r * 0.78f); close()
         }
-        c.drawPath(path, fill(red))
-        c.drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2.5f; color = Color.WHITE })
+        c.drawPath(path, fill(color))
+        c.drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2.5f; this.color = Color.WHITE })
         val t = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE; textAlign = Paint.Align.CENTER; typeface = Typeface.DEFAULT_BOLD; textSize = r * 0.82f
+            this.color = Color.WHITE; textAlign = Paint.Align.CENTER; typeface = Typeface.DEFAULT_BOLD; textSize = r * 0.82f
         }
-        c.drawText("도착", cx, cy - (t.ascent() + t.descent()) / 2f, t)
+        c.drawText(label, cx, cy - (t.ascent() + t.descent()) / 2f, t)
     }
 
     /** 경로선 위에 반복되는 진행 방향 화살표(›). 위쪽이 진행 방향. */

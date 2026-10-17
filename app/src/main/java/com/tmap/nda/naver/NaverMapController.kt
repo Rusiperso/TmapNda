@@ -212,6 +212,7 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         activePath?.map = null; activePath = null
         activeMulti?.map = null; activeMulti = null
         clearDestination()
+        clearWaypoints()
         setSafetyPoints(emptyList())
     }
 
@@ -228,6 +229,26 @@ class NaverMapController(private val activity: Activity, private val host: Frame
             this.map = m
         }
     }
+
+    /** 안내 중 경유지 표시(주황 "경유" 핀). 목록을 통째로 받아 지도에 맞춘다 - 빠진 경유지는 지우고 새 경유지는 놓는다. */
+    private val viaMarkers = ArrayList<Marker>()
+    fun showWaypoints(points: List<Pair<Double, Double>>) = whenReady { m ->
+        viaMarkers.forEach { it.map = null }
+        viaMarkers.clear()
+        for ((lat, lon) in points) {
+            if (lat.isNaN() || lon.isNaN()) continue
+            viaMarkers.add(Marker().apply {
+                position = LatLng(lat, lon)
+                icon = OverlayImage.fromBitmap(NaverMapIcons.via(dp(46), dp(58)))
+                width = dp(46); height = dp(58)
+                isForceShowIcon = true
+                zIndex = 95
+                this.map = m
+            })
+        }
+    }
+
+    fun clearWaypoints() { viaMarkers.forEach { it.map = null }; viaMarkers.clear() }
 
     /** 다음 회전 지점에 표지(흰 네모 + 화살표)를 놓는다. 같은 지점·종류면 다시 만들지 않는다. */
     private var turnSign: Marker? = null
