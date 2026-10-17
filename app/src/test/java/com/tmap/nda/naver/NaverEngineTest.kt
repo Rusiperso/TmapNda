@@ -192,4 +192,14 @@ class NaverEngineTest {
         assertFalse(r.ok)
         assertEquals(2, r.code)
     }
+
+    @Test
+    fun url_encodes_waypoint_separator() {
+        val url = NaverDirectionsClient.buildUrl(
+            "5", LonLat(127.0, 37.5), LonLat(127.1, 37.6),
+            listOf(LonLat(127.02, 37.52), LonLat(127.04, 37.54)), "traoptimal"
+        )
+        assertTrue(url.contains("&waypoints=127.020000,37.520000%7C127.040000,37.540000"))
+        assertFalse(url.contains("|"))
+    }
 }

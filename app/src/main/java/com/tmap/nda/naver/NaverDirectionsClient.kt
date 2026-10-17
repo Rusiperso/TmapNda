@@ -132,7 +132,8 @@ object NaverDirectionsClient {
         sb.append("?start=").append(fmt(start)).append("&goal=").append(fmt(goal))
         if (waypoints.isNotEmpty()) {
             val max = if (version == "15") 15 else 5
-            sb.append("&waypoints=").append(waypoints.take(max).joinToString("|") { fmt(it) })
+            // 경유지 사이의 구분 글자 '|'는 주소창에 그대로 넣으면 네이버 서버가 400(잘못된 요청)으로 거절하므로 %7C로 바꿔 보낸다.
+            sb.append("&waypoints=").append(waypoints.take(max).joinToString("%7C") { fmt(it) })
         }
         sb.append("&option=").append(option).append("&cartype=").append(carType)
         return sb.toString()
