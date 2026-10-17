@@ -552,7 +552,8 @@ object NaverNavigator {
             nextTbtDist = s.secondGuideDistMeters,
             nextRgCodeName = NaverTurnMap.kakaoLikeName(second?.type ?: 0),
             nextDirectionAngle = 0,
-            nextTbtMainText = nextText
+            nextTbtMainText = nextText,
+            tbtDirText = NaverTurnMap.directionLine(type, g?.instructions.orEmpty())
         )
 
         val snapshot = GuidanceSnapshot(

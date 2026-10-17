@@ -1372,6 +1372,9 @@ class UdpSenderService : Service() {
                             "카카오안내"
                         }
                         json.put("szTBTMainText", kakaoPrefix)
+                        // 네이버 안내의 방면·로터리 방향 줄. 콤마는 이 칸(szNearDirName)을 이미 받는다.
+                        // 카카오 안내 중에는 항상 빈 값이라, 이전 네이버 안내의 글자가 남지 않는다.
+                        json.put("szNearDirName", kr.tbtDirText)
                         // 안전정보(카메라·구간단속·방지턱 등)는 길안내 엔진과 무관하게 티맵 값만 쓴다.
                         // 예전에 카카오가 방지턱(22)을 보충하거나, 티맵과 카카오 값을 비교·억제하던 부분은 모두 뺐다.
                         // v: 재억 요청(2026-08-22) - 이 로그가 UDP 전송 주기마다 매번 찍혀서

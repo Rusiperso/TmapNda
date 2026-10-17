@@ -54,6 +54,8 @@ object KakaoRouteDataRepository {
     @Volatile var tbtDist: Int = 0
     @Volatile var tbtTurnType: Int = 0
     @Volatile var tbtMainText: String = ""
+    // 콤마 카드의 방면·방향 줄("서분당IC 방면 우회전", "회전교차로 오른쪽 3시 방향"). 네이버 안내만 채우고 카카오는 빈 값.
+    @Volatile var tbtDirText: String = ""
 
     // 목적지까지 총 남은거리(m)/남은시간(초)
     @Volatile var remainDist: Int = 0
@@ -118,6 +120,7 @@ object KakaoRouteDataRepository {
         tbtDist = 0
         tbtTurnType = 0
         tbtMainText = ""
+        tbtDirText = ""
         remainDist = 0
         remainTime = 0
         roadName = ""
@@ -176,13 +179,15 @@ object KakaoRouteDataRepository {
         nextTbtDist: Int = 0,
         nextRgCodeName: String = "",
         nextDirectionAngle: Int = 0,
-        nextTbtMainText: String = ""
+        nextTbtMainText: String = "",
+        tbtDirText: String = ""
     ) {
         isActive = true
         lastUpdateTime = System.currentTimeMillis()
 
         this.tbtDist = tbtDist.coerceAtLeast(0)
         this.tbtMainText = tbtMainText
+        this.tbtDirText = tbtDirText
         this.remainDist = remainDist.coerceAtLeast(0)
         this.remainTime = remainTime.coerceAtLeast(0)
         this.roadName = roadName
