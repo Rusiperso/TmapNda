@@ -863,6 +863,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         clearDestinationPin()
         naverMap.showActiveRoute(route)
         naverMap.showDestination(destLat, destLon, destName)
+        refreshWaypointPins()
         guideOverlay.setRoute(route)
         NaverNavigator.lastLocation?.let { naverMap.setLocation(snapped(it)) }
         naverMap.resumeFollow()
@@ -2107,6 +2108,13 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         intent.putExtra("active_waypoints_json", json)
         // 앱이 꺼졌다 켜져도(크래시·업데이트·엔진 전환) 경유지를 이어가도록 안내 이어가기 저장소에도 같이 갱신
         ResumeGuidanceStore.updateWaypointsJson(this, json)
+        // 경유지가 늘거나(추가) 줄 때(통과·취소) 지도의 "경유" 핀도 같이 맞춘다
+        refreshWaypointPins()
+    }
+
+    /** 지금 경유지 목록대로 지도에 주황 "경유" 핀을 다시 놓는다(비어 있으면 모두 지움). */
+    private fun refreshWaypointPins() {
+        naverMap.showWaypoints(activeWaypoints.map { it.lat to it.lon })
     }
 
     private fun restoreWaypointsFromIntent() {
@@ -3139,6 +3147,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         if (!NaverNavigator.isRunning || r == null) return
         naverMap.showActiveRoute(r)
         if (!currentDestLat.isNaN() && !currentDestLon.isNaN()) naverMap.showDestination(currentDestLat, currentDestLon, currentDestName)
+        refreshWaypointPins()
         naverMap.resumeFollow()
         if (::guideOverlay.isInitialized) { guideOverlay.setRoute(r); guideOverlay.show() }
         NaverNavigator.lastLocation?.let { naverMap.follow(snapped(it), animated = false) }
