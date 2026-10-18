@@ -166,6 +166,41 @@ object NaverTurnMap {
         else -> ""
     }
 
+    /**
+     * 차량 클러스터/HUD(nMirror·나브디)로 보내는 이름. [kakaoLikeName]은 5종만 알아서 방향 안내·진입/진출이
+     * 전부 빈 값 → 클러스터에서 직진 화살표로 떨어졌다. 여기선 KakaoToTmapTurn이 아는 이름으로 넓게 매핑한다.
+     */
+    fun clusterName(type: Int): String = when (type) {
+        1 -> "KNRGCode_Straight"
+        2, 8, 11, 12, 13 -> "KNRGCode_LeftTurn"
+        3, 14, 15, 16 -> "KNRGCode_RightTurn"
+        6 -> "KNRGCode_UTurn"
+        4, 41, 81 -> "KNRGCode_LeftDirection"
+        5, 42, 82 -> "KNRGCode_RightDirection"
+        50 -> "KNRGCode_InHighway"
+        51 -> "KNRGCode_OutHighway"
+        57, 76 -> "KNRGCode_LeftInHighway"
+        66, 77 -> "KNRGCode_RightInHighway"
+        58, 79 -> "KNRGCode_LeftOutHighway"
+        67, 80 -> "KNRGCode_RightOutHighway"
+        52 -> "KNRGCode_InCityway"
+        53 -> "KNRGCode_OutCityway"
+        59 -> "KNRGCode_LeftInCityway"
+        68 -> "KNRGCode_RightInCityway"
+        60 -> "KNRGCode_LeftOutCityway"
+        69 -> "KNRGCode_RightOutCityway"
+        55 -> "KNRGCode_OverPath"
+        62 -> "KNRGCode_LeftOverPath"
+        71 -> "KNRGCode_RightOverPath"
+        56 -> "KNRGCode_UnderPath"
+        64 -> "KNRGCode_LeftUnderPath"
+        73 -> "KNRGCode_RightUnderPath"
+        in 21..34, in 91..104 -> "KNRGCode_RoundaboutDirection_1"
+        121, 122, 123 -> "KNRGCode_Tollgate"
+        88 -> "KNRGCode_Goal"
+        else -> ""
+    }
+
     /** 이 종류는 "차선·진행 방향 변경" 성격이라 시내 갈림길 자동 차선변경 후보가 된다. */
     fun isFork(type: Int): Boolean = toOpenpilotCode(type) in intArrayOf(6, 7, 101, 102)
 

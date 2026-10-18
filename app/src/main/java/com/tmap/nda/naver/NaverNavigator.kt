@@ -528,6 +528,17 @@ object NaverNavigator {
         return List(800) { out[(it * step).toInt()] } + out.last()
     }
 
+    /**
+     * 클러스터/HUD에 "다음 안내 지점 이름"으로 보낼 값. 비워 보내면 받는 쪽이 지금 달리는 도로 이름을 대신 띄워
+     * 구간이 바뀔 때까지 같은 이름이 박혀 있었다. 안내 지점을 지난 뒤 들어가는 도로 이름을 쓰고, 없으면 안내 문구.
+     */
+    private fun targetRoadName(guide: NaverGuide?, fallback: String): String {
+        if (guide == null) return fallback
+        val sections = currentRoute?.sections.orEmpty()
+        val after = sections.firstOrNull { guide.pointIndex + 1 >= it.pointIndex && guide.pointIndex + 1 < it.pointIndex + maxOf(1, it.pointCount) }
+        return after?.name?.takeIf { it.isNotBlank() } ?: fallback
+    }
+
     private fun publish(ctx: Context, s: GuidanceState) {
         val g = s.nextGuide
         val second = s.secondGuide
@@ -559,9 +570,9 @@ object NaverNavigator {
         val snapshot = GuidanceSnapshot(
             turnDistanceMeters = s.nextGuideDistMeters,
             turnMainText = mainText,
-            turnNodeName = "",
+            turnNodeName = targetRoadName(g, mainText),
             roadName = s.roadName,
-            rgCodeName = NaverTurnMap.kakaoLikeName(type),
+            rgCodeName = NaverTurnMap.clusterName(type),
             directionAngle = 0,
             remainDistanceMeters = s.remainMeters,
             remainTimeSeconds = s.remainTimeSec,
@@ -569,8 +580,8 @@ object NaverNavigator {
             hasNext = second != null,
             nextTurnDistanceMeters = s.secondGuideDistMeters,
             nextTurnMainText = nextText,
-            nextTurnNodeName = "",
-            nextRgCodeName = NaverTurnMap.kakaoLikeName(second?.type ?: 0),
+            nextTurnNodeName = targetRoadName(second, nextText),
+            nextRgCodeName = NaverTurnMap.clusterName(second?.type ?: 0),
             nextDirectionAngle = 0,
             highwayListJson = null
         )
