@@ -1649,6 +1649,8 @@ class UdpSenderService : Service() {
                         }
 
                         OpenpilotStateRepository.updateState(carrot2, ip, trafficState, xState, active)
+                        // 차량 속도(콤마 v_ego_kph) - GPS가 끊긴 터널에서 추측 주행에 쓴다. #문제시 원복
+                        if (json.has("v_ego_kph")) OpenpilotStateRepository.setVehicleSpeed(json.optDouble("v_ego_kph", 0.0) / 3.6)
                         lastPacketReceivedTime = System.currentTimeMillis()
                         }
                     } catch (e: Exception) {

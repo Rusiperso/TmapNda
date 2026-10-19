@@ -295,7 +295,7 @@ object NaverNavigator {
         val now = System.currentTimeMillis()
         if (lastGpsFixAt == 0L || now - lastGpsFixAt < DR_GAP_MS) { drActive = false; return }
         if (now - lastGpsFixAt > DR_MAX_MS) return
-        val speed = lastGpsSpeed.coerceAtMost(DR_MAX_SPEED_MS)
+        val speed = (com.tmap.nda.OpenpilotStateRepository.freshVehicleSpeedMs() ?: lastGpsSpeed).coerceAtMost(DR_MAX_SPEED_MS)
         if (!drActive || drEngine !== eng) {
             // 멈춰 있었거나 너무 느렸다면(건물 안 등) 따라가지 않는다
             if (speed < DR_MIN_SPEED_MS) return

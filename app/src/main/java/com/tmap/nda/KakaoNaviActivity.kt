@@ -5093,7 +5093,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val real = kDrLastRealLoc ?: return
         val gap = now - kDrLastRealFixAt
         if (gap < 3_000L || gap > 15 * 60_000L || kakaoGuidanceDelegate?.isGuiding != true) { kDrActive = false; return }
-        val speed = real.speed.coerceAtMost(45f)
+        val speed = (OpenpilotStateRepository.freshVehicleSpeedMs()?.toFloat() ?: real.speed).coerceAtMost(45f)
         val bearing = (if (real.hasBearing()) real.bearing else lastKnownBearing) ?: return
         val gpsManager = KNSDK.sharedGpsManager() ?: return
         if (!kDrActive) {

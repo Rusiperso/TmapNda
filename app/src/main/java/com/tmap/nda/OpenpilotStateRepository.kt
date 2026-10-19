@@ -58,6 +58,18 @@ object OpenpilotStateRepository {
     private val _ndaConnected = MutableLiveData(false)
     val ndaConnected: LiveData<Boolean> get() = _ndaConnected
 
+    @Volatile private var vehicleSpeedMs = 0.0
+    @Volatile private var vehicleSpeedAt = 0L
+
+    fun setVehicleSpeed(ms: Double) {
+        vehicleSpeedMs = ms
+        vehicleSpeedAt = System.currentTimeMillis()
+    }
+
+    /** 콤마가 알려준 차량 속도(m/s). 최근 3초 안에 받은 것만, 없으면 null. */
+    fun freshVehicleSpeedMs(): Double? =
+        if (System.currentTimeMillis() - vehicleSpeedAt <= 3_000L) vehicleSpeedMs else null
+
     fun updateNdaConnected(connected: Boolean) {
         if (_ndaConnected.value != connected) {
             _ndaConnected.postValue(connected)
