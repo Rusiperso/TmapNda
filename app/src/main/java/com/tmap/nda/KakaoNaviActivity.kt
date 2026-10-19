@@ -5071,7 +5071,63 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private var gpsFirstGoodLogged = false
     private var gpsRejectedBeforeGood = 0
 
+    // ===== 추측 주행(터널·지하차도 등 GPS가 끊길 때) =====
+    // GPS가 3초 넘게 안 들어오면 끊기기 직전 속도·방향으로 앞으로 간다고 보고 만든 위치를 카카오 SDK에 넣어 준다.
+    // SDK가 경로에 맞춰 주므로 안내(콜백)가 이어지고 클러스터/HUD 전송도 계속 나간다. GPS가 돌아오면 실제 위치로 바로 맞춘다. #문제시 원복
+    private var kDrLastRealFixAt = 0L
+    private var kDrLastRealLoc: Location? = null
+    private var kDrCur: Location? = null
+    private var kDrActive = false
+    private var kDrStartAt = 0L
+    private var kDrLastAt = 0L
+    private val kDrHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val kDrTick = object : Runnable {
+        override fun run() {
+            try { kakaoDeadReckon() } catch (e: Exception) { NavLogger.e(this@KakaoNaviActivity, "[추측주행] 예외: ${e.message}") }
+            kDrHandler.postDelayed(this, 1000L)
+        }
+    }
+
+    private fun kakaoDeadReckon() {
+        val now = System.currentTimeMillis()
+        val real = kDrLastRealLoc ?: return
+        val gap = now - kDrLastRealFixAt
+        if (gap < 3_000L || gap > 15 * 60_000L || kakaoGuidanceDelegate?.isGuiding != true) { kDrActive = false; return }
+        val speed = real.speed.coerceAtMost(45f)
+        val bearing = (if (real.hasBearing()) real.bearing else lastKnownBearing) ?: return
+        val gpsManager = KNSDK.sharedGpsManager() ?: return
+        if (!kDrActive) {
+            if (speed < 3f) return
+            kDrActive = true
+            kDrStartAt = now
+            kDrLastAt = now
+            kDrCur = Location(real)
+            NavLogger.d(this, "[추측주행] GPS ${gap / 1000}초째 없음 - 속도 ${(speed * 3.6).toInt()}km/h, 방향 ${bearing.toInt()}도로 안내 이어감")
+            return
+        }
+        val cur = kDrCur ?: return
+        val d = speed * ((now - kDrLastAt) / 1000.0)
+        kDrLastAt = now
+        val rad = Math.toRadians(bearing.toDouble())
+        val nextLoc = Location(LocationManager.GPS_PROVIDER).apply {
+            latitude = cur.latitude + d * Math.cos(rad) / 111_320.0
+            longitude = cur.longitude + d * Math.sin(rad) / (111_320.0 * Math.cos(Math.toRadians(cur.latitude)))
+            this.speed = speed
+            this.bearing = bearing
+            accuracy = 20f
+            time = now
+            elapsedRealtimeNanos = android.os.SystemClock.elapsedRealtimeNanos()
+        }
+        kDrCur = nextLoc
+        if (gpsOnLocationChangedMethod == null) {
+            gpsOnLocationChangedMethod = gpsManager.javaClass.getMethod("onLocationChanged", Location::class.java)
+        }
+        gpsOnLocationChangedMethod?.invoke(gpsManager, nextLoc)
+    }
+
     private fun startRealtimeGpsForwarding() {
+        kDrHandler.removeCallbacks(kDrTick)
+        kDrHandler.postDelayed(kDrTick, 1000L)
         gpsWatchStartAt = android.os.SystemClock.elapsedRealtime()
         gpsFirstAnyLogged = false
         gpsFirstGoodLogged = false
@@ -5128,6 +5184,12 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     gpsOnLocationChangedMethod = gpsManager.javaClass.getMethod("onLocationChanged", Location::class.java)
                 }
                 gpsOnLocationChangedMethod?.invoke(gpsManager, location)
+                kDrLastRealFixAt = System.currentTimeMillis()
+                kDrLastRealLoc = Location(location)
+                if (kDrActive) {
+                    kDrActive = false
+                    NavLogger.d(this, "[추측주행] GPS 복귀 - 추측 ${(System.currentTimeMillis() - kDrStartAt) / 1000}초 종료")
+                }
                 NavLogger.trace(
                     "gps",
                     "[GPS] KNSDK로 전달됨: lat=${location.latitude} lon=${location.longitude} " +
@@ -5167,6 +5229,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // 루프를 갖게 됐으니, 화면 종료 시 반드시 멈춰야 액티비티 재생성될 때마다 중복으로
         // 계속 도는 걸 막을 수 있음. #문제시 원복
         try { kakaoGuidanceDelegate?.stopGpsWatchdog() } catch (e: Exception) { }
+        kDrHandler.removeCallbacks(kDrTick)
         cancelNavNotification()
         parkedRefresh?.let { parkedHandler.removeCallbacks(it) }
         hudPollHandler.removeCallbacksAndMessages(null)

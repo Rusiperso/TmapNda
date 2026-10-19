@@ -79,6 +79,8 @@ class KakaoGuidanceDelegate(
     private var lastLocationGuide: KNGuide_Location? = null
     private var lastRouteGuide: KNGuide_Route? = null
     private var lastLocationCallbackAt = 0L
+    /** 지금 카카오 길안내가 진행 중인지(추측 주행이 쓴다). */
+    val isGuiding: Boolean get() = lastGuidance != null
     private val gpsWatchdogHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val gpsWatchdogInterval = 2000L
     private val gpsWatchdogRunnable = object : Runnable {

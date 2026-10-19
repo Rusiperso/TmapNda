@@ -136,7 +136,13 @@ object NaverNavigator {
         // GPS가 최근 5초 안에 들어왔다면 부정확한 네트워크 위치는 버린다(위치가 튀는 것 방지)
         if (loc.provider == LocationManager.GPS_PROVIDER) {
             lastGpsFixAt = System.currentTimeMillis()
-        } else if (System.currentTimeMillis() - lastGpsFixAt < 5_000L) {
+            if (loc.hasSpeed()) lastGpsSpeed = loc.speed.toDouble()
+            if (drActive) {
+                drActive = false
+                appContext?.let { NavLogger.d(it, "[추측주행] GPS 복귀 - 추측 ${(System.currentTimeMillis() - drStartAt) / 1000}초 종료") }
+            }
+        } else if (System.currentTimeMillis() - lastGpsFixAt < 5_000L || drActive) {
+            // 추측 주행 중에는 부정확한 네트워크 위치로 갈아타지 않는다
             return
         }
         usingNetworkFix = loc.provider != LocationManager.GPS_PROVIDER
@@ -251,6 +257,80 @@ object NaverNavigator {
         listener?.onSafety(emptyList())
         listener?.onFinished(arrived)
         releaseLocationIfIdle()
+    }
+
+    // ===== 추측 주행(터널·지하차도 등 GPS가 끊길 때) =====
+    // GPS가 DR_GAP_MS 넘게 안 들어오면, 끊기기 직전 속도로 경로선을 따라 앞으로 간다고 보고 같은 안내 계산을 이어서 돌린다.
+    // GPS가 돌아오면 실제 위치로 바로 맞춘다. #문제시 원복
+    private const val DR_GAP_MS = 3_000L
+    private const val DR_MIN_SPEED_MS = 3.0
+    private const val DR_MAX_SPEED_MS = 45.0
+    private const val DR_MAX_MS = 15 * 60_000L
+    private const val DR_STOP_BEFORE_END_M = 60.0
+    private var lastGpsSpeed = 0.0
+    private var drActive = false
+    private var drProgress = 0.0
+    private var drLastAt = 0L
+    private var drStartAt = 0L
+    private var drEngine: NaverGuidanceEngine? = null
+    private var drLoopOn = false
+
+    private val drTick = object : Runnable {
+        override fun run() {
+            if (engine == null) { drLoopOn = false; drActive = false; return }
+            try { deadReckon() } catch (e: Exception) { appContext?.let { NavLogger.e(it, "[추측주행] 예외: ${e.message}") } }
+            main.postDelayed(this, 1_000L)
+        }
+    }
+
+    private fun startDeadReckoningLoop() {
+        if (drLoopOn) return
+        drLoopOn = true
+        main.postDelayed(drTick, 1_000L)
+    }
+
+    private fun deadReckon() {
+        val ctx = appContext ?: return
+        val eng = engine ?: return
+        val now = System.currentTimeMillis()
+        if (lastGpsFixAt == 0L || now - lastGpsFixAt < DR_GAP_MS) { drActive = false; return }
+        if (now - lastGpsFixAt > DR_MAX_MS) return
+        val speed = lastGpsSpeed.coerceAtMost(DR_MAX_SPEED_MS)
+        if (!drActive || drEngine !== eng) {
+            // 멈춰 있었거나 너무 느렸다면(건물 안 등) 따라가지 않는다
+            if (speed < DR_MIN_SPEED_MS) return
+            val base = lastLocation ?: return
+            drProgress = eng.update(base.longitude, base.latitude).progressMeters
+            drEngine = eng
+            drActive = true
+            drStartAt = now
+            drLastAt = now
+            NavLogger.d(ctx, "[추측주행] GPS ${(now - lastGpsFixAt) / 1000}초째 없음 - 속도 ${(speed * 3.6).toInt()}km/h로 경로 따라 안내 이어감")
+            return
+        }
+        val dt = (now - drLastAt) / 1000.0
+        drLastAt = now
+        drProgress += speed * dt
+        val limit = eng.totalMeters - DR_STOP_BEFORE_END_M
+        if (drProgress > limit) drProgress = limit.coerceAtLeast(0.0)
+        val p = eng.pointAt(drProgress) ?: return
+        val ahead = eng.pointAt(drProgress + 8.0) ?: p
+        val loc = Location("dr").apply {
+            longitude = p.lon
+            latitude = p.lat
+            this.speed = speed.toFloat()
+            accuracy = 20f
+            if (ahead.lon != p.lon || ahead.lat != p.lat) {
+                bearing = ((Math.toDegrees(Math.atan2(
+                    (ahead.lon - p.lon) * Math.cos(Math.toRadians(p.lat)), ahead.lat - p.lat)) + 360.0) % 360.0).toFloat()
+            }
+            time = now
+            elapsedRealtimeNanos = android.os.SystemClock.elapsedRealtimeNanos()
+        }
+        usingNetworkFix = false
+        lastLocation = loc
+        listener?.onLocation(loc)
+        onLocation(loc)
     }
 
     private fun onLocation(loc: Location) {
@@ -504,6 +584,8 @@ object NaverNavigator {
 
     private fun attachRoute(route: NaverRoute) {
         engine = NaverGuidanceEngine(route)
+        drActive = false
+        startDeadReckoningLoop()
         currentRoute = route
         planner.reset()
         safety.clear()
