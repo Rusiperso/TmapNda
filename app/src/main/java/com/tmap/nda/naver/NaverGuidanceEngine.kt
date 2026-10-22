@@ -228,8 +228,10 @@ class AnnouncePlanner {
         label == "목적지" -> "목적지 부근입니다"
         label == "경유지" -> "경유지 부근입니다"
         label == "회전교차로" || label == "톨게이트" -> "${label}가 있습니다"
-        label.endsWith("회전") -> "$label 하세요"
-        label == "유턴" -> "유턴 하세요"
+        label.endsWith("회전") -> "${label}입니다"
+        label == "유턴" -> "유턴입니다"
+        label == "직진" -> "계속 직진입니다"
+        label.endsWith("방향") -> "${label}으로 가세요"
         label.endsWith("진입") || label.endsWith("진출") || label.endsWith("합류") -> "${label}합니다"
         else -> "${label}입니다"
     }

@@ -93,6 +93,15 @@ object AutoUpdater {
     }
     @Volatile private var pendingTest: Pair<String, String>? = null
 
+    // 재억 요청(2026-10-19): 테스트 버전을 받은 사람은 테스트가 끝날 때까지(Board에서 "보낸 것 회수"로 기록이 지워질 때까지)
+    // 정식 업데이트 알림을 자동 확인에서 띄우지 않음. 직접 "업데이트 확인"을 누르면 그대로 알려줌. #문제시 원복
+    private const val PREF_TEST_HOLD = "test_hold_official"
+    fun setTestHold(context: Context, hold: Boolean) {
+        context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).edit().putBoolean(PREF_TEST_HOLD, hold).apply()
+    }
+    private fun isTestHold(context: Context): Boolean =
+        context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean(PREF_TEST_HOLD, false)
+
     fun setPendingTestUpdate(tag: String?, url: String?) {
         // 파이어베이스 규칙상 익명 로그인만 있으면 누구나 이 값을 쓸 수 있어서, 우리 저장소
         // 릴리즈 파일 주소가 아니면 무시(엉뚱한 주소로 유도하는 걸 막음).
@@ -136,7 +145,9 @@ object AutoUpdater {
                     val newer = isNewerVersion(currentVersion, tagName)
                     NavLogger.d(context, "[업데이트확인] current=$currentVersion remote=$tagName newer=$newer")
 
-                    if (newer) {
+                    if (newer && !isManual && isTestHold(context)) {
+                        NavLogger.dIfChanged(context, "테스트보류", "[업데이트확인] 테스트 진행 중이라 정식 알림 보류 (remote=$tagName)")
+                    } else if (newer) {
                         val assets = json.getJSONArray("assets")
                         if (assets.length() > 0) {
                             var downloadUrl = ""

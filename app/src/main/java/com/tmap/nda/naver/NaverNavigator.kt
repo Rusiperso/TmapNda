@@ -246,6 +246,16 @@ object NaverNavigator {
     }
 
     fun stop(arrived: Boolean = false) {
+        // 재억 요청(2026-10-22): 네이버 안내가 갑자기 끊기는 원인을 알 수 있게, 끝날 때마다 이유·위치·남은 거리를 남긴다. #문제시 원복
+        appContext?.let { c ->
+            val s = lastState
+            val loc = lastLocation
+            val caller = Throwable().stackTrace.drop(1).firstOrNull { !it.className.endsWith("NaverNavigator") }
+            NavLogger.d(c, "[네이버안내종료] 도착판정=$arrived 호출=${caller?.className?.substringAfterLast('.')}.${caller?.methodName}:${caller?.lineNumber} " +
+                "남은=${s?.remainMeters}m 경로진행=${s?.progressMeters?.toInt()}m/${engine?.totalMeters?.toInt()}m 경로이탈=${s?.offRouteMeters?.toInt()}m " +
+                "다음안내=${s?.nextGuide?.type}/${s?.nextGuideDistMeters}m 위치=${loc?.latitude},${loc?.longitude} 정확도=${loc?.accuracy} " +
+                "추측주행=$drActive GPS끊긴지=${if (lastGpsFixAt > 0) (System.currentTimeMillis() - lastGpsFixAt) / 1000 else -1}초")
+        }
         engine = null
         goal = null
         currentRoute = null
@@ -451,13 +461,15 @@ object NaverNavigator {
         camLastType = type; camLastDist = dist
         if (!minimalOn(ctx) && camAnnounced >= 2) return
         if (!ctx.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("tmap_muted", false)) return
-        val limitSay = if (limit >= 30) ". 제한속도 ${limit}킬로미터입니다" else ""
+        val limitSay = if (limit >= 30) ". 제한속도는 ${limit}킬로미터입니다" else ""
+        // "구간/지점"으로 끝나는 이름은 "~입니다", 나머지는 "~가 있습니다"로 자연스럽게
+        fun be(n: String) = if (n.endsWith("구간") || n.endsWith("지점")) "${n}입니다" else "$n${josa(n, "이", "가")} 있습니다"
         // 바로 뒤에 이어지는 안전정보가 있으면 "이어서 ○○이 있습니다"로 한 번에 말한다
         val t2 = com.tmap.nda.SdiDataRepository.sdi2Type
         val d2 = com.tmap.nda.SdiDataRepository.sdi2Distance
         val name2 = if (t2 != type && d2 > dist && d2 - dist <= 300) safetyName(t2) else null
-        val tail = if (name2 != null) ". 이어서 $name2${josa(name2, "이", "가")} 있습니다" else ""
-        fun full(front: String) = "$front $name${josa(name, "이", "가")} 있습니다$tail$limitSay"
+        val tail = if (name2 != null) ". 이어서 ${be(name2)}" else ""
+        fun full(front: String) = "$front ${be(name)}$tail$limitSay"
         if (minimalOn(ctx)) {
             // 최소 안내: 시내 300m·100m("잠시 후") 2번, 고속도로 2km·1km·300m("잠시 후") 3번
             val stages = if (speedKmh >= 80) intArrayOf(2000, 1000, 300) else intArrayOf(300, 100)
@@ -468,8 +480,8 @@ object NaverNavigator {
             val st = stages[idx]
             val say = when {
                 idx == stages.size - 1 -> full("잠시 후")
-                st >= 1000 -> full("전방 ${st / 1000}킬로미터 앞에")
-                else -> full("전방 ${st}미터 앞에")
+                st >= 1000 -> full("${st / 1000}킬로미터 앞,")
+                else -> full("${st}미터 앞,")
             }
             speakSafety(say)
             return
@@ -477,7 +489,7 @@ object NaverNavigator {
         when {
             camAnnounced == 0 && dist <= 600 -> {
                 val d = (dist / 100 * 100).coerceAtLeast(100)
-                speakSafety(full("전방 ${d}미터 앞에"))
+                speakSafety(full("${d}미터 앞,"))
                 camAnnounced = if (dist <= 200) 2 else 1
             }
             camAnnounced == 1 && dist <= 200 -> {
@@ -488,9 +500,9 @@ object NaverNavigator {
     }
 
     private fun safetyName(type: Int): String? = when (type) {
-            0 -> "신호 과속 단속 카메라"; 1 -> "과속 단속 카메라"; 2 -> "구간 단속 시작"; 3 -> "구간 단속 종료"; 4 -> "구간 단속 중"
-            6 -> "신호위반 단속 카메라"; 7 -> "이동식 단속 카메라"; 8 -> "과속 위험 구간"; 9 -> "버스전용차로 단속"; 11 -> "갓길 감시"
-            12 -> "끼어들기 단속"; 13 -> "교통정보 수집 구간"; 15 -> "과적 차량 단속"; 16 -> "적재 불량 단속"; 17 -> "주정차 단속"
+            0 -> "신호 과속 단속 카메라"; 1 -> "과속 단속 카메라"; 2 -> "구간 단속 시작 지점"; 3 -> "구간 단속 종료 지점"; 4 -> "구간 단속 구간"
+            6 -> "신호위반 단속 카메라"; 7 -> "이동식 단속 카메라"; 8 -> "과속 위험 구간"; 9 -> "버스전용차로 단속 구간"; 11 -> "갓길 단속 구간"
+            12 -> "끼어들기 단속 구간"; 13 -> "교통정보 수집 구간"; 15 -> "과적 차량 단속 구간"; 16 -> "적재 불량 단속 구간"; 17 -> "주차 정차 위반 단속 구간"
             19 -> "철도 건널목"; 20 -> "어린이 보호구역"; 22 -> "과속방지턱"; 25 -> "휴게소"; 26 -> "톨게이트"; 27 -> "안개 주의 구간"; 29 -> "사고 다발 구간"
             30 -> "급커브 구간"; 32 -> "급경사 구간"; 33 -> "야생동물 사고 구간"
         else -> null
@@ -692,7 +704,9 @@ object NaverNavigator {
     }
 
     /** "최소 안내"가 켜져 있으면 "더 빠른 경로로 안내합니다" 멘트는 건너뛰고, 회전·카메라 안내는 말하는 횟수를 줄인다. */
-    private fun speak(text: String, essential: Boolean = true, queue: Boolean = false) {
+    private fun speak(rawText: String, essential: Boolean = true, queue: Boolean = false) {
+        // TTS가 "주정차"를 "주정자"로 읽어서 띄어 읽게 바꿈
+        val text = rawText.replace("주정차", "주차 정차")
         if (!essential && appContext?.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 ?.getBoolean("naver_minimal_guide_enabled", false) == true) return
         if (!ttsReady) { ttsPending.add(text); return }

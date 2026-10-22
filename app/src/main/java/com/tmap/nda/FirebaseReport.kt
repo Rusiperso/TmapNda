@@ -57,6 +57,7 @@ object FirebaseReport {
             FirebaseDatabase.getInstance().getReference("testUpdate/$id")
                 .addValueEventListener(object : ValueEventListener {
                     override fun onDataChange(snapshot: DataSnapshot) {
+                        AutoUpdater.setTestHold(appContextSafe, !snapshot.child("tag").getValue(String::class.java).isNullOrBlank())
                         AutoUpdater.setPendingTestUpdate(
                             snapshot.child("tag").getValue(String::class.java),
                             snapshot.child("url").getValue(String::class.java)
