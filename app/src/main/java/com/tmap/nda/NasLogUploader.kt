@@ -103,6 +103,7 @@ object NasLogUploader {
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date())
         // 올릴 게 없고 오늘 폴더 확인·정리도 끝났으면 NAS에 접속하지 않음.
         if (todo.isEmpty() && prefs.getString("nas_cleaned", null) == today && prefs.getString("nas_folder_checked", null) == today) return
+        DiscordReporter.syncNicknameToBoard(context)
         val sid = login()
         try {
             // 5분마다 도는 만큼 NAS 호출을 줄임: 닉네임이 그대로면 저장해둔 폴더를 그대로 쓰고, 폴더 확인은 하루 한 번만 함.

@@ -66,6 +66,20 @@ object DiscordReporter {
     fun getNickname(context: Context): String =
         prefs(context).getString(KEY_NICKNAME, "") ?: ""
 
+    // 재억 지시(2026-10-22): 폰에 닉네임이 있는데 보드엔 "(미입력)"으로 남는 경우 방지 - NAS 업로드 때마다 파이어베이스 닉네임을 폰 값에 맞춤. #문제시 원복
+    fun syncNicknameToBoard(context: Context) {
+        val app = context.applicationContext
+        val nick = getNickname(app).trim()
+        if (nick.isEmpty()) return
+        reportExecutor.execute {
+            try {
+                if (!ensureAnonymousAuth()) return@execute
+                FirebaseDatabase.getInstance().getReference("devices/${installId(app)}/nickname").setValue(nick)
+            } catch (e: Exception) {
+            }
+        }
+    }
+
     fun setNickname(context: Context, nickname: String) {
         prefs(context).edit().putString(KEY_NICKNAME, nickname.trim()).apply()
         // 재억 지시(2026-10-14): 닉네임을 바꾸면 다음 연결을 기다리지 않고 바로 파이어베이스에 반영(보드·NAS 업로드 판단용). #문제시 원복
