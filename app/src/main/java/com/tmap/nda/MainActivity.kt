@@ -337,6 +337,15 @@ class MainActivity : AppCompatActivity() {
             binding.tvAppVersion.text = "버전: -"
         }
 
+        val installIdText = DiscordReporter.installId(this)
+        binding.tvInstallId.text = "내 ID: $installIdText (길게 누르면 복사)"
+        binding.tvInstallId.setOnLongClickListener {
+            (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                .setPrimaryClip(android.content.ClipData.newPlainText("설치ID", installIdText))
+            Toast.makeText(this, "ID를 복사했어요", Toast.LENGTH_SHORT).show()
+            true
+        }
+
         // 자동 실행 로직
         val shouldAutoStart = intent.getBooleanExtra("auto_start", true)
         if (!savedAppKey.isNullOrEmpty() && shouldAutoStart) {

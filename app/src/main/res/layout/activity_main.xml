@@ -186,6 +186,17 @@
         android:layout_gravity="center_horizontal"
         android:layout_marginTop="24dp"/>
 
+    <!-- 재억 지시(2026-10-22): 제보할 때 보드에서 기기를 정확히 찾도록 설치 ID 표시(길게 누르면 복사). #문제시 원복 -->
+    <TextView
+        android:id="@+id/tvInstallId"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="내 ID: -"
+        android:textColor="#888888"
+        android:textSize="12sp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="4dp"/>
+
     </LinearLayout>
 
     </ScrollView>

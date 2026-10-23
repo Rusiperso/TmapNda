@@ -3329,6 +3329,9 @@ class MapActivity : AppCompatActivity() {
                         "KNSDK 라이프사이클 전달 예외: ${e.message}"
                     )
                 }
+
+                // 전에 받아둔 카카오 지도보다 서버에 더 새 지도가 있으면 한 번 알려준다(받은 적 없으면 조용히 넘어감).
+                if (!GuideEngine.isNaver(this)) KakaoMapDownload.maybeNotifyNewMap(this)
             } else {
                 NavLogger.e(
                     this,
