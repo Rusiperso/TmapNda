@@ -21,6 +21,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.tmap.nda.navdy.KakaoToNavdyTurn
 import com.tmap.nda.navdy.NavdyTurn
+import com.tmap.nda.naver.NaverNavigator
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -56,6 +57,17 @@ object NavOverlayManager {
     private var secondaryIcon: TurnHookIconView? = null
     private var secondaryDistText: TextView? = null
     private var secondaryRoadText: TextView? = null
+    private var cardView: LinearLayout? = null
+    private var dividerView: View? = null
+    private var compactMode: String? = null
+    private var controlBar: LinearLayout? = null
+    private var chipViews: List<Pair<Int, TextView>> = emptyList()
+    private var liveScalePct: Int? = null
+    private var liveScaleH: Int? = null
+    private var resizeMode = false
+    private val SCALE_STEPS = listOf(65, 80, 100, 120)
+    private const val PREF_KEY_SCALE = "overlay_scale_pct"
+    private const val PREF_KEY_SCALE_H = "overlay_scale_h_pct"
     private var guidanceListener: ((KakaoRouteSnapshot) -> Unit)? = null
 
     fun isEnabled(context: Context): Boolean =
@@ -154,6 +166,15 @@ object NavOverlayManager {
         var downY = 0
         var moved = false
         var lockedMoved = false
+        var longFired = false
+        // 손가락이 살짝만 떨려도 꾹 누르기가 취소돼 크기 조절이 안 열리던 문제: 시스템 터치 허용 거리(약 8dp)를 넘을 때만 움직임으로 봄. #문제시 원복
+        val touchSlop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+        val lpHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        val lpRunnable = Runnable {
+            longFired = true
+            view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+            enterResizeMode(context)
+        }
         view.setOnTouchListener { v, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -174,17 +195,21 @@ object NavOverlayManager {
                     downY = params.y
                     moved = false
                     lockedMoved = false
+                    longFired = false
+                    lpHandler.postDelayed(lpRunnable, 800L)
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
+                    // 꾹 눌러 크기 메뉴가 열린 뒤에도 그대로 끌어서 위치를 옮길 수 있게 함(예전엔 여기서 막혀 위치 이동이 안 됐음). #문제시 원복
                     val dx = (event.rawX - downRawX).toInt()
                     val dy = (event.rawY - downRawY).toInt()
                     // 재억 요청(2026-09-28): 팝업 위치 잠금이 켜져 있으면 오버레이도 안 움직임. #문제시 원복
-                    if (PopupCard.isLocked(context)) {
-                        if (kotlin.math.abs(dx) > 4 || kotlin.math.abs(dy) > 4) lockedMoved = true
+                    // 크기 메뉴가 열려 있을 땐 위치 잠금과 상관없이 옮길 수 있음(꾹 눌러 수정 중이라는 뜻). #문제시 원복
+                    if (PopupCard.isLocked(context) && !resizeMode) {
+                        if (kotlin.math.abs(dx) > touchSlop || kotlin.math.abs(dy) > touchSlop) lockedMoved = true
                         return@setOnTouchListener true
                     }
-                    if (kotlin.math.abs(dx) > 4 || kotlin.math.abs(dy) > 4) moved = true
+                    if (kotlin.math.abs(dx) > touchSlop || kotlin.math.abs(dy) > touchSlop) { moved = true; lpHandler.removeCallbacks(lpRunnable) }
                     val dm = context.resources.displayMetrics
                     val maxX = (dm.widthPixels - v.width).coerceAtLeast(0)
                     val maxY = (dm.heightPixels - v.height).coerceAtLeast(0)
@@ -194,20 +219,21 @@ object NavOverlayManager {
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    NavLogger.d(context, "[오버레이] 터치 끝 moved=$moved 위치=(${params.x},${params.y})")
+                    lpHandler.removeCallbacks(lpRunnable)
+                    NavLogger.d(context, "[오버레이] 터치 끝 moved=$moved 위치=(${params.x},${params.y}) 꾹=$longFired 크기모드=$resizeMode")
                     if (moved) {
                         context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).edit()
                             .putInt(PREF_KEY_POS_X, params.x)
                             .putInt(PREF_KEY_POS_Y, params.y)
                             .apply()
-                    } else if (!lockedMoved) {
+                    } else if (!lockedMoved && !longFired && !resizeMode) {
                         // v: 재억 제보(2026-08-27) - "오버레이 눌러도 반응이 없다" - 끌지 않고
                         // 그냥 터치만 뗀 경우(=탭)는 앱을 다시 앞으로 가져옴. #문제시 원복
                         reopenApp(context)
                     }
                     true
                 }
-                MotionEvent.ACTION_CANCEL -> true
+                MotionEvent.ACTION_CANCEL -> { lpHandler.removeCallbacks(lpRunnable); true }
                 else -> false
             }
         }
@@ -276,6 +302,8 @@ object NavOverlayManager {
             hide()
             return
         }
+        val naver = NaverNavigator.isRunning
+        applyCompact(naver)
         primaryIcon?.kind = kindFor(snapshot.rgCodeName, snapshot.directionAngle)
         primaryIcon?.roundaboutExitAngle = snapshot.directionAngle.toFloat()
         primaryIcon?.invalidate()
@@ -284,7 +312,9 @@ object NavOverlayManager {
             // v: 재억 재제보(2026-09-19) - "다음 회전 지점명"(tbtMainText) 대신 도착지
             // 이름을 보여달라는 요청. 도착지명이 비어있을 때만 예전처럼 다음 회전 지점명으로
             // 폴백. #문제시 원복
-            val label = snapshot.destinationName.ifBlank { snapshot.tbtMainText }
+            // 네이버 안내는 도착지 대신 "OO 방면"만 작게 보여줌(카카오 오버레이와 같은 모양).
+            val label = if (naver) naverBangmyeon(snapshot.tbtMainText)
+                else snapshot.destinationName.ifBlank { snapshot.tbtMainText }
             if (label.isNotBlank()) {
                 text = label
                 visibility = View.VISIBLE
@@ -305,8 +335,10 @@ object NavOverlayManager {
             secondaryIcon?.invalidate()
             secondaryDistText?.text = formatDist(snapshot.nextTbtDist)
             secondaryRoadText?.apply {
-                if (snapshot.nextTbtMainText.isNotBlank()) {
-                    text = "${snapshot.nextTbtMainText} 방면"
+                val nextLabel = if (naver) naverBangmyeon(snapshot.nextTbtMainText)
+                    else if (snapshot.nextTbtMainText.isNotBlank()) "${snapshot.nextTbtMainText} 방면" else ""
+                if (nextLabel.isNotBlank()) {
+                    text = nextLabel
                     visibility = View.VISIBLE
                 } else {
                     visibility = View.GONE
@@ -315,6 +347,113 @@ object NavOverlayManager {
         } else {
             secondaryRow?.visibility = View.GONE
         }
+    }
+
+
+    // 네이버 안내 문장("신촌기차역에서 '세브란스' 방면으로 왼쪽")에서 방면 이름만 뽑음.
+    // 방면이 없고 짧은 말("좌회전")이면 그대로, 긴 문장이면 줄을 숨김.
+    private fun naverBangmyeon(text: String): String {
+        val m = Regex("'([^']+)'\\s*방면").find(text)
+        if (m != null) return "${m.groupValues[1]} 방면"
+        return if (text.length <= 10) text else ""
+    }
+
+    // 오버레이 크기(%): 50~140, 기본 100. 꾹 눌러 크기 모드에서 단계 칩/핸들로 바꾸고 ✓로 저장(재억 요청 2026-10-16).
+    fun scalePct(context: Context): Int = (liveScalePct
+        ?: context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getInt(PREF_KEY_SCALE, 100)).coerceIn(50, 200)
+
+    // 가로(scalePct)와 세로(scaleHPct)를 따로 조절. 단계 버튼은 둘 다 같은 값으로, "끌기"는 가로·세로를 따로. 재억 요청(2026-10-25). #문제시 원복
+    fun scaleHPct(context: Context): Int = (liveScaleH
+        ?: context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getInt(PREF_KEY_SCALE_H, scalePct(context))).coerceIn(50, 200)
+
+    private fun setLiveScaleWH(w: Int, h: Int) {
+        liveScalePct = w.coerceIn(50, 200)
+        liveScaleH = h.coerceIn(50, 200)
+        overlayView?.post { applyCompact(NaverNavigator.isRunning); refreshChips() }
+    }
+
+    private fun setLiveScale(pct: Int) {
+        liveScalePct = pct.coerceIn(50, 200)
+        liveScaleH = liveScalePct
+        overlayView?.post { applyCompact(NaverNavigator.isRunning); refreshChips() }
+    }
+
+    private fun refreshChips() {
+        val cur = liveScalePct
+        chipViews.forEach { (pct, tv) ->
+            val on = cur == pct && liveScaleH == pct
+            tv.setTextColor(if (on) Color.parseColor("#13264A") else Color.WHITE)
+            tv.background = GradientDrawable().apply {
+                cornerRadius = 40f
+                setColor(if (on) Color.WHITE else Color.parseColor("#D913264A"))
+            }
+        }
+    }
+
+    private fun enterResizeMode(context: Context) {
+        val bar = controlBar ?: return
+        resizeMode = true
+        if (liveScalePct == null) liveScalePct = scalePct(context)
+        if (liveScaleH == null) liveScaleH = scaleHPct(context)
+        bar.visibility = View.VISIBLE
+        refreshChips()
+    }
+
+    private fun exitResizeMode(context: Context, save: Boolean) {
+        if (save) liveScalePct?.let {
+            context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).edit()
+                .putInt(PREF_KEY_SCALE, it.coerceIn(50, 200))
+                .putInt(PREF_KEY_SCALE_H, (liveScaleH ?: it).coerceIn(50, 200))
+                .apply()
+        }
+        liveScalePct = null
+        liveScaleH = null
+        resizeMode = false
+        controlBar?.visibility = View.GONE
+        overlayView?.post { applyCompact(NaverNavigator.isRunning) }
+    }
+
+    // 네이버 안내 중일 때만 카드를 작게(아이콘·글자·여백 축소) + 사용자가 정한 크기 비율을 곱함. 카카오는 기본 크기에 비율만 적용.
+    private fun applyCompact(compact: Boolean) {
+        val card = cardView ?: return
+        val pct = scalePct(card.context)
+        val free = true
+        val hPct = scaleHPct(card.context)
+        val key = "$compact/$pct/$hPct"
+        if (compactMode == key) return
+        compactMode = key
+        // 자유 모드: 글자·아이콘은 가로·세로 중 작은 쪽 비율, 남는 가로/세로는 카드 크기로 늘림.
+        val k = (if (free) minOf(pct, hPct) else pct) / 100f
+        val d = card.resources.displayMetrics.density
+        fun dp(v: Float) = (v * d * k).toInt()
+        val pad = dp(if (compact) 12f else 18f)
+        card.setPadding(pad, pad, pad, pad)
+        (dividerView?.layoutParams as? LinearLayout.LayoutParams)?.let {
+            val m = dp(if (compact) 8f else 12f); it.topMargin = m; it.bottomMargin = m
+        }
+        fun sizeIcon(v: View?, dpSize: Float) {
+            v?.layoutParams?.let { it.width = dp(dpSize); it.height = dp(dpSize) }
+            v?.requestLayout()
+        }
+        sizeIcon(primaryIcon, if (compact) 24f else 30f)
+        sizeIcon(secondaryIcon, if (compact) 17f else 21f)
+        primaryDistText?.textSize = (if (compact) 24f else 30f) * k
+        primaryRoadText?.textSize = (if (compact) 14f else 18f) * k
+        primaryRoadText?.maxWidth = dp(if (compact) 200f else 270f)
+        secondaryDistText?.textSize = (if (compact) 17f else 21f) * k
+        secondaryRoadText?.textSize = (if (compact) 12.5f else 16.5f) * k
+        secondaryRoadText?.maxWidth = dp(if (compact) 200f else 270f)
+        card.minimumWidth = 0
+        card.minimumHeight = 0
+        if (free) {
+            card.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+            card.minimumWidth = (card.measuredWidth * (pct / 100f) / k).toInt()
+            card.minimumHeight = (card.measuredHeight * (hPct / 100f) / k).toInt()
+            card.gravity = Gravity.CENTER
+        } else {
+            card.gravity = Gravity.NO_GRAVITY
+        }
+        card.requestLayout()
     }
 
     private fun applyRecommendedLaneTextFallback() {
@@ -433,6 +572,9 @@ object NavOverlayManager {
             ).apply { topMargin = dp(12); bottomMargin = dp(12) }
         }
 
+        cardView = null
+        dividerView = divider
+        compactMode = null
         primaryIcon = primary.icon
         primaryDistText = primary.dist
         primaryRoadText = primary.road
@@ -475,9 +617,59 @@ object NavOverlayManager {
             addView(secondary.block, wrapParams())
         }
 
+        cardView = card
+        // 꾹 눌렀을 때만 나오는 크기 조절 줄: 단계 칩 + 끌어서 조절하는 핸들 + ✓(저장). 재억 요청(2026-10-16). #문제시 원복
+        resizeMode = false
+        liveScalePct = null
+        liveScaleH = null
+        fun chip(label: String, onClick: (() -> Unit)?) = TextView(context).apply {
+            text = label
+            textSize = 13f
+            setPadding(dp(10), dp(5), dp(10), dp(5))
+            if (onClick != null) setOnClickListener { onClick() }
+        }
+        val chips = SCALE_STEPS.map { pct -> pct to chip("$pct%") { setLiveScale(pct) } }
+        chipViews = chips
+        val handle = chip("↘ 끌기", null).apply {
+            var sx = 0f
+            var sy = 0f
+            var startPct = 100
+            var startH = 100
+            setOnTouchListener { _, e ->
+                when (e.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> { sx = e.rawX; sy = e.rawY; startPct = liveScalePct ?: scalePct(context); startH = liveScaleH ?: scaleHPct(context); true }
+                    MotionEvent.ACTION_MOVE -> {
+                        // 대각선으로 끈 거리에 비례해서 가로세로 같은 비율로 키우고 줄임
+                        // 가로로 끈 거리는 가로 크기, 세로로 끈 거리는 세로 크기만 바꿈
+                        setLiveScaleWH(
+                            startPct + ((e.rawX - sx) / density * 0.4f).toInt(),
+                            startH + ((e.rawY - sy) / density * 0.4f).toInt())
+                        true
+                    }
+                    else -> true
+                }
+            }
+        }
+        val ok = chip("✓") { exitResizeMode(context, true) }.apply {
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply { cornerRadius = 40f; setColor(Color.parseColor("#2E9E5B")) }
+        }
+        val bar = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = View.GONE
+            chips.forEach { (_, tv) -> addView(tv, wrapParams().apply { marginEnd = dp(6) }) }
+            handle.setTextColor(Color.WHITE)
+            handle.background = GradientDrawable().apply { cornerRadius = 40f; setColor(Color.parseColor("#D9455A8A")) }
+            addView(handle, wrapParams().apply { marginEnd = dp(6) })
+            addView(ok, wrapParams())
+        }
+        controlBar = bar
+        refreshChips()
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             addView(card, wrapParams())
+            addView(bar, wrapParams().apply { topMargin = dp(8) })
         }
     }
 }
