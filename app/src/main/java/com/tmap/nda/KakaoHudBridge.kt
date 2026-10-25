@@ -24,13 +24,15 @@ object KakaoHudBridge {
         context: android.content.Context,
         guidance: KNGuidance,
         locationGuide: KNGuide_Location?,
-        routeGuide: KNGuide_Route?
+        routeGuide: KNGuide_Route?,
+        // GPS가 끊긴 동안 차량 속도로 쌓은 이동 거리(m). 안내 거리에서 이만큼 빼서 숫자가 멈추지 않고 줄어들게 함. #문제시 원복
+        traveledM: Int = 0
     ) {
         val currentLocation = locationGuide?.location
         val direction = routeGuide?.curDirection
         val trip = guidance.trip
 
-        val turnDistance =
+        val turnDistanceRaw =
             if (currentLocation != null && direction != null) {
                 runCatching {
                     currentLocation
@@ -40,6 +42,7 @@ object KakaoHudBridge {
             } else {
                 KakaoRouteDataRepository.tbtDist
             }
+        val turnDistance = (turnDistanceRaw - traveledM).coerceAtLeast(0)
 
         val currentRoad = currentLocation?.roadName.orEmpty()
             .ifBlank { KakaoRouteDataRepository.roadName }
@@ -64,20 +67,23 @@ object KakaoHudBridge {
         val rawGoalName = trip?.goal?.name
         NavLogger.dIfChanged(context, "목적지명진단", "[목적지명진단] trip?.goal?.name=\"$rawGoalName\" (trip=${trip != null}, goal=${trip?.goal != null}) currentRoad=\"$currentRoad\"")
 
-        val remainDist = trip?.remainDist() ?: KakaoRouteDataRepository.remainDist
-        val remainTime = trip?.remainTime() ?: KakaoRouteDataRepository.remainTime
+        val remainDistRaw = trip?.remainDist() ?: KakaoRouteDataRepository.remainDist
+        val remainDist = (remainDistRaw - traveledM).coerceAtLeast(0)
+        val remainTimeRaw = trip?.remainTime() ?: KakaoRouteDataRepository.remainTime
+        val remainTime = if (traveledM > 0 && remainDistRaw > 0) (remainTimeRaw.toLong() * remainDist / remainDistRaw).toInt() else remainTimeRaw
 
         // [신규] 오버레이 2번째 줄(재억 요청, 2026-08-27) - "그 다음" 회전 미리보기.
         // KNGuide_Route가 curDirection과 같은 타입(KNDirection)의 nextDirection을
         // 공식으로 제공함(실제 SDK 클래스 시그니처로 확인함, KNSDK 1.12.8-hotfix02). #문제시 원복
         val nextDirection = routeGuide?.nextDirection
-        val nextTurnDistance = if (currentLocation != null && nextDirection != null) {
+        val nextTurnDistanceRaw = if (currentLocation != null && nextDirection != null) {
             runCatching {
                 currentLocation.distToLocation(nextDirection.location).coerceAtLeast(0)
             }.getOrDefault(0)
         } else {
             0
         }
+        val nextTurnDistance = if (nextTurnDistanceRaw > 0) (nextTurnDistanceRaw - traveledM).coerceAtLeast(0) else 0
         // v: 오버레이(재억 요청, 2026-08-27) "OOO 방면" 둘째 줄용 - curDirection의
         // instruction과 완전히 동일한 방식으로 nextDirection에서도 도로/지점명 추출. #문제시 원복
         val nextInstruction =

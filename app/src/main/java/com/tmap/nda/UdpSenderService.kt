@@ -1887,7 +1887,9 @@ class UdpSenderService : Service() {
                                 val routeToggleOn = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                                     .getBoolean("route_line_display_enabled", false)
                                 val coords = KakaoRouteDataRepository.routeCoordinates
-                                val fresh = (System.currentTimeMillis() - KakaoRouteDataRepository.routeCoordinatesUpdatedAt) < 10_000L
+                                // 카카오는 경로가 바뀔 때만 시각이 갱신돼서 10초 뒤엔 경로선이 끊김 -> 안내가 계속 살아 있으면(GPS 끊김 중 재전송 포함) 계속 보냄. #문제시 원복
+                                val fresh = (System.currentTimeMillis() - KakaoRouteDataRepository.routeCoordinatesUpdatedAt) < 10_000L ||
+                                    KakaoRouteDataRepository.isFresh(10_000L)
                                 if (routeToggleOn && fresh && coords.isNotEmpty()) {
                                     val vrtxArray = org.json.JSONArray()
                                     for ((lon, lat) in coords) {

@@ -79,6 +79,9 @@ class KakaoGuidanceDelegate(
     private var lastLocationGuide: KNGuide_Location? = null
     private var lastRouteGuide: KNGuide_Route? = null
     private var lastLocationCallbackAt = 0L
+    private var drMark = 0L
+    private var drTraveledM = 0.0
+    private var drLastTickAt = 0L
     /** 지금 카카오 길안내가 진행 중인지(추측 주행이 쓴다). */
     val isGuiding: Boolean get() = lastGuidance != null
     private val gpsWatchdogHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -90,8 +93,14 @@ class KakaoGuidanceDelegate(
                 System.currentTimeMillis() - lastLocationCallbackAt > gpsWatchdogInterval
             ) {
                 try {
-                    NavLogger.dIfChanged(context, "GPS끊김워치독", "[GPS끊김워치독] ${System.currentTimeMillis() - lastLocationCallbackAt}ms째 콜백 없음 - 마지막 값으로 재전송")
-                    KakaoHudBridge.publish(context, guidance, lastLocationGuide, lastRouteGuide)
+                    // 재억 요청(2026-10-25): GPS가 끊겨도 콤마 차량 속도로 간 거리를 쌓아서 안내 거리가 줄어들게 함(네이버 추측 주행처럼). #문제시 원복
+                    val nowMs = System.currentTimeMillis()
+                    if (drMark != lastLocationCallbackAt) { drMark = lastLocationCallbackAt; drTraveledM = 0.0; drLastTickAt = lastLocationCallbackAt }
+                    val speedMs = (OpenpilotStateRepository.freshVehicleSpeedMs() ?: 0.0).coerceAtMost(45.0)
+                    drTraveledM += speedMs * ((nowMs - drLastTickAt) / 1000.0)
+                    drLastTickAt = nowMs
+                    NavLogger.dIfChanged(context, "GPS끊김워치독", "[GPS끊김워치독] ${nowMs - lastLocationCallbackAt}ms째 콜백 없음 - 차량속도 ${(speedMs * 3.6).toInt()}km/h로 ${drTraveledM.toInt()}m 이어서 재전송")
+                    KakaoHudBridge.publish(context, guidance, lastLocationGuide, lastRouteGuide, drTraveledM.toInt())
                 } catch (e: Exception) {
                     NavLogger.e(context, "[GPS끊김워치독] 재전송 실패: ${e.message}")
                 }

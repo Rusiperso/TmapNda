@@ -4449,8 +4449,43 @@ class MapActivity : AppCompatActivity() {
         return super.dispatchTouchEvent(ev)
     }
 
+    // 재억 요청(2026-10-25): 티맵 지도도 네이버·카카오처럼 내 차를 화면 가운데가 아니라 운전자 쪽(왼쪽)에 놓음.
+    // 티맵 지도 엔진(MapEngine)의 화면 중심점(setScreenCenter)을 가로만 옮김(세로는 SDK가 정한 그대로). SDK가 중심점을 되돌리면 매 프레임 다시 맞춤.
+    // 가로 화면·분할화면 아님일 때만 적용. #문제시 원복(이 블록과 onResume/onPause 호출부만 지우면 됨)
+    private val TMAP_DRIVER_SIDE_X = 0.40f
+    private var tmapScreenCenterGet: java.lang.reflect.Method? = null
+    private var tmapScreenCenterSet: java.lang.reflect.Method? = null
+    private val tmapDriverFrame = object : android.view.Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            applyTmapDriverSide()
+            android.view.Choreographer.getInstance().postFrameCallback(this)
+        }
+    }
+    private fun applyTmapDriverSide() {
+        try {
+            if (isFinishing || isDestroyed || !::binding.isInitialized) return
+            if (resources.configuration.orientation != android.content.res.Configuration.ORIENTATION_LANDSCAPE) return
+            if (android.os.Build.VERSION.SDK_INT >= 24 && isInMultiWindowMode) return
+            val frag = navigationFragment ?: return
+            val engine = frag.javaClass.methods.firstOrNull { it.name == "getMapView" && it.parameterCount == 0 }?.invoke(frag) ?: return
+            if (tmapScreenCenterGet == null) tmapScreenCenterGet = engine.javaClass.methods.firstOrNull { it.name == "getScreenCenter" && it.parameterCount == 0 }
+            if (tmapScreenCenterSet == null) tmapScreenCenterSet = engine.javaClass.methods.firstOrNull { it.name == "setScreenCenter" && it.parameterCount == 1 }
+            val get = tmapScreenCenterGet ?: return
+            val set = tmapScreenCenterSet ?: return
+            val cur = get.invoke(engine) as? android.graphics.Point ?: return
+            val w = binding.tmapUILayout.width
+            if (w <= 0) return
+            val targetX = (w * TMAP_DRIVER_SIDE_X).toInt()
+            if (kotlin.math.abs(cur.x - targetX) < 3) return
+            set.invoke(engine, android.graphics.Point(targetX, cur.y))
+        } catch (e: Exception) {
+            NavLogger.dThrottled(this, "tmap_driver_side_fail", 10_000L, "[티맵운전자쪽중심] 적용 실패: ${e.message}")
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+        android.view.Choreographer.getInstance().removeFrameCallback(tmapDriverFrame); android.view.Choreographer.getInstance().postFrameCallback(tmapDriverFrame)
         NavLogger.d(this, "[MapActivity lifecycle] onResume")
         // v: 신규기능(경유지/카테고리 버튼 표시 옵션) - 재억 지적으로 두 스위치로 분리.
         // 설정 화면에서 바꾼 값이 바로 반영되도록 화면이 다시 보일 때마다 다시 읽어서 적용.
@@ -4545,6 +4580,7 @@ class MapActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        android.view.Choreographer.getInstance().removeFrameCallback(tmapDriverFrame)
         NavLogger.d(this, "[MapActivity lifecycle] onPause (KakaoNaviActivity가 위에 뜨는 중일 수 있음 - handleWillResignActive가 이 타이밍에 KNSDK로 전달됨)")
         // v: 위 onResume에서 0.3초 지연 예약해둔 KNSDK 활성화 호출이 아직 실행 전이면 취소.
         // 화면 전환 중의 "잠깐 보였다가 바로 사라짐" 케이스라 실제로 필요 없었던 호출임. #문제시 원복

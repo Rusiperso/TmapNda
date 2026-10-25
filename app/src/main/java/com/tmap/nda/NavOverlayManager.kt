@@ -127,6 +127,9 @@ object NavOverlayManager {
                 params.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
                 params.y = (24 * appContext.resources.displayMetrics.density).toInt()
             }
+            // 재억 제보(2026-10-25): 잠금 풀고 옮겨도 또 가운데로 간다 - 원인 확인용 로그(저장값·실제 적용값·화면 크기). #문제시 원복
+            val dmShow = appContext.resources.displayMetrics
+            NavLogger.d(appContext, "[오버레이] 위치 복원 저장=($savedX,$savedY) 적용=(${params.x},${params.y}) gravity=${params.gravity} 화면=${dmShow.widthPixels}x${dmShow.heightPixels} 잠금=${PopupCard.isLocked(appContext)}")
             attachDragHandling(appContext, wm, view, params)
             wm.addView(view, params)
             windowManager = wm
@@ -164,6 +167,7 @@ object NavOverlayManager {
                         params.x = loc[0]
                         params.y = loc[1]
                     }
+                    NavLogger.d(context, "[오버레이] 터치 시작 raw=(${event.rawX.toInt()},${event.rawY.toInt()}) 현재=(${params.x},${params.y}) 잠금=${PopupCard.isLocked(context)}")
                     downRawX = event.rawX
                     downRawY = event.rawY
                     downX = params.x
@@ -190,6 +194,7 @@ object NavOverlayManager {
                     true
                 }
                 MotionEvent.ACTION_UP -> {
+                    NavLogger.d(context, "[오버레이] 터치 끝 moved=$moved 위치=(${params.x},${params.y})")
                     if (moved) {
                         context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).edit()
                             .putInt(PREF_KEY_POS_X, params.x)

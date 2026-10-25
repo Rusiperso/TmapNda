@@ -343,9 +343,39 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         fitTo(pts)
     }
 
+    // 재억 제보(2026-10-25): 안내(거리)는 GPS가 오자마자 줄어드는데 차 심볼·지도는 한 박자 늦게 움직여 안내가 앞서 보임.
+    // 위치가 오면 "1초 뒤쯤 있을 자리"를 향해 심볼과 카메라를 1초에 걸쳐 같은 속도로 미끄러지게 해서 안내와 박자를 맞춤. #문제시 원복
+    private val GLIDE_MS = 1000L
+    private val LEAD_S = 0.8
+    private var overlayGlide: android.animation.ValueAnimator? = null
+
+    private fun leadPoint(loc: Location): LatLng {
+        val spd = if (loc.hasSpeed()) loc.speed.toDouble() else 0.0
+        if (spd < 2.0 || !loc.hasBearing()) return LatLng(loc.latitude, loc.longitude)
+        val d = spd * LEAD_S
+        val rad = Math.toRadians(loc.bearing.toDouble())
+        return LatLng(
+            loc.latitude + d * Math.cos(rad) / 111_320.0,
+            loc.longitude + d * Math.sin(rad) / (111_320.0 * Math.cos(Math.toRadians(loc.latitude)))
+        )
+    }
+
     fun setLocation(loc: Location) = whenReady { m ->
-        m.locationOverlay.position = LatLng(loc.latitude, loc.longitude)
         if (loc.hasBearing()) m.locationOverlay.bearing = loc.bearing
+        val from = m.locationOverlay.position
+        val to = leadPoint(loc)
+        overlayGlide?.cancel()
+        // 처음이거나 멀리 떨어졌으면(안내 시작·재탐색 등) 미끄러지지 않고 바로 놓음
+        if (!from.isValid || from.distanceTo(to) > 300.0) { m.locationOverlay.position = to; return@whenReady }
+        overlayGlide = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = GLIDE_MS
+            interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener {
+                val f = it.animatedValue as Float
+                m.locationOverlay.position = LatLng(from.latitude + (to.latitude - from.latitude) * f, from.longitude + (to.longitude - from.longitude) * f)
+            }
+            start()
+        }
     }
 
     /** 안내 중 내 위치를 따라간다. 사용자가 손으로 움직인 뒤 10초간은 쉬고, 핀치로 맞춘 줌은 그동안 유지한다. */
@@ -366,7 +396,8 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         val ax = anchorXFraction
         // 운전자 쪽 치우침은 오른쪽 여백(엔진이 몇 초에 걸쳐 천천히 반영해 차가 미끄러져 보임) 대신, 카메라 이동 때 차가 놓일 자리(pivot)로 한 번에 맞춤
         m.setContentPadding(0, topInsetPx, 0, bottomPad)
-        val upd = CameraUpdate.toCameraPosition(CameraPosition(LatLng(loc.latitude, loc.longitude), zoom, if (flat || nearTurn) 0.0 else 40.0, bearing))
+        val lead = leadPoint(loc)
+        val upd = CameraUpdate.toCameraPosition(CameraPosition(lead, zoom, if (flat || nearTurn) 0.0 else 40.0, bearing))
         // 재억 요청(2026-10-13): 차가 세로 가운데에 있어 앞 경로선이 잘림 -> 세로도 아래쪽(driverAnchorYFraction)에 놓음. 가로는 ax(없으면 가운데). #문제시 원복
         upd.pivot(android.graphics.PointF(ax ?: 0.5f, driverAnchorYFraction))
         // entryMs>0: 안내 시작 진입 - 위치·확대·기울기를 한 번에 부드럽게(툭툭 끊김 방지)
@@ -374,7 +405,7 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         val cp = m.cameraPosition
         val near = entryMs > 0 && cp.target.distanceTo(LatLng(loc.latitude, loc.longitude)) < 1500.0 && Math.abs(cp.zoom - zoom) < 2.5
         if (entryMs > 0 && !near) entryUntil = 0L
-        m.moveCamera(if (near) upd.animate(CameraAnimation.Easing, entryMs) else if (entryMs > 0) upd else if (animated) upd.animate(CameraAnimation.Linear, 900) else upd)
+        m.moveCamera(if (near) upd.animate(CameraAnimation.Easing, entryMs) else if (entryMs > 0) upd else if (animated) upd.animate(CameraAnimation.Linear, GLIDE_MS) else upd)
     }
 
     /** 회전이 200m 안으로 다가오면 네이버 앱처럼 지도를 평면으로 확대한다. */
