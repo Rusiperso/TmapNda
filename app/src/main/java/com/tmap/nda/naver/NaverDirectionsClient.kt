@@ -59,6 +59,8 @@ object NaverDirectionsClient {
         option: String = "traoptimal",
         monthlyCap: Int = DEFAULT_MONTHLY_CAP
     ): NaverDirectionsResult {
+        // 인터넷이 없고 폰에 도로망 파일이 있으면 폰 안에서 길을 계산한다(키 없어도 됨).
+        if (OfflineRouter.shouldUse(context)) return OfflineRouter.route(context, start, goal, waypoints, option)
         val p = prefs(context)
         val id = p.getString(KEY_ID, "").orEmpty()
         val secret = p.getString(KEY_SECRET, "").orEmpty()
@@ -79,6 +81,8 @@ object NaverDirectionsClient {
         } else if (res.ok) {
             p.edit().putString(KEY_ENDPOINT, first).apply()
         }
+        // 요청 도중 네트워크가 끊겨 실패했으면(-12) 오프라인 길찾기로 한 번 더 시도한다.
+        if (res.code == -12 && OfflineRouter.available(context)) return OfflineRouter.route(context, start, goal, waypoints, option)
         return res
     }
 

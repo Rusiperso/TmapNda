@@ -1117,6 +1117,7 @@ object PanelDragHelper {
         etcItems.add(carFuelHintText)
         etcItems.add(carFuelRow)
         if (!naverSelected) etcItems.addAll(KakaoMapDownload.buildViews(context))
+        etcItems.addAll(OfflineDataDownload.buildViews(context))
         // 하이패스 요금은 카카오 통행료 계산에만 있는 기능이라 네이버를 골랐을 때는 보이지 않게 한다.
 
         // 음성 보정: 폰이 자꾸 잘못 알아듣는 말을 직접 적어두는 표("틀린말=원래말" 한 줄에 하나).

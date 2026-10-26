@@ -778,10 +778,29 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
+    private var tmapSdkReady = false
+    private var offlineStartupDone = false
+
+    /**
+     * 티맵 SDK가 안 켜질 때(인터넷이 없으면 인증을 못 받음) 화면이 검게 멈추고 버튼이 안 눌리던 문제 대응.
+     * 상단 버튼 연결, 콤마 통신, 카카오/네이버 안내 준비는 티맵 SDK와 상관없이 돌 수 있어서 따로 시작한다.
+     */
+    private fun startWithoutTmapSdk(reason: String) {
+        if (tmapSdkReady || offlineStartupDone || isFinishing || isDestroyed) return
+        offlineStartupDone = true
+        NavLogger.e(this, "[티맵SDK] 안 켜짐($reason) - 티맵 없이 시작: 버튼·통신·카카오/네이버 준비")
+        try { setupDestinationSearchUi() } catch (e: Throwable) { NavLogger.e(this, "[티맵SDK] 버튼 연결 실패: ${e.message}") }
+        try { startUdpSenderService() } catch (e: Throwable) { NavLogger.e(this, "[티맵SDK] 통신 시작 실패: ${e.message}") }
+        try { initKakaoSdkAndShowIdleMap() } catch (e: Throwable) { NavLogger.e(this, "[티맵SDK] 카카오 준비 실패: ${e.message}") }
+    }
+
     private fun initTmapSdk(appKey: String) {
+        // 티맵 SDK가 일정 시간 안에 안 켜지면(오프라인 등) 티맵 없이 시작한다.
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ startWithoutTmapSdk("8초 안에 응답 없음") }, 8000L)
         // TmapUISDK 초기화
         initialize(this, "", appKey, "", "", object : TmapUISDK.InitializeListener {
             override fun onSuccess() {
+                tmapSdkReady = true
                 runOnUiThread {
                     // 회전(가로/세로 전환)으로 Activity가 destroy → recreate 되는 사이에
                     // 이전 Activity 인스턴스가 캡처한 이 콜백이 뒤늦게 실행되면서
@@ -820,6 +839,7 @@ class MapActivity : AppCompatActivity() {
             override fun onFail(errorCode: Int, errorMsg: String?) {
                 runOnUiThread {
                     Toast.makeText(this@MapActivity, "Tmap SDK 초기화 실패: $errorMsg", Toast.LENGTH_LONG).show()
+                    startWithoutTmapSdk("초기화 실패 $errorCode $errorMsg")
                 }
             }
 
@@ -880,7 +900,12 @@ class MapActivity : AppCompatActivity() {
             // v1.8: 음성검색 진입 시 이전에 남아있던 검색이력 목록이 뜨는 문제 방지. #문제시 원복
             binding.lvSearchResults?.visibility = View.GONE
             binding.llSearchPanel?.visibility = View.VISIBLE
-            startVoiceSearch()
+            // 인터넷이 없으면 음성인식(구글 서버)이 안 되니 글자 검색창을 바로 연다.
+            if (com.tmap.nda.naver.OfflineRouter.shouldUse(this) && com.tmap.nda.naver.OfflinePlaceSearch.available(this)) {
+                showTmapTextSearchDialog()
+            } else {
+                startVoiceSearch()
+            }
         }
         binding.btnOpenSearch?.setOnLongClickListener {
             // v1.8: "티맵 화면 텍스트검색도 카카오 화면처럼 팝업으로 띄워달라"(8번) - 인라인
@@ -2309,6 +2334,36 @@ class MapActivity : AppCompatActivity() {
     // 첫 실행 시 로그(NavLogger)에 시도한 생성자/실패 사유가 다 남게 해뒀음.
     // 실패하면 로그 캡처해서 다시 보내주면 정확한 시그니처로 고칠 수 있음.
     private fun performDestinationSearch(query: String) {
+        run {
+            val (aLat, aLon) = resolveCurrentWgs84LatLon()
+            offlineAddrHits = com.tmap.nda.naver.OfflinePlaceSearch.addressHits(this, query, aLat, aLon)
+            // 1순위: 폰 안 자료(행안부 주소 + 장소 목록), 2순위: 온라인(티맵) 검색. 결과 목록에 폰 안 것이 위로, 티맵 것이 뒤로 합쳐진다.
+            // 폰 안에서 찾았으면 그 결과만 보여주고 티맵은 부르지 않는다. 못 찾았을 때만 티맵이 백업으로 나선다.
+            val local = com.tmap.nda.naver.OfflinePlaceSearch.localFirst(this, query, aLat, aLon)
+            if (local != null) {
+                if (com.tmap.nda.naver.OfflinePlaceSearch.hasExact(query, local)) {
+                    offlineAddrHits = emptyList()
+                    NavLogger.d(this, "[검색] 폰 안에 이름이 똑같은 곳 있음 - 티맵 검색 생략: $query")
+                    showSearchResultsDialog(local)
+                    return
+                }
+                // 비슷한 것만 있으면 폰 안 결과를 위에 두고, 티맵 결과도 뒤에 붙인다.
+                offlineAddrHits = local
+                NavLogger.d(this, "[검색] 폰 안에 비슷한 곳 ${local.size}건만 있음 - 티맵도 같이 검색: $query")
+            }
+        }
+        // 인터넷이 없고 폰에 오프라인 목록이 있으면 서버 대신 폰 안에서 바로 찾는다.
+        if (com.tmap.nda.naver.OfflineRouter.shouldUse(this) && com.tmap.nda.naver.OfflinePlaceSearch.available(this)) {
+            val (offLat, offLon) = resolveCurrentWgs84LatLon()
+            val offHits = com.tmap.nda.naver.OfflinePlaceSearch.search(this, query, offLat, offLon)
+            NavLogger.d(this, "[오프라인검색] 첫 화면 검색 '$query' → ${offHits.size}건")
+            if (offHits.isEmpty()) {
+                Toast.makeText(this, "오프라인 목록에 '$query'이(가) 없어요", Toast.LENGTH_LONG).show()
+            } else {
+                showSearchResultsDialog(offHits)
+            }
+            return
+        }
         val nativeAppKey = getKakaoNativeAppKey()
 
         // 앱 시작 직후에는 KNSDK가 REST/네이티브 입력값을 판별하고 자동 정렬하는 중일 수 있다.
@@ -2597,21 +2652,21 @@ class MapActivity : AppCompatActivity() {
         httpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 NavLogger.e(this@MapActivity, "카카오 주소검색 요청 실패: ${e.message}")
-                runOnUiThread { binding.tvSearchStatus?.text = "검색 결과 없음: $query" }
+                runOnUiThread { if (offlineAddrHits.isNotEmpty()) showSearchResultsDialog(offlineAddrHits) else binding.tvSearchStatus?.text = "검색 결과 없음: $query" }
             }
 
             override fun onResponse(call: Call, response: okhttp3.Response) {
                 response.use {
                     if (!it.isSuccessful) {
                         NavLogger.e(this@MapActivity, "카카오 주소검색 실패 code=${it.code}")
-                        runOnUiThread { binding.tvSearchStatus?.text = "검색 결과 없음: $query" }
+                        runOnUiThread { if (offlineAddrHits.isNotEmpty()) showSearchResultsDialog(offlineAddrHits) else binding.tvSearchStatus?.text = "검색 결과 없음: $query" }
                         return@use
                     }
                     val json = JSONObject(it.body?.string() ?: "{}")
                     val documents = json.optJSONArray("documents")
                     if (documents == null || documents.length() == 0) {
                         NavLogger.d(this@MapActivity, "카카오 주소검색도 결과 없음: query=$query")
-                        runOnUiThread { binding.tvSearchStatus?.text = "검색 결과 없음: $query" }
+                        runOnUiThread { if (offlineAddrHits.isNotEmpty()) showSearchResultsDialog(offlineAddrHits) else binding.tvSearchStatus?.text = "검색 결과 없음: $query" }
                         return@use
                     }
                     val hits = (0 until documents.length()).map { idx ->
@@ -2745,7 +2800,11 @@ class MapActivity : AppCompatActivity() {
         return card
     }
 
-    private fun showSearchResultsDialog(hits: List<HistoryEntry>) {
+    // 온라인 검색 결과에 폰 안 도로명주소 결과를 보탠다(번지 주소가 온라인에서 안 나오는 문제 보완).
+    private var offlineAddrHits: List<HistoryEntry> = emptyList()
+
+    private fun showSearchResultsDialog(onlineHits: List<HistoryEntry>) {
+        val hits = com.tmap.nda.naver.OfflinePlaceSearch.mergeAddress(offlineAddrHits, onlineHits)
         binding.llSearchPanel?.visibility = View.VISIBLE
         binding.tvSearchStatus?.text = "검색 결과 ${hits.size}건 - 목적지를 선택하세요"
         var didPickEntry = false
@@ -3358,10 +3417,16 @@ class MapActivity : AppCompatActivity() {
         waypointsJson: String? = null
     ) {
         // 초기 화면에서 고른 길안내 엔진(카카오 / 네이버)에 맞는 안내 화면으로 연결한다.
-        val useNaver = GuideEngine.isNaver(this)
+        // 인터넷이 없고 폰에 오프라인 도로망이 있으면, 선택한 엔진과 상관없이 오프라인 길찾기를 쓰는 네이버 안내 화면으로 간다.
+        val offlineGuide = com.tmap.nda.naver.OfflineRouter.shouldUse(this) && GuideEngine.isNaver(this)
+        if (offlineGuide) {
+            Toast.makeText(this, "인터넷이 없어서 폰 안에서 길을 찾아요(오프라인)", Toast.LENGTH_LONG).show()
+            NavLogger.d(this, "[오프라인길찾기] 인터넷 없음 - 네이버 안내 화면 + 오프라인 길로 시작: $name")
+        }
+        val useNaver = offlineGuide || GuideEngine.isNaver(this)
         val nativeAppKey = getKakaoNativeAppKey()
         if (useNaver) {
-            if (!com.tmap.nda.naver.NaverDirectionsClient.hasKeys(this)) {
+            if (!offlineGuide && !com.tmap.nda.naver.NaverDirectionsClient.hasKeys(this)) {
                 Toast.makeText(this, "네이버 Key ID/Secret을 먼저 입력하세요.", Toast.LENGTH_LONG).show()
                 return
             }

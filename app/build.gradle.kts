@@ -23,8 +23,8 @@ android {
         applicationId = "com.tmap.nda"
         minSdk = 26
         targetSdk = 36
-        versionCode = 573
-        versionName = "19.4.63"
+        versionCode = 574
+        versionName = "19.4.64"
 
         // v: 재억 요청(2026-09-22) - 디스코드 웹훅 주소가 코드에 그대로 박혀 공개 저장소에
         // 커밋되면 스팸봇이 깃허브를 긁어서 찾아내 도배 → 디스코드가 웹훅을 자동 삭제하는
@@ -160,6 +160,9 @@ dependencies {
   val okhttpVersion = "4.11.0"
   implementation("com.squareup.okhttp3:okhttp:$okhttpVersion")
   implementation("com.squareup.okhttp3:logging-interceptor:$okhttpVersion")
+
+  // 오프라인 길찾기 시험용(Valhalla) - 폰에 받아둔 도로망 타일로 길을 계산
+  implementation("io.github.rallista:valhalla-mobile:0.6.4")
 
   val exoplayerVersion = "2.19.1"
   implementation("com.google.android.exoplayer:exoplayer:$exoplayerVersion")

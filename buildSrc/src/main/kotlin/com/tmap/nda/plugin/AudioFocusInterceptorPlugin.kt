@@ -48,6 +48,14 @@ abstract class AudioFocusInterceptorFactory : AsmClassVisitorFactory<Instrumenta
 }
 
 class AudioFocusClassVisitor(nextVisitor: ClassVisitor) : ClassVisitor(Opcodes.ASM9, nextVisitor) {
+    private var kakaoHttp = false
+
+    override fun visit(version: Int, access: Int, name: String, signature: String?, superName: String?, interfaces: Array<out String>?) {
+        // 카카오 SDK의 통신 클라이언트를 만드는 클래스(com.kakaomobility.knsdk.o.*)만 대상
+        kakaoHttp = name.startsWith("com/kakaomobility/knsdk/o/")
+        super.visit(version, access, name, signature, superName, interfaces)
+    }
+
     override fun visitMethod(
         access: Int,
         name: String,
@@ -56,11 +64,11 @@ class AudioFocusClassVisitor(nextVisitor: ClassVisitor) : ClassVisitor(Opcodes.A
         exceptions: Array<out String>?
     ): MethodVisitor {
         val mv = super.visitMethod(access, name, descriptor, signature, exceptions)
-        return AudioFocusMethodVisitor(mv)
+        return AudioFocusMethodVisitor(mv, kakaoHttp)
     }
 }
 
-class AudioFocusMethodVisitor(nextVisitor: MethodVisitor) : MethodVisitor(Opcodes.ASM9, nextVisitor) {
+class AudioFocusMethodVisitor(nextVisitor: MethodVisitor, private val kakaoHttp: Boolean = false) : MethodVisitor(Opcodes.ASM9, nextVisitor) {
     override fun visitMethodInsn(
         opcode: Int,
         owner: String,
@@ -68,6 +76,16 @@ class AudioFocusMethodVisitor(nextVisitor: MethodVisitor) : MethodVisitor(Opcode
         descriptor: String,
         isInterface: Boolean
     ) {
+        // 카카오 SDK 통신 클라이언트가 만들어지기 직전에 우리 중계 장치를 끼워 넣는다(KakaoHttpReplay.hook)
+        if (kakaoHttp && opcode == Opcodes.INVOKEVIRTUAL && owner == "okhttp3/OkHttpClient\$Builder" && name == "build") {
+            super.visitMethodInsn(
+                Opcodes.INVOKESTATIC,
+                "com/tmap/nda/KakaoHttpReplay",
+                "hook",
+                "(Lokhttp3/OkHttpClient\$Builder;)Lokhttp3/OkHttpClient\$Builder;",
+                false
+            )
+        }
         if (opcode == Opcodes.INVOKEVIRTUAL && owner == "android/media/AudioManager") {
             if (name == "requestAudioFocus" || name == "abandonAudioFocus" || name == "abandonAudioFocusRequest") {
                 // 원본 descriptor: (Landroid/media/AudioManager$OnAudioFocusChangeListener;II)I

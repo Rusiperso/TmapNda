@@ -1396,7 +1396,12 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         }
 
         binding.btnOpenSearch?.setOnClickListener {
-            startVoiceSearch()
+            // 인터넷이 없으면 음성인식(구글 서버)이 안 되니 글자 검색창을 바로 연다.
+            if (com.tmap.nda.naver.OfflineRouter.shouldUse(this) && com.tmap.nda.naver.OfflinePlaceSearch.available(this)) {
+                showInPlaceSearchDialog()
+            } else {
+                startVoiceSearch()
+            }
         }
         binding.btnOpenSearch?.setOnLongClickListener {
             showInPlaceSearchDialog()
@@ -3470,6 +3475,35 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
     }
 
     private fun performInPlaceSearch(query: String, page: Int = 1, accumulatedDocuments: MutableList<JSONObject> = mutableListOf()) {
+        if (page == 1) {
+            val (aLat, aLon) = resolveCurrentWgs84LatLonForSearch()
+            offlineAddrHits = com.tmap.nda.naver.OfflinePlaceSearch.addressHits(this, query, aLat, aLon)
+            // 1순위: 폰 안 자료(행안부 주소 + 장소 목록), 2순위: 온라인(티맵) 검색. 결과 목록에 폰 안 것이 위로, 티맵 것이 뒤로 합쳐진다.
+            // 폰 안에서 찾았으면 그 결과만 보여주고 티맵은 부르지 않는다. 못 찾았을 때만 티맵이 백업으로 나선다.
+            val local = com.tmap.nda.naver.OfflinePlaceSearch.localFirst(this, query, aLat, aLon)
+            if (local != null) {
+                if (com.tmap.nda.naver.OfflinePlaceSearch.hasExact(query, local)) {
+                    offlineAddrHits = emptyList()
+                    NavLogger.d(this, "[검색] 폰 안에 이름이 똑같은 곳 있음 - 티맵 검색 생략: $query")
+                    showInPlaceSearchResultsDialog(local)
+                    return
+                }
+                // 비슷한 것만 있으면 폰 안 결과를 위에 두고, 티맵 결과도 뒤에 붙인다.
+                offlineAddrHits = local
+                NavLogger.d(this, "[검색] 폰 안에 비슷한 곳 ${local.size}건만 있음 - 티맵도 같이 검색: $query")
+            }
+        }
+        // 인터넷이 없고 폰에 장소 목록이 있으면 서버 대신 폰 안의 목록에서 찾는다.
+        if (page == 1 && com.tmap.nda.naver.OfflineRouter.shouldUse(this) && com.tmap.nda.naver.OfflinePlaceSearch.available(this)) {
+            val (offLat, offLon) = resolveCurrentWgs84LatLonForSearch()
+            val offHits = com.tmap.nda.naver.OfflinePlaceSearch.search(this, query, offLat, offLon)
+            if (offHits.isEmpty()) {
+                Toast.makeText(this, "오프라인 목록에 '$query'이(가) 없어요", Toast.LENGTH_LONG).show()
+            } else {
+                showInPlaceSearchResultsDialog(offHits)
+            }
+            return
+        }
         val restKey = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             .getString("kakao_rest_api_key", "") ?: ""
         if (restKey.isBlank()) {
@@ -3512,7 +3546,19 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         searchHttpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 NavLogger.e(this@NaverNaviActivity, "인라인 재검색 실패: ${e.message}")
-                runOnUiThread { Toast.makeText(this@NaverNaviActivity, "검색 실패: ${e.message}", Toast.LENGTH_SHORT).show() }
+                // 티맵 검색이 안 되면(인터넷이 약하거나 끊김) 폰 안의 장소 목록으로 대신 찾는다.
+                val offFallback = if (com.tmap.nda.naver.OfflinePlaceSearch.available(this@NaverNaviActivity)) {
+                    val (fLat, fLon) = resolveCurrentWgs84LatLonForSearch()
+                    com.tmap.nda.naver.OfflinePlaceSearch.search(this@NaverNaviActivity, query, fLat, fLon)
+                } else emptyList()
+                runOnUiThread {
+                    if (offFallback.isNotEmpty()) {
+                        Toast.makeText(this@NaverNaviActivity, "검색이 안 돼서 폰 안의 목록으로 찾았어요", Toast.LENGTH_SHORT).show()
+                        showInPlaceSearchResultsDialog(offFallback)
+                    } else {
+                        Toast.makeText(this@NaverNaviActivity, "검색 실패: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
 
             override fun onResponse(call: Call, response: okhttp3.Response) {
@@ -3599,7 +3645,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
                     val json = JSONObject(it.body?.string() ?: "{}")
                     val documents = json.optJSONArray("documents")
                     if (documents == null || documents.length() == 0) {
-                        runOnUiThread { Toast.makeText(this@NaverNaviActivity, "검색 결과 없음", Toast.LENGTH_SHORT).show() }
+                        runOnUiThread { if (offlineAddrHits.isNotEmpty()) showInPlaceSearchResultsDialog(offlineAddrHits) else Toast.makeText(this@NaverNaviActivity, "검색 결과 없음", Toast.LENGTH_SHORT).show() }
                         return@use
                     }
                     val hits = (0 until documents.length()).map { idx ->
@@ -3632,21 +3678,21 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         searchHttpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 NavLogger.e(this@NaverNaviActivity, "카카오 주소검색 요청 실패: ${e.message}")
-                runOnUiThread { Toast.makeText(this@NaverNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
+                runOnUiThread { if (offlineAddrHits.isNotEmpty()) showInPlaceSearchResultsDialog(offlineAddrHits) else Toast.makeText(this@NaverNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
             }
 
             override fun onResponse(call: Call, response: okhttp3.Response) {
                 response.use {
                     if (!it.isSuccessful) {
                         NavLogger.e(this@NaverNaviActivity, "카카오 주소검색 실패 code=${it.code}")
-                        runOnUiThread { Toast.makeText(this@NaverNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
+                        runOnUiThread { if (offlineAddrHits.isNotEmpty()) showInPlaceSearchResultsDialog(offlineAddrHits) else Toast.makeText(this@NaverNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
                         return@use
                     }
                     val json = JSONObject(it.body?.string() ?: "{}")
                     val documents = json.optJSONArray("documents")
                     if (documents == null || documents.length() == 0) {
                         NavLogger.d(this@NaverNaviActivity, "카카오 주소검색도 결과 없음: query=$query")
-                        runOnUiThread { Toast.makeText(this@NaverNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
+                        runOnUiThread { if (offlineAddrHits.isNotEmpty()) showInPlaceSearchResultsDialog(offlineAddrHits) else Toast.makeText(this@NaverNaviActivity, "검색 결과 없음: $query", Toast.LENGTH_SHORT).show() }
                         return@use
                     }
                     val hits = (0 until documents.length()).map { idx ->
@@ -3668,7 +3714,11 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
 
     // v11.2: MapActivity와 동일 - 10개씩 페이지로 끊어서 보여주고 "이전/다음/취소" 버튼으로
     // 넘기도록 함(재억 요청). #문제시 원복
-    private fun showInPlaceSearchResultsDialog(hits: List<HistoryEntry>) {
+    // 온라인 검색 결과에 폰 안 도로명주소 결과를 보탠다(번지 주소가 온라인에서 안 나오는 문제 보완).
+    private var offlineAddrHits: List<HistoryEntry> = emptyList()
+
+    private fun showInPlaceSearchResultsDialog(onlineHits: List<HistoryEntry>) {
+        val hits = com.tmap.nda.naver.OfflinePlaceSearch.mergeAddress(offlineAddrHits, onlineHits)
         val pageSize = 10
         var currentPage = 0
         val lastPage = (hits.size - 1) / pageSize
