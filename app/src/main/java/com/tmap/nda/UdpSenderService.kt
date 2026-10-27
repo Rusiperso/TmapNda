@@ -294,6 +294,7 @@ class UdpSenderService : Service() {
     // 카메라 영향을 받는 이 값과 별개로, 순수 "도로 기본 제한속도"만 추적하는
     // generalRoadLimitSpeed를 새로 둬서 SdiDataRepository/알람 쪽엔 이걸로만 전달. #문제시 원복
     private var roadLimitSpeed = 0
+    private var lastTbtCompLogAt = 0L
     private var generalRoadLimitSpeed = 0
     // v4.2: roadLimitSpeed가 한 번 값이 들어오면(30 이상) 절대 안 낮아지는 버그 수정용 -
     // 마지막으로 유효한 값을 받은 시각. #문제시 원복
@@ -1342,7 +1343,22 @@ class UdpSenderService : Service() {
                             json.put("nGoPosDist", kr.remainDist)
                             json.put("nGoPosTime", lastValidKakaoGoPosTime)
                         }
-                        val kakaoTbtDist = if (kr.tbtDist > 0) kr.tbtDist else 9999
+                        // 2026-10-26: 카카오가 거리를 알려준 뒤 지금까지 차가 간 만큼 빼서 보냄(최대 2초). 콤마는 새 값이 올 때마다
+                        // 자기가 줄여둔 거리를 이 값으로 덮어써서, 값이 묵으면 회전·차선변경 안내가 늦어짐. 자동 길안내 주행 켠 때만. #문제시 원복
+                        var kakaoTbtDist = if (kr.tbtDist > 0) kr.tbtDist else 9999
+                        if (kr.tbtDist > 0 && kr.tbtDistAt > 0 &&
+                            getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("auto_navi_drive_enabled", false)
+                        ) {
+                            val nowMs = System.currentTimeMillis()
+                            val ageMs = (nowMs - kr.tbtDistAt).coerceIn(0L, 2000L)
+                            val speedMs = (OpenpilotStateRepository.freshVehicleSpeedMs() ?: 0.0).coerceIn(0.0, 45.0)
+                            val compM = (speedMs * ageMs / 1000.0).toInt()
+                            kakaoTbtDist = (kr.tbtDist - compM).coerceAtLeast(1)
+                            if (nowMs - lastTbtCompLogAt > 3000L && kr.tbtDist < 1500) {
+                                lastTbtCompLogAt = nowMs
+                                NavLogger.d(this@UdpSenderService, "[TBT보정] 카카오값=${kr.tbtDist}m ${ageMs}ms 묵음 차속=${(speedMs * 3.6).toInt()}km/h -> ${compM}m 빼서 ${kakaoTbtDist}m 전송")
+                            }
+                        }
                         json.put("nTBTDist", kakaoTbtDist)
                         // 2026-10-09: 시내(80 미만) 갈림길 제외는 빼기로 함(콤마가 80 미만에서도 차선변경함). 코드 그대로 전송.
                         json.put("nTBTTurnType", kr.tbtTurnType)

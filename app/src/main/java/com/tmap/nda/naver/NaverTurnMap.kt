@@ -31,13 +31,35 @@ object NaverTurnMap {
     }
 
     /**
-     * 콤마로 내보낼 회전 코드. "자동 길안내 주행(시험)"이 꺼져 있으면 도시고속도로 진출은 갈림길로 내보내지 않는다
-     * (카카오의 도시고속도로 진출 처리와 같은 규칙). 화면에 그리는 화살표는 [toOpenpilotCode]를 그대로 쓴다.
+     * 콤마로 내보낼 회전 코드. 카카오(KakaoGuidanceDelegate.mapKakaoTurnTypeToOpenpilot)와 같은 규칙으로 맞춘다:
+     * 좌/우회전·유턴·직진·도착, 좌/우 분기(7/6), 고속도로 진출 램프(102/101), 톨게이트(153)만 내보내고
+     * 도시고속도로 진출·본선 합류는 "자동 길안내 주행(시험)"이 켜졌을 때만 갈림길로 내보낸다.
+     * 카카오가 안 내보내는 고속·고가·지하 "진입"은 51(무안내)로 둔다(예전엔 분기로 나가 엉뚱한 차선변경 후보가 됐음).
+     * 화면에 그리는 화살표는 [toOpenpilotCode]를 그대로 쓴다.
      */
-    fun toCommaCode(type: Int, autoDrive: Boolean): Int = when {
-        isRotary(type) -> rotaryCommaCode(type)
-        !autoDrive && (type == 60 || type == 69) -> NONE
-        else -> toOpenpilotCode(type)
+    fun toCommaCode(type: Int, autoDrive: Boolean): Int {
+        if (isRotary(type)) return rotaryCommaCode(type)
+        return when (type) {
+            81 -> if (autoDrive) 7 else NONE      // 좌측 본선 합류 = 카카오 ChangeLeftHighway
+            82 -> if (autoDrive) 6 else NONE
+            53, 60, 69 -> when (type) {           // 도시고속도로 진출 = 카카오 OutCityway 계열
+                60 -> if (autoDrive) 102 else NONE
+                else -> if (autoDrive) 101 else NONE
+            }
+            else -> when (clusterName(type)) {
+                "KNRGCode_Straight" -> 11
+                "KNRGCode_LeftTurn" -> 12
+                "KNRGCode_RightTurn" -> 13
+                "KNRGCode_UTurn" -> 14
+                "KNRGCode_Goal" -> 201
+                "KNRGCode_LeftDirection" -> 7
+                "KNRGCode_RightDirection" -> 6
+                "KNRGCode_LeftOutHighway" -> 102
+                "KNRGCode_RightOutHighway", "KNRGCode_OutHighway" -> 101
+                "KNRGCode_Tollgate" -> 153
+                else -> NONE
+            }
+        }
     }
 
     // ===== 로터리(21~34)·회전교차로(91~104) =====

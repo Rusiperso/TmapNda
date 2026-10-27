@@ -1066,6 +1066,7 @@ class KakaoGuidanceDelegate(
             KakaoRouteDataRepository.isActive = true
             KakaoRouteDataRepository.lastUpdateTime = System.currentTimeMillis()
             KakaoRouteDataRepository.tbtDist = nextTbtDist
+            KakaoRouteDataRepository.tbtDistAt = System.currentTimeMillis()
             KakaoRouteDataRepository.tbtTurnType = mapKakaoTurnTypeToOpenpilot(turnTypeRaw, directionAngleNow)
             KakaoRouteDataRepository.tbtMainText = roadNameNow ?: ""
             // 리플렉션으로 값을 찾지 못해 0이 나온 경우,

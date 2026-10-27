@@ -52,6 +52,8 @@ object KakaoRouteDataRepository {
 
     // 다음 안내지점(회전 등)까지 거리(m), openpilot nTBTTurnType 코드로 변환된 회전타입
     @Volatile var tbtDist: Int = 0
+    /** tbtDist를 카카오에서 마지막으로 받은 시각(ms). 콤마로 보낼 때 그동안 간 거리를 빼는 데 쓴다. */
+    @Volatile var tbtDistAt: Long = 0L
     @Volatile var tbtTurnType: Int = 0
     @Volatile var tbtMainText: String = ""
     // 콤마 카드의 방면·방향 줄("서분당IC 방면 우회전", "회전교차로 오른쪽 3시 방향"). 네이버 안내만 채우고 카카오는 빈 값.
@@ -186,6 +188,7 @@ object KakaoRouteDataRepository {
         lastUpdateTime = System.currentTimeMillis()
 
         this.tbtDist = tbtDist.coerceAtLeast(0)
+        this.tbtDistAt = System.currentTimeMillis()   // 카카오·네이버 공통: 콤마로 보낼 때 묵은 만큼 거리를 빼는 데 씀
         this.tbtMainText = tbtMainText
         this.tbtDirText = tbtDirText
         this.remainDist = remainDist.coerceAtLeast(0)
