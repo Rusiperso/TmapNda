@@ -269,7 +269,7 @@ private fun wgsToKatec(lon: Double, lat: Double): DoubleArray {
 }
 
 /** 카텍 → 위경도. 반환은 [경도, 위도]. */
-private fun katecToWgs(x: Double, y: Double): DoubleArray {
+internal fun katecToWgs(x: Double, y: Double): DoubleArray {
     val p = katecClass.getMethod("KATECToWGS84", Double::class.javaPrimitiveType, Double::class.javaPrimitiveType).invoke(null, x, y)!!
     return doubleArrayOf(p.javaClass.getMethod("getX").invoke(p) as Double, p.javaClass.getMethod("getY").invoke(p) as Double)
 }

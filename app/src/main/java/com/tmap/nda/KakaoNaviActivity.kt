@@ -713,6 +713,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             KNRoutePriority.KNRoutePriority_Recommand,
             KNRouteAvoidOption.KNRouteAvoidOption_None.value
         )
+        installMapTapPrompt(0)
         // v: 재억 제보 - "고정/이동식/구간단속 카메라 근처에서 10% 안 넘었는데도 계속
         // 경고음이 운다"는 건 우리 코드가 아니라 카카오 SDK 자체 판단 함수
         // (KNGuidance.judgeOverSpeedAlert, initWithGuidance가 내부적으로 등록)가 화면에
@@ -3206,6 +3207,53 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     // "여기 맞아?" 확인할 수 있게 함. 카카오 SDK(KNMapView)가 addMarker/moveCamera를
     // 공개 API로 제공해서 가능(aar 안에서 확인). 좌표는 다른 곳과 동일하게
     // KNSDK.convertWGS84ToKATEC로 변환. #문제시 원복
+    /**
+     * 지도를 한 번 터치하면 "여기로 길 안내 할까요?" 하고 묻는다. SDK가 이미 달아 둔 지도 이벤트 처리는 그대로 두고
+     * (모든 이벤트를 원래 것에 먼저 넘기고) 한 번 터치만 얹는다. 지도가 아직 준비 안 됐으면 0.3초마다 다시 시도.
+     */
+    private fun installMapTapPrompt(tries: Int) {
+        if (isFinishing || isDestroyed) return
+        val mapView = try { naviView.mapComponent.mapView } catch (e: Throwable) { null }
+        if (mapView == null) {
+            if (tries < 30) naviView.postDelayed({ installMapTapPrompt(tries + 1) }, 300L)
+            return
+        }
+        try {
+            val orig = mapView.mapViewEventListener
+            val proxy = java.lang.reflect.Proxy.newProxyInstance(
+                com.kakaomobility.knsdk.map.knmapview.idl.KNMapViewEventListener::class.java.classLoader,
+                arrayOf(com.kakaomobility.knsdk.map.knmapview.idl.KNMapViewEventListener::class.java)
+            ) { self, method, args ->
+                // equals/hashCode/toString은 여기서 직접 처리한다(원래 처리기에 넘기면 SDK 안에서 서로 부르다 무한 반복됨).
+                when (method.name) {
+                    "equals" -> return@newProxyInstance self === args?.getOrNull(0)
+                    "hashCode" -> return@newProxyInstance System.identityHashCode(self)
+                    "toString" -> return@newProxyInstance "MapTapProxy"
+                }
+                val result = try {
+                    if (orig != null) method.invoke(orig, *(args ?: emptyArray())) else null
+                } catch (e: java.lang.reflect.InvocationTargetException) { throw e.targetException }
+                if (method.name == "onSingleTapped" && args != null && args.size >= 3) {
+                    val katec = args[2] as? FloatPoint
+                    if (katec != null) {
+                        val w = katecToWgs(katec.x.toDouble(), katec.y.toDouble())
+                        runOnUiThread {
+                            com.tmap.nda.naver.MapTapPrompt.ask(this, w[1], w[0],
+                                onAddWaypoint = if (isGuidanceRunningNow()) ({ e -> addWaypointToActiveGuidance(e) }) else null,
+                onRemoveWaypoint = if (isGuidanceRunningNow() && activeWaypoints.isNotEmpty()) ({ binding.btnCancelWaypoint?.performClick(); Unit }) else null
+                            ) { showRoutePriorityDialog(it) }
+                        }
+                    }
+                }
+                result
+            } as com.kakaomobility.knsdk.map.knmapview.idl.KNMapViewEventListener
+            mapView.mapViewEventListener = proxy
+            NavLogger.d(this, "[지도터치] 카카오 지도 터치 질문 연결됨(기존 처리기=${orig != null})")
+        } catch (e: Throwable) {
+            NavLogger.e(this, "[지도터치] 카카오 지도 연결 실패: ${e.javaClass.simpleName} ${e.message}")
+        }
+    }
+
     private fun showDestinationPinOnMap(lat: Double, lon: Double) {
         try {
             val mapView = naviView.mapComponent.mapView ?: return

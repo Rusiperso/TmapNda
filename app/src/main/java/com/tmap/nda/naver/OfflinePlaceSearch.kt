@@ -69,6 +69,36 @@ object OfflinePlaceSearch {
         return hits.any { it.name.replace(" ", "").equals(q, true) }
     }
 
+    /**
+     * 지도에서 찍은 자리 주변(약 60m)에서 가장 가까운 행안부 건물 주소를 찾는다. 네트워크 없이 폰 안 자료만 쓰며 1~2초 걸릴 수 있어서
+     * 백그라운드 스레드에서 불러야 한다. 못 찾으면 null.
+     */
+    fun nearestAddress(context: Context, lat: Double, lon: Double): HistoryEntry? {
+        val d = juso(context) ?: return null
+        val dLat = 0.00055; val dLon = 0.0007
+        return try {
+            var best: HistoryEntry? = null; var bestDist = Double.MAX_VALUE
+            d.rawQuery(
+                "SELECT r.name, r.area, b.main, b.sub, b.ug, b.lat, b.lon FROM bld b JOIN road r ON r.id = b.road " +
+                    "WHERE b.lat BETWEEN ? AND ? AND b.lon BETWEEN ? AND ? LIMIT 400",
+                arrayOf(((lat - dLat) * 1e6).toLong().toString(), ((lat + dLat) * 1e6).toLong().toString(),
+                    ((lon - dLon) * 1e6).toLong().toString(), ((lon + dLon) * 1e6).toLong().toString())
+            ).use { c ->
+                while (c.moveToNext()) {
+                    val la = c.getInt(5) / 1e6; val lo = c.getInt(6) / 1e6
+                    val dist = approxMeters(lat, lon, la, lo)
+                    if (dist < bestDist) {
+                        bestDist = dist
+                        val m = c.getInt(2); val s = c.getInt(3)
+                        best = HistoryEntry(c.getString(0) + " " + (if (c.getInt(4) == 1) "지하 " else "") + m + (if (s > 0) "-$s" else ""),
+                            c.getString(1), la, lo)
+                    }
+                }
+            }
+            best
+        } catch (e: Throwable) { null }
+    }
+
     /** 도로명+번호처럼 보이는 검색어일 때 폰 안 주소 자료에서 찾은 결과(없거나 주소 자료가 없으면 빈 목록). 온라인 검색에 보태 쓴다. */
     fun addressHits(context: Context, query: String, lat: Double?, lon: Double?): List<HistoryEntry> {
         val q = query.trim()

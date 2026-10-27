@@ -480,6 +480,15 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         // 지도: 카카오 지도 대신 네이버 지도를 이 자리에 넣는다(UI는 그대로).
         naverMap = NaverMapController(this, binding.naviView)
         naverMap.init(NaverDirectionsClient.keyId(this), null) { }
+        // 지도를 한 번 터치하면 "여기로 길 안내 할까요?" 하고 묻는다.
+        naverMap.whenReady { nm ->
+            nm.setOnMapClickListener { _, latLng ->
+                com.tmap.nda.naver.MapTapPrompt.ask(this, latLng.latitude, latLng.longitude,
+                    onAddWaypoint = if (isGuidanceRunningNow()) ({ e -> addWaypointToActiveGuidance(e) }) else null,
+                onRemoveWaypoint = if (isGuidanceRunningNow() && activeWaypoints.isNotEmpty()) ({ binding.btnCancelWaypoint?.performClick(); Unit }) else null
+                ) { showRoutePriorityDialog(it) }
+            }
+        }
         applyNaverSatellite()
         guideOverlay = com.tmap.nda.naver.NaverGuideOverlay(this, binding.root)
         guideOverlay.pausedProvider = { ::naverMap.isInitialized && System.currentTimeMillis() < naverMap.followPausedUntil }

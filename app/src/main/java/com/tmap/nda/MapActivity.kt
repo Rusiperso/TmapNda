@@ -782,6 +782,46 @@ class MapActivity : AppCompatActivity() {
     private var offlineStartupDone = false
 
     /**
+     * 첫 화면 티맵 지도를 한 번 터치하면 "여기로 길 안내 할까요?" 하고 묻는다. 지도 터치 잠금이 풀려 있을 때(설정의 "잠금 해제")만 터치가 지도에 닿는다.
+     * 지도가 아직 안 만들어졌으면 1초마다 다시 시도(최대 12번).
+     */
+    private fun installTmapMapTapPrompt(tries: Int) {
+        if (isFinishing || isDestroyed) return
+        val frag = navigationFragment
+        val ready = try { frag?.javaClass?.methods?.firstOrNull { it.name == "getMapView" && it.parameterCount == 0 }?.invoke(frag) != null } catch (e: Throwable) { false }
+        if (!ready) {
+            if (tries < 12) android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ installTmapMapTapPrompt(tries + 1) }, 1000L)
+            return
+        }
+        try {
+            val listenerClass = Class.forName("com.skt.tmap.vsm.map.MapEngine\$OnHitObjectListener")
+            val proxy = java.lang.reflect.Proxy.newProxyInstance(listenerClass.classLoader, arrayOf(listenerClass)) { self, method, args ->
+                when (method.name) {
+                    "equals" -> return@newProxyInstance self === args?.getOrNull(0)
+                    "hashCode" -> return@newProxyInstance System.identityHashCode(self)
+                    "toString" -> return@newProxyInstance "MapTapProxy"
+                }
+                // 맨땅(None)과 장소 아이콘(POI)을 누른 경우 둘 다 그 자리를 목적지 후보로 본다.
+                val point = args?.firstOrNull { it != null && it.javaClass.name == "com.skt.tmap.vsm.data.VSMMapPoint" }
+                if (point != null && (method.name == "OnHitObjectNone" || method.name == "OnHitObjectPOI")) {
+                    val lat = point.javaClass.getMethod("getLatitude").invoke(point) as Double
+                    val lon = point.javaClass.getMethod("getLongitude").invoke(point) as Double
+                    runOnUiThread {
+                        com.tmap.nda.naver.MapTapPrompt.ask(this, lat, lon) { showRoutePriorityDialog(it) }
+                    }
+                }
+                false
+            }
+            val calloutClass = Class.forName("com.skt.tmap.vsm.map.MapEngine\$OnHitCalloutPopupListener")
+            val m = frag!!.javaClass.methods.first { it.name == "setHitEventListener" && it.parameterCount == 2 }
+            m.invoke(frag, proxy, null)
+            NavLogger.d(this, "[지도터치] 티맵 지도 터치 질문 연결됨")
+        } catch (e: Throwable) {
+            NavLogger.e(this, "[지도터치] 티맵 지도 연결 실패: ${e.javaClass.simpleName} ${e.message}")
+        }
+    }
+
+    /**
      * 티맵 SDK가 안 켜질 때(인터넷이 없으면 인증을 못 받음) 화면이 검게 멈추고 버튼이 안 눌리던 문제 대응.
      * 상단 버튼 연결, 콤마 통신, 카카오/네이버 안내 준비는 티맵 SDK와 상관없이 돌 수 있어서 따로 시작한다.
      */
@@ -832,6 +872,7 @@ class MapActivity : AppCompatActivity() {
                     // 실제 무거운 작업은 백그라운드 스레드로 넘기고, 값 1회만 받고 끝내도록 재작성. #문제시 원복
                     setupObservableLaneDataDump()
                     setupTrafficSignalProbe()
+                    installTmapMapTapPrompt(0)
                     initKakaoSdkAndShowIdleMap()
                 }
             }
