@@ -1257,7 +1257,7 @@ object PanelDragHelper {
         // (옵션 값은 같은 저장 위치를 그대로 쓴다).
         val engineItems: List<View> = if (naverSelected) {
             ArrayList<View>().apply {
-                add(naverSatelliteViewCheckBox); add(naverTrafficCheckBox); add(naverFlatCheckBox); add(naverMinimalGuideCheckBox)
+                add(naverSatelliteViewCheckBox); add(naverTrafficCheckBox); add(naverFlatCheckBox); add(naverMinimalGuideCheckBox); add(routeLineDisplayCheckBox)
                 addAll(naverVoiceItems)
             }
         } else {

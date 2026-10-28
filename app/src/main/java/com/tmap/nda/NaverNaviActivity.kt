@@ -506,6 +506,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
                     com.tmap.nda.naver.NaverMenuSheet.KEY_ROUTE_TRAFFIC_COLOR -> naverMap.redrawActiveRoute()
                     com.tmap.nda.naver.NaverMenuSheet.KEY_TURN_SIGN -> naverMap.clearTurnSign()
                     com.tmap.nda.naver.NaverMenuSheet.KEY_MINIMAL -> {}
+                    com.tmap.nda.naver.NaverMenuSheet.KEY_ROUTE_LINE -> {}
                     else -> applyNaverSatellite()
                 }
             }
