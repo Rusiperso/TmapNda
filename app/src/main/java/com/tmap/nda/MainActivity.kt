@@ -170,6 +170,15 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         NavLogger.appContext = applicationContext
+        // v19.4.68: 로그를 받았을 때 어느 기기 것인지 알 수 있게, 앱이 켜질 때 설치 번호·닉네임·모델을 한 줄 남김. #문제시 원복
+        try {
+            NavLogger.d(
+                applicationContext,
+                "[기기] 설치ID=${DiscordReporter.installId(applicationContext)} " +
+                    "닉네임=${DiscordReporter.getNickname(applicationContext).ifBlank { "(미입력)" }} " +
+                    "모델=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+            )
+        } catch (_: Exception) { }
         TmapSearchKey.ensure(applicationContext)
         NavLogger.deleteLogsOlderThan3Days(applicationContext)
         // v: 재억 요청(2026-09-15) - 실사용자가 몇 명인지 대략이라도 알 수 있게, 하루 한 번
