@@ -505,6 +505,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
                     com.tmap.nda.naver.NaverMenuSheet.KEY_DAYNIGHT -> applyKakaoDayNight()
                     com.tmap.nda.naver.NaverMenuSheet.KEY_ROUTE_TRAFFIC_COLOR -> naverMap.redrawActiveRoute()
                     com.tmap.nda.naver.NaverMenuSheet.KEY_TURN_SIGN -> naverMap.clearTurnSign()
+                    IncidentRepository.PREF_KEY, IncidentRepository.PREF_CENTER, IncidentRepository.PREF_CAR -> IncidentRepository.refreshNow()
                     com.tmap.nda.naver.NaverMenuSheet.KEY_MINIMAL -> {}
                     com.tmap.nda.naver.NaverMenuSheet.KEY_ROUTE_LINE -> {}
                     else -> applyNaverSatellite()
@@ -1012,7 +1013,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
                 binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_green)
             } else {
                 binding.tvConnectionStatus?.text = "Comma 연결 대기"
-                binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#555555"))
+                binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#C8C8C8"))
                 binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_gray)
             }
         }
@@ -1032,7 +1033,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
                 }
                 else -> {
                     binding.tvActiveStatus?.text = "Cruise Off"
-                    binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#555555"))
+                    binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#C8C8C8"))
                 }
             }
             updateConnectionUi()
@@ -1924,7 +1925,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
             }
             if (registeredEntry == null) {
                 etaText.text = "미등록"
-                etaText.setTextColor(android.graphics.Color.parseColor("#555555"))
+                etaText.setTextColor(android.graphics.Color.parseColor("#C8C8C8"))
                 etaText.textSize = 9f
             }
             val container = android.widget.LinearLayout(this).apply {
@@ -2756,7 +2757,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
                     tv.setTypeface(null, android.graphics.Typeface.BOLD)
                 } else {
                     bg.setColor(android.graphics.Color.parseColor("#14FFFFFF"))
-                    tv.setTextColor(android.graphics.Color.parseColor("#CCCCCC"))
+                    tv.setTextColor(android.graphics.Color.parseColor("#E6E6E6"))
                     tv.setTypeface(null, android.graphics.Typeface.NORMAL)
                 }
             }
@@ -2818,7 +2819,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         if (picked.addr.isNotBlank()) {
             card.addView(android.widget.TextView(this).apply {
                 text = picked.addr
-                setTextColor(android.graphics.Color.parseColor("#BBBBBB"))
+                setTextColor(android.graphics.Color.parseColor("#E0E0E0"))
                 textSize = 12f
                 setPadding(0, dp(2), 0, dp(14))
             })
@@ -3253,7 +3254,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         val input = android.widget.EditText(this).apply {
             hint = "목적지를 입력하세요 (예: 서울역)"
             setTextColor(android.graphics.Color.WHITE)
-            setHintTextColor(android.graphics.Color.parseColor("#AAAAAA"))
+            setHintTextColor(android.graphics.Color.parseColor("#C8C8C8"))
         }
         android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
             .setTitle(if (pendingWaypointAddition) "경유지 검색" else "목적지 재검색")
@@ -3460,11 +3461,12 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         val enabled = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             .getBoolean("topbar_event_enabled", true)
         if (!enabled || typeName == null) {
-            binding.tvTopBarEvent?.visibility = View.GONE
-            binding.ivTopBarEvent?.visibility = View.GONE
+            topBarCameraActive = false
+            refreshTopBarIncident()
             return
         }
-        binding.tvTopBarEvent?.text = "$typeName $distText"
+        topBarCameraActive = true
+        topBarCameraText = "$typeName $distText"
         binding.tvTopBarEvent?.visibility = View.VISIBLE
         if (iconRes != null) {
             binding.ivTopBarEvent?.setImageResource(iconRes)
@@ -3472,12 +3474,70 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         } else {
             binding.ivTopBarEvent?.visibility = View.GONE
         }
+        refreshTopBarIncident()
+    }
+
+    // "돌발상황 상단바에 표시"를 켠 경우에만, 상단바 맨 오른쪽 이벤트 자리에 돌발상황("2.4km 앞 사고발생!")을 보여준다.
+    // 카메라·어린이보호구역 같은 이벤트가 같이 있으면 그 문구 뒤에 이어 붙여 한 줄로 같이 띄운다. #문제시 원복
+    private var topBarCameraActive = false
+    private var topBarCameraText = ""
+    private fun refreshTopBarIncident() {
+        val prefs = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        val enabled = prefs.getBoolean("topbar_event_enabled", true)
+        val incident = if (enabled && IncidentRepository.isTopBar(this) && AccidentAlertRepository.incidentVisible)
+            AccidentAlertRepository.incidentTitle else null
+        if (topBarCameraActive) {
+            binding.tvTopBarEvent?.text = if (incident != null) "$topBarCameraText · $incident" else topBarCameraText
+            return
+        }
+        binding.ivTopBarEvent?.visibility = View.GONE
+        if (incident != null) {
+            binding.tvTopBarEvent?.text = incident
+            binding.tvTopBarEvent?.visibility = View.VISIBLE
+        } else {
+            binding.tvTopBarEvent?.visibility = View.GONE
+        }
     }
 
     // v9.5: 검색 결과 거리순 정렬용 현재 위치(WGS84 위도/경도) 조회.
     // resolveCurrentPositionThenRequestRoute()와 동일한 우선순위(KNSDK GPS →
     // 시스템 LocationManager)로 재사용하되, KNSDK GPS는 KATEC 좌표라 역변환
     // 함수가 없어 검색용으론 LocationManager 값만 사용. #문제시 원복
+    // 돌발상황(사고·공사·기상) 표시: 서버에서 받은 목록이 바뀔 때마다 네이버 지도에 마커를 다시 찍는다. #문제시 원복
+    private val incidentListener = object : IncidentRepository.Listener {
+        override fun onIncidentsChanged(list: List<IncidentRepository.Incident>) {
+            if (!::naverMap.isInitialized) return
+            naverMap.setIncidents(list) { inc -> showIncidentToast(inc) }
+        }
+    }
+
+    private fun showIncidentToast(inc: IncidentRepository.Incident) {
+        val head = buildString {
+            append(IncidentRepository.typeName(inc.type))
+            if (inc.road.isNotEmpty()) append(" · ").append(inc.road)
+            if (inc.dir.isNotEmpty()) append(" ").append(inc.dir)
+        }
+        val tail = listOf(inc.lanes, inc.message).filter { it.isNotEmpty() }.joinToString("\n")
+        Toast.makeText(this, if (tail.isEmpty()) head else "$head\n$tail", Toast.LENGTH_LONG).show()
+    }
+
+    private fun startIncidents() {
+        try {
+            IncidentRepository.addListener(incidentListener)
+            incidentListener.onIncidentsChanged(IncidentRepository.items)
+            IncidentRepository.alertCallback = { text -> IncidentAlertPopup.show(this, binding.root as ViewGroup, text) }
+            IncidentRepository.start(this, this) {
+                val (a, b) = resolveCurrentWgs84LatLonForSearch()
+                if (a != null && b != null) {
+                    val fix = NaverNavigator.currentFix()
+                    Triple(a, b, if (fix != null && fix.hasBearing()) fix.bearing else null)
+                } else null
+            }
+        } catch (e: Throwable) {
+            NavLogger.e(this, "[돌발] 네이버 시작 실패: ${e.message}")
+        }
+    }
+
     private fun resolveCurrentWgs84LatLonForSearch(): Pair<Double?, Double?> {
         // 안내 엔진이 받고 있는 최신 위치를 우선 쓰고, 없으면 최근 2분 안의 위치만 쓴다(몇 주 전 위치는 버림).
         val loc = NaverNavigator.currentFix() ?: com.tmap.nda.naver.FreshLocation.lastFresh(this)
@@ -4126,6 +4186,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         super.onResume()
         if (::naverMap.isInitialized) naverMap.onResume()
         NavLogger.d(this, "[lifecycle] onResume")
+        startIncidents()
         // v: 재억 제보(2026-09-02) - 티맵 화면에서 즐겨찾기를 눌러 "경유지 추가"를 고른 경우,
         // 그쪽엔 경로를 다시 짜는 코드가 없어서 요청만 남기고 화면을 닫음. 이 화면이 다시
         // 올라오는 지금 그걸 집어서 실제 경유지 추가를 수행. #문제시 원복
@@ -4169,6 +4230,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         LaneSignalRepository.notifyChanged()
         AccidentAlertRepository.activeRenderer = {
             renderAlertBanners(this@NaverNaviActivity, binding.llAccidentAlert, binding.tvAccidentAlert, binding.llEmergencyAlert, binding.tvEmergencyAlert)
+            refreshTopBarIncident()
         }
         EmergencyAlertRepository.activeRenderer = AccidentAlertRepository.activeRenderer
         AccidentAlertRepository.notifyChanged()
@@ -4201,6 +4263,8 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         if (::naverMap.isInitialized) naverMap.onPause()
         super.onPause()
         NavLogger.d(this, "[lifecycle] onPause")
+        IncidentRepository.stop(this)
+        IncidentRepository.removeListener(incidentListener)
         LaneSignalRepository.activeRenderer = null
         AccidentAlertRepository.activeRenderer = null
         EmergencyAlertRepository.activeRenderer = null

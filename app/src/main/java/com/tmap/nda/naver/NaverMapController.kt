@@ -295,6 +295,26 @@ class NaverMapController(private val activity: Activity, private val host: Frame
         }
     }
 
+    /** 돌발상황(사고·공사·기상) 표시. 목록이 바뀔 때마다 통째로 다시 찍고, 누르면 onTap으로 알린다. */
+    private val incidentMarkers = ArrayList<Marker>()
+    private val incidentIcons = HashMap<String, OverlayImage>()
+    fun setIncidents(list: List<com.tmap.nda.IncidentRepository.Incident>, onTap: (com.tmap.nda.IncidentRepository.Incident) -> Unit) = whenReady { m ->
+        for (mk in incidentMarkers) mk.map = null
+        incidentMarkers.clear()
+        for (inc in list) {
+            val icon = incidentIcons.getOrPut(inc.type) { OverlayImage.fromBitmap(com.tmap.nda.IncidentIcons.bitmap(inc.type, dp(36))) }
+            incidentMarkers.add(Marker().apply {
+                position = LatLng(inc.lat, inc.lon)
+                this.icon = icon
+                width = dp(36); height = dp(36)
+                isForceShowIcon = true
+                zIndex = 70
+                setOnClickListener { onTap(inc); true }
+                this.map = m
+            })
+        }
+    }
+
     fun clearTurnSign() { turnSign?.map = null; turnSign = null; turnSignKey = null }
 
     fun clearDestination() { clearTurnSign(); destMarker?.map = null; destMarker = null }

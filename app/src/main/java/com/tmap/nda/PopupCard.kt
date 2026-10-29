@@ -434,7 +434,7 @@ object PopupCard {
         }
         private val titleHolder = FrameLayout(activity)
         private val versionView = TextView(activity).apply {
-            setTextColor(Color.parseColor("#8E8E93"))
+            setTextColor(Color.parseColor("#C8C8C8"))
             textSize = 11f
         }
         private val body = FrameLayout(activity)
@@ -701,7 +701,7 @@ object PopupCard {
         if (message != null) {
             card.addView(TextView(activity).apply {
                 text = message
-                setTextColor(Color.parseColor("#BBBBBB"))
+                setTextColor(Color.parseColor("#E6E6E6"))
                 textSize = 13f
                 setPadding(0, 0, 0, dp(activity, 14))
             })

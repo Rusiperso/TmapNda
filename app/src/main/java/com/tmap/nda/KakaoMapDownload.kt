@@ -168,8 +168,8 @@ object KakaoMapDownload {
         val hint = TextView(context).apply {
             setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "지도 데이터를 폰에 받아둬요. 용량이 클 수 있으니 와이파이에서 받아주세요. 길찾기는 인터넷이 필요해요."
-            setTextColor(android.graphics.Color.parseColor("#999999"))
-            textSize = 12f
+            setTextColor(android.graphics.Color.parseColor("#E0E0E0"))
+            textSize = 13f
             setPadding(40, 0, 40, 4)
         }
         val status = TextView(context).apply {

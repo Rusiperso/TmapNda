@@ -798,8 +798,8 @@ object PanelDragHelper {
         }
         val bundleHint = android.widget.TextView(context).apply {
             text = "켜면 옵션을 안내 화면 메뉴에서 바꾸고, 끄면 설정 창의 네이버/카카오 설정 탭에서 바꿔요. 저장하면 적용돼요."
-            setTextColor(android.graphics.Color.parseColor("#999999"))
-            textSize = 12f
+            setTextColor(android.graphics.Color.parseColor("#E0E0E0"))
+            textSize = 13f
             setPadding(40, 0, 40, 24)
         }
 
@@ -910,8 +910,8 @@ object PanelDragHelper {
         val volumeHintText = android.widget.TextView(context).apply {
             setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "차량/헤드유닛 물리 볼륨버튼으로 조절하세요"
-            setTextColor(android.graphics.Color.parseColor("#999999"))
-            textSize = 12f
+            setTextColor(android.graphics.Color.parseColor("#E0E0E0"))
+            textSize = 13f
             setPadding(40, 0, 40, 4)
         }
         val container = android.widget.LinearLayout(context).apply {
@@ -937,8 +937,8 @@ object PanelDragHelper {
             addView(android.widget.TextView(context).apply {
                 setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
                 text = "누르면 바로 적용 · 자동은 해 뜨고 지는 시각에 맞춰 바뀜 (티맵 위성지도는 밤 모양이 없음)"
-                setTextColor(android.graphics.Color.parseColor("#999999"))
-                textSize = 12f
+                setTextColor(android.graphics.Color.parseColor("#E0E0E0"))
+                textSize = 13f
                 setPadding(0, 2, 0, 8)
             })
             val btnRow = android.widget.LinearLayout(context).apply {
@@ -1057,8 +1057,8 @@ object PanelDragHelper {
         val carFuelHintText = android.widget.TextView(context).apply {
             setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "길안내 경로 계산과 주유소 안내에 사용돼요"
-            setTextColor(android.graphics.Color.parseColor("#999999"))
-            textSize = 12f
+            setTextColor(android.graphics.Color.parseColor("#E0E0E0"))
+            textSize = 13f
             setPadding(40, 0, 40, 4)
         }
         val carFuelValueText = android.widget.TextView(context).apply {
@@ -1132,15 +1132,15 @@ object PanelDragHelper {
         val voiceFixHint = android.widget.TextView(context).apply {
             setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "음성 명령을 자꾸 잘못 알아들으면 \"틀린말=원래말\"로 한 줄에 하나씩 적어두세요. 예: 경비실=경유지"
-            setTextColor(android.graphics.Color.parseColor("#999999"))
-            textSize = 12f
+            setTextColor(android.graphics.Color.parseColor("#E0E0E0"))
+            textSize = 13f
             setPadding(40, 0, 40, 8)
         }
         val voiceFixInput = android.widget.EditText(context).apply {
             setText(VoiceCorrections.getText(context))
             hint = "경비실=경유지\n무료 돈=무료도로"
             setTextColor(android.graphics.Color.WHITE)
-            setHintTextColor(android.graphics.Color.parseColor("#666666"))
+            setHintTextColor(android.graphics.Color.parseColor("#DADADA"))
             textSize = 13f
             minLines = 6
             gravity = android.view.Gravity.TOP
@@ -1179,8 +1179,8 @@ object PanelDragHelper {
         val backupHintText = android.widget.TextView(context).apply {
             setShadowLayer(6f, 0f, 0f, android.graphics.Color.BLACK)
             text = "즐겨찾기·API 키·화면 설정을 파일로 저장/복원"
-            setTextColor(android.graphics.Color.parseColor("#999999"))
-            textSize = 12f
+            setTextColor(android.graphics.Color.parseColor("#E0E0E0"))
+            textSize = 13f
             setPadding(40, 0, 40, 4)
         }
         val backupButtonRow = android.widget.LinearLayout(context).apply {

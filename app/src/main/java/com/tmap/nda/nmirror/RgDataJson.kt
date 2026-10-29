@@ -110,6 +110,24 @@ object RgDataJson {
             rgData.put("sdiInfo", JSONArray().put(sdiInfo))
         }
 
+        // 앞쪽에 사고·공사가 있으면 차량 쪽에도 알린다(재억 요청 2026-10-29).
+        //  - 순정 계기판·HUD(엔미러→안드로이드 오토)는 sdiInfo를 읽지 않고 현재 도로명만 보여주므로
+        //    현재 도로명 칸에 "410m 앞 사고발생!"을 잠깐 끼워 넣는다.
+        //  - 나브디는 sdiInfo를 읽으므로, 카메라 항목이 없을 때만 사고다발(29) 항목을 추가한다.
+        // 설정 "돌발정보 차량에도 보내기"로 끌 수 있다. #문제시 원복(이 블록만 지우면 됨)
+        com.tmap.nda.IncidentRepository.carAhead()?.let { (text, dist) ->
+            rgData.put("szPosRoadName", text)
+            if (!rgData.has("sdiInfo")) {
+                rgData.put("sdiCount", 1)
+                rgData.put(
+                    "sdiInfo",
+                    JSONArray().put(
+                        JSONObject().put("nSdiType", 29).put("nSdiSpeedLimit", 0).put("nSdiDist", dist).put("bSdiTarget", true)
+                    )
+                )
+            }
+        }
+
         return rgData.toString()
     }
 }

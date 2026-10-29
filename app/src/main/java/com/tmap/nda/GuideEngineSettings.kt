@@ -24,7 +24,7 @@ object GuideEngineSettings {
         val dp = { v: Int -> (v * context.resources.displayMetrics.density).toInt() }
 
         val status = TextView(context).apply {
-            setTextColor(Color.parseColor("#BBBBBB"))
+            setTextColor(Color.parseColor("#E6E6E6"))
             textSize = 13f
             setPadding(40, 4, 40, 16)
         }
@@ -84,12 +84,12 @@ object GuideEngineSettings {
             setSingleLine()
             inputType = InputType.TYPE_CLASS_TEXT
             setTextColor(Color.WHITE)
-            setHintTextColor(Color.parseColor("#888888"))
+            setHintTextColor(Color.parseColor("#DADADA"))
         }
         fun note(text: String) = TextView(context).apply {
             this.text = text
-            setTextColor(Color.parseColor("#AAAAAA"))
-            textSize = 12f
+            setTextColor(Color.parseColor("#DDDDDD"))
+            textSize = 13f
             setPadding(0, dp(2), 0, dp(10))
         }
 

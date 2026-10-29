@@ -1480,6 +1480,19 @@ class UdpSenderService : Service() {
                     // 항상 0이었고, 콤마로 실제로 내보내는 값은 로그 어디에도 안 남았음. 그래서
                     // "우리가 0을 보냈나 / 콤마가 안 읽었나"를 가릴 수가 없었음. 페이로드가
                     // 최종 확정되는 이 지점에서 실제 전송값을 그대로 담아둠. #문제시 원복
+                    // 앞쪽 사고·공사(돌발정보)를 콤마에도 알린다(재억 요청 2026-10-29). 카메라 등 다른 안내가
+                    // 없을 때만 돌발정보 종류(90 사고·91 공사·92 재난)로 끼워 넣고, 제한속도는 0이라 콤마 감속에는 영향이 없다
+                    // (콤마가 감속하는 종류는 CARROT_HANDLES_CAMERA_TYPES뿐). 설정 "돌발정보 차량에도 보내기"로 끈다.
+                    // #문제시 원복(이 블록만 지우면 됨)
+                    try {
+                        val incident = IncidentRepository.carAhead()
+                        if (incident != null && json.optInt("nSdiType", 0) <= 0) {
+                            json.put("nSdiType", IncidentRepository.carAheadKind())
+                            json.put("nSdiSpeedLimit", 0)
+                            json.put("nSdiDist", incident.second)
+                            NavLogger.dIfChanged(this@UdpSenderService, "incident_to_comma", "[돌발] 콤마로 돌발정보(nSdiType=${IncidentRepository.carAheadKind()}, ${incident.second}m)")
+                        }
+                    } catch (e: Exception) { }
                     sdiType = json.optInt("nSdiType", 0)
                     sdiSpeedLimit = json.optInt("nSdiSpeedLimit", 0)
                     sdiDistance = json.optInt("nSdiDist", 0)

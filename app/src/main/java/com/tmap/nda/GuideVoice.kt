@@ -49,8 +49,8 @@ object GuideVoice {
         val hint = TextView(context).apply {
             setShadowLayer(6f, 0f, 0f, Color.BLACK)
             text = "폰에 설치된 한국어 목소리를 눌러서 들어보고 고를 수 있어요"
-            setTextColor(Color.parseColor("#999999"))
-            textSize = 12f
+            setTextColor(Color.parseColor("#E0E0E0"))
+            textSize = 13f
             setPadding(40, 0, 40, 4)
         }
         val value = TextView(context).apply {

@@ -52,7 +52,7 @@ class NaverMenuSheet(
     private fun dp(v: Int) = (v * d).toInt()
     // 앱 전체 팝업 카드와 같은 스타일: 반투명 회색 바탕, 둥근 모서리, 흰 글자, 앱 강조색
     private val ink = Color.WHITE
-    private val sub = 0xFF8E8E93.toInt()
+    private val sub = 0xFFDCDCE0.toInt()
     private val blue = com.tmap.nda.AppAccent.color(activity)
     private val prefs = activity.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
 
@@ -258,6 +258,12 @@ class NaverMenuSheet(
         s.addView(divider(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
         s.addView(switchRow("지도 위에 차로정보 표시", "경로안내선 위에 중요한 회전 표지를 표시합니다.", KEY_TURN_SIGN, true))
         s.addView(divider(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
+        s.addView(switchRow("돌발상황 표시", "지도에 사고·공사·기상 정보를 표시합니다.", com.tmap.nda.IncidentRepository.PREF_KEY, true))
+        s.addView(divider(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
+        s.addView(switchRow("돌발정보 가운데 경고", "켜면 화면 가운데에 크게 알리고, 끄면 상단바에 주의 경고와 같이 떠요.", com.tmap.nda.IncidentRepository.PREF_CENTER, true))
+        s.addView(divider(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
+        s.addView(switchRow("돌발정보 차량에도 보내기", "계기판·HUD·콤마에도 앞쪽 사고를 알려요.", com.tmap.nda.IncidentRepository.PREF_CAR, true))
+        s.addView(divider(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
         s.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(14), 0, dp(14))
@@ -321,7 +327,10 @@ class NaverMenuSheet(
             switchRow("교통정보", "도로 위에 교통정보를 표시합니다.", KEY_TRAFFIC, false),
             switchRow("평면 보기", "지도를 위에서 내려다보는 모양으로 봅니다.", KEY_FLAT, false),
             switchRow("주행선에 교통정보 표시", "경로안내선에 교통정보 색상을 표시합니다.", KEY_ROUTE_TRAFFIC_COLOR, false),
-            switchRow("지도 위에 차로정보 표시", "경로안내선 위에 중요한 회전 표지를 표시합니다.", KEY_TURN_SIGN, true)
+            switchRow("지도 위에 차로정보 표시", "경로안내선 위에 중요한 회전 표지를 표시합니다.", KEY_TURN_SIGN, true),
+            switchRow("돌발상황 표시", "지도에 사고·공사·기상 정보를 표시합니다.", com.tmap.nda.IncidentRepository.PREF_KEY, true),
+            switchRow("돌발정보 가운데 경고", "켜면 화면 가운데에 크게 알리고, 끄면 상단바에 주의 경고와 같이 떠요.", com.tmap.nda.IncidentRepository.PREF_CENTER, true),
+            switchRow("돌발정보 차량에도 보내기", "계기판·HUD·콤마에도 앞쪽 사고를 알려요.", com.tmap.nda.IncidentRepository.PREF_CAR, true)
         ))
         body.addView(section("길안내",
             switchRow("실시간 교통상황에 따라 경로 변경", "실시간 교통정보를 반영하여 최적의 경로로 변경합니다.", KEY_TRAFFIC_REROUTE, true),

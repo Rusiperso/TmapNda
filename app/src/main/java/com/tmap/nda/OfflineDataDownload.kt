@@ -171,12 +171,12 @@ object OfflineDataDownload {
             setPadding(40, 10, 40, bottom)
         }
         val title = label("오프라인 길찾기·검색 자료 받기")
-        val hint = label("인터넷이 없을 때 폰 안에서 길을 찾고 장소·주소를 검색하는 자료예요(약 400MB 받아서 풀면 1GB). 와이파이에서 받아주세요.\n도로망·장소: © OpenStreetMap contributors / 주소: 행정안전부 위치정보요약DB", "#999999", 12f)
+        val hint = label("인터넷이 없을 때 폰 안에서 길을 찾고 장소·주소를 검색하는 자료예요(약 400MB 받아서 풀면 1GB). 와이파이에서 받아주세요.\n도로망·장소: © OpenStreetMap contributors / 주소: 행정안전부 위치정보요약DB", "#E0E0E0", 13f)
         fun field(hintText: String, key: String, secret: Boolean) = EditText(context).apply {
             this.hint = hintText
             setText(p.getString(key, "").orEmpty().ifBlank { if (key == KEY_BASE) DEFAULT_BASE else "" })
             setTextColor(android.graphics.Color.WHITE)
-            setHintTextColor(android.graphics.Color.parseColor("#777777"))
+            setHintTextColor(android.graphics.Color.parseColor("#DADADA"))
             textSize = 12f
             isSingleLine = true
             inputType = InputType.TYPE_CLASS_TEXT or (if (secret) InputType.TYPE_TEXT_VARIATION_PASSWORD else InputType.TYPE_TEXT_VARIATION_URI)

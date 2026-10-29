@@ -53,7 +53,7 @@ class KakaoMenuSheet(
             addView(LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(TextView(activity).apply { text = title; textSize = 17f; setTextColor(0xFF222222.toInt()) })
-                addView(TextView(activity).apply { text = desc; textSize = 13f; setTextColor(0xFF888888.toInt()) })
+                addView(TextView(activity).apply { text = desc; textSize = 13f; setTextColor(0xFF555555.toInt()) })
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(sw)
             setOnClickListener { sw.toggle() }
@@ -82,6 +82,21 @@ class KakaoMenuSheet(
         sheet.addView(divider(), line)
         sheet.addView(row("경로선 콤마 표시", "경로를 콤마 화면에 그려줘요.", prefs.getBoolean("route_line_display_enabled", false)) {
             prefs.edit().putBoolean("route_line_display_enabled", it).apply()
+        })
+        sheet.addView(divider(), line)
+        sheet.addView(row("돌발상황 표시", "지도에 사고·공사·기상 정보를 표시해요.", prefs.getBoolean(IncidentRepository.PREF_KEY, true)) {
+            prefs.edit().putBoolean(IncidentRepository.PREF_KEY, it).apply()
+            IncidentRepository.refreshNow()
+        })
+        sheet.addView(divider(), line)
+        sheet.addView(row("돌발정보 가운데 경고", "켜면 화면 가운데에 크게 알리고, 끄면 상단바에 주의 경고와 같이 떠요.", prefs.getBoolean(IncidentRepository.PREF_CENTER, true)) {
+            prefs.edit().putBoolean(IncidentRepository.PREF_CENTER, it).apply()
+            IncidentRepository.refreshNow()
+        })
+        sheet.addView(divider(), line)
+        sheet.addView(row("돌발정보 차량에도 보내기", "계기판·HUD·콤마에도 앞쪽 사고를 알려요.", prefs.getBoolean(IncidentRepository.PREF_CAR, true)) {
+            prefs.edit().putBoolean(IncidentRepository.PREF_CAR, it).apply()
+            IncidentRepository.refreshNow()
         })
         sheet.addView(divider(), line)
         sheet.addView(row("하이패스 장착", "통행료 계산에 쓰여요.", CarFuelSettings.getUseHipass(activity)) {

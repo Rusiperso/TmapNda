@@ -35,6 +35,31 @@ object AccidentAlertRepository {
 
     fun resetIfStale(maxAgeMs: Long = 20000L) {
         if (visible && System.currentTimeMillis() - lastUpdateTime > maxAgeMs) clear()
+        if (incidentVisible && System.currentTimeMillis() - incidentUpdate > maxAgeMs) clearIncident()
+    }
+
+    // 국가교통정보센터 돌발상황(IncidentRepository)에서 오는 앞쪽 사고·공사 문구("2.4km 앞 사고발생!").
+    // 가운데 노란 알림과는 별개로, 상단바 맨 오른쪽 이벤트 자리(tvTopBarEvent)에 카메라 안내가 없을 때 보여준다. #문제시 원복
+    @Volatile var incidentVisible: Boolean = false
+    @Volatile var incidentTitle: String = ""
+    @Volatile var incidentDistanceM: Int = -1
+    @Volatile var incidentUpdate: Long = 0
+
+    // 돌발상황은 백그라운드 스레드에서 계산되므로 화면 갱신은 메인 스레드로 넘긴다.
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    fun updateIncident(title: String, distanceM: Int) {
+        incidentTitle = title
+        incidentDistanceM = distanceM
+        incidentVisible = true
+        incidentUpdate = System.currentTimeMillis()
+        mainHandler.post { notifyChanged() }
+    }
+
+    fun clearIncident() {
+        if (!incidentVisible) return
+        incidentVisible = false
+        mainHandler.post { notifyChanged() }
     }
 }
 

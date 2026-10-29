@@ -36,15 +36,16 @@ object MapTapPrompt {
                     .setMessage(label)
                     .setOnDismissListener { showing = false }
                 if (onAddWaypoint != null) {
+                    // 화면 왼쪽부터 "경유지 추가 / 새 목적지 / 취소(또는 경유지 삭제)" 순서로 보이게 한다.
+                    // 안드로이드 팝업은 중립(왼쪽) - 부정(가운데) - 긍정(오른쪽) 순으로 놓으므로 그에 맞춰 배정한다.
+                    // 버튼은 셋까지라 삭제가 있을 땐 "취소"는 팝업 바깥을 누르는 걸로 대신한다.
                     b.setTitle("경유지를 추가할까요?")
-                        .setPositiveButton("경유지 추가") { _, _ -> onAddWaypoint(entry) }
+                        .setNeutralButton("경유지 추가") { _, _ -> onAddWaypoint(entry) }
+                        .setNegativeButton("새 목적지") { _, _ -> onGo(entry) }
                     if (onRemoveWaypoint != null) {
-                        // 버튼은 셋까지라 "취소"는 팝업 바깥을 누르는 걸로 대신한다.
-                        b.setNegativeButton("새 목적지") { _, _ -> onGo(entry) }
-                            .setNeutralButton("경유지 삭제") { _, _ -> onRemoveWaypoint() }
+                        b.setPositiveButton("경유지 삭제") { _, _ -> onRemoveWaypoint() }
                     } else {
-                        b.setNegativeButton("취소", null)
-                            .setNeutralButton("새 목적지") { _, _ -> onGo(entry) }
+                        b.setPositiveButton("취소", null)
                     }
                 } else {
                     b.setNegativeButton("취소", null)

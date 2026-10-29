@@ -1508,7 +1508,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_green)
             } else {
                 binding.tvConnectionStatus?.text = "Comma 연결 대기"
-                binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#555555"))
+                binding.tvConnectionStatus?.setTextColor(android.graphics.Color.parseColor("#C8C8C8"))
                 binding.vConnectionDot?.setBackgroundResource(R.drawable.shape_circle_gray)
             }
         }
@@ -1528,7 +1528,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 }
                 else -> {
                     binding.tvActiveStatus?.text = "Cruise Off"
-                    binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#555555"))
+                    binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#C8C8C8"))
                 }
             }
             updateConnectionUi()
@@ -2423,7 +2423,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             }
             if (registeredEntry == null) {
                 etaText.text = "미등록"
-                etaText.setTextColor(android.graphics.Color.parseColor("#555555"))
+                etaText.setTextColor(android.graphics.Color.parseColor("#C8C8C8"))
                 etaText.textSize = 9f
             }
             val container = android.widget.LinearLayout(this).apply {
@@ -2997,6 +2997,34 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private val parkedHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var parkedRefresh: Runnable? = null
 
+    // 돌발상황(사고·공사·기상) 표시: 지도 바로 위에 투명 덮개를 얹고, 서버에서 받은 목록을 그린다. #문제시 원복
+    private var incidentOverlay: IncidentOverlayView? = null
+    private fun startIncidentOverlay(tries: Int) {
+        if (isFinishing || isDestroyed) return
+        try {
+            if (naviView.mapComponent.mapView == null || binding.root.width <= 0) {
+                if (tries < 20) android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ startIncidentOverlay(tries + 1) }, 500L)
+                return
+            }
+            if (incidentOverlay == null) {
+                val v = IncidentOverlayView(this) { try { naviView.mapComponent.mapView } catch (e: Throwable) { null } }
+                val parent = (naviView.parent as? ViewGroup) ?: (binding.root as ViewGroup)
+                val idx = parent.indexOfChild(naviView).let { if (it >= 0) it + 1 else parent.childCount }
+                parent.addView(v, idx, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                incidentOverlay = v
+            }
+            IncidentRepository.alertCallback = { text -> IncidentAlertPopup.show(this, binding.root as ViewGroup, text) }
+            IncidentRepository.start(this, this) {
+                val (a, b) = resolveCurrentWgs84LatLonForSearch()
+                if (a != null && b != null) Triple(a, b, lastKnownBearing) else null
+            }
+        } catch (e: Throwable) {
+            // 화면 뷰가 아직 안 만들어졌으면(lateinit) 잠시 뒤 다시 시도
+            if (tries < 20) android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ startIncidentOverlay(tries + 1) }, 500L)
+            else NavLogger.e(this, "[돌발] 카카오 덮개 시작 실패: ${e.message}")
+        }
+    }
+
     private fun parkedKatec(lat: Double, lon: Double): FloatPoint {
         val k = KNSDK.convertWGS84ToKATEC(lon, lat)
         return FloatPoint(k.x.toFloat(), k.y.toFloat())
@@ -3460,7 +3488,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     tv.setTypeface(null, android.graphics.Typeface.BOLD)
                 } else {
                     bg.setColor(android.graphics.Color.parseColor("#14FFFFFF"))
-                    tv.setTextColor(android.graphics.Color.parseColor("#CCCCCC"))
+                    tv.setTextColor(android.graphics.Color.parseColor("#E6E6E6"))
                     tv.setTypeface(null, android.graphics.Typeface.NORMAL)
                 }
             }
@@ -3521,7 +3549,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         if (picked.addr.isNotBlank()) {
             card.addView(android.widget.TextView(this).apply {
                 text = picked.addr
-                setTextColor(android.graphics.Color.parseColor("#BBBBBB"))
+                setTextColor(android.graphics.Color.parseColor("#E0E0E0"))
                 textSize = 12f
                 setPadding(0, dp(2), 0, dp(14))
             })
@@ -3948,7 +3976,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val input = android.widget.EditText(this).apply {
             hint = "목적지를 입력하세요 (예: 서울역)"
             setTextColor(android.graphics.Color.WHITE)
-            setHintTextColor(android.graphics.Color.parseColor("#AAAAAA"))
+            setHintTextColor(android.graphics.Color.parseColor("#C8C8C8"))
         }
         android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
             .setTitle(if (pendingWaypointAddition) "경유지 검색" else "목적지 재검색")
@@ -4175,17 +4203,41 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val enabled = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             .getBoolean("topbar_event_enabled", true)
         if (!enabled || typeName == null) {
-            binding.tvTopBarEvent?.visibility = View.GONE
-            binding.ivTopBarEvent?.visibility = View.GONE
+            topBarCameraActive = false
+            refreshTopBarIncident()
             return
         }
-        binding.tvTopBarEvent?.text = "$typeName $distText"
+        topBarCameraActive = true
+        topBarCameraText = "$typeName $distText"
         binding.tvTopBarEvent?.visibility = View.VISIBLE
         if (iconRes != null) {
             binding.ivTopBarEvent?.setImageResource(iconRes)
             binding.ivTopBarEvent?.visibility = View.VISIBLE
         } else {
             binding.ivTopBarEvent?.visibility = View.GONE
+        }
+        refreshTopBarIncident()
+    }
+
+    // "돌발상황 상단바에 표시"를 켠 경우에만, 상단바 맨 오른쪽 이벤트 자리에 돌발상황("2.4km 앞 사고발생!")을 보여준다.
+    // 카메라·어린이보호구역 같은 이벤트가 같이 있으면 그 문구 뒤에 이어 붙여 한 줄로 같이 띄운다. #문제시 원복
+    private var topBarCameraActive = false
+    private var topBarCameraText = ""
+    private fun refreshTopBarIncident() {
+        val prefs = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+        val enabled = prefs.getBoolean("topbar_event_enabled", true)
+        val incident = if (enabled && IncidentRepository.isTopBar(this) && AccidentAlertRepository.incidentVisible)
+            AccidentAlertRepository.incidentTitle else null
+        if (topBarCameraActive) {
+            binding.tvTopBarEvent?.text = if (incident != null) "$topBarCameraText · $incident" else topBarCameraText
+            return
+        }
+        binding.ivTopBarEvent?.visibility = View.GONE
+        if (incident != null) {
+            binding.tvTopBarEvent?.text = incident
+            binding.tvTopBarEvent?.visibility = View.VISIBLE
+        } else {
+            binding.tvTopBarEvent?.visibility = View.GONE
         }
     }
 
@@ -4999,6 +5051,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ setupParkingLotProbe() }, 3000L)
         super.onResume()
         NavLogger.d(this, "[lifecycle] onResume")
+        startIncidentOverlay(0)
         // v: 재억 제보(2026-09-02) - 티맵 화면에서 즐겨찾기를 눌러 "경유지 추가"를 고른 경우,
         // 그쪽엔 경로를 다시 짜는 코드가 없어서 요청만 남기고 화면을 닫음. 이 화면이 다시
         // 올라오는 지금 그걸 집어서 실제 경유지 추가를 수행. #문제시 원복
@@ -5042,6 +5095,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         LaneSignalRepository.notifyChanged()
         AccidentAlertRepository.activeRenderer = {
             renderAlertBanners(this@KakaoNaviActivity, binding.llAccidentAlert, binding.tvAccidentAlert, binding.llEmergencyAlert, binding.tvEmergencyAlert)
+            refreshTopBarIncident()
         }
         EmergencyAlertRepository.activeRenderer = AccidentAlertRepository.activeRenderer
         AccidentAlertRepository.notifyChanged()
@@ -5074,6 +5128,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         super.onPause()
         kakaoGuidanceDelegate?.suppressForPinch = false
         NavLogger.d(this, "[lifecycle] onPause")
+        IncidentRepository.stop(this)
         LaneSignalRepository.activeRenderer = null
         AccidentAlertRepository.activeRenderer = null
         EmergencyAlertRepository.activeRenderer = null

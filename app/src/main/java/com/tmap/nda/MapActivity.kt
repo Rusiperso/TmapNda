@@ -696,7 +696,7 @@ class MapActivity : AppCompatActivity() {
             } else {
                 binding.vConnectionDot.setBackgroundResource(R.drawable.shape_circle_gray)
                 binding.tvConnectionStatus.text = "Comma 연결 대기"
-                binding.tvConnectionStatus.setTextColor(android.graphics.Color.parseColor("#555555"))
+                binding.tvConnectionStatus.setTextColor(android.graphics.Color.parseColor("#C8C8C8"))
             }
         }
 
@@ -725,7 +725,7 @@ class MapActivity : AppCompatActivity() {
                 }
                 else -> {
                     binding.tvActiveStatus.text = "Cruise Off"
-                    binding.tvActiveStatus.setTextColor(android.graphics.Color.parseColor("#555555"))
+                    binding.tvActiveStatus.setTextColor(android.graphics.Color.parseColor("#C8C8C8"))
                     binding.tvActiveStatus.background = null
                 }
             }
@@ -1129,7 +1129,7 @@ class MapActivity : AppCompatActivity() {
         val input = android.widget.EditText(this).apply {
             hint = "목적지를 입력하세요 (예: 서울역)"
             setTextColor(android.graphics.Color.WHITE)
-            setHintTextColor(android.graphics.Color.parseColor("#AAAAAA"))
+            setHintTextColor(android.graphics.Color.parseColor("#C8C8C8"))
         }
         android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
             .setTitle("목적지 재검색")
@@ -1542,7 +1542,7 @@ class MapActivity : AppCompatActivity() {
             }
             if (registeredEntry == null) {
                 etaText.text = "미등록"
-                etaText.setTextColor(android.graphics.Color.parseColor("#555555"))
+                etaText.setTextColor(android.graphics.Color.parseColor("#C8C8C8"))
                 etaText.textSize = 9f
             }
             val container = android.widget.LinearLayout(this).apply {
@@ -2215,17 +2215,56 @@ class MapActivity : AppCompatActivity() {
         val enabled = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             .getBoolean("topbar_event_enabled", true)
         if (!enabled || typeName == null) {
-            binding.tvTopBarEvent?.visibility = View.GONE
-            binding.ivTopBarEvent?.visibility = View.GONE
+            topBarCameraActive = false
+            refreshTopBarIncident()
             return
         }
-        binding.tvTopBarEvent?.text = "$typeName $distText"
+        topBarCameraActive = true
+        topBarCameraText = "$typeName $distText"
         binding.tvTopBarEvent?.visibility = View.VISIBLE
         if (iconRes != null) {
             binding.ivTopBarEvent?.setImageResource(iconRes)
             binding.ivTopBarEvent?.visibility = View.VISIBLE
         } else {
             binding.ivTopBarEvent?.visibility = View.GONE
+        }
+        refreshTopBarIncident()
+    }
+
+    // 티맵 안심주행 화면에서도 돌발정보(사고·공사)를 알린다. 지도 위 표시는 티맵 지도에 그릴 방법이 없어 빠지고,
+    // 가운데 큰 경고+경고음 / 상단바 한 줄(주의 경고와 같이) 두 가지만 된다. #문제시 원복
+    private var topBarCameraActive = false
+    private var topBarCameraText = ""
+    private fun refreshTopBarIncident() {
+        if (!::binding.isInitialized) return
+        val enabled = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("topbar_event_enabled", true)
+        val incident = if (enabled && IncidentRepository.isTopBar(this) && AccidentAlertRepository.incidentVisible)
+            AccidentAlertRepository.incidentTitle else null
+        if (topBarCameraActive) {
+            binding.tvTopBarEvent?.text = if (incident != null) "$topBarCameraText · $incident" else topBarCameraText
+            return
+        }
+        binding.ivTopBarEvent?.visibility = View.GONE
+        if (incident != null) {
+            binding.tvTopBarEvent?.text = incident
+            binding.tvTopBarEvent?.visibility = View.VISIBLE
+        } else {
+            binding.tvTopBarEvent?.visibility = View.GONE
+        }
+    }
+
+    private fun startIncidents() {
+        try {
+            AccidentAlertRepository.activeRenderer = { refreshTopBarIncident() }
+            IncidentRepository.alertCallback = { text ->
+                IncidentAlertPopup.show(this, findViewById<android.view.ViewGroup>(android.R.id.content), text)
+            }
+            IncidentRepository.start(this, this) {
+                val a = lastKnownLat; val b = lastKnownLon
+                if (a != null && b != null) Triple(a, b, lastKnownBearing) else null
+            }
+        } catch (e: Throwable) {
+            NavLogger.e(this, "[돌발] 티맵 화면 시작 실패: ${e.message}")
         }
     }
 
@@ -2348,7 +2387,7 @@ class MapActivity : AppCompatActivity() {
         // 진짜 원인 - 다른 다이얼로그처럼 흰 글씨로 명시. #문제시 원복
         val input = android.widget.EditText(this).apply {
             setTextColor(android.graphics.Color.WHITE)
-            setHintTextColor(android.graphics.Color.parseColor("#AAAAAA"))
+            setHintTextColor(android.graphics.Color.parseColor("#C8C8C8"))
             hint = "카카오 REST API 키 (카카오 디벨로퍼스 > 내 앱 > REST API 키)"
         }
         android.app.AlertDialog.Builder(this, R.style.RoundedDialogTheme)
@@ -4616,6 +4655,7 @@ class MapActivity : AppCompatActivity() {
             renderLaneSignalBar(this@MapActivity, binding.llLaneSignalBar, binding.llLaneBoxes, binding.tvTrafficLightCountdown, "tmap")
         }
         LaneSignalRepository.notifyChanged()
+        startIncidents()
         // v: 재억 제보(2026-08-30, 실기기로 확인 - "카카오 길안내 종료 후 티맵 화면에서
         // 미니플레이어 터치/갱신이 안 된다") - MiniPlayerManager.attach()가 onCreate에만
         // 걸려있어서 딱 한 번만 실행됐음. 카카오 화면으로 넘어가면 그쪽 attach()가 이
@@ -4692,6 +4732,7 @@ class MapActivity : AppCompatActivity() {
         // 화면 전환 중의 "잠깐 보였다가 바로 사라짐" 케이스라 실제로 필요 없었던 호출임. #문제시 원복
         pendingKnsdkForegroundCall?.let { mainHandler.removeCallbacks(it) }
         pendingKnsdkForegroundCall = null
+        IncidentRepository.stop(this)
         // v: 이 화면이 지금 등록된 화면이었으면 해제(카카오 화면이 자기 걸로 다시 등록할 것). #문제시 원복
         if (LaneSignalRepository.activeRenderer != null) {
             // 다른 화면이 이미 자기 걸로 덮어썼을 수도 있어 무조건 null로 밀지 않고,
