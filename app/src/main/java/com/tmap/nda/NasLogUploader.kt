@@ -65,10 +65,10 @@ object NasLogUploader {
     } catch (e: Exception) { null }
 
     // 재억 지시(2026-10-30): 닉네임 없음/디코 미연결 사람도 올리되 /tndalogs 아래 전용 폴더로 분리. 보드에서 제거한 기기와 디코 목록을 못 읽은 때는 건너뜀. #문제시 원복
-    // 반환: "" = 주인장 계열(최상위), "/1. 디코 연결", "/2. 디코 미 연결", "/3. 닉네임 없음", null = 이번 회차 안 올림
+    // 반환: "/1. 디코 연결"(주인장 계열 포함), "/2. 디코 미 연결", "/3. 닉네임 없음", null = 이번 회차 안 올림
     private fun targetSubRoot(context: Context, id: String): String? {
         val nick = DiscordReporter.getNickname(context).trim()
-        if (nick in OWNER_NICKS) return ""
+        if (nick in OWNER_NICKS) return "/1. 디코 연결"
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         var json = prefs.getString("nas_disc_json", null)
         if (json == null || System.currentTimeMillis() - prefs.getLong("nas_disc_at", 0L) > 60 * 60 * 1000L) {
