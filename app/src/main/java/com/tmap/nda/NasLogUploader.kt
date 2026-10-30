@@ -64,25 +64,27 @@ object NasLogUploader {
         }
     } catch (e: Exception) { null }
 
-    private fun isAllowed(context: Context, id: String): Boolean {
+    // 재억 지시(2026-10-30): 닉네임 없음/디코 미연결 사람도 올리되 /tndalogs 아래 전용 폴더로 분리. 보드에서 제거한 기기와 디코 목록을 못 읽은 때는 건너뜀. #문제시 원복
+    // 반환: "" = 기존 위치, "/닉네임 없음", "/디코 미 연결", null = 이번 회차 안 올림
+    private fun targetSubRoot(context: Context, id: String): String? {
         val nick = DiscordReporter.getNickname(context).trim()
-        if (nick.isEmpty()) return false
-        if (nick in OWNER_NICKS) return true
+        if (nick in OWNER_NICKS) return ""
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         var json = prefs.getString("nas_disc_json", null)
         if (json == null || System.currentTimeMillis() - prefs.getLong("nas_disc_at", 0L) > 60 * 60 * 1000L) {
             fetchDiscList()?.let { json = it; prefs.edit().putString("nas_disc_json", it).putLong("nas_disc_at", System.currentTimeMillis()).apply() }
         }
-        val j = JSONObject(json ?: return false)
+        val j = JSONObject(json ?: return null)
         fun has(arr: JSONArray, v: String) = (0 until arr.length()).any { arr.optString(it) == v }
-        if (has(j.optJSONArray("hidden") ?: JSONArray(), "i_" + id.replace(Regex("[^A-Za-z0-9_-]"), "_"))) return false
+        if (has(j.optJSONArray("hidden") ?: JSONArray(), "i_" + id.replace(Regex("[^A-Za-z0-9_-]"), "_"))) return null
+        if (nick.isEmpty()) return "/닉네임 없음"
         val n = norm(nick)
         val m = j.optJSONArray("matched") ?: JSONArray()
-        return (0 until m.length()).any { m.optString(it) == n }
+        return if ((0 until m.length()).any { m.optString(it) == n }) "" else "/디코 미 연결"
     }
 
     private fun uploadNow(context: Context) {
-        if (!isAllowed(context, DiscordReporter.installId(context))) return
+        val sub = targetSubRoot(context, DiscordReporter.installId(context)) ?: return
         val days = recentDays()
         val dateRe = Regex("^(\\d{4}-\\d{2}-\\d{2}) ")
         val byDay = HashMap<String, StringBuilder>()
@@ -99,7 +101,7 @@ object NasLogUploader {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val todo = byDay.filter { (d, sb) -> prefs.getInt("nas_txt_sig_$d", -1) != sb.length }
         val id = DiscordReporter.installId(context)
-        val root = BuildConfig.NAS_DIR.ifBlank { "/tndalogs" }.trimEnd('/')
+        val root = BuildConfig.NAS_DIR.ifBlank { "/tndalogs" }.trimEnd('/') + sub
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date())
         // 올릴 게 없고 오늘 폴더 확인·정리도 끝났으면 NAS에 접속하지 않음.
         if (todo.isEmpty() && prefs.getString("nas_cleaned", null) == today && prefs.getString("nas_folder_checked", null) == today) return
@@ -109,11 +111,12 @@ object NasLogUploader {
             // 5분마다 도는 만큼 NAS 호출을 줄임: 닉네임이 그대로면 저장해둔 폴더를 그대로 쓰고, 폴더 확인은 하루 한 번만 함.
             val desired = folderName(context, id)
             val cachedFolder = prefs.getString("nas_folder", null)
-            val base = if (cachedFolder != null && prefs.getString("nas_folder_nick", null) == desired && prefs.getString("nas_folder_checked", null) == today) {
+            val key = sub + "|" + desired
+            val base = if (cachedFolder != null && prefs.getString("nas_folder_nick", null) == key && prefs.getString("nas_folder_checked", null) == today) {
                 "$root/$cachedFolder"
             } else {
                 resolveFolder(context, sid, root, id, desired).also {
-                    prefs.edit().putString("nas_folder_nick", desired).putString("nas_folder_checked", today).apply()
+                    prefs.edit().putString("nas_folder_nick", key).putString("nas_folder_checked", today).apply()
                 }
             }
             for ((d, sb) in todo) {
