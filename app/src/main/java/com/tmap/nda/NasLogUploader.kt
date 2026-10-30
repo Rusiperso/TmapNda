@@ -65,7 +65,7 @@ object NasLogUploader {
     } catch (e: Exception) { null }
 
     // 재억 지시(2026-10-30): 닉네임 없음/디코 미연결 사람도 올리되 /tndalogs 아래 전용 폴더로 분리. 보드에서 제거한 기기와 디코 목록을 못 읽은 때는 건너뜀. #문제시 원복
-    // 반환: "" = 기존 위치, "/닉네임 없음", "/디코 미 연결", null = 이번 회차 안 올림
+    // 반환: "" = 주인장 계열(최상위), "/1. 디코 연결", "/2. 디코 미 연결", "/3. 닉네임 없음", null = 이번 회차 안 올림
     private fun targetSubRoot(context: Context, id: String): String? {
         val nick = DiscordReporter.getNickname(context).trim()
         if (nick in OWNER_NICKS) return ""
@@ -77,10 +77,10 @@ object NasLogUploader {
         val j = JSONObject(json ?: return null)
         fun has(arr: JSONArray, v: String) = (0 until arr.length()).any { arr.optString(it) == v }
         if (has(j.optJSONArray("hidden") ?: JSONArray(), "i_" + id.replace(Regex("[^A-Za-z0-9_-]"), "_"))) return null
-        if (nick.isEmpty()) return "/닉네임 없음"
+        if (nick.isEmpty()) return "/3. 닉네임 없음"
         val n = norm(nick)
         val m = j.optJSONArray("matched") ?: JSONArray()
-        return if ((0 until m.length()).any { m.optString(it) == n }) "" else "/디코 미 연결"
+        return if ((0 until m.length()).any { m.optString(it) == n }) "/1. 디코 연결" else "/2. 디코 미 연결"
     }
 
     private fun uploadNow(context: Context) {
