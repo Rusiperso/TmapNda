@@ -20,7 +20,8 @@ object IncidentAlertPopup {
     private val main = Handler(Looper.getMainLooper())
     private var current: TextView? = null
 
-    fun show(activity: Activity, root: ViewGroup, text: String) {
+    /** [sound]가 false(공사)면 경고음 없이 주황색 글씨 상자만 띄운다. 사고·재난은 빨간 상자 + 경고음. */
+    fun show(activity: Activity, root: ViewGroup, text: String, sound: Boolean = true) {
         if (activity.isFinishing || activity.isDestroyed) return
         val d = activity.resources.displayMetrics.density
         current?.let { (it.parent as? ViewGroup)?.removeView(it) }
@@ -31,7 +32,7 @@ object IncidentAlertPopup {
             setTypeface(null, android.graphics.Typeface.BOLD)
             gravity = Gravity.CENTER
             setPadding((36 * d).toInt(), (22 * d).toInt(), (36 * d).toInt(), (22 * d).toInt())
-            background = GradientDrawable().apply { setColor(0xEEE24B4A.toInt()); cornerRadius = 20 * d }
+            background = GradientDrawable().apply { setColor(if (sound) 0xEEE24B4A.toInt() else 0xEEBA7517.toInt()); cornerRadius = 20 * d }
             elevation = 60 * d
             isClickable = false
         }
@@ -42,6 +43,7 @@ object IncidentAlertPopup {
             (tv.parent as? ViewGroup)?.removeView(tv)
             if (current === tv) current = null
         }, 5000L)
+        if (!sound) return
         try {
             val tone = ToneGenerator(AudioManager.STREAM_MUSIC, 100)
             tone.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 5000)

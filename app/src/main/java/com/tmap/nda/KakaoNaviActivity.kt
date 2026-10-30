@@ -3013,7 +3013,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 parent.addView(v, idx, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                 incidentOverlay = v
             }
-            IncidentRepository.alertCallback = { text -> IncidentAlertPopup.show(this, binding.root as ViewGroup, text) }
+            IncidentRepository.alertCallback = { text, sound -> IncidentAlertPopup.show(this, binding.root as ViewGroup, text, sound) }
             IncidentRepository.start(this, this) {
                 val (a, b) = resolveCurrentWgs84LatLonForSearch()
                 if (a != null && b != null) Triple(a, b, lastKnownBearing) else null

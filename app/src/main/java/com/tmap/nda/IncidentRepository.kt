@@ -93,7 +93,7 @@ object IncidentRepository {
     }
 
     /** 앞쪽에 새 돌발상황이 처음 잡힐 때 한 번 불린다(메인 스레드). 화면이 큰 경고창을 띄운다. */
-    @Volatile var alertCallback: ((String) -> Unit)? = null
+    @Volatile var alertCallback: ((String, Boolean) -> Unit)? = null  // (문구, 경고음 여부)
     private val alerted = HashSet<String>()
 
     @Synchronized
@@ -154,19 +154,23 @@ object IncidentRepository {
             val loc = locationProvider?.invoke()
             if (loc == null) { clearAhead(); return }
             val brg = loc.third
-            var best: Incident? = null
-            var bestD = Double.MAX_VALUE
+            // 사고·재난이 공사보다 중요해서, 가까운 공사가 먼 사고를 가리지 않게 사고·재난부터 고르고 없으면 공사를 고른다.
+            var bestUrgent: Incident? = null; var bestUrgentD = Double.MAX_VALUE
+            var bestWork: Incident? = null; var bestWorkD = Double.MAX_VALUE
             for (inc in items) {
                 if (inc.type != "acc" && inc.type != "cor" && inc.type != "dis") continue
                 val d = distanceM(loc.first, loc.second, inc.lat, inc.lon)
-                if (d < AHEAD_MIN_M || d > AHEAD_MAX_M || d >= bestD) continue
+                if (d < AHEAD_MIN_M || d > AHEAD_MAX_M) continue
                 if (brg != null) {
                     val diff = Math.abs(((bearingDeg(loc.first, loc.second, inc.lat, inc.lon) - brg + 540.0) % 360.0) - 180.0)
                     if (diff > AHEAD_CONE_DEG) continue
                 }
-                best = inc; bestD = d
+                if (inc.type == "cor") {
+                    if (d < bestWorkD) { bestWork = inc; bestWorkD = d }
+                } else if (d < bestUrgentD) { bestUrgent = inc; bestUrgentD = d }
             }
-            val b = best
+            val b = bestUrgent ?: bestWork
+            val bestD = if (bestUrgent != null) bestUrgentD else bestWorkD
             if (b == null) { clearAhead(); return }
             val what = when (b.type) { "acc" -> "사고발생!"; "cor" -> "공사중!"; else -> "재난발생!" }
             val m = bestD.toInt() / 10 * 10
@@ -179,7 +183,7 @@ object IncidentRepository {
             } else carText = null
             // 상단바에 띄우는 설정이면 가운데 경고창은 띄우지 않는다.
             if (!isTopBar(ctx) && alerted.add("${b.type}|${b.lon}|${b.lat}")) {
-                main.post { try { alertCallback?.invoke(text) } catch (_: Exception) { } }
+                main.post { try { alertCallback?.invoke(text, b.type != "cor") } catch (_: Exception) { } }
             }
         } catch (e: Exception) {
             NavLogger.d(ctx, "[돌발] 앞쪽 계산 실패: ${e.message}")

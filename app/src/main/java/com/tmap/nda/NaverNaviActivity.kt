@@ -3525,7 +3525,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         try {
             IncidentRepository.addListener(incidentListener)
             incidentListener.onIncidentsChanged(IncidentRepository.items)
-            IncidentRepository.alertCallback = { text -> IncidentAlertPopup.show(this, binding.root as ViewGroup, text) }
+            IncidentRepository.alertCallback = { text, sound -> IncidentAlertPopup.show(this, binding.root as ViewGroup, text, sound) }
             IncidentRepository.start(this, this) {
                 val (a, b) = resolveCurrentWgs84LatLonForSearch()
                 if (a != null && b != null) {

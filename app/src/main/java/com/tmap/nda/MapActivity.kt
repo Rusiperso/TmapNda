@@ -2256,8 +2256,8 @@ class MapActivity : AppCompatActivity() {
     private fun startIncidents() {
         try {
             AccidentAlertRepository.activeRenderer = { refreshTopBarIncident() }
-            IncidentRepository.alertCallback = { text ->
-                IncidentAlertPopup.show(this, findViewById<android.view.ViewGroup>(android.R.id.content), text)
+            IncidentRepository.alertCallback = { text, sound ->
+                IncidentAlertPopup.show(this, findViewById<android.view.ViewGroup>(android.R.id.content), text, sound)
             }
             IncidentRepository.start(this, this) {
                 val a = lastKnownLat; val b = lastKnownLon
