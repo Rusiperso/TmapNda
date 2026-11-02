@@ -1490,6 +1490,7 @@ class UdpSenderService : Service() {
                             json.put("nSdiType", IncidentRepository.carAheadKind())
                             json.put("nSdiSpeedLimit", 0)
                             json.put("nSdiDist", incident.second)
+                            json.put("szIncidentText", incident.first)  // 콤마가 거리까지 완성된 문구를 그대로 보여준다
                             NavLogger.dIfChanged(this@UdpSenderService, "incident_to_comma", "[돌발] 콤마로 돌발정보(nSdiType=${IncidentRepository.carAheadKind()}, ${incident.second}m)")
                         }
                     } catch (e: Exception) { }

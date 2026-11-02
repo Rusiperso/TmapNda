@@ -41,6 +41,15 @@ object IncidentRepository {
         val message: String
     )
 
+    /** 고속도로 정체 한 덩어리: (경도, 위도)는 들어서게 되는 쪽 끝, 속도는 평균 시속, 방향은 진행 방위각. */
+    data class Jam(val lon: Double, val lat: Double, val speed: Int, val lenM: Int, val heading: Int, val road: String, val dir: String)
+
+    /** 제한속도가 기본값보다 낮아진 가변속도제한표지. 방향(heading)을 모르면 -1. */
+    data class Vsl(val lon: Double, val lat: Double, val limit: Int, val def: Int, val heading: Int)
+
+    @Volatile private var jams: List<Jam> = emptyList()
+    @Volatile private var vsls: List<Vsl> = emptyList()
+
     interface Listener { fun onIncidentsChanged(list: List<Incident>) }
 
     @Volatile var items: List<Incident> = emptyList()
@@ -64,7 +73,7 @@ object IncidentRepository {
     @Volatile private var carDistM = 0
     @Volatile private var carAtMs = 0L
     @Volatile private var carKind = 90
-    /** 콤마용 종류 번호: 사고 90, 공사 91, 재난 92 (콤마의 carrot_serv.py가 거리와 함께 문구를 만든다). */
+    /** 콤마용 종류 번호: 사고 90, 공사 91, 재난 92, 가변 제한속도 93, 정체 94. 문구는 앱이 완성해서 함께 보낸다. */
     fun carAheadKind() = carKind
     fun carAhead(): Pair<String, Int>? {
         val t = carText ?: return null
@@ -131,6 +140,7 @@ object IncidentRepository {
                 } else {
                     publish(fetch(loc.first, loc.second))
                     NavLogger.dIfChanged(ctx, "incident_cnt", "[돌발] 받은 건수=${items.size}")
+                    fetchTraffic(ctx, loc.first, loc.second)
                     aheadTick()
                 }
             }
@@ -144,9 +154,18 @@ object IncidentRepository {
     private const val AHEAD_MAX_M = 3000.0
     private const val AHEAD_MIN_M = 30.0
     private const val AHEAD_CONE_DEG = 45.0
+    private const val VSL_MAX_M = 2000.0
+    private const val VSL_CONE_DEG = 35.0
 
-    /** 앞쪽 3km 안의 사고·공사·재난 중 가장 가까운 것을 상단바 오른쪽 알림 자리에 "2.4km 앞 사고발생!"으로 올린다.
-     *  진행 방향을 알면 앞쪽 부채꼴 안의 것만, 방향을 모르면(멈춤) 방향 상관없이 가장 가까운 것을 보여준다. */
+    private class Cand(val prio: Int, val dist: Double, val key: String, val what: String, val kind: Int, val sound: Boolean)
+
+    private fun angleDiff(a: Double, b: Double) = Math.abs(((a - b + 540.0) % 360.0) - 180.0)
+
+    private fun fmtDist(m: Int) = if (m >= 1000) String.format(java.util.Locale.US, "%.1fkm", m / 1000.0) else "${m}m"
+
+    /** 앞쪽 3km 안의 돌발상황·정체·제한속도 중 가장 중요한(사고·재난 > 정체 > 제한속도 변경 > 공사) 하나를,
+     *  같은 종류끼리는 가장 가까운 것을 골라 상단바 알림 자리·차량 쪽에 "2.4km 앞 사고발생!" 같은 글자로 올린다.
+     *  진행 방향을 알면 앞쪽 부채꼴 안의 것만 본다. 방향을 모르면(멈춤) 돌발상황만 방향 상관없이 보고, 정체·제한속도는 건너뛴다. */
     private fun aheadTick() {
         val ctx = appContext ?: return
         try {
@@ -154,36 +173,43 @@ object IncidentRepository {
             val loc = locationProvider?.invoke()
             if (loc == null) { clearAhead(); return }
             val brg = loc.third
-            // 사고·재난이 공사보다 중요해서, 가까운 공사가 먼 사고를 가리지 않게 사고·재난부터 고르고 없으면 공사를 고른다.
-            var bestUrgent: Incident? = null; var bestUrgentD = Double.MAX_VALUE
-            var bestWork: Incident? = null; var bestWorkD = Double.MAX_VALUE
+            val cands = ArrayList<Cand>()
             for (inc in items) {
                 if (inc.type != "acc" && inc.type != "cor" && inc.type != "dis") continue
                 val d = distanceM(loc.first, loc.second, inc.lat, inc.lon)
                 if (d < AHEAD_MIN_M || d > AHEAD_MAX_M) continue
-                if (brg != null) {
-                    val diff = Math.abs(((bearingDeg(loc.first, loc.second, inc.lat, inc.lon) - brg + 540.0) % 360.0) - 180.0)
-                    if (diff > AHEAD_CONE_DEG) continue
-                }
-                if (inc.type == "cor") {
-                    if (d < bestWorkD) { bestWork = inc; bestWorkD = d }
-                } else if (d < bestUrgentD) { bestUrgent = inc; bestUrgentD = d }
+                if (brg != null && angleDiff(bearingDeg(loc.first, loc.second, inc.lat, inc.lon), brg.toDouble()) > AHEAD_CONE_DEG) continue
+                val (what, kind) = when (inc.type) { "acc" -> "사고발생!" to 90; "cor" -> "공사중!" to 91; else -> "재난발생!" to 92 }
+                cands.add(Cand(if (inc.type == "cor") 3 else 0, d, "${inc.type}|${inc.lon}|${inc.lat}", what, kind, inc.type != "cor"))
             }
-            val b = bestUrgent ?: bestWork
-            val bestD = if (bestUrgent != null) bestUrgentD else bestWorkD
+            if (brg != null) {
+                for (j in jams) {
+                    val d = distanceM(loc.first, loc.second, j.lat, j.lon)
+                    if (d < AHEAD_MIN_M || d > AHEAD_MAX_M) continue
+                    if (angleDiff(bearingDeg(loc.first, loc.second, j.lat, j.lon), brg.toDouble()) > AHEAD_CONE_DEG) continue
+                    if (angleDiff(j.heading.toDouble(), brg.toDouble()) > 75.0) continue   // 반대 방향 차로의 정체는 거른다
+                    val len = if (j.lenM >= 1000) String.format(java.util.Locale.US, " (%.1fkm)", j.lenM / 1000.0) else ""
+                    cands.add(Cand(1, d, "jam|${j.road}|${j.dir}|${Math.round(j.lon * 100)}|${Math.round(j.lat * 100)}", "정체 시속 ${j.speed}$len", 94, false))
+                }
+                for (v in vsls) {
+                    val d = distanceM(loc.first, loc.second, v.lat, v.lon)
+                    if (d < AHEAD_MIN_M || d > VSL_MAX_M) continue
+                    if (angleDiff(bearingDeg(loc.first, loc.second, v.lat, v.lon), brg.toDouble()) > VSL_CONE_DEG) continue
+                    if (v.heading >= 0 && angleDiff(v.heading.toDouble(), brg.toDouble()) > 60.0) continue
+                    cands.add(Cand(2, d, "vsl|${v.lon}|${v.lat}|${v.limit}", "제한 ${v.limit} (기본 ${v.def})", 93, false))
+                }
+            }
+            val b = cands.minWithOrNull(compareBy<Cand>({ it.prio }, { it.dist }))
             if (b == null) { clearAhead(); return }
-            val what = when (b.type) { "acc" -> "사고발생!"; "cor" -> "공사중!"; else -> "재난발생!" }
-            val m = bestD.toInt() / 10 * 10
-            val dist = if (m >= 1000) String.format(java.util.Locale.US, "%.1fkm", m / 1000.0) else "${m}m"
-            val text = "$dist 앞 $what"
+            val m = b.dist.toInt() / 10 * 10
+            val text = "${fmtDist(m)} 앞 ${b.what}"
             AccidentAlertRepository.updateIncident(text, m)
             if (ctx.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean(PREF_CAR, true)) {
-                carText = text; carDistM = m; carAtMs = System.currentTimeMillis()
-                carKind = when (b.type) { "acc" -> 90; "cor" -> 91; else -> 92 }
+                carText = text; carDistM = m; carAtMs = System.currentTimeMillis(); carKind = b.kind
             } else carText = null
-            // 상단바에 띄우는 설정이면 가운데 경고창은 띄우지 않는다.
-            if (!isTopBar(ctx) && alerted.add("${b.type}|${b.lon}|${b.lat}")) {
-                main.post { try { alertCallback?.invoke(text, b.type != "cor") } catch (_: Exception) { } }
+            // 상단바에 띄우는 설정이면 가운데 경고창은 띄우지 않는다. 경고음은 사고·재난일 때만.
+            if (!isTopBar(ctx) && alerted.add(b.key)) {
+                main.post { try { alertCallback?.invoke(text, b.sound) } catch (_: Exception) { } }
             }
         } catch (e: Exception) {
             NavLogger.d(ctx, "[돌발] 앞쪽 계산 실패: ${e.message}")
@@ -218,6 +244,53 @@ object IncidentRepository {
             val body = c.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             return parse(body, System.currentTimeMillis())
         } finally { c.disconnect() }
+    }
+
+    /** 고속도로 정체(/jam)와 가변 제한속도(/vsl)를 받는다. 서버에 없거나 실패하면 조용히 넘어간다. */
+    private fun fetchTraffic(ctx: Context, lat: Double, lon: Double) {
+        val cx = Math.floor(lon / GRID) * GRID
+        val cy = Math.floor(lat / GRID) * GRID
+        val q = String.format(java.util.Locale.US, "?minX=%.1f&maxX=%.1f&minY=%.1f&maxY=%.1f", cx - GRID, cx + GRID * 2, cy - GRID, cy + GRID * 2)
+        try {
+            jams = parseJams(getBody("$BASE_URL/jam$q"))
+            vsls = parseVsls(getBody("$BASE_URL/vsl$q"))
+            NavLogger.dIfChanged(ctx, "traffic_cnt", "[돌발] 정체=${jams.size}곳 제한속도변경=${vsls.size}곳")
+        } catch (e: Exception) {
+            NavLogger.dIfChanged(ctx, "traffic_fail", "[돌발] 정체·제한속도 받기 실패: ${e.javaClass.simpleName} ${e.message}")
+        }
+    }
+
+    private fun getBody(url: String): String {
+        val c = URL(url).openConnection() as HttpURLConnection
+        try {
+            c.connectTimeout = 8000; c.readTimeout = 8000
+            if (c.responseCode != 200) throw RuntimeException("HTTP ${c.responseCode}")
+            return c.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        } finally { c.disconnect() }
+    }
+
+    internal fun parseJams(body: String): List<Jam> {
+        val arr = JSONObject(body).optJSONArray("items") ?: return emptyList()
+        val out = ArrayList<Jam>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val x = o.optDouble("x", Double.NaN); val y = o.optDouble("y", Double.NaN)
+            if (x.isNaN() || y.isNaN()) continue
+            out.add(Jam(x, y, o.optInt("v"), o.optInt("len"), o.optInt("h"), o.optString("r"), o.optString("d")))
+        }
+        return out
+    }
+
+    internal fun parseVsls(body: String): List<Vsl> {
+        val arr = JSONObject(body).optJSONArray("items") ?: return emptyList()
+        val out = ArrayList<Vsl>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val x = o.optDouble("x", Double.NaN); val y = o.optDouble("y", Double.NaN)
+            if (x.isNaN() || y.isNaN()) continue
+            out.add(Vsl(x, y, o.optInt("v"), o.optInt("d"), o.optInt("h", -1)))
+        }
+        return out
     }
 
     internal fun parse(body: String, nowMs: Long): List<Incident> {

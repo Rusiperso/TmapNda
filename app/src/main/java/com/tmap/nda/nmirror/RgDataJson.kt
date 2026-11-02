@@ -117,7 +117,8 @@ object RgDataJson {
         // 설정 "돌발정보 차량에도 보내기"로 끌 수 있다. #문제시 원복(이 블록만 지우면 됨)
         com.tmap.nda.IncidentRepository.carAhead()?.let { (text, dist) ->
             rgData.put("szPosRoadName", text)
-            if (!rgData.has("sdiInfo")) {
+            // 나브디는 정체·제한속도 아이콘을 모르므로, 사고·공사·재난(90~92)일 때만 사고다발 항목을 추가한다.
+            if (!rgData.has("sdiInfo") && com.tmap.nda.IncidentRepository.carAheadKind() in 90..92) {
                 rgData.put("sdiCount", 1)
                 rgData.put(
                     "sdiInfo",

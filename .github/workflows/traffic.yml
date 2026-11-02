@@ -1,0 +1,53 @@
+name: Update traffic data
+
+# 15분마다 국가교통정보센터의 고속도로 정체·가변속도제한표지를 받아 traffic-data 가지에 올린다.
+# 서버(Cloudflare 일꾼)가 이 가지의 jam.json / vsl.json 을 읽어 앱에 내려준다. 인증키는 저장소 시크릿 ITS_API_KEY.
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: traffic-data
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check key
+        id: key
+        env:
+          ITS_API_KEY: ${{ secrets.ITS_API_KEY }}
+        run: |
+          if [ -z "$ITS_API_KEY" ]; then echo "ITS_API_KEY 시크릿이 없어 건너뜁니다"; echo "has=false" >> "$GITHUB_OUTPUT"; else echo "has=true" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.has == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.key.outputs.has == 'true'
+        with:
+          python-version: '3.12'
+
+      - name: Build jam.json and vsl.json
+        if: steps.key.outputs.has == 'true'
+        env:
+          ITS_API_KEY: ${{ secrets.ITS_API_KEY }}
+        run: python tools/traffic/fetch_traffic.py out
+
+      - name: Publish to traffic-data branch
+        if: steps.key.outputs.has == 'true'
+        run: |
+          cd out
+          git init -q
+          git config user.name "traffic-bot"
+          git config user.email "traffic-bot@users.noreply.github.com"
+          git checkout -q -b traffic-data
+          git add jam.json vsl.json
+          git commit -q -m "traffic data $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" traffic-data
