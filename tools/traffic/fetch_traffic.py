@@ -19,9 +19,9 @@ BASE = "https://openapi.its.go.kr:9443"
 HERE = os.path.dirname(os.path.abspath(__file__))
 LINKS_PATH = os.path.join(HERE, "links_ex.json.gz")
 
-# 고속국도 중 길이순 상위 노선(전체 길이의 약 90%). 노선번호(ROAD_NO)에 10을 곱해 4자리로 만든 값이 API의 routeNo.
-ROUTES = ["1", "55", "15", "35", "45", "10", "25", "30", "65", "50", "12", "17", "20", "400", "100",
-          "60", "29", "40", "27", "301", "110", "14", "151", "52"]
+# API의 routeNo (실제 응답으로 확인한 값). 호남은 0251, 통영대전은 0351처럼 노선번호x10 규칙과 다른 것이 있어 직접 적는다.
+ROUTES = ["0010", "0550", "0150", "0351", "0450", "0100", "0251", "0252", "0300", "0301", "0650", "0500", "0120",
+          "0170", "0200", "4000", "1000", "0600", "0290", "0400", "0270", "3010", "1100", "0140", "1510", "0520", "0352"]
 
 JAM_MAX_KMH = 40      # 이 속도 이하면 정체
 JAM_MIN_KMH = 6       # 이보다 느린 값은 측정 안 된 값으로 보고 버린다
@@ -30,12 +30,12 @@ DEADLINE_S = 270      # 이 시간이 지나면 남은 노선은 건너뛰고 �
 REUSE_MAX_AGE_MS = 40 * 60 * 1000   # 지난 값을 대신 쓸 수 있는 최대 나이
 
 
-def get(path: str, params: dict, tries: int = 2):
+def get(path: str, params: dict, tries: int = 1):
     url = f"{BASE}/{path}?" + urllib.parse.urlencode(params)
     last = None
     for i in range(tries):
         try:
-            with urllib.request.urlopen(url, timeout=45) as r:
+            with urllib.request.urlopen(url, timeout=120) as r:
                 d = json.loads(r.read().decode("utf-8"))
             code = d.get("header", {}).get("resultCode")
             if code != 0:
@@ -90,7 +90,7 @@ def build_jams(key: str, links: dict, prev_items: list):
     started = time.time()
 
     def one(no):
-        route = f"{int(no) * 10:04d}"
+        route = no
         if time.time() - started > DEADLINE_S:
             return route, None, RuntimeError("전체 제한시간 초과")
         try:
@@ -98,7 +98,7 @@ def build_jams(key: str, links: dict, prev_items: list):
         except Exception as e:  # noqa: BLE001
             return route, None, e
 
-    with ThreadPoolExecutor(max_workers=1) as ex:
+    with ThreadPoolExecutor(max_workers=8) as ex:
         results = list(ex.map(one, ROUTES))
     for route, items, err in results:
         if err is not None:
