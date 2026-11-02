@@ -26,14 +26,16 @@ ROUTES = ["1", "55", "15", "35", "45", "10", "25", "30", "65", "50", "12", "17",
 JAM_MAX_KMH = 40      # 이 속도 이하면 정체
 JAM_MIN_KMH = 6       # 이보다 느린 값은 측정 안 된 값으로 보고 버린다
 CHAIN_GAP_M = 1500    # 같은 방향에서 이 거리 안에 이어지면 한 정체로 묶는다
+DEADLINE_S = 270      # 이 시간이 지나면 남은 노선은 건너뛰고 지난 값을 쓴다
+REUSE_MAX_AGE_MS = 40 * 60 * 1000   # 지난 값을 대신 쓸 수 있는 최대 나이
 
 
-def get(path: str, params: dict, tries: int = 3):
+def get(path: str, params: dict, tries: int = 2):
     url = f"{BASE}/{path}?" + urllib.parse.urlencode(params)
     last = None
     for i in range(tries):
         try:
-            with urllib.request.urlopen(url, timeout=60) as r:
+            with urllib.request.urlopen(url, timeout=45) as r:
                 d = json.loads(r.read().decode("utf-8"))
             code = d.get("header", {}).get("resultCode")
             if code != 0:
@@ -41,7 +43,8 @@ def get(path: str, params: dict, tries: int = 3):
             return d["body"]["items"]
         except Exception as e:  # noqa: BLE001
             last = e
-            time.sleep(2 * (i + 1))
+            print(f"[재시도 {i + 1}/{tries}] {path}: {type(e).__name__} {e}", file=sys.stderr)
+            time.sleep(2)
     raise last
 
 
@@ -64,17 +67,44 @@ def load_links():
     return json.loads(gzip.decompress(open(LINKS_PATH, "rb").read()))
 
 
-def build_jams(key: str, links: dict):
+def load_previous():
+    """직전에 올려둔 jam.json(traffic-data 가지). 노선 받기에 실패했을 때 그 노선만 지난 값으로 메운다."""
+    try:
+        url = "https://raw.githubusercontent.com/Rusiperso/TmapNda/traffic-data/jam.json"
+        with urllib.request.urlopen(url, timeout=20) as r:
+            d = json.loads(r.read().decode("utf-8"))
+        if int(time.time() * 1000) - int(d.get("updatedAt", 0)) <= REUSE_MAX_AGE_MS:
+            return d.get("items", [])
+    except Exception as e:  # noqa: BLE001
+        print(f"[알림] 지난 값을 못 읽음: {e}", file=sys.stderr)
+    return []
+
+
+def build_jams(key: str, links: dict, prev_items: list):
     """링크 표: linkId -> [lon0,lat0,lonM,latM,lon1,lat1,길이m,도로명,최대속도,등급]"""
     cong = []
     errors = 0
-    for no in ROUTES:
+    failed_routes = set()
+    from concurrent.futures import ThreadPoolExecutor
+
+    started = time.time()
+
+    def one(no):
         route = f"{int(no) * 10:04d}"
+        if time.time() - started > DEADLINE_S:
+            return route, None, RuntimeError("전체 제한시간 초과")
         try:
-            items = get("trafficInfo", {"apiKey": key, "type": "ex", "routeNo": route, "drcType": "all", "getType": "json"})
+            return route, get("trafficInfo", {"apiKey": key, "type": "ex", "routeNo": route, "drcType": "all", "getType": "json"}), None
         except Exception as e:  # noqa: BLE001
+            return route, None, e
+
+    with ThreadPoolExecutor(max_workers=1) as ex:
+        results = list(ex.map(one, ROUTES))
+    for route, items, err in results:
+        if err is not None:
             errors += 1
-            print(f"[경고] 노선 {route} 실패: {e}", file=sys.stderr)
+            failed_routes.add(route)
+            print(f"[경고] 노선 {route} 실패: {err}", file=sys.stderr)
             continue
         for e in items:
             l = links.get(e.get("linkId"))
@@ -88,7 +118,7 @@ def build_jams(key: str, links: dict):
                 continue
             cong.append({
                 "id": e["linkId"], "s": e.get("startNodeId"), "t": e.get("endNodeId"),
-                "sp": sp, "l": l, "road": e.get("roadName") or l[7], "dir": e.get("roadDrcType") or "",
+                "sp": sp, "l": l, "road": e.get("roadName") or l[7], "dir": e.get("roadDrcType") or "", "rt": route,
             })
     # 같은 방향에서 끝 노드 = 시작 노드로 이어지는 구간을 하나로 묶는다.
     by_start = {c["s"]: c for c in cong}
@@ -120,8 +150,16 @@ def build_jams(key: str, links: dict):
             "x": round(head[0], 5), "y": round(head[1], 5),     # 머리(들어서게 되는 쪽) 위치
             "x2": round(tail[4], 5), "y2": round(tail[5], 5),    # 꼬리 위치
             "v": int(round(spd)), "len": int(length), "h": int(round(heading)),
-            "r": ch[0]["road"], "d": ch[0]["dir"],
+            "r": ch[0]["road"], "d": ch[0]["dir"], "rt": ch[0]["rt"],
         })
+    # 받기에 실패한 노선은 지난 값으로 메운다(깜빡임 방지)
+    reused = 0
+    for it in prev_items:
+        if it.get("rt") in failed_routes:
+            out.append(it)
+            reused += 1
+    if reused:
+        print(f"[알림] 실패한 노선의 지난 정체 {reused}곳을 그대로 사용", file=sys.stderr)
     return out, errors
 
 
@@ -154,11 +192,11 @@ def main():
     os.makedirs(outdir, exist_ok=True)
     now = int(time.time() * 1000)
     links = load_links()
-    jams, errors = build_jams(key, links)
+    jams, errors = build_jams(key, links, load_previous())
     vsl = build_vsl(key, links)
-    # 노선이 절반 넘게 실패하면 낡은 값이 더 낫다 - 파일을 새로 안 쓰고 실패로 끝낸다.
-    if errors > len(ROUTES) // 2:
-        print("노선 실패가 너무 많아 갱신하지 않습니다", file=sys.stderr)
+    # 노선을 하나도 못 받았으면 낡은 값이 더 낫다 - 파일을 새로 안 쓰고 실패로 끝낸다.
+    if errors >= len(ROUTES):
+        print("모든 노선 받기에 실패해 갱신하지 않습니다", file=sys.stderr)
         return 1
     json.dump({"updatedAt": now, "items": jams}, open(os.path.join(outdir, "jam.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     json.dump({"updatedAt": now, "items": vsl}, open(os.path.join(outdir, "vsl.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
