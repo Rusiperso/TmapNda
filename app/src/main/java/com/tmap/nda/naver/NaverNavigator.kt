@@ -77,6 +77,9 @@ object NaverNavigator {
 
     val isRunning: Boolean get() = engine != null
 
+    /** 안내 엔진이 경로선 좌표로 잰 전체 길이(m). 지도 경로선의 "지나온 구간" 비율을 진행거리와 같은 잣대로 계산하는 데 쓴다. */
+    val routeTotalMeters: Double get() = engine?.totalMeters ?: 0.0
+
     /** 마지막 위치가 [maxAgeMs] 안의 최근 값일 때만 돌려준다(오래된 위치를 현재 위치로 쓰지 않기 위해). */
     fun currentFix(maxAgeMs: Long = 120_000L): Location? {
         val l = lastLocation ?: return null

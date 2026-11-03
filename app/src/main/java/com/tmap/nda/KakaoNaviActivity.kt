@@ -5309,6 +5309,28 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
+    private var lastCompLogAt = 0L
+
+    // 재억 요청(2026-11-03): GPS 좌표는 찍힌 뒤 0.3~1초 늦게 도착해 심볼·안내가 실제 차보다 뒤처짐(네이버는 앞서 보이던 것과 같은 박자 문제).
+    // 콤마 차속 × GPS가 찍힌 뒤 지난 시간(최대 0.7초)만큼 진행 방향으로 옮긴 사본을 SDK에 넣는다. 콤마 속도가 없거나 3m/s 미만이면 원본 그대로. #문제시 원복
+    private fun ageCompensated(loc: Location): Location {
+        val spd = OpenpilotStateRepository.freshVehicleSpeedMs() ?: return loc
+        if (spd < 3.0 || !loc.hasBearing()) return loc
+        val age = ((android.os.SystemClock.elapsedRealtimeNanos() - loc.elapsedRealtimeNanos) / 1e9).coerceIn(0.0, 0.7)
+        val d = spd * age
+        if (d < 0.5) return loc
+        val rad = Math.toRadians(loc.bearing.toDouble())
+        val out = Location(loc)
+        out.latitude = loc.latitude + d * Math.cos(rad) / 111_320.0
+        out.longitude = loc.longitude + d * Math.sin(rad) / (111_320.0 * Math.cos(Math.toRadians(loc.latitude)))
+        val nowMs = android.os.SystemClock.elapsedRealtime()
+        if (nowMs - lastCompLogAt >= 30_000L) {
+            lastCompLogAt = nowMs
+            NavLogger.d(this, "[카카오위치보정] 콤마속도=${(spd * 3.6).toInt()}km/h GPS나이=${(age * 1000).toInt()}ms -> ${d.toInt()}m 앞으로 옮겨 SDK에 전달(GPS속도=${if (loc.hasSpeed()) (loc.speed * 3.6).toInt() else -1}km/h)")
+        }
+        return out
+    }
+
     override fun onLocationChanged(location: Location) {
         try {
             if (!gpsFirstAnyLogged) {
@@ -5349,7 +5371,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 if (gpsOnLocationChangedMethod == null) {
                     gpsOnLocationChangedMethod = gpsManager.javaClass.getMethod("onLocationChanged", Location::class.java)
                 }
-                gpsOnLocationChangedMethod?.invoke(gpsManager, location)
+                gpsOnLocationChangedMethod?.invoke(gpsManager, ageCompensated(location))
                 kDrLastRealFixAt = System.currentTimeMillis()
                 kDrLastRealLoc = Location(location)
                 if (kDrActive) {

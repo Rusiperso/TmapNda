@@ -937,6 +937,18 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
 
     // 재억 제보(2026-10-11): 내 차 심볼이 파란 경로선에서 옆으로 어긋나 보임 - GPS 좌표를 그대로 찍던 게 원인.
     // 안내 중엔 경로선 위의 가장 가까운 점으로 붙여서 그린다(경로에서 멀면 진짜 이탈이라 원래 좌표). #문제시 원복
+    private var lastLeadM = -1.0
+    private var lastProgressLogAt = 0L
+
+    /** 콤마 차속(없으면 GPS 속도) × (GPS가 찍힌 뒤 지난 시간 + 0.8초). 추측주행 위치나 거의 선 차는 -1(예전 방식). */
+    private fun leadMetersFor(loc: Location): Double {
+        if (loc.provider == "dr") return -1.0
+        val spd = com.tmap.nda.OpenpilotStateRepository.freshVehicleSpeedMs() ?: (if (loc.hasSpeed()) loc.speed.toDouble() else 0.0)
+        if (spd < 2.0) return -1.0
+        val age = ((android.os.SystemClock.elapsedRealtimeNanos() - loc.elapsedRealtimeNanos) / 1e9).coerceIn(0.0, 0.7)
+        return spd * minOf(1.5, 0.8 + age)
+    }
+
     private val routeSnap = com.tmap.nda.naver.RouteSnap()
     private fun snapped(loc: Location): Location {
         if (!NaverNavigator.isRunning) return loc
@@ -949,6 +961,8 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         override fun onLocation(loc: Location) {
             if (!::naverMap.isInitialized) return
             val sl = snapped(loc)
+            lastLeadM = leadMetersFor(loc)
+            naverMap.leadMeters = lastLeadM
             naverMap.setLocation(sl)
             if (::guideOverlay.isInitialized) guideOverlay.onLocation(loc)
             if (NaverNavigator.isRunning) naverMap.follow(sl)
@@ -959,8 +973,17 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
                 guideOverlay.update(state, goalName)
             }
             updateTurnSign(state)
-            val total = NaverNavigator.currentRoute?.distanceMeters?.toDouble() ?: 0.0
-            if (total > 0) naverMap.setProgress(state.progressMeters / total)
+            // 재억 제보(2026-11-03): 지나온 구간(회색)이 차 앞으로 나감 - 진행거리는 좌표로 잰 값인데 전체는 서버가 준 숫자라 비율이 어긋났다.
+            // 엔진이 잰 전체 길이로 나누고, 심볼과 같은 앞선 거리(콤마 차속 반영)를 더해 박자를 맞춘다. #문제시 원복
+            val engTotal = NaverNavigator.routeTotalMeters
+            val srvTotal = NaverNavigator.currentRoute?.distanceMeters?.toDouble() ?: 0.0
+            if (engTotal > 0) naverMap.setProgress((state.progressMeters + maxOf(0.0, lastLeadM)) / engTotal)
+            val nowMs = android.os.SystemClock.elapsedRealtime()
+            if (nowMs - lastProgressLogAt >= 30_000L) {
+                lastProgressLogAt = nowMs
+                NavLogger.d(this@NaverNaviActivity, "[경로진행] 엔진진행=${state.progressMeters.toInt()}m 엔진전체=${engTotal.toInt()}m 서버전체=${srvTotal.toInt()}m " +
+                    "앞선거리=${lastLeadM.toInt()}m 콤마속도=${com.tmap.nda.OpenpilotStateRepository.freshVehicleSpeedMs()?.let { (it * 3.6).toInt() } ?: -1}km/h 회색비율=${"%.4f".format(if (engTotal > 0) (state.progressMeters + maxOf(0.0, lastLeadM)) / engTotal else 0.0)}")
+            }
         }
 
         override fun onSafety(points: List<SafetyPoint>) {

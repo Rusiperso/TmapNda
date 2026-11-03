@@ -369,10 +369,14 @@ class NaverMapController(private val activity: Activity, private val host: Frame
     private val LEAD_S = 0.8
     private var overlayGlide: android.animation.ValueAnimator? = null
 
+    /** 재억 제보(2026-11-03): 콤마 차속×(GPS 나이+0.8초)로 계산한 앞선 거리(m). 음수면 예전처럼 GPS 속도×0.8초. 회색 경로선과 같은 값을 쓴다. #문제시 원복 */
+    @Volatile var leadMeters: Double = -1.0
+
     private fun leadPoint(loc: Location): LatLng {
         val spd = if (loc.hasSpeed()) loc.speed.toDouble() else 0.0
-        if (spd < 2.0 || !loc.hasBearing()) return LatLng(loc.latitude, loc.longitude)
-        val d = spd * LEAD_S
+        if (leadMeters < 0.0 && spd < 2.0 || !loc.hasBearing()) return LatLng(loc.latitude, loc.longitude)
+        val d = if (leadMeters >= 0.0) leadMeters else spd * LEAD_S
+        if (d <= 0.0) return LatLng(loc.latitude, loc.longitude)
         val rad = Math.toRadians(loc.bearing.toDouble())
         return LatLng(
             loc.latitude + d * Math.cos(rad) / 111_320.0,
