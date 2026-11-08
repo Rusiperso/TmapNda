@@ -263,6 +263,7 @@ class NaverMenuSheet(
         s.addView(switchRow("돌발정보 가운데 경고", "켜면 화면 가운데에 크게 알리고, 끄면 상단바에 주의 경고와 같이 떠요.", com.tmap.nda.IncidentRepository.PREF_CENTER, true))
         s.addView(divider(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
         s.addView(switchRow("돌발정보 차량에도 보내기", "계기판·HUD·콤마에도 앞쪽 사고를 알려요.", com.tmap.nda.IncidentRepository.PREF_CAR, true))
+        s.addView(switchRow("앱이 뒤에 있어도 사고 팝업", "다른 앱을 보는 중에도 앞쪽 사고를 팝업으로 알려요. 상단에 알림이 계속 떠 있고 배터리를 더 써요. '다른 앱 위에 표시' 허용이 필요해요.", com.tmap.nda.IncidentRepository.PREF_BG, false))
         s.addView(divider(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
         s.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -330,7 +331,8 @@ class NaverMenuSheet(
             switchRow("지도 위에 차로정보 표시", "경로안내선 위에 중요한 회전 표지를 표시합니다.", KEY_TURN_SIGN, true),
             switchRow("돌발상황 표시", "지도에 사고·공사·기상 정보를 표시합니다.", com.tmap.nda.IncidentRepository.PREF_KEY, true),
             switchRow("돌발정보 가운데 경고", "켜면 화면 가운데에 크게 알리고, 끄면 상단바에 주의 경고와 같이 떠요.", com.tmap.nda.IncidentRepository.PREF_CENTER, true),
-            switchRow("돌발정보 차량에도 보내기", "계기판·HUD·콤마에도 앞쪽 사고를 알려요.", com.tmap.nda.IncidentRepository.PREF_CAR, true)
+            switchRow("돌발정보 차량에도 보내기", "계기판·HUD·콤마에도 앞쪽 사고를 알려요.", com.tmap.nda.IncidentRepository.PREF_CAR, true),
+            switchRow("앱이 뒤에 있어도 사고 팝업", "다른 앱을 보는 중에도 앞쪽 사고를 팝업으로 알려요. 상단에 알림이 계속 떠 있고 배터리를 더 써요. '다른 앱 위에 표시' 허용이 필요해요.", com.tmap.nda.IncidentRepository.PREF_BG, false)
         ))
         body.addView(section("길안내",
             switchRow("실시간 교통상황에 따라 경로 변경", "실시간 교통정보를 반영하여 최적의 경로로 변경합니다.", KEY_TRAFFIC_REROUTE, true),

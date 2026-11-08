@@ -94,6 +94,8 @@ object IncidentRepository {
         appContext = ctx.applicationContext
         owner = who
         locationProvider = location
+        // 화면이 보이는 동안(포그라운드)에 백그라운드 알림 서비스를 설정에 맞춰 켜둔다.
+        if (who !== BG_OWNER) IncidentWatchService.sync(ctx)
         if (exec != null) return
         val e = Executors.newSingleThreadScheduledExecutor()
         exec = e
@@ -113,10 +115,44 @@ object IncidentRepository {
         locationProvider = null
         exec?.shutdownNow()
         exec = null
+        // 화면이 사라졌는데 백그라운드 알림 서비스가 켜져 있으면 그쪽이 이어받는다.
+        val p = bgProvider; val cb = bgCallback; val c = appContext
+        if (who !== BG_OWNER && p != null && cb != null && c != null) {
+            alertCallback = cb
+            start(c, BG_OWNER, p)
+        }
+    }
+
+    /** 재억 요청(2026-11-08): 백그라운드 사고 팝업 스위치. 켜면 앱이 뒤에 있어도 앞쪽 사고를 팝업으로 알린다. */
+    const val PREF_BG = "incident_bg_enabled"
+    fun isBgEnabled(ctx: Context) =
+        ctx.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean(PREF_BG, false)
+
+    private val BG_OWNER = Any()
+    private var bgProvider: (() -> Triple<Double, Double, Float?>?)? = null
+    private var bgCallback: ((String, Boolean) -> Unit)? = null
+
+    @Synchronized
+    fun startBackground(ctx: Context, location: () -> Triple<Double, Double, Float?>?, callback: (String, Boolean) -> Unit) {
+        appContext = ctx.applicationContext
+        bgProvider = location
+        bgCallback = callback
+        if (owner == null) {
+            alertCallback = callback
+            start(ctx, BG_OWNER, location)
+        }
+    }
+
+    @Synchronized
+    fun stopBackground() {
+        bgProvider = null
+        bgCallback = null
+        if (owner === BG_OWNER) stop(BG_OWNER)
     }
 
     /** 스위치를 끄거나 켰을 때 바로 반영. */
     fun refreshNow() {
+        appContext?.let { IncidentWatchService.sync(it) }
         val e = exec ?: return
         e.schedule({ tick() }, 0, TimeUnit.SECONDS)
     }

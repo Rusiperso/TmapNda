@@ -628,6 +628,13 @@ object PanelDragHelper {
             setTextColor(android.graphics.Color.WHITE)
             setPadding(40, 0, 40, 32)
         }
+        // 재억 요청(2026-11-08): 앱이 뒤에 있어도 앞쪽 사고를 팝업으로 알림(스위치를 켜면 알림이 계속 떠 있음). #문제시 원복
+        val bgIncidentCheckBox = android.widget.Switch(context).apply {
+            text = "앱이 뒤에 있어도 사고 팝업"
+            isChecked = pref.getBoolean(IncidentRepository.PREF_BG, false)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 32)
+        }
         val emergencyAlertCheckBox = android.widget.Switch(context).apply {
             text = "긴급차량 접근 알림 표시"
             isChecked = pref.getBoolean("emergency_alert_enabled", true)
@@ -1009,6 +1016,7 @@ object PanelDragHelper {
             arrivalRadiusAlertCheckBox, // 목적지 근처 도착 알림 (소리+진동)
             showTopBarEventCheckBox,    // 상단바에 이벤트(카메라/구간단속/방지턱) 표시
             accidentAlertCheckBox,      // 사고/공사구간 알림 표시
+            bgIncidentCheckBox,         // 앱이 뒤에 있어도 사고 팝업
             emergencyAlertCheckBox      // 긴급차량 접근 알림 표시
         )
         val displayCommonItems = listOf<View>(
@@ -1037,6 +1045,17 @@ object PanelDragHelper {
         // 항상 바로 보이게 그룹들 아래에 고정 배치. #문제시 원복
         // v19.3.79: 이제 "기타 설정" 그룹 안에 같이 들어감(맨 아래에서 등록).
         val etcItems = ArrayList<View>()
+        // 재억 요청(2026-11-08): 켜면 폴더형 즐겨찾기(폴더·장소 수 제한 없음), 끄면 예전처럼 아래 개수만큼 칸을 바로 보여줌. #문제시 원복
+        val favFolderModeSwitch = android.widget.Switch(context).apply {
+            text = "즐겨찾기 폴더 사용 (끄면 아래 개수만큼 칸으로)"
+            isChecked = QuickSlotStore.isFolderMode(context)
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(40, 0, 40, 32)
+            setOnCheckedChangeListener { _, c ->
+                pref.edit().putBoolean(QuickSlotStore.PREF_FOLDER_MODE, c).apply()
+            }
+        }
+        etcItems.add(favFolderModeSwitch)
         etcItems.add(favoriteCountRow)
         etcItems.add(volumeSectionTitle)
         etcItems.add(volumeHintText)
@@ -1440,6 +1459,7 @@ object PanelDragHelper {
                     .putBoolean("auto_blinker_enabled", autoBlinkerCheckBox.isChecked)
                     .putBoolean("topbar_event_enabled", showTopBarEventCheckBox.isChecked)
                     .putBoolean("accident_alert_enabled", accidentAlertCheckBox.isChecked)
+                    .putBoolean(IncidentRepository.PREF_BG, bgIncidentCheckBox.isChecked)
                     .putBoolean("emergency_alert_enabled", emergencyAlertCheckBox.isChecked)
                     .putBoolean("kakao_avoid_school_zone", avoidSchoolZoneCheckBox.isChecked)
                     .putBoolean("USE_KM_DISTANCE_FORMAT", distanceFormatKmCheckBox.isChecked)
@@ -1479,6 +1499,10 @@ object PanelDragHelper {
                         touchLockOverlay.setOnTouchListener { _, _ -> true }
                     }
                 }
+                if (bgIncidentCheckBox.isChecked && !android.provider.Settings.canDrawOverlays(context)) {
+                    try { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:" + context.packageName)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) { }
+                }
+                IncidentWatchService.sync(context)
                 onSaved?.invoke()
             }
 

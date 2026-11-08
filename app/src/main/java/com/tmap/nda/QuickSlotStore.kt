@@ -25,6 +25,11 @@ object QuickSlotStore {
     const val MAX_FAVORITE_SLOTS = 10
     const val DEFAULT_FAVORITE_COUNT = 5
 
+    /** 재억 요청(2026-11-08): 설정에서 "즐겨찾기 폴더 사용"을 켜면 폴더형, 끄면(기본) 예전 칸 방식. */
+    const val PREF_FOLDER_MODE = "favorite_folder_mode"
+    fun isFolderMode(context: Context): Boolean =
+        context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean(PREF_FOLDER_MODE, false)
+
     /** fav1..fav{count} 슬롯 이름 목록 */
     fun favoriteSlots(count: Int): List<String> =
         (1..count.coerceIn(0, MAX_FAVORITE_SLOTS)).map { "fav$it" }
@@ -89,6 +94,7 @@ object QuickSlotStore {
         }
         obj.put("routeAvoidOption", entry.routeAvoidOption)
         prefs(context).edit().putString(slot, obj.toString()).apply()
+        FavoriteFolderStore.onSlotSaved(context, slot)
         // v: 신규기능(홈화면 바로가기 자동동기화) - 즐겨찾기 내용이 바뀔 때마다, 혹시 홈화면에
         // 이미 고정된 바로가기가 있으면 내용도 같이 갱신. #문제시 원복
         QuickSlotShortcutHelper.syncAfterUpdate(context, slot, entry)
@@ -112,6 +118,7 @@ object QuickSlotStore {
     // v12.3: 재억 요청 - 등록 해제(삭제) 기능. #문제시 원복
     fun delete(context: Context, slot: String) {
         prefs(context).edit().remove(slot).apply()
+        FavoriteFolderStore.onSlotDeleted(context, slot)
         // v: 신규기능(홈화면 바로가기 자동동기화) - 즐겨찾기 삭제 시 홈화면 바로가기도 비활성화. #문제시 원복
         QuickSlotShortcutHelper.syncAfterUpdate(context, slot, null)
     }

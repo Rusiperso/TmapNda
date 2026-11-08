@@ -159,6 +159,12 @@
             android:foregroundServiceType="location"
             android:exported="false" />
 
+        <!-- 재억 요청(2026-11-08): 앱이 뒤에 있어도 앞쪽 사고를 팝업으로 알리는 감시 서비스. #문제시 원복 -->
+        <service
+            android:name=".IncidentWatchService"
+            android:foregroundServiceType="location"
+            android:exported="false" />
+
         <!-- v: 재억 요청(2026-09-15) - 차량 USB 연결시 폰 화면 블랙 오버레이. #문제시 원복 -->
         <service
             android:name=".BlackScreenOverlayService"

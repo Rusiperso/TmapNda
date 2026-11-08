@@ -727,8 +727,9 @@ class VoiceAssistant(private val activity: Activity, private val host: Host) {
     }
 
     private fun favoriteEntries(): List<Pair<String, HistoryEntry>> {
-        val slots = listOf(QuickSlotStore.SLOT_HOME, QuickSlotStore.SLOT_WORK) +
-            QuickSlotStore.favoriteSlots(QuickSlotStore.favoriteCount(activity))
+        // 재억 요청(2026-11-08): 폴더 안의 모든 장소(수 제한 없음)를 이름으로 부를 수 있게 함. #문제시 원복
+        val slots = (listOf(QuickSlotStore.SLOT_HOME, QuickSlotStore.SLOT_WORK) +
+            FavoriteFolderStore.list(activity).flatMap { it.slots }).distinct()
         return slots.mapNotNull { s -> QuickSlotStore.get(activity, s)?.let { s to it } }
     }
 
@@ -1095,7 +1096,7 @@ class VoiceAssistant(private val activity: Activity, private val host: Host) {
     private fun slotLabel(slot: String): String = when (slot) {
         QuickSlotStore.SLOT_HOME -> "집"
         QuickSlotStore.SLOT_WORK -> "회사"
-        else -> "즐겨찾기 ${slot.removePrefix("fav")}번"
+        else -> if (slot.startsWith("fx")) "즐겨찾기 '${QuickSlotStore.get(activity, slot)?.name ?: "장소"}'" else "즐겨찾기 ${slot.removePrefix("fav")}번"
     }
 
     private fun handleFavoriteManageCommand(t: String): Boolean {

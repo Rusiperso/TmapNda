@@ -30,6 +30,8 @@ object SettingsBackup {
     private const val PREFS_NAME = "TmapNdaPrefs"
     // v19.3.38: QuickSlotStore/ResumeGuidanceStore가 실제로 쓰는 파일 이름. #문제시 원복
     private const val QUICKSLOTS_PREFS_NAME = "TmapNdaQuickSlots"
+    // 재억 요청(2026-11-08): 즐겨찾기 폴더 구성(폴더 이름·순서·소속). 장소 자체는 위 QuickSlots 파일에 있음.
+    private const val FOLDERS_PREFS_NAME = "TmapNdaFavFolders"
     private const val BACKUP_FILE_NAME = "TmapNda_설정백업.json"
 
     // v19.3.35: 재억 제보 - 복원 직후 앱이 계속 강제종료됨. 원인 확인됨: UI 이동 위치처럼
@@ -151,6 +153,7 @@ object SettingsBackup {
                 root.put(FORMAT_VERSION_MARKER, CURRENT_FORMAT_VERSION)
                 root.put(PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)))
                 root.put(QUICKSLOTS_PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(QUICKSLOTS_PREFS_NAME, Context.MODE_PRIVATE)))
+                root.put(FOLDERS_PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(FOLDERS_PREFS_NAME, Context.MODE_PRIVATE)))
 
                 val file = backupFile(context)
                 file.writeText(root.toString(2))
@@ -196,6 +199,7 @@ object SettingsBackup {
             root.put(FORMAT_VERSION_MARKER, CURRENT_FORMAT_VERSION)
             root.put(PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)))
             root.put(QUICKSLOTS_PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(QUICKSLOTS_PREFS_NAME, Context.MODE_PRIVATE)))
+            root.put(FOLDERS_PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(FOLDERS_PREFS_NAME, Context.MODE_PRIVATE)))
             autoBackupFile(context).writeText(root.toString(2))
 
             meta.edit().putLong(AUTO_BACKUP_LAST_KEY, now).apply()
@@ -215,6 +219,7 @@ object SettingsBackup {
             root.put(FORMAT_VERSION_MARKER, CURRENT_FORMAT_VERSION)
             root.put(PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)))
             root.put(QUICKSLOTS_PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(QUICKSLOTS_PREFS_NAME, Context.MODE_PRIVATE)))
+            root.put(FOLDERS_PREFS_NAME, exportPrefsToJson(context.getSharedPreferences(FOLDERS_PREFS_NAME, Context.MODE_PRIVATE)))
             val bytes = root.toString(2).toByteArray()
             // v: 재억 요청(2026-09-15) - 처음엔 밀리초 타임스탬프("TmapNda_설정백업_1789474207084.json")
             // 라 너무 길어서 날짜만 넣는 걸로 바꿨는데, 그러면 누를 때마다(날짜가 바뀔 때마다)
@@ -286,6 +291,13 @@ object SettingsBackup {
                 }
                 root.optJSONObject(QUICKSLOTS_PREFS_NAME)?.let {
                     total += restoreJsonIntoPrefs(it, context.getSharedPreferences(QUICKSLOTS_PREFS_NAME, Context.MODE_PRIVATE))
+                }
+                // 폴더 구성도 복원. 폴더가 없던 예전 백업이면 지금 폴더 구성을 비워서, 복원된 예전 즐겨찾기가 "기본" 폴더로 다시 모이게 함.
+                val folderJson = root.optJSONObject(FOLDERS_PREFS_NAME)
+                if (folderJson != null) {
+                    total += restoreJsonIntoPrefs(folderJson, context.getSharedPreferences(FOLDERS_PREFS_NAME, Context.MODE_PRIVATE))
+                } else {
+                    context.getSharedPreferences(FOLDERS_PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
                 }
                 total
             } else {

@@ -807,7 +807,7 @@ class MapActivity : AppCompatActivity() {
                     val lat = point.javaClass.getMethod("getLatitude").invoke(point) as Double
                     val lon = point.javaClass.getMethod("getLongitude").invoke(point) as Double
                     runOnUiThread {
-                        com.tmap.nda.naver.MapTapPrompt.ask(this, lat, lon) { showRoutePriorityDialog(it) }
+                        com.tmap.nda.naver.MapTapPrompt.ask(this, lat, lon, showCancel = false) { showRoutePriorityDialog(it) }
                     }
                 }
                 false
@@ -1504,7 +1504,15 @@ class MapActivity : AppCompatActivity() {
 
     // v19.3.80: 재억 요청 - 검색이력 창 제목 옆의 좁은 즐겨찾기 줄을 떼어내서, 끌어 옮길 수
     // 있는 "즐겨찾기" 아이콘을 누르면 뜨는 카드로 분리. #문제시 원복
-    private fun showFavoritesCard() {
+    private fun showFavoritesCard(folderId: String? = null) {
+        // 재억 요청(2026-11-08): 먼저 폴더 목록을 보여주고, 폴더를 누르면 그 폴더의 장소 카드가 뜸. #문제시 원복
+        // 설정의 "즐겨찾기 폴더 사용"을 끄면 예전처럼 정해진 개수의 칸을 바로 보여줌.
+        val folderMode = QuickSlotStore.isFolderMode(this)
+        val folder = if (folderMode) folderId?.let { FavoriteFolderStore.get(this, it) } else null
+        if (folderMode && folder == null) {
+            FavoriteFolderCard.show(this) { id -> showFavoritesCard(id) }
+            return
+        }
         lateinit var dialog: PopupCard.CardDialog
         // v11.3: 집/회사/즐겨찾기1/2/3 다섯 칸 빠른등록 아이콘 행 - 짧게 누르면 등록 안
         // 됐을 땐 검색해서 등록+바로 안내, 등록 됐으면 바로 안내. 길게 누르면 이미
@@ -1577,9 +1585,21 @@ class MapActivity : AppCompatActivity() {
         }
         // v13.0-4: 재억 요청 - 설정에서 정한 개수(0~5)만큼만 즐겨찾기 칸을 보여줌. #문제시 원복
         // v: \uC7AC\uC5B5 \uC694\uCCAD(2026-09-02) - \uCD5C\uB300 5\uAC1C \uD558\uB4DC\uCF54\uB529\uC744 10\uAC1C\uAE4C\uC9C0 \uB3D9\uC801 \uC0DD\uC131\uC73C\uB85C \uBCC0\uACBD. #\uBB38\uC81C\uC2DC \uC6D0\uBCF5
-        val favoriteCount = QuickSlotStore.favoriteCount(this)
-        val quickSlotButtons = QuickSlotStore.favoriteSlots(favoriteCount)
+        val quickSlotButtons = (if (folderMode) folder!!.slots.filter { QuickSlotStore.get(this, it) != null } else QuickSlotStore.favoriteSlots(QuickSlotStore.favoriteCount(this)))
             .map { slot -> slot to buildQuickSlotButton(slot, "\u2764\uFE0F") }
+        val addCell = android.widget.TextView(this).apply {
+            text = "\uFF0B \uC7A5\uC18C \uCD94\uAC00"
+            textSize = 12f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(android.graphics.Color.parseColor("#AAAAAA"))
+            setBackgroundResource(R.drawable.bg_quickslot_chip_rounded)
+            setPadding(8, 20, 8, 20)
+            setOnClickListener {
+                dialog.dismiss()
+                pendingQuickSlotRegistration = FavoriteFolderStore.newSlot(this@MapActivity, folder!!.id)
+                showTmapTextSearchDialog()
+            }
+        }
         // v11.9: 집/회사는 상단바 고정 버튼으로 빠져서 여기 팝업엔 즐겨찾기 3칸만 남음.
         // 카드 하나당 너비를 고정폭(52dp)으로 줄여서, 제목("검색 이력 전체")과 같은 줄
         // 오른쪽에 나란히 놓이도록 함(재억 요청). #문제시 원복
@@ -1642,10 +1662,10 @@ class MapActivity : AppCompatActivity() {
         quickSlotPump()
         val cols = 4
         val grid = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.VERTICAL }
-        quickSlotButtons.chunked(cols).forEachIndexed { r, rowItems ->
+        (quickSlotButtons.map { it.second.first } + listOfNotNull(addCell.takeIf { folderMode })).chunked(cols).forEachIndexed { r, rowItems ->
             val row = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL }
             for (i in 0 until cols) {
-                val cell = rowItems.getOrNull(i)?.second?.first ?: android.widget.Space(this)
+                val cell = rowItems.getOrNull(i) ?: android.widget.Space(this)
                 cell.layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                     marginEnd = if (i < cols - 1) PopupCard.dp(this@MapActivity, 8) else 0
                 }
@@ -1753,9 +1773,11 @@ class MapActivity : AppCompatActivity() {
         }
         val scroll = android.widget.ScrollView(this).apply { addView(grid) }
         dialog = PopupCard.CardDialog(this, findViewById<android.view.ViewGroup>(android.R.id.content)).apply {
-            setTitle("즐겨찾기")
+            setTitle(folder?.name ?: "즐겨찾기")
             // 즐겨찾기 줄 수에 맞춰 카드 높이를 딱 맞게(빈 공간 제거). #문제시 원복
-            setContent(scroll, maxDp = ((quickSlotButtons.size + 3) / 4).coerceAtLeast(1) * 70 + (((quickSlotButtons.size + 3) / 4).coerceAtLeast(1) - 1) * 8 + 8, reserveDp = 160)
+            val folderRows = ((quickSlotButtons.size + 1 + 3) / 4).coerceAtLeast(1)
+            setContent(scroll, maxDp = folderRows * 70 + (folderRows - 1) * 8 + 8, reserveDp = 160)
+            if (folderMode) setButton(PopupCard.CardDialog.BUTTON_NEUTRAL, "‹ 폴더") { showFavoritesCard() }
             setButton(PopupCard.CardDialog.BUTTON_NEGATIVE, "닫기")
         }
         dialog.show()

@@ -99,6 +99,14 @@ class KakaoMenuSheet(
             IncidentRepository.refreshNow()
         })
         sheet.addView(divider(), line)
+        sheet.addView(row("앱이 뒤에 있어도 사고 팝업", "다른 앱을 보는 중에도 앞쪽 사고를 팝업으로 알려요. 상단에 알림이 계속 떠 있고 배터리를 더 써요. '다른 앱 위에 표시' 허용이 필요해요.", prefs.getBoolean(IncidentRepository.PREF_BG, false)) {
+            prefs.edit().putBoolean(IncidentRepository.PREF_BG, it).apply()
+            if (it && !android.provider.Settings.canDrawOverlays(activity)) {
+                try { activity.startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:" + activity.packageName))) } catch (_: Exception) { }
+            }
+            IncidentWatchService.sync(activity)
+        })
+        sheet.addView(divider(), line)
         sheet.addView(row("하이패스 장착", "통행료 계산에 쓰여요.", CarFuelSettings.getUseHipass(activity)) {
             CarFuelSettings.save(activity, CarFuelSettings.getCarType(activity), CarFuelSettings.getCarFuel(activity), it)
         })

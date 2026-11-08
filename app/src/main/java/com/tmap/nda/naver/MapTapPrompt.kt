@@ -19,6 +19,7 @@ object MapTapPrompt {
         activity: Activity, lat: Double, lon: Double,
         onAddWaypoint: ((HistoryEntry) -> Unit)? = null,
         onRemoveWaypoint: (() -> Unit)? = null,
+        showCancel: Boolean = true,
         onGo: (HistoryEntry) -> Unit
     ) {
         if (showing || activity.isFinishing || activity.isDestroyed) return
@@ -45,11 +46,14 @@ object MapTapPrompt {
                     if (onRemoveWaypoint != null) {
                         b.setPositiveButton("경유지 삭제") { _, _ -> onRemoveWaypoint() }
                     } else {
-                        b.setPositiveButton("취소", null)
+                        // 버튼이 셋까지라 "취소" 자리를 "저장"으로 바꿈(취소는 팝업 바깥을 눌러서).
+                        b.setPositiveButton("저장") { _, _ -> com.tmap.nda.FavoriteSaveDialog.show(activity, entry) }
                     }
                 } else {
-                    b.setNegativeButton("취소", null)
+                    // 티맵 기본화면은 "길 안내 / 저장" 두 개만(취소는 팝업 바깥을 눌러서).
+                    if (showCancel) b.setNegativeButton("취소", null)
                     b.setTitle("여기로 갈까요?")
+                        .setNeutralButton("저장") { _, _ -> com.tmap.nda.FavoriteSaveDialog.show(activity, entry) }
                         .setPositiveButton("길 안내") { _, _ -> onGo(entry) }
                 }
                 b.show()
