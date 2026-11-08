@@ -1485,6 +1485,8 @@ class UdpSenderService : Service() {
                     // (콤마가 감속하는 종류는 CARROT_HANDLES_CAMERA_TYPES뿐). 설정 "돌발정보 차량에도 보내기"로 끈다.
                     // #문제시 원복(이 블록만 지우면 됨)
                     try {
+                        // 새 사고·재난 알림 번호(바뀌면 콤마가 계기판을 빨갛게 번쩍임). 설정 "돌발정보 차량에도 보내기"가 꺼져 있으면 번호가 안 오름.
+                        json.put("nIncidentFlash", IncidentRepository.flashSeq)
                         val incident = IncidentRepository.carAhead()
                         if (incident != null && json.optInt("nSdiType", 0) <= 0) {
                             json.put("nSdiType", IncidentRepository.carAheadKind())

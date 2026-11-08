@@ -192,6 +192,39 @@ object IncidentRepository {
     private const val AHEAD_CONE_DEG = 45.0
     private const val VSL_MAX_M = 2000.0
     private const val VSL_CONE_DEG = 35.0
+    // 경로 기준: 경로선에서 옆으로 이 거리 안이면 "내 길 위"로 본다. 안내 없을 때: 진행 방향 정면 ±12도·옆 60m 안만.
+    private const val ROUTE_LATERAL_M = 50.0
+    private const val JAM_ROUTE_LATERAL_M = 80.0
+    private const val VSL_ROUTE_LATERAL_M = 40.0
+    private const val ROUTE_SELF_MAX_M = 80.0
+    private const val NARROW_CONE_DEG = 12.0
+    private const val NARROW_LATERAL_M = 60.0
+
+    /** 새 사고·재난 경고가 날 때마다 1씩 오르는 번호. 콤마로 보내서 계기판 빨강 번쩍임 신호로 쓴다(앱 껐다 켜도 새 번호라 상관없음). */
+    @Volatile var flashSeq = (System.currentTimeMillis() / 1000).toInt()  // 앱을 다시 켜면 번호가 크게 달라져 콤마가 새 기준으로 받아들임
+
+    /** 경로선(경도,위도 목록)에 점을 내려 (경로 시작부터의 거리 m, 경로선까지 옆 거리 m)를 돌려준다. */
+    private fun projectOnRoute(lat: Double, lon: Double, route: List<Pair<Double, Double>>): Pair<Double, Double>? {
+        if (route.size < 2) return null
+        val oLat = route[0].second; val oLon = route[0].first
+        val mLat = 111320.0; val mLon = 111320.0 * Math.cos(Math.toRadians(oLat))
+        val px = (lon - oLon) * mLon; val py = (lat - oLat) * mLat
+        var cum = 0.0; var bestPerp = Double.MAX_VALUE; var bestAlong = 0.0
+        var prevX = 0.0; var prevY = 0.0
+        for (i in 1 until route.size) {
+            val cx = (route[i].first - oLon) * mLon; val cy = (route[i].second - oLat) * mLat
+            val sx = cx - prevX; val sy = cy - prevY
+            val len = Math.hypot(sx, sy)
+            if (len > 0.0) {
+                val t = (((px - prevX) * sx + (py - prevY) * sy) / (len * len)).coerceIn(0.0, 1.0)
+                val perp = Math.hypot(px - (prevX + t * sx), py - (prevY + t * sy))
+                if (perp < bestPerp) { bestPerp = perp; bestAlong = cum + t * len }
+                cum += len
+            }
+            prevX = cx; prevY = cy
+        }
+        return if (bestPerp == Double.MAX_VALUE) null else bestAlong to bestPerp
+    }
 
     private class Cand(val prio: Int, val dist: Double, val key: String, val what: String, val kind: Int, val sound: Boolean)
 
@@ -210,28 +243,46 @@ object IncidentRepository {
             if (loc == null) { clearAhead(); return }
             val brg = loc.third
             val cands = ArrayList<Cand>()
+            // 재억 요청(2026-11-08): 길안내 중이면 내 경로선을 따라 앞쪽 3km 안의 것만, 안내가 없으면 진행 방향 정면 좁은 폭만 본다.
+            val route = KakaoRouteDataRepository.routeCoordinates
+            val routeFresh = route.size >= 2 && (KakaoRouteDataRepository.isFresh(15000L) ||
+                System.currentTimeMillis() - KakaoRouteDataRepository.routeCoordinatesUpdatedAt < 15000L)
+            val curOnRoute = if (routeFresh) projectOnRoute(loc.first, loc.second, route) else null
+            val routeMode = curOnRoute != null && curOnRoute.second <= ROUTE_SELF_MAX_M
+            /** 앞쪽 거리(m)를 돌려주고, 대상이 아니면 null. 경로 모드: 경로선 위 거리, 아니면 직선거리+방향 폭 제한. */
+            fun aheadDist(lat: Double, lon: Double, maxM: Double, routeLatM: Double, coneDeg: Double, narrow: Boolean): Double? {
+                if (routeMode) {
+                    val p = projectOnRoute(lat, lon, route) ?: return null
+                    if (p.second > routeLatM) return null
+                    val d = p.first - curOnRoute!!.first
+                    return if (d in AHEAD_MIN_M..maxM) d else null
+                }
+                val d = distanceM(loc.first, loc.second, lat, lon)
+                if (d < AHEAD_MIN_M || d > maxM) return null
+                if (brg != null) {
+                    val diff = angleDiff(bearingDeg(loc.first, loc.second, lat, lon), brg.toDouble())
+                    if (narrow) {
+                        if (diff > NARROW_CONE_DEG || d * Math.sin(Math.toRadians(diff)) > NARROW_LATERAL_M) return null
+                    } else if (diff > coneDeg) return null
+                }
+                return d
+            }
             for (inc in items) {
                 if (inc.type != "acc" && inc.type != "cor" && inc.type != "dis") continue
-                val d = distanceM(loc.first, loc.second, inc.lat, inc.lon)
-                if (d < AHEAD_MIN_M || d > AHEAD_MAX_M) continue
-                if (brg != null && angleDiff(bearingDeg(loc.first, loc.second, inc.lat, inc.lon), brg.toDouble()) > AHEAD_CONE_DEG) continue
+                val d = aheadDist(inc.lat, inc.lon, AHEAD_MAX_M, ROUTE_LATERAL_M, AHEAD_CONE_DEG, narrow = true) ?: continue
                 val (what, kind) = when (inc.type) { "acc" -> "사고발생!" to 90; "cor" -> "공사중!" to 91; else -> "재난발생!" to 92 }
                 cands.add(Cand(if (inc.type == "cor") 3 else 0, d, "${inc.type}|${inc.lon}|${inc.lat}", what, kind, inc.type != "cor"))
             }
-            if (brg != null) {
+            if (brg != null || routeMode) {
                 for (j in jams) {
-                    val d = distanceM(loc.first, loc.second, j.lat, j.lon)
-                    if (d < AHEAD_MIN_M || d > AHEAD_MAX_M) continue
-                    if (angleDiff(bearingDeg(loc.first, loc.second, j.lat, j.lon), brg.toDouble()) > AHEAD_CONE_DEG) continue
-                    if (angleDiff(j.heading.toDouble(), brg.toDouble()) > 75.0) continue   // 반대 방향 차로의 정체는 거른다
+                    val d = aheadDist(j.lat, j.lon, AHEAD_MAX_M, JAM_ROUTE_LATERAL_M, AHEAD_CONE_DEG, narrow = false) ?: continue
+                    if (!routeMode && brg != null && angleDiff(j.heading.toDouble(), brg.toDouble()) > 75.0) continue   // 반대 방향 차로의 정체는 거른다
                     val len = if (j.lenM >= 1000) String.format(java.util.Locale.US, " (%.1fkm)", j.lenM / 1000.0) else ""
                     cands.add(Cand(1, d, "jam|${j.road}|${j.dir}|${Math.round(j.lon * 100)}|${Math.round(j.lat * 100)}", "정체 시속 ${j.speed}$len", 94, false))
                 }
                 for (v in vsls) {
-                    val d = distanceM(loc.first, loc.second, v.lat, v.lon)
-                    if (d < AHEAD_MIN_M || d > VSL_MAX_M) continue
-                    if (angleDiff(bearingDeg(loc.first, loc.second, v.lat, v.lon), brg.toDouble()) > VSL_CONE_DEG) continue
-                    if (v.heading >= 0 && angleDiff(v.heading.toDouble(), brg.toDouble()) > 60.0) continue
+                    val d = aheadDist(v.lat, v.lon, VSL_MAX_M, VSL_ROUTE_LATERAL_M, VSL_CONE_DEG, narrow = false) ?: continue
+                    if (!routeMode && brg != null && v.heading >= 0 && angleDiff(v.heading.toDouble(), brg.toDouble()) > 60.0) continue
                     cands.add(Cand(2, d, "vsl|${v.lon}|${v.lat}|${v.limit}", "제한 ${v.limit} (기본 ${v.def})", 93, false))
                 }
             }
@@ -244,7 +295,10 @@ object IncidentRepository {
                 carText = text; carDistM = m; carAtMs = System.currentTimeMillis(); carKind = b.kind
             } else carText = null
             // 상단바에 띄우는 설정이면 가운데 경고창은 띄우지 않는다. 경고음은 사고·재난일 때만.
-            if (!isTopBar(ctx) && alerted.add(b.key)) {
+            val isNew = alerted.add(b.key)
+            // 새 사고·재난이 처음 잡히면 콤마 계기판 번쩍임 번호를 올린다(차량 전송을 켠 경우만).
+            if (isNew && b.sound && ctx.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean(PREF_CAR, true)) flashSeq++
+            if (!isTopBar(ctx) && isNew) {
                 main.post { try { alertCallback?.invoke(text, b.sound) } catch (_: Exception) { } }
             }
         } catch (e: Exception) {
