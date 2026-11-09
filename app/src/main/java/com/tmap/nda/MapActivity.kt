@@ -359,6 +359,7 @@ class MapActivity : AppCompatActivity() {
 
     private fun unmuteTmapVolume() {
         try {
+            VolumeHelper.tmapForcedMute = false
             TmapUISDK.setVolume(this, VolumeHelper.guideVolumePercent(this))
         } catch (e: Exception) {
             NavLogger.e(this, "티맵 볼륨 복원 예외: ${e.message}")
@@ -2298,6 +2299,7 @@ class MapActivity : AppCompatActivity() {
         }
     }
 
+    private var lastGpsFixAtForStatus = 0L
     private var lastInstantLimitForWarn = 0
     private var instantLimitStableSince = 0L
 
@@ -3389,6 +3391,7 @@ class MapActivity : AppCompatActivity() {
                 // 안내 시작 시점엔 사용자의 티맵 음소거 설정과 무관하게 강제로 낮춤.
                 // 사용자가 저장한 isTmapMuted 값 자체는 안 바꿈 - 안내 종료하면
                 // showKakaoIdleMap()에서 그 설정대로 원복. #문제시 원복
+                VolumeHelper.tmapForcedMute = true
                 TmapUISDK.setVolume(this@MapActivity, 0)
             },
             isRouteGuideActive = { isKakaoRouteGuideActive }
@@ -3409,8 +3412,12 @@ class MapActivity : AppCompatActivity() {
             // 카카오 안내 중엔 강제로 티맵 음성을 낮췄는데, idle(경로 없음) 상태로 돌아오면
             // 사용자가 설정한 원래 음소거 상태로 복원. #문제시 원복
             applyMuteState()
+            VolumeHelper.tmapForcedMute = false
             if (isTmapMuted) {
                 TmapUISDK.setVolume(this@MapActivity, 0)
+            } else {
+                // 재억 요청(2026-11-09): 안내 중 0으로 낮춘 티맵 음성을 안내가 끝나면 저장된 음량으로 복귀. #문제시 원복
+                unmuteTmapVolume()
             }
             // idle(경로 없음) 상태이므로 음성 게이트도 티맵 쪽으로.
             isKakaoRouteGuideActive = false
@@ -4388,6 +4395,17 @@ class MapActivity : AppCompatActivity() {
                 // GPS 속도 → tvCurrentSpeed 실시간 업데이트 (HUD 속도계용)
                 // speedKph가 0이면 GPS 신호 일시 소실 가능성 → 이전 값 유지 (깜빡임 방지)
                 val locationListener = android.location.LocationListener { location ->
+                    // 재억 제보(2026-11-09): 네트워크 위치(오차 수십~수백m)가 같은 리스너로 들어와 GPS가 멀쩡해도
+                    // 1초마다 BAD로 바뀌었음. 네트워크 위치는 GPS를 최근 10초 못 받았을 때 마지막 위치 갱신에만 쓰고 나머지는 무시. #문제시 원복
+                    if (location.provider == android.location.LocationManager.GPS_PROVIDER) {
+                        lastGpsFixAtForStatus = android.os.SystemClock.elapsedRealtime()
+                    } else {
+                        if (android.os.SystemClock.elapsedRealtime() - lastGpsFixAtForStatus > 10_000L) {
+                            lastKnownLat = location.latitude
+                            lastKnownLon = location.longitude
+                        }
+                        return@LocationListener
+                    }
                     lastKnownLat = location.latitude
                     lastKnownLon = location.longitude
                     if (location.hasBearing() && location.speed > 1.0f) { // 저속/정지 시 bearing이 부정확해서 어느정도 속도 있을 때만 갱신
@@ -4429,6 +4447,31 @@ class MapActivity : AppCompatActivity() {
                     }
                 } catch (e: SecurityException) {
                     NavLogger.e(this, "[GPS] 위치 갱신 요청 실패: ${e.message}")
+                }
+                // 재억 요청(2026-11-09): GPS 상태를 누르면 위치 요청을 껐다 다시 켜서 새로고침. #문제시 원복
+                binding.btnGpsStatus.setOnClickListener {
+                    try {
+                        locationManager.removeUpdates(locationListener)
+                        locationManager.requestLocationUpdates(
+                            android.location.LocationManager.GPS_PROVIDER, 500L, 0f,
+                            locationListener, android.os.Looper.getMainLooper()
+                        )
+                        if (locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
+                            locationManager.requestLocationUpdates(
+                                android.location.LocationManager.NETWORK_PROVIDER, 1000L, 0f,
+                                locationListener, android.os.Looper.getMainLooper()
+                            )
+                        }
+                        binding.btnGpsStatus.text = "탐색 중"
+                        binding.btnGpsStatus.setTextColor(android.graphics.Color.YELLOW)
+                        Toast.makeText(this, "GPS 새로고침", Toast.LENGTH_SHORT).show()
+                    } catch (e: Exception) {
+                        NavLogger.e(this, "[GPS] 새로고침 실패: ${e.message}")
+                    }
+                }
+                binding.tvConnectionStatus.setOnClickListener {
+                    requestUdpRefresh(this)
+                    Toast.makeText(this, "콤마 연결 새로고침", Toast.LENGTH_SHORT).show()
                 }
 
                 try {

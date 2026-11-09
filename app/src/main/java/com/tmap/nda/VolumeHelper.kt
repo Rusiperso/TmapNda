@@ -145,6 +145,10 @@ object VolumeHelper {
         applyGuideVolume(context)
     }
 
+    /** 재억 요청(2026-11-09): 카카오/네이버 길안내 중엔 사용자 음소거 설정과 무관하게 티맵 음성을 0으로 유지. 안내가 끝나면 false. #문제시 원복 */
+    @Volatile
+    var tmapForcedMute: Boolean = false
+
     fun applyGuideVolume(context: Context) {
         val percent = guideVolumePercent(context)
         // 카카오 안내 음성(0.0~1.0)
@@ -164,7 +168,7 @@ object VolumeHelper {
         try {
             val tmapMuted = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 .getBoolean("tmap_muted", false)
-            TmapUISDK.setVolume(context.applicationContext, if (tmapMuted) 0 else percent)
+            TmapUISDK.setVolume(context.applicationContext, if (tmapMuted || tmapForcedMute) 0 else percent)
         } catch (e: Exception) {
             NavLogger.flushTrace(context, "voice", "[안내음량] 티맵 적용 예외: ${e.message}")
         }

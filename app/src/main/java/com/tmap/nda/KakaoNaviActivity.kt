@@ -381,6 +381,9 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         wasTmapMuted = sharedPref.getBoolean("tmap_muted", false)
         applyTmapMute(wasTmapMuted)
+        // 재억 요청(2026-11-09): 카카오 길안내가 시작되면 사용자 음소거 설정과 무관하게 티맵 음성은 0. 끝나면(onDestroy) 원래 설정대로 복귀. #문제시 원복
+        VolumeHelper.tmapForcedMute = true
+        applyTmapMute(true)
         kakaoMuted = sharedPref.getBoolean("kakao_muted", false)
 
         // v3.13: 카카오 길안내 시작할 때마다 볼륨이 100%로 리셋되던 문제 - 저장해둔 값으로 다시 맞춤.
@@ -1691,6 +1694,16 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             binding.tvAppVersion?.text = "v$vn"
         } catch (e: Exception) { /* 무시 */ }
         binding.btnGpsStatus?.text = "GPS 확인 중"
+        // 재억 요청(2026-11-09): GPS/콤마 연결 상태를 누르면 새로고침. #문제시 원복
+        binding.btnGpsStatus?.setOnClickListener {
+            try { locationManager?.removeUpdates(this) } catch (_: Exception) {}
+            startRealtimeGpsForwarding()
+            Toast.makeText(this, "GPS 새로고침", Toast.LENGTH_SHORT).show()
+        }
+        binding.tvConnectionStatus?.setOnClickListener {
+            requestUdpRefresh(this)
+            Toast.makeText(this, "콤마 연결 새로고침", Toast.LENGTH_SHORT).show()
+        }
     }
 
     // v1.0.97: MapActivity와 동일한 스타일의 티맵음소거/카카오음소거/검색/로그전송 버튼과
@@ -5456,6 +5469,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
         try {
             val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
+            VolumeHelper.tmapForcedMute = false
             val muted = sharedPref.getBoolean("tmap_muted", false)
             val vol = if (muted) 0 else VolumeHelper.guideVolumePercent(this)
             TmapUISDK.setVolume(this, vol)

@@ -34,6 +34,18 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
+const val ACTION_REFRESH_CONNECTION = "com.tmap.nda.action.REFRESH_CONNECTION"
+
+/** 재억 요청(2026-11-09): 콤마 연결 상태를 눌렀을 때 UDP 서비스에 "다시 붙어라"를 알린다. */
+fun requestUdpRefresh(context: android.content.Context) {
+    try {
+        val i = Intent(context, UdpSenderService::class.java).setAction(ACTION_REFRESH_CONNECTION)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) context.startForegroundService(i) else context.startService(i)
+    } catch (e: Exception) {
+        NavLogger.e(context, "[새로고침] 서비스 호출 실패: ${e.message}")
+    }
+}
+
 class UdpSenderService : Service() {
 
     private val usbAccessoryReceiver = UsbAccessoryReceiver()
@@ -697,7 +709,29 @@ class UdpSenderService : Service() {
         )
     }
 
+    @Volatile private var refreshRequested = false
+
+    /** 재억 요청(2026-11-09): 콤마 연결 상태를 누르면 송신/수신 소켓을 새로 열어 다시 붙음. #문제시 원복 */
+    private fun refreshConnection() {
+        NavLogger.d(this, "[새로고침] 콤마 연결 새로고침 요청 - 송수신 소켓 다시 열기")
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                createUdpSendSocket()
+                if (ndaSendSocket != null) createNdaSendSocket()
+                refreshRequested = true
+                receiveSocket?.close()
+                lastPacketReceivedTime = 0L
+            } catch (e: Exception) {
+                NavLogger.e(this@UdpSenderService, "[새로고침] 실패: ${e.message}")
+            }
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_REFRESH_CONNECTION) {
+            if (isRunning.get()) refreshConnection()
+            return START_STICKY
+        }
         NavLogger.d(this, "===== UdpSenderService.onStartCommand() 호출됨 (intent=${if (intent == null) "null(시스템이 재시작시킴)" else "있음"}, isRunning=${isRunning.get()}) =====")
         val sharedPref = getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
         targetIp = sharedPref.getString("TARGET_IP", "255.255.255.255") ?: "255.255.255.255"
@@ -1567,12 +1601,17 @@ class UdpSenderService : Service() {
     private fun startReceivingLoop() {
         serviceScope.launch(Dispatchers.IO) {
             try {
-                val socket = DatagramSocket(null)
-                socket.reuseAddress = true
-                bindToWifiIfAvailable(socket, "openpilot 수신용(7705)")
-                socket.bind(java.net.InetSocketAddress("0.0.0.0", 7705))
-                socket.soTimeout = 5000
-                receiveSocket = socket
+                // 재억 요청(2026-11-09): 콤마 연결 상태를 눌러 새로고침할 때 수신 소켓도 다시 열 수 있게 함수로 뺌. #문제시 원복
+                fun openReceiveSocket(): DatagramSocket {
+                    val s = DatagramSocket(null)
+                    s.reuseAddress = true
+                    bindToWifiIfAvailable(s, "openpilot 수신용(7705)")
+                    s.bind(java.net.InetSocketAddress("0.0.0.0", 7705))
+                    s.soTimeout = 5000
+                    receiveSocket = s
+                    return s
+                }
+                var socket = openReceiveSocket()
                 // v: "5초 타임아웃 로그조차 안 찍히고 완전히 조용해짐" 미스터리 - Wi-Fi
                 // 바인딩(Network.bindSocket) 이후 soTimeout이 실제로 유지되는지 자체가
                 // 의심스러워서, 설정 직후 실제 값을 읽어서 로그로 남김. 5000이 아닌
@@ -1600,6 +1639,14 @@ class UdpSenderService : Service() {
                         // 그 경우엔 죽은 소켓을 붙잡고 반복하지 말고 조용히 루프 종료.
                         if (!isActive || !isRunning.get()) {
                             break
+                        }
+                        if (refreshRequested) {
+                            refreshRequested = false
+                            try { socket = openReceiveSocket() } catch (e2: Exception) {
+                                NavLogger.e(this@UdpSenderService, "[새로고침] 수신 소켓 다시 열기 실패: ${e2.message}")
+                                delay(2000)
+                            }
+                            continue
                         }
                         // v: 오늘 실주행 로그로 확인됨 - 서비스 자체는 안 죽었는데(onDestroy
                         // 없음) 수신이 몇 분간 완전히 멈춘 사례가 있었음. 그동안은 여기서

@@ -1452,6 +1452,8 @@ object PanelDragHelper {
                 CarFuelSettings.save(context, selectedCarType, selectedCarFuel, useHipassCheckBox.isChecked)
                 pref.edit()
                     .putBoolean("over_speed_warning_enabled", checkBox.isChecked)
+                    // 재억 제보(2026-11-09): 위 반복문이 모든 스위치의 리스너를 이 저장 함수로 갈아끼우는데, 폴더 스위치 값이 여기 빠져 있어 계속 꺼졌음. #문제시 원복
+                    .putBoolean(QuickSlotStore.PREF_FOLDER_MODE, favFolderModeSwitch.isChecked)
                     // 저장 키(mobile_cam_slowdown_disabled)는 "꺼졌는지 여부"라 스위치 상태를
                     // 반전해서 저장(스위치 켜짐=감속 기능 켜짐이므로 disabled=!isChecked)
                     .putBoolean("mobile_cam_slowdown_disabled", !disableMobileCamCheckBox.isChecked)
