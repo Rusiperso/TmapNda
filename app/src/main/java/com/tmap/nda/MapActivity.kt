@@ -2333,13 +2333,15 @@ class MapActivity : AppCompatActivity() {
             lastInstantLimitForWarn = instantLimit
             instantLimitStableSince = nowMs
         }
-        val instantStable = nowMs - instantLimitStableSince >= 3000L
         val cameraLimit = SdiDataRepository.sdiSpeedLimit
         var limitBasis = "굳힌값"
+        // 2026-11-10 재억 제보 - "화면엔 50인데 45km/h에서 경고음". 순간값이 굳힌값(화면/콤마 표시값)보다
+        // 낮을 때 3초 유지되면 순간값을 믿던 규칙 때문에 경고음만 낮은 제한으로 판단했음(로그 19건 중 3건).
+        // 이제 순간값이 더 낮으면 화면에 보이는 굳힌값을 따름(굳힌값이 진짜 낮아지면 그때 같이 따라감).
+        // 순간값이 더 높을 땐 기존대로 순간값(오경고 방지). #문제시 원복
         val limit = when {
             SdiDataRepository.isNearCameraEvent() && cameraLimit >= 30 -> { limitBasis = "카메라"; cameraLimit }
             instantLimit >= 30 && (confirmedLimit < 30 || instantLimit >= confirmedLimit) -> { limitBasis = "순간값"; instantLimit }
-            instantLimit >= 30 && instantStable -> { limitBasis = "순간값(3초유지)"; instantLimit }
             else -> confirmedLimit
         }
         if (limit < 30 || speedKph <= 0) return
@@ -2387,6 +2389,14 @@ class MapActivity : AppCompatActivity() {
                 // 미디어 채널로 재생해서 실제로 같이 움직이게 함. #문제시 원복
                 val volumePercent = VolumeHelper.guideVolumePercent(this).coerceIn(1, 100)
                 AudioStreamDiagnostics.log(this, "경고음발생[Tmap화면]")
+                // 2026-11-10 재억 질문 - 엔미러에서 아이폰 음악 중 Nda 소리가 나는지 확인용. 기기 미디어 음량이
+                // 0이면 이 경고음도 안 들림(미디어 음량 × 안내음량). 파일 로그에 남김. #문제시 원복
+                try {
+                    val am = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+                    val mv = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+                    val mx = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+                    NavLogger.e(this, "[경고음음량] 미디어음량=$mv/$mx 안내음량=$volumePercent% 음악재생중=${am.isMusicActive}")
+                } catch (_: Exception) {}
                 val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, volumePercent)
                 tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ tone.release() }, 500)
