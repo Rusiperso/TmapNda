@@ -312,7 +312,6 @@ class TrafficBar(activity: Activity) : View(activity) {
         val w = width.toFloat(); val h = height.toFloat()
         val bw = 6f * d
         val left = (w - bw) / 2f
-        val remain = (total - progress).coerceAtLeast(1.0)
         val carR = 7f * d
         val top = 0f; val bottom = h - carR * 2f
         paint.style = Paint.Style.FILL
@@ -327,13 +326,16 @@ class TrafficBar(activity: Activity) : View(activity) {
             val s0 = cursor; val s1 = cursor + len
             cursor = s1
             if (s1 <= progress) continue
-            val a = (maxOf(s0, progress) - progress) / remain   // 0=내 위치, 1=도착지
-            val b = ((s1 - progress) / remain).coerceAtMost(1.0)
+            // v: 재억 요청(2026-11-15) - 막대 길이는 출발~도착 전체로 고정, 지나온 만큼 아래쪽부터 색이 빠지고
+            // 내 위치 표시가 위로 올라감. 예전엔 남은 거리로 다시 늘려 그려서 막대가 안 줄어 보였음. #문제시 원복
+            val a = maxOf(s0, progress) / total   // 0=출발, 1=도착지
+            val b = (s1 / total).coerceAtMost(1.0)
             paint.color = colorOf(cong)
             canvas.drawRect(left, bottom - (b * (bottom - top)).toFloat(), left + bw, bottom - (a * (bottom - top)).toFloat(), paint)
         }
         // 내 위치 표시(아래 끝)
-        val cx = w / 2f; val cy = h - carR
+        val frac = (progress / total).coerceIn(0.0, 1.0)
+        val cx = w / 2f; val cy = bottom - (frac * (bottom - top)).toFloat() + carR
         paint.color = Color.WHITE; canvas.drawCircle(cx, cy, carR, paint)
         paint.color = NaverMapIcons.BLUE
         canvas.drawPath(android.graphics.Path().apply {

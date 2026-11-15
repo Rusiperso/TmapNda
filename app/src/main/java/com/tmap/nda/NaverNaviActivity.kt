@@ -1064,6 +1064,12 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
                     binding.tvActiveStatus?.text = "Cruise On"
                     binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#4FC3F7"))
                 }
+                // v: 재억 요청(2026-11-15) - npilot(neokii 계열)은 상태(active) 회신을 폰으로 안 보냄.
+                // 콤마는 찾았는데 상태 패킷이 한 번도 안 온 경우 "Cruise Off"로 오해되지 않게 "정보 없음" 표시. #문제시 원복
+                OpenpilotStateRepository.ndaConnected.value == true && (state.ip.isEmpty() || state.ip == "-") -> {
+                    binding.tvActiveStatus?.text = "Cruise 정보 없음"
+                    binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#C8C8C8"))
+                }
                 else -> {
                     binding.tvActiveStatus?.text = "Cruise Off"
                     binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#C8C8C8"))
