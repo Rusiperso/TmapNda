@@ -713,6 +713,7 @@ class MapActivity : AppCompatActivity() {
             // 확인됨(사용자 지적: OP ON/OFF 반복 점멸) - 원본 active 대신 안정화된
             // displayActive 사용. 진동이 심하면 ON/OFF 대신 "OP 불안정"으로 표시해서
             // 실제 불안정 상태를 숨기지 않으면서도 화면이 초당 2번 깜빡이진 않게 함. #문제시 원복
+            binding.tvActiveStatus.visibility = View.VISIBLE
             when {
                 state.isFlickering -> {
                     binding.tvActiveStatus.text = "Cruise 불안정"
@@ -724,12 +725,9 @@ class MapActivity : AppCompatActivity() {
                     binding.tvActiveStatus.setTextColor(android.graphics.Color.parseColor("#4FC3F7"))
                     binding.tvActiveStatus.background = null
                 }
-                // v: 재억 요청(2026-11-15) - npilot(neokii 계열)은 상태(active) 회신을 폰으로 안 보냄.
-                // 콤마는 찾았는데 상태 패킷이 한 번도 안 온 경우 "Cruise Off"로 오해되지 않게 "정보 없음" 표시. #문제시 원복
+                // v: 재억 요청(2026-11-15) - 상태(active) 회신을 안 보내는 콤마(npilot 등)는 크루즈 줄을 숨김. #문제시 원복
                 OpenpilotStateRepository.ndaConnected.value == true && (state.ip.isEmpty() || state.ip == "-") -> {
-                    binding.tvActiveStatus.text = "Cruise 정보 없음"
-                    binding.tvActiveStatus.setTextColor(android.graphics.Color.parseColor("#C8C8C8"))
-                    binding.tvActiveStatus.background = null
+                    binding.tvActiveStatus.visibility = View.GONE
                 }
                 else -> {
                     binding.tvActiveStatus.text = "Cruise Off"

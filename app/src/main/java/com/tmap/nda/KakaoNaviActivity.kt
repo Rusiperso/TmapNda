@@ -1520,6 +1520,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         OpenpilotStateRepository.state.observe(this) { state ->
             // v4.23: MapActivity와 동일 - 원본 active 대신 안정화된 displayActive 사용,
             // 진동이 심하면 "OP 불안정"으로 표시. #문제시 원복
+            binding.tvActiveStatus?.visibility = View.VISIBLE
             when {
                 state.isFlickering -> {
                     binding.tvActiveStatus?.text = "Cruise 불안정"
@@ -1529,13 +1530,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                     binding.tvActiveStatus?.text = "Cruise On"
                     binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#4FC3F7"))
                 }
-                else -> {
-                // v: 재억 요청(2026-11-15) - npilot(neokii 계열)은 상태(active) 회신을 폰으로 안 보냄.
-                // 콤마는 찾았는데 상태 패킷이 한 번도 안 온 경우 "Cruise Off"로 오해되지 않게 "정보 없음" 표시. #문제시 원복
+                // v: 재억 요청(2026-11-15) - 상태(active) 회신을 안 보내는 콤마(npilot 등)는 크루즈 줄을 숨김. #문제시 원복
                 OpenpilotStateRepository.ndaConnected.value == true && (state.ip.isEmpty() || state.ip == "-") -> {
-                    binding.tvActiveStatus?.text = "Cruise 정보 없음"
-                    binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#C8C8C8"))
+                    binding.tvActiveStatus?.visibility = View.GONE
                 }
+                else -> {
                     binding.tvActiveStatus?.text = "Cruise Off"
                     binding.tvActiveStatus?.setTextColor(android.graphics.Color.parseColor("#C8C8C8"))
                 }
