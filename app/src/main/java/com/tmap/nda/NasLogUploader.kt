@@ -40,6 +40,65 @@ object NasLogUploader {
                 try { NavLogger.d(app, "NasLogUploader 실패: ${e.javaClass.simpleName} ${e.message}") } catch (_: Exception) {}
             }
         }, 90, 5 * 60L, TimeUnit.SECONDS)
+        // 재억 지시(2026-11-13): 새로 쌓인 줄만 10초마다 "실시간" 폴더에 작은 조각 파일로 올림(거의 실시간).
+        // 5분 전체 업로드는 그대로이고, 전체 업로드가 끝나면 그 시각 이전 조각은 지움. #문제시 원복
+        NavLogger.liveCollect = true
+        executor.scheduleWithFixedDelay({
+            try {
+                if (DiscordReporter.isEnabled(app)) liveTick(app) else NavLogger.liveQueue.clear()
+            } catch (e: Exception) {
+                liveSid = null
+            }
+        }, 100, 10L, TimeUnit.SECONDS)
+    }
+
+    @Volatile private var liveSid: String? = null
+    private var liveFail = 0
+    private var liveOkLogged = false
+    private const val LIVE_DIR = "실시간"
+    private val liveNameRe = Regex("_([0-9]{13})[.]txt$")
+
+    private fun liveTick(context: Context) {
+        val q = NavLogger.liveQueue
+        if (q.isEmpty()) return
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date())
+        val folder = prefs.getString("nas_folder", null)
+        // 폴더가 아직 확정 전(5분 업로드가 한 번도 안 돈 상태)이면 줄을 쌓아둔 채 기다림
+        if (folder == null || prefs.getString("nas_folder_checked", null) != today) return
+        val sub = targetSubRoot(context, DiscordReporter.installId(context))
+        if (sub == null) { q.clear(); return }
+        val lines = ArrayList<String>()
+        while (lines.size < 5000) { lines.add(q.pollFirst() ?: break) }
+        if (lines.isEmpty()) return
+        try {
+            val sid = liveSid ?: login().also { liveSid = it }
+            val base = BuildConfig.NAS_DIR.ifBlank { "/tndalogs" }.trimEnd('/') + sub + "/" + folder + "/" + LIVE_DIR
+            val now = System.currentTimeMillis()
+            val name = SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.US).format(java.util.Date(now)) + "_" + DiscordReporter.installId(context) + "_" + now + ".txt" // 2026-11-15: 같은 닉네임 여러 기기가 덮어쓰지 않게 기기번호 추가. #문제시 원복
+            upload(sid, base, name, lines.joinToString("").toByteArray(Charsets.UTF_8))
+            liveFail = 0
+            if (!liveOkLogged) { liveOkLogged = true; NavLogger.d(context, "[NAS실시간] 첫 조각 전송 성공 ${lines.size}줄 -> $name") }
+        } catch (e: Exception) {
+            liveSid = null
+            // 실패는 처음 1번과 이후 30번째마다만 남김(로그 도배 방지)
+            if (liveFail % 30 == 0) NavLogger.d(context, "[NAS실시간] 조각 전송 실패(${liveFail + 1}회째): ${e.javaClass.simpleName} ${e.message}")
+            liveFail++
+            for (l in lines.asReversed()) q.addFirst(l) // 실패하면 다음 회차에 다시
+        }
+    }
+
+    // 전체 업로드가 읽기 시작한 시각 이전에 올라간 조각은 전체 파일에 이미 들어 있으므로 지움
+    private fun cleanLive(sid: String, base: String, readAt: Long, id: String) {
+        val dir = "$base/$LIVE_DIR"
+        val names = listDir(sid, dir) ?: return
+        val old = names.filter { !it.second && it.first.contains("_${id}_") }.mapNotNull { (n, _) ->
+            val t = liveNameRe.find(n)?.groupValues?.get(1)?.toLongOrNull()
+            if (t != null && t < readAt) "$dir/$n" else null
+        }
+        if (old.isEmpty()) return
+        postForm(mapOf("api" to "SYNO.FileStation.Delete", "version" to "1", "method" to "delete",
+            "path" to old.joinToString(","), "_sid" to sid))
     }
 
     private fun recentDays(): Set<String> {
@@ -86,6 +145,7 @@ object NasLogUploader {
     private fun uploadNow(context: Context) {
         val sub = targetSubRoot(context, DiscordReporter.installId(context)) ?: return
         val days = recentDays()
+        val readAt = System.currentTimeMillis()
         val dateRe = Regex("^(\\d{4}-\\d{2}-\\d{2}) ")
         val byDay = HashMap<String, StringBuilder>()
         for (f in NavLogger.allLogFilesChronological(context)) {
@@ -120,9 +180,10 @@ object NasLogUploader {
                 }
             }
             for ((d, sb) in todo) {
-                upload(sid, base, "$d.txt", sb.toString().toByteArray(Charsets.UTF_8))
+                upload(sid, base, "${d}_$id.txt", sb.toString().toByteArray(Charsets.UTF_8))
                 prefs.edit().putInt("nas_txt_sig_$d", sb.length).apply()
             }
+            try { cleanLive(sid, base, readAt, id) } catch (_: Exception) {}
             if (prefs.getString("nas_cleaned", null) != today) { deleteOld(sid, base, days); prefs.edit().putString("nas_cleaned", today).apply() }
         } finally {
             try { logout(sid) } catch (_: Exception) {}
@@ -219,7 +280,7 @@ object NasLogUploader {
             "folder_path" to base, "_sid" to sid))
         if (!r.optBoolean("success")) return
         val files = r.getJSONObject("data").optJSONArray("files") ?: return
-        val nameRe = Regex("^(\\d{4}-\\d{2}-\\d{2})\\.(tnl|txt)$")
+        val nameRe = Regex("^(\\d{4}-\\d{2}-\\d{2})(_[0-9a-f]{8})?\\.(tnl|txt)$")
         val old = ArrayList<String>()
         for (i in 0 until files.length()) {
             val n = files.getJSONObject(i).optString("name")

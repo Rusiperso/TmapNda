@@ -74,7 +74,15 @@ object NavLogger {
         // 플랫폼 기본 charset에 의존하던 FileWriter 대신 UTF-8을 명시함.
         // 예전엔 로그 공유/전송 과정에서 한글이 mojibake(占쏙옙 패턴)로 영구 손상되는 문제가 있었음. #문제시 원복
         OutputStreamWriter(FileOutputStream(logFile(appContextSafe), true), StandardCharsets.UTF_8).use { it.write(line) }
+        // 재억 지시(2026-11-13): NAS 실시간 전송용. 파일에 쓴 뒤에만 큐에 넣음(NAS 5분 전체 업로드가 항상 이 줄을 포함). #문제시 원복
+        if (liveCollect) {
+            liveQueue.add(line)
+            while (liveQueue.size > 30000) liveQueue.pollFirst()
+        }
     }
+
+    @Volatile var liveCollect = false
+    val liveQueue = java.util.concurrent.ConcurrentLinkedDeque<String>()
 
     private fun appendToFile(context: Context, level: String, message: String) {
         val appContextSafe = context.applicationContext
