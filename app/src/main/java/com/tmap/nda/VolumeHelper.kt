@@ -14,6 +14,17 @@ import com.tmapmobility.tmap.tmapsdk.ui.util.TmapUISDK
 object VolumeHelper {
     private const val PREF_KEY = "last_music_volume_percent"
 
+    /**
+     * 2026-11-15 티맵 SDK의 setVolume은 0~10 단위(안에서 0~10으로 자른 뒤 10으로 나눔)인데
+     * 지금까지 0~100(%)을 그대로 넣어서, 0보다 크면 전부 10(최대)으로 잘려 티맵 안전정보 소리가
+     * 늘 최대 크기였음. 퍼센트를 받아 0~10으로 바꿔서 넣음(1% 이상이면 최소 1). #문제시 원복: 이 함수 본문을 TmapUISDK.setVolume(context, percent)로
+     */
+    fun setTmapVolume(context: Context, percent: Int) {
+        val p = percent.coerceIn(0, 100)
+        val level = if (p == 0) 0 else ((p + 5) / 10).coerceIn(1, 10)
+        TmapUISDK.setVolume(context, level)
+    }
+
     // v14.1: 재억 지적 - 설정 화면에서 슬라이더로 40%를 골라 "지금 음량으로 저장"을 눌러도
     // 다시 예전 값(예: 46%)으로 되돌아가는 문제. 원인 - saveExplicitVolumePercent()가
     // applySavedSystemVolume()으로 시스템 음량을 실제로 바꾸는데, 이때 안드로이드가 보내는
@@ -72,7 +83,7 @@ object VolumeHelper {
         appContext.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
             .edit().putInt(PREF_KEY, clamped).apply()
         try {
-            TmapUISDK.setVolume(appContext, clamped)
+            setTmapVolume(appContext, clamped)
         } catch (e: Exception) {
             NavLogger.e(appContext, "VolumeHelper 티맵볼륨 즉시적용 예외: ${e.message}")
         }
@@ -168,7 +179,7 @@ object VolumeHelper {
         try {
             val tmapMuted = context.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE)
                 .getBoolean("tmap_muted", false)
-            TmapUISDK.setVolume(context.applicationContext, if (tmapMuted || tmapForcedMute) 0 else percent)
+            setTmapVolume(context.applicationContext, if (tmapMuted || tmapForcedMute) 0 else percent)
         } catch (e: Exception) {
             NavLogger.flushTrace(context, "voice", "[안내음량] 티맵 적용 예외: ${e.message}")
         }

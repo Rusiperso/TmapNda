@@ -351,7 +351,7 @@ class MapActivity : AppCompatActivity() {
         // 값을 그대로 둠. #문제시 원복
         if (isTmapMuted) {
             VolumeHelper.captureCurrentVolumePercent(this)
-            TmapUISDK.setVolume(this, 0)
+            VolumeHelper.setTmapVolume(this, 0)
         }
         // 해제(!isTmapMuted) 상태에서 "복원"이 필요한 경우는 버튼 토글 핸들러에서 명시적으로
         // unmuteTmapVolume()을 호출하도록 분리함 - 여기(수동적 상태 갱신)에서는 손대지 않음.
@@ -360,7 +360,7 @@ class MapActivity : AppCompatActivity() {
     private fun unmuteTmapVolume() {
         try {
             VolumeHelper.tmapForcedMute = false
-            TmapUISDK.setVolume(this, VolumeHelper.guideVolumePercent(this))
+            VolumeHelper.setTmapVolume(this, VolumeHelper.guideVolumePercent(this))
         } catch (e: Exception) {
             NavLogger.e(this, "티맵 볼륨 복원 예외: ${e.message}")
         }
@@ -2305,6 +2305,8 @@ class MapActivity : AppCompatActivity() {
     }
 
     private var lastGpsFixAtForStatus = 0L
+    private val speedTickHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var lastSpeedApplyAtMs = 0L
     private var lastInstantLimitForWarn = 0
     private var instantLimitStableSince = 0L
 
@@ -2402,9 +2404,7 @@ class MapActivity : AppCompatActivity() {
                     val mx = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
                     NavLogger.e(this, "[경고음음량] 미디어음량=$mv/$mx 안내음량=$volumePercent% 음악재생중=${am.isMusicActive}")
                 } catch (_: Exception) {}
-                val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, volumePercent)
-                tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ tone.release() }, 500)
+                GuideBeep.play(this, volumePercent) // 2026-11-11 길안내 길로 재생(스위치 끄면 예전 방식). #문제시 원복
             } catch (e: Exception) {
                 NavLogger.flushTrace(this, "voice", "속도경고음 재생 예외: ${e.message}")
             }
@@ -3245,7 +3245,7 @@ class MapActivity : AppCompatActivity() {
                             runOnUiThread {
                                 applyMuteState()
                                 if (isTmapMuted) {
-                                    TmapUISDK.setVolume(this@MapActivity, 0)
+                                    VolumeHelper.setTmapVolume(this@MapActivity, 0)
                                 } else {
                                     // v1.7: 여기 하드코딩된 100이 "안내종료 후 다시 100%로 튐" 버그의
                                     // 진짜 원인이었음. 사용자가 맞춰둔 값(unmuteTmapVolume)으로 복원. #문제시 원복
@@ -3330,7 +3330,7 @@ class MapActivity : AppCompatActivity() {
         // 감추고 티맵 화면으로 복귀. 사용자 음소거 설정도 원복. #문제시 원복
         applyMuteState()
         if (isTmapMuted) {
-            TmapUISDK.setVolume(this@MapActivity, 0)
+            VolumeHelper.setTmapVolume(this@MapActivity, 0)
         } else {
             // v1.7: 여기도 하드코딩된 100이 원인 - 저장된 사용자 볼륨으로 복원. #문제시 원복
             unmuteTmapVolume()
@@ -3407,7 +3407,7 @@ class MapActivity : AppCompatActivity() {
                 // 사용자가 저장한 isTmapMuted 값 자체는 안 바꿈 - 안내 종료하면
                 // showKakaoIdleMap()에서 그 설정대로 원복. #문제시 원복
                 VolumeHelper.tmapForcedMute = true
-                TmapUISDK.setVolume(this@MapActivity, 0)
+                VolumeHelper.setTmapVolume(this@MapActivity, 0)
             },
             isRouteGuideActive = { isKakaoRouteGuideActive }
         ).also { kakaoGuidanceDelegate = it }
@@ -3429,7 +3429,7 @@ class MapActivity : AppCompatActivity() {
             applyMuteState()
             VolumeHelper.tmapForcedMute = false
             if (isTmapMuted) {
-                TmapUISDK.setVolume(this@MapActivity, 0)
+                VolumeHelper.setTmapVolume(this@MapActivity, 0)
             } else {
                 // 재억 요청(2026-11-09): 안내 중 0으로 낮춘 티맵 음성을 안내가 끝나면 저장된 음량으로 복귀. #문제시 원복
                 unmuteTmapVolume()
@@ -4272,7 +4272,7 @@ class MapActivity : AppCompatActivity() {
 
                     // 음소거 옵션 켜져 있을 때만 강제 0. 꺼져 있으면 매 갱신마다 볼륨을 되돌리지 않도록 스킵.
                     if (isTmapMuted) {
-                        TmapUISDK.setVolume(this@MapActivity, 0)
+                        VolumeHelper.setTmapVolume(this@MapActivity, 0)
                     }
 
                     // 도로 기본 제한속도 추출 및 UI 업데이트
@@ -4426,12 +4426,17 @@ class MapActivity : AppCompatActivity() {
                     if (location.hasBearing() && location.speed > 1.0f) { // 저속/정지 시 bearing이 부정확해서 어느정도 속도 있을 때만 갱신
                         lastKnownBearing = location.bearing
                     }
-                    val speedKph = (location.speed * 3.6).toInt()
+                    // 2026-11-16 재억 요청 - 속도는 콤마(차량) 값을 우선, 3초 넘게 회신 없으면 GPS 속도 사용. #문제시 원복: 아래 두 줄을 예전 GPS 계산으로
+                    val gpsKph = (location.speed * 3.6).toInt()
+                    val speedKph = OpenpilotStateRepository.freshVehicleSpeedMs()?.let { Math.round(it * 3.6).toInt() } ?: gpsKph
                     if (speedKph > 0) {
                         runOnUiThread {
                             binding.tvCurrentSpeed?.text = speedKph.toString()
                         }
                     }
+                    SdiDataRepository.lastSpeedKph = speedKph
+                    SdiDataRepository.lastSpeedAtMs = System.currentTimeMillis()
+                    lastSpeedApplyAtMs = android.os.SystemClock.elapsedRealtime()
                     checkOverSpeedWarning(speedKph)
                     // 카카오 화면(KakaoNaviActivity)과 완전히 동일한 형식으로 통일:
                     // 위성개수 기반 표시랑 오차범위 기반 표시를 따로 뒀더니 좁은 패널에서
@@ -4463,6 +4468,24 @@ class MapActivity : AppCompatActivity() {
                 } catch (e: SecurityException) {
                     NavLogger.e(this, "[GPS] 위치 갱신 요청 실패: ${e.message}")
                 }
+                // 2026-11-16 재억 요청 - 터널·지하차도처럼 GPS가 끊겨도 콤마 속도가 오면 속도계·과속판단을 이어감. 콤마 회신이 없으면 아무것도 안 함(GPS 그대로). #문제시 원복
+                speedTickHandler.removeCallbacksAndMessages(null)
+                speedTickHandler.post(object : Runnable {
+                    override fun run() {
+                        try {
+                            val ms = OpenpilotStateRepository.freshVehicleSpeedMs()
+                            if (ms != null && android.os.SystemClock.elapsedRealtime() - lastSpeedApplyAtMs > 1200L) {
+                                val kph = Math.round(ms * 3.6).toInt()
+                                binding.tvCurrentSpeed?.text = kph.toString()
+                                SdiDataRepository.lastSpeedKph = kph
+                                SdiDataRepository.lastSpeedAtMs = System.currentTimeMillis()
+                                lastSpeedApplyAtMs = android.os.SystemClock.elapsedRealtime()
+                                checkOverSpeedWarning(kph)
+                            }
+                        } catch (_: Exception) {}
+                        speedTickHandler.postDelayed(this, 1000L)
+                    }
+                })
                 // 재억 요청(2026-11-09): GPS 상태를 누르면 위치 요청을 껐다 다시 켜서 새로고침. #문제시 원복
                 binding.btnGpsStatus.setOnClickListener {
                     try {
@@ -4611,11 +4634,15 @@ class MapActivity : AppCompatActivity() {
             startVoiceSearch()
             return true
         }
-        // v: 재억 요청(2026-09-02) - "티맵 화면일 때는 그냥 음악 조절이 되게 해달라".
-        // 예전엔 이 화면에서도 볼륨키를 가로채서 안내 음량을 조절했는데, 길안내 음량은
-        // 카카오 안내 화면에서 조절하면 되고 티맵 화면에서는 평범하게 음악 볼륨이 조절되는
-        // 게 자연스럽다는 판단. 볼륨키를 아예 가로채지 않고 안드로이드 기본 동작에 맡김.
-        // #문제시 원복: 아래 두 줄 대신 VolumeHelper.adjustGuideVolumeByHardwareKey(...) 호출 복원
+        // 2026-11-16 재억 요청 - 티맵 화면에서도 볼륨키를 가로채 안내 음량만 조절(미디어 음량과 분리). #문제시 원복: 이 if 블록만 지우면 기본 동작
+        if (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP || keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN) {
+            VolumeHelper.adjustGuideVolumeByHardwareKey(
+                this,
+                keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP,
+                isRepeat = (event?.repeatCount ?: 0) > 0
+            )
+            return true
+        }
         return super.onKeyDown(keyCode, event)
     }
 
@@ -4899,6 +4926,7 @@ class MapActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        speedTickHandler.removeCallbacksAndMessages(null)
         try { voiceAssistant.shutdown() } catch (e: Exception) { }
         // v4.24: 이 로그가 그동안 없어서 "MapActivity가 백그라운드에서 OS에 의해
         // 강제 종료됐는지"를 로그로 직접 확인할 방법이 없었음(사용자: 카카오 화면 중

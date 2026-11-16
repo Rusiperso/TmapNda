@@ -179,6 +179,8 @@ class MainActivity : AppCompatActivity() {
                     "모델=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
             )
         } catch (_: Exception) { }
+        // 2026-11-12 시험 빌드 확인용 - 이 줄이 로그에 있으면 "소리 길 변경" 시험 빌드가 설치된 것. 정식 릴리즈 전에 지울 것. #문제시 원복
+        NavLogger.d(applicationContext, "[빌드표식] test-19.4.80-1 소리길변경+티맵알림음110% 스위치=${GuideBeep.enabled(applicationContext)}")
         TmapSearchKey.ensure(applicationContext)
         NavLogger.deleteLogsOlderThan3Days(applicationContext)
         // v: 재억 요청(2026-09-15) - 실사용자가 몇 명인지 대략이라도 알 수 있게, 하루 한 번

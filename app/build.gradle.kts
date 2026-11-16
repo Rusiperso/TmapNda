@@ -178,5 +178,5 @@ dependencies {
   implementation("com.squareup.okio:okio:1.17.6")
   implementation("com.google.code.gson:gson:2.10.1")
   // 네이버 지도(네이버 길안내 화면)
-  implementation("com.naver.maps:map-sdk:3.24.0")
+  implementation("com.naver.maps:map-sdk:3.24.1")
 }

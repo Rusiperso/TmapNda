@@ -1,6 +1,10 @@
 package com.tmap.nda
 
 object SdiDataRepository {
+    // 2026-11-12 티맵 알림음 110% 판단용 - 마지막 GPS 속도와 받은 시각(MapActivity가 갱신). #문제시 원복
+    @Volatile var lastSpeedKph: Int = 0
+    @Volatile var lastSpeedAtMs: Long = 0L
+
     // v4.13: MapActivity/KakaoNaviActivity가 각자 독립적으로 lastOverSpeedWarningTime을
     // 들고 있어서, 둘 다 살아있는 동안 같은 GPS 속도값에 대해 경고음이 두 번(각 화면당
     // 8초 쿨다운) 겹쳐 울릴 수 있었음. 화면과 무관한 공용 쿨다운으로 통합. #문제시 원복

@@ -49,8 +49,11 @@ abstract class AudioFocusInterceptorFactory : AsmClassVisitorFactory<Instrumenta
 
 class AudioFocusClassVisitor(nextVisitor: ClassVisitor) : ClassVisitor(Opcodes.ASM9, nextVisitor) {
     private var kakaoHttp = false
+    private var tmapVoice = false
 
     override fun visit(version: Int, access: Int, name: String, signature: String?, superName: String?, interfaces: Array<out String>?) {
+        // 2026-11-12 티맵 UI SDK의 안내음 합성 클래스(알림음 번호 걸러내기용). #문제시 원복
+        tmapVoice = name == "com/tmapmobility/tmap/tmapsdk/ui/audio/e"
         // 카카오 SDK의 통신 클라이언트를 만드는 클래스(com.kakaomobility.knsdk.o.*)만 대상
         kakaoHttp = name.startsWith("com/kakaomobility/knsdk/o/")
         super.visit(version, access, name, signature, superName, interfaces)
@@ -64,6 +67,9 @@ class AudioFocusClassVisitor(nextVisitor: ClassVisitor) : ClassVisitor(Opcodes.A
         exceptions: Array<out String>?
     ): MethodVisitor {
         val mv = super.visitMethod(access, name, descriptor, signature, exceptions)
+        if (tmapVoice && name == "a" && descriptor == "(Ljava/util/List;Lcom/tmapmobility/tmap/tmapsdk/ui/view/x;)V") {
+            return TmapAlarmGateVisitor(AudioFocusMethodVisitor(mv, kakaoHttp))
+        }
         return AudioFocusMethodVisitor(mv, kakaoHttp)
     }
 }
@@ -121,5 +127,24 @@ class AudioFocusMethodVisitor(nextVisitor: MethodVisitor, private val kakaoHttp:
             return
         }
         super.visitMethodInsn(opcode, owner, name, descriptor, isInterface)
+    }
+}
+
+/**
+ * audio.e.a(List, 콜백) 맨 앞에 "list = TmapAlarmFilter.filter(list); if (list === DROP) return;"를 끼워 넣는다.
+ * (콜백의 실패 처리는 아무 동작도 안 해서, 재생을 건너뛰어도 안내 대기열이 멈추지 않음 - SDK 코드로 확인) #문제시 원복
+ */
+class TmapAlarmGateVisitor(next: MethodVisitor) : MethodVisitor(Opcodes.ASM9, next) {
+    override fun visitCode() {
+        super.visitCode()
+        super.visitVarInsn(Opcodes.ALOAD, 1)
+        super.visitMethodInsn(Opcodes.INVOKESTATIC, "com/tmap/nda/TmapAlarmFilter", "filter", "(Ljava/util/List;)Ljava/util/List;", false)
+        super.visitVarInsn(Opcodes.ASTORE, 1)
+        super.visitVarInsn(Opcodes.ALOAD, 1)
+        super.visitFieldInsn(Opcodes.GETSTATIC, "com/tmap/nda/TmapAlarmFilter", "DROP", "Ljava/util/List;")
+        val go = org.objectweb.asm.Label()
+        super.visitJumpInsn(Opcodes.IF_ACMPNE, go)
+        super.visitInsn(Opcodes.RETURN)
+        super.visitLabel(go)
     }
 }

@@ -351,7 +351,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
         try {
             if (muted) {
                 VolumeHelper.captureCurrentVolumePercent(this)
-                TmapUISDK.setVolume(this, 0)
+                VolumeHelper.setTmapVolume(this, 0)
                 KakaoSdkState.lastAppliedTmapVolume = 0
             }
             // MapActivity와 동일한 철학: 음소거 해제 상태에선 볼륨을 아예 안 건드림(사용자가
@@ -365,7 +365,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
 
     private fun unmuteTmapVolume() {
         try {
-            TmapUISDK.setVolume(this, VolumeHelper.guideVolumePercent(this))
+            VolumeHelper.setTmapVolume(this, VolumeHelper.guideVolumePercent(this))
             KakaoSdkState.lastAppliedTmapVolume = VolumeHelper.guideVolumePercent(this)
         } catch (e: Exception) {
             NavLogger.e(this, "티맵 볼륨 복원 예외: ${e.message}")
@@ -4550,7 +4550,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
             VolumeHelper.tmapForcedMute = false
             val muted = sharedPref.getBoolean("tmap_muted", false)
             val vol = if (muted) 0 else VolumeHelper.guideVolumePercent(this)
-            TmapUISDK.setVolume(this, vol)
+            VolumeHelper.setTmapVolume(this, vol)
             KakaoSdkState.lastAppliedTmapVolume = vol
             NavLogger.d(this, "[음소거] KakaoNaviActivity 종료 - 티맵 볼륨 복원(muted=$muted, vol=$vol)")
         } catch (e: Exception) {

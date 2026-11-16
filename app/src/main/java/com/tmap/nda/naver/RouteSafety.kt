@@ -39,7 +39,7 @@ object RouteSafety {
         return null
     }
 
-    fun build(kakao: KNRoute, naver: NaverRoute): List<RouteSafetyItem> {
+    fun build(kakao: KNRoute, naver: NaverRoute, drops: MutableList<String>? = null): List<RouteSafetyItem> {
         val path = naver.path
         if (path.size < 2) return emptyList()
         val raw = kakao.safetyList() ?: return emptyList()
@@ -49,10 +49,10 @@ object RouteSafety {
         val out = ArrayList<RouteSafetyItem>()
         for (s in raw) {
             val sdi = mapKakaoSafetyCodeToSdiType(s.code.name)
-            if (sdi !in SHOWN) continue
+            if (sdi !in SHOWN) { drops?.add("종류제외 코드=${s.code.name} 종류=$sdi"); continue }
             val p = s.location.pos
             // 좌표는 카카오 자체 좌표(KATEC)로 보이지만, 위경도로 이미 오는 경우에도 깨지지 않게 둘 다 받는다.
-            val here = toWgs(p.x, p.y) ?: continue
+            val here = toWgs(p.x, p.y) ?: run { drops?.add("좌표변환실패 종류=$sdi"); null } ?: continue
             val lat = here.first; val lon = here.second
             val mPerLon = 111_000.0 * Math.cos(Math.toRadians(lat))
             var bestD = Double.MAX_VALUE; var bestAlong = 0.0; var bestI = 0
@@ -65,17 +65,17 @@ object RouteSafety {
                 val d = Math.hypot(ax + dx * t, ay + dy * t)
                 if (d < bestD) { bestD = d; bestAlong = cum[i] + (cum[i + 1] - cum[i]) * t; bestI = i }
             }
-            if (bestD > MAX_OFF_ROUTE_M) continue
+            if (bestD > MAX_OFF_ROUTE_M) { drops?.add("선에서멂 종류=$sdi 선까지=${bestD.toInt()}m 경로위치=${bestAlong.toInt()}m"); continue }
             // 반대 차로/나란한 다른 길 거르기: 카카오 경로가 이 지점에서 가는 방향(30m 앞 지점)이
             // 네이버 경로 방향과 같아야 하고, 그 앞 지점도 네이버 경로선 위에 있어야 한다.
             val ahead = try { s.location.locationAfterDist(30)?.pos } catch (_: Exception) { null }
             val aheadW = ahead?.let { toWgs(it.x, it.y) }
-            if (aheadW == null) continue
+            if (aheadW == null) { drops?.add("앞지점없음 종류=$sdi 선까지=${bestD.toInt()}m 경로위치=${bestAlong.toInt()}m"); continue }
             val kdx = (aheadW.second - lon) * mPerLon; val kdy = (aheadW.first - lat) * mPerLat
-            if (Math.hypot(kdx, kdy) < 5.0) continue
+            if (Math.hypot(kdx, kdy) < 5.0) { drops?.add("앞지점너무가까움 종류=$sdi 경로위치=${bestAlong.toInt()}m"); continue }
             val ndx = (path[bestI + 1].lon - path[bestI].lon) * mPerLon; val ndy = (path[bestI + 1].lat - path[bestI].lat) * mPerLat
             val cos = (kdx * ndx + kdy * ndy) / (Math.hypot(kdx, kdy) * Math.hypot(ndx, ndy).coerceAtLeast(1e-6))
-            if (cos < Math.cos(Math.toRadians(MAX_HEADING_DIFF_DEG))) continue
+            if (cos < Math.cos(Math.toRadians(MAX_HEADING_DIFF_DEG))) { drops?.add("방향다름 종류=$sdi 각도차=${Math.toDegrees(Math.acos(cos.coerceIn(-1.0, 1.0))).toInt()}도 선까지=${bestD.toInt()}m 경로위치=${bestAlong.toInt()}m"); continue }
             var aheadD = Double.MAX_VALUE
             val mPerLon2 = mPerLon
             for (i in (bestI - 3).coerceAtLeast(0) until minOf(path.size - 1, bestI + 40)) {
@@ -86,7 +86,7 @@ object RouteSafety {
                 val t = if (len2 < 1e-9) 0.0 else ((-ax * dx - ay * dy) / len2).coerceIn(0.0, 1.0)
                 aheadD = minOf(aheadD, Math.hypot(ax + dx * t, ay + dy * t))
             }
-            if (aheadD > MAX_OFF_ROUTE_M) continue
+            if (aheadD > MAX_OFF_ROUTE_M) { drops?.add("앞지점이선에서멂 종류=$sdi 앞지점선까지=${aheadD.toInt()}m 경로위치=${bestAlong.toInt()}m"); continue }
             val limit = (s as? KNSafety_Camera)?.speedLimit ?: 0
             out.add(RouteSafetyItem(lat, lon, sdi, limit, bestAlong.toInt(), bestD.toInt()))
         }
@@ -95,7 +95,7 @@ object RouteSafety {
         val dedup = ArrayList<RouteSafetyItem>()
         for (it in sorted) {
             val prev = dedup.lastOrNull { d -> d.sdiType == it.sdiType }
-            if (prev != null && it.alongM - prev.alongM < 30) continue
+            if (prev != null && it.alongM - prev.alongM < 30) { drops?.add("중복30m 종류=${it.sdiType} 경로위치=${it.alongM}m"); continue }
             dedup.add(it)
         }
         return dedup

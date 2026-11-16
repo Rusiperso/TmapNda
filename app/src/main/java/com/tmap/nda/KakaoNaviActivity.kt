@@ -304,7 +304,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         try {
             if (muted) {
                 VolumeHelper.captureCurrentVolumePercent(this)
-                TmapUISDK.setVolume(this, 0)
+                VolumeHelper.setTmapVolume(this, 0)
                 KakaoSdkState.lastAppliedTmapVolume = 0
             }
             // MapActivity와 동일한 철학: 음소거 해제 상태에선 볼륨을 아예 안 건드림(사용자가
@@ -318,7 +318,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     private fun unmuteTmapVolume() {
         try {
-            TmapUISDK.setVolume(this, VolumeHelper.guideVolumePercent(this))
+            VolumeHelper.setTmapVolume(this, VolumeHelper.guideVolumePercent(this))
             KakaoSdkState.lastAppliedTmapVolume = VolumeHelper.guideVolumePercent(this)
         } catch (e: Exception) {
             NavLogger.e(this, "티맵 볼륨 복원 예외: ${e.message}")
@@ -336,6 +336,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         GuideExclusive.registerKakaoActivity(this)
         onBackPressedDispatcher.addCallback(this, backCallback)
         NavLogger.appContext = applicationContext
+        GuideBeep.applyKakaoVoiceUsage(applicationContext) // 2026-11-11 카카오 음성을 길안내 길로(시험). #문제시 원복
         // v: 재억 재제보(2026-08-30) - "카카오 종료할 때 등"의 멈춤도 잡기 위해 여기서도
         // 시작 시도(이미 시작돼 있으면 내부에서 무시됨, MapActivity와 동일한 전역 워치독
         // 하나만 계속 돎). #문제시 원복
@@ -5477,7 +5478,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             VolumeHelper.tmapForcedMute = false
             val muted = sharedPref.getBoolean("tmap_muted", false)
             val vol = if (muted) 0 else VolumeHelper.guideVolumePercent(this)
-            TmapUISDK.setVolume(this, vol)
+            VolumeHelper.setTmapVolume(this, vol)
             KakaoSdkState.lastAppliedTmapVolume = vol
             NavLogger.d(this, "[음소거] KakaoNaviActivity 종료 - 티맵 볼륨 복원(muted=$muted, vol=$vol)")
         } catch (e: Exception) {

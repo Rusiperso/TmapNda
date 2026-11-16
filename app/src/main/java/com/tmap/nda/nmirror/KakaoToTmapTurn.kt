@@ -62,7 +62,12 @@ internal object KakaoToTmapTurn {
         if (rgCodeName.startsWith("KNRGCode_RotaryDirection_") ||
             rgCodeName.startsWith("KNRGCode_RoundaboutDirection_")
         ) {
-            return ROTARY
+            // v: 재억 제보(2026-11-13) - 계기판 로터리 그림이 콤마와 달랐음. 예전엔 방향 없이 31 하나로
+            // 고정해 보냈다. 티맵 SDK(RGConstant.TbtCode)로 확인: 31~42 = TURN_DIR_1~12(1~12시 방향).
+            // 카카오 코드 끝자리(시계 방향)가 곧 방향이라 30+N으로 보낸다(콤마 쪽과 같은 기준).
+            // 끝자리를 못 읽으면 예전처럼 31. #문제시 원복
+            val clock = rgCodeName.substringAfterLast('_').toIntOrNull()
+            return if (clock != null && clock in 1..12) 30 + clock else ROTARY
         }
         if (rgCodeName.startsWith("KNRGCode_Direction_")) {
             return fromAngle(directionAngle)
@@ -127,7 +132,7 @@ internal object KakaoToTmapTurn {
         SLIGHT_LEFT, KEEP_LEFT -> "좌측방향"
         SLIGHT_RIGHT, KEEP_RIGHT -> "우측방향"
         U_TURN -> "유턴"
-        ROTARY -> "회전교차로"
+        in 31..42 -> "회전교차로"
         DEPART -> "출발"
         ARRIVE -> "도착"
         else -> "직진"

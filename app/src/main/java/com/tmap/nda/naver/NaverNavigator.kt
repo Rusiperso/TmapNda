@@ -224,7 +224,9 @@ object NaverNavigator {
                         val r = kRoute as? com.kakaomobility.knsdk.trip.kntrip.knroute.KNRoute
                         if (r == null) { NavLogger.d(ctx, "[카카오안전정보] 경로 못 받음"); return@post }
                         val total = r.safetyList()?.size ?: -1
-                        val items = RouteSafety.build(r, route)
+                        val drops = ArrayList<String>()
+                        val items = RouteSafety.build(r, route, drops)
+                        drops.take(40).forEach { NavLogger.d(ctx, "[카카오안전정보버림] $it") }
                         NavLogger.d(ctx, "[카카오안전정보] 카카오경로 ${r.totalDist}m/네이버경로 ${route.distanceMeters}m, 카카오목록 ${total}개 → 네이버선 ${RouteSafety.MAX_OFF_ROUTE_M.toInt()}m 안·같은방향 ${items.size}개")
                         items.take(15).forEach { NavLogger.d(ctx, "[카카오안전정보] 종류=${it.sdiType} 제한=${it.speedLimit} 경로위치=${it.alongM}m 선까지=${it.offM}m") }
                         safetyItems = items
@@ -395,17 +397,28 @@ object NaverNavigator {
     /** 카카오 목록 항목은 이 거리(m) 안으로 다가오면 지도에 올린다. */
     private const val KAKAO_SAFETY_MAX_AHEAD_M = 3000
 
+    // 티맵이 알려준 안전정보를 지도에서 버린 이유(같은 사유·종류는 10초에 한 번만 남김)
+    private val feedDropLogAt = HashMap<String, Long>()
+    private fun logFeedDrop(why: String, type: Int, dist: Int) {
+        val key = "$why/$type"
+        val now = System.currentTimeMillis()
+        if (now - (feedDropLogAt[key] ?: 0L) < 10_000L) return
+        feedDropLogAt[key] = now
+        NavLogger.d(appContext ?: return, "[티맵안전정보버림] $why 종류=$type 거리=${dist}m")
+    }
+
     private fun trackSafety(s: GuidanceState) {
         val eng = engine ?: return
         val progress = s.progressMeters
         safety.removeAll { it.absMeters < progress - SAFETY_PASSED_M }
         fun feed(type: Int, dist: Int, limit: Int) {
-            if (dist <= 0 || dist > SAFETY_MAX_AHEAD_M) return
-            if (NaverMapIcons.safetyLabel(type, limit) == null) return
+            if (type <= 0 && dist <= 0) return
+            if (dist <= 0 || dist > SAFETY_MAX_AHEAD_M) { logFeedDrop("거리범위밖", type, dist); return }
+            if (NaverMapIcons.safetyLabel(type, limit) == null) { logFeedDrop("아이콘없는종류", type, dist); return }
             // 방지턱은 티맵이 거리를 안 주면 앱이 임시로 150을 넣는다. 진짜 거리가 아니므로 지도에는 찍지 않는다.
             if (type == 22 && dist == 150) return
             val abs = progress + dist
-            val at = eng.pointAt(abs) ?: return
+            val at = eng.pointAt(abs) ?: run { logFeedDrop("경로위치못찾음", type, dist); null } ?: return
             val i = safety.indexOfFirst { sameKind(it.type, type) && kotlin.math.abs(it.absMeters - abs) < SAFETY_MATCH_M }
             val p = SafetyPoint(if (i >= 0) safety[i].id else ++safetySeq, type, limit, abs, at.lon, at.lat, dist)
             if (i >= 0) safety[i] = p else safety.add(p)
@@ -539,9 +552,7 @@ object NaverNavigator {
         NavLogger.e(ctx, "[과속경고음발생][네이버화면] speedKph=${speedKmh.toInt()} limit=$limit (limit*1.1=${limit * 1.1}) dist=$dist")
         try {
             val volumePercent = com.tmap.nda.VolumeHelper.guideVolumePercent(ctx).coerceIn(1, 100)
-            val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, volumePercent)
-            tone.startTone(android.media.ToneGenerator.TONE_CDMA_PIP, 400)
-            main.postDelayed({ tone.release() }, 500)
+            com.tmap.nda.GuideBeep.play(ctx, volumePercent) // 2026-11-11 길안내 길로 재생. #문제시 원복
         } catch (e: Exception) {
             NavLogger.e(ctx, "[네이버] 속도경고음 재생 예외: ${e.message}")
         }
