@@ -20,11 +20,18 @@ object AutoWatchHelper {
     /** 사용정보 접근 권한이 허용돼있는지 확인 */
     fun hasUsageAccessPermission(context: Context): Boolean {
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager ?: return false
-        val mode = appOps.unsafeCheckOpNoThrow(
-            AppOpsManager.OPSTR_GET_USAGE_STATS,
-            Process.myUid(),
-            context.packageName
-        )
+        // 2026-11-18 정실장 로그에서 확인 - unsafeCheckOpNoThrow는 안드로이드 10(API 29)부터라 9 이하(갤럭시 S8 등)에서
+        // NoSuchMethodError로 앱이 죽었음. 9 이하는 예전 함수(checkOpNoThrow)를 씀. #문제시 원복
+        val mode = try {
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName)
+            } else {
+                @Suppress("DEPRECATION")
+                appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName)
+            }
+        } catch (e: Throwable) {
+            return false
+        }
         return mode == AppOpsManager.MODE_ALLOWED
     }
 

@@ -2377,7 +2377,9 @@ class MapActivity : AppCompatActivity() {
         val shouldWarn = if (nearCamera) {
             speedKph > limit * 1.1 && !SdiDataRepository.cameraApproachWarned
         } else {
-            speedKph > limit * 1.1 && now - SdiDataRepository.lastOverSpeedWarningTime > 8000L
+            // 2026-11-18 재억 지시 - 카메라 근처가 아닐 땐 경고음 안 냄(카카오·네이버 길안내와 같은 조건). 원복: 아래 false를 예전 식으로
+            // speedKph > limit * 1.1 && now - SdiDataRepository.lastOverSpeedWarningTime > 8000L
+            false
         }
         if (shouldWarn) {
             SdiDataRepository.lastOverSpeedWarningTime = now

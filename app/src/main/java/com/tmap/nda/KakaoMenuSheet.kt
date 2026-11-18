@@ -71,51 +71,67 @@ class KakaoMenuSheet(
             setPadding(dp(28), dp(18), dp(28), dp(22))
             isClickable = true
         }
+        val content = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
         val line = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
-        sheet.addView(row("스쿨존 회피", "새 경로를 찾을 때부터 적용돼요.", prefs.getBoolean("kakao_avoid_school_zone", false)) {
+        content.addView(row("스쿨존 회피", "새 경로를 찾을 때부터 적용돼요.", prefs.getBoolean("kakao_avoid_school_zone", false)) {
             prefs.edit().putBoolean("kakao_avoid_school_zone", it).apply()
         })
-        sheet.addView(divider(), line)
-        sheet.addView(row("최소 안내", "꼭 필요한 음성 안내만 해요.", prefs.getBoolean("kakao_minimal_guide_enabled", false)) {
+        content.addView(divider(), line)
+        content.addView(row("최소 안내", "꼭 필요한 음성 안내만 해요.", prefs.getBoolean("kakao_minimal_guide_enabled", false)) {
             prefs.edit().putBoolean("kakao_minimal_guide_enabled", it).apply()
         })
-        sheet.addView(divider(), line)
-        sheet.addView(row("경로선 콤마 표시", "경로를 콤마 화면에 그려줘요.", prefs.getBoolean("route_line_display_enabled", false)) {
+        content.addView(divider(), line)
+        content.addView(row("경로선 콤마 표시", "경로를 콤마 화면에 그려줘요.", prefs.getBoolean("route_line_display_enabled", false)) {
             prefs.edit().putBoolean("route_line_display_enabled", it).apply()
         })
-        sheet.addView(divider(), line)
-        sheet.addView(row("돌발상황 표시", "지도에 사고·공사·기상 정보를 표시해요.", prefs.getBoolean(IncidentRepository.PREF_KEY, true)) {
+        content.addView(divider(), line)
+        content.addView(row("돌발상황 표시", "지도에 사고·공사·기상 정보를 표시해요.", prefs.getBoolean(IncidentRepository.PREF_KEY, true)) {
             prefs.edit().putBoolean(IncidentRepository.PREF_KEY, it).apply()
             IncidentRepository.refreshNow()
         })
-        sheet.addView(divider(), line)
-        sheet.addView(row("돌발정보 가운데 경고", "켜면 화면 가운데에 크게 알리고, 끄면 상단바에 주의 경고와 같이 떠요.", prefs.getBoolean(IncidentRepository.PREF_CENTER, true)) {
+        content.addView(divider(), line)
+        content.addView(row("돌발정보 가운데 경고", "켜면 화면 가운데에 크게 알리고, 끄면 상단바에 주의 경고와 같이 떠요.", prefs.getBoolean(IncidentRepository.PREF_CENTER, true)) {
             prefs.edit().putBoolean(IncidentRepository.PREF_CENTER, it).apply()
             IncidentRepository.refreshNow()
         })
-        sheet.addView(divider(), line)
-        sheet.addView(row("돌발정보 차량에도 보내기", "계기판·HUD·콤마에도 앞쪽 사고를 알려요.", prefs.getBoolean(IncidentRepository.PREF_CAR, true)) {
+        content.addView(divider(), line)
+        content.addView(row("돌발정보 차량에도 보내기", "계기판·HUD·콤마에도 앞쪽 사고를 알려요.", prefs.getBoolean(IncidentRepository.PREF_CAR, true)) {
             prefs.edit().putBoolean(IncidentRepository.PREF_CAR, it).apply()
             IncidentRepository.refreshNow()
         })
-        sheet.addView(divider(), line)
-        sheet.addView(row("앱이 뒤에 있어도 사고 팝업", "다른 앱을 보는 중에도 앞쪽 사고를 팝업으로 알려요. 상단에 알림이 계속 떠 있고 배터리를 더 써요. '다른 앱 위에 표시' 허용이 필요해요.", prefs.getBoolean(IncidentRepository.PREF_BG, false)) {
+        content.addView(divider(), line)
+        content.addView(row("앱이 뒤에 있어도 사고 팝업", "다른 앱을 보는 중에도 앞쪽 사고를 팝업으로 알려요. 상단에 알림이 계속 떠 있고 배터리를 더 써요. '다른 앱 위에 표시' 허용이 필요해요.", prefs.getBoolean(IncidentRepository.PREF_BG, false)) {
             prefs.edit().putBoolean(IncidentRepository.PREF_BG, it).apply()
             if (it && !android.provider.Settings.canDrawOverlays(activity)) {
                 try { activity.startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:" + activity.packageName))) } catch (_: Exception) { }
             }
             IncidentWatchService.sync(activity)
         })
-        sheet.addView(divider(), line)
-        sheet.addView(row("하이패스 장착", "통행료 계산에 쓰여요.", CarFuelSettings.getUseHipass(activity)) {
+        content.addView(divider(), line)
+        content.addView(row("하이패스 장착", "통행료 계산에 쓰여요.", CarFuelSettings.getUseHipass(activity)) {
             CarFuelSettings.save(activity, CarFuelSettings.getCarType(activity), CarFuelSettings.getCarFuel(activity), it)
         })
+        // 2026-11-18 재억 제보 - 차(12.3인치 계기판 크기 화면)에선 판이 화면보다 커서 맨 아래 "카카오 메뉴 열기"가 잘렸음.
+        // 버튼을 맨 위에 고정하고, 옵션 목록은 남는 높이 안에서 스크롤되게 함. #문제시 원복
         sheet.addView(TextView(activity).apply {
             text = "카카오 메뉴 열기"; textSize = 18f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
             background = GradientDrawable().apply { setColor(0xFF3F78F0.toInt()); cornerRadius = dp(8).toFloat() }
-            setPadding(0, dp(18), 0, dp(18))
+            setPadding(0, dp(14), 0, dp(14))
             setOnClickListener { dismiss(); openKakaoMenu() }
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(4) })
+        val navBottom = try {
+            if (android.os.Build.VERSION.SDK_INT >= 30)
+                root.rootWindowInsets?.getInsets(android.view.WindowInsets.Type.systemBars())?.bottom ?: 0
+            else 0
+        } catch (e: Exception) { 0 }
+        // 판이 차지할 수 있는 최대 높이 = 화면 - 아래 시스템 바 - 위 여백. 거기서 버튼·판 여백을 뺀 만큼이 목록 높이.
+        val maxListH = (root.height - navBottom - dp(24) - dp(18) - dp(22) - dp(14 + 14 + 24 + 4)).coerceAtLeast(dp(120))
+        val scroll = object : android.widget.ScrollView(activity) {
+            override fun onMeasure(w: Int, h: Int) {
+                super.onMeasure(w, View.MeasureSpec.makeMeasureSpec(maxListH, View.MeasureSpec.AT_MOST))
+            }
+        }.apply { isVerticalScrollBarEnabled = false; addView(content) }
+        sheet.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         val l = FrameLayout(activity).apply {
             setBackgroundColor(0x80000000.toInt())
@@ -125,11 +141,6 @@ class KakaoMenuSheet(
         }
         val wide = root.width > root.height
         // 화면 맨 아래 시스템 바(제스처 바)에 판이 가려지지 않게 그 높이만큼 띄운다
-        val navBottom = try {
-            if (android.os.Build.VERSION.SDK_INT >= 30)
-                root.rootWindowInsets?.getInsets(android.view.WindowInsets.Type.systemBars())?.bottom ?: 0
-            else 0
-        } catch (e: Exception) { 0 }
         l.addView(sheet, FrameLayout.LayoutParams(
             if (wide) (root.width * 0.4f).toInt().coerceAtLeast(dp(360)) else ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT, if (wide) Gravity.BOTTOM or Gravity.END else Gravity.BOTTOM).apply { bottomMargin = navBottom })
