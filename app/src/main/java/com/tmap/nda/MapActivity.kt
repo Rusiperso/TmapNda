@@ -2406,7 +2406,8 @@ class MapActivity : AppCompatActivity() {
                     val mx = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
                     NavLogger.e(this, "[경고음음량] 미디어음량=$mv/$mx 안내음량=$volumePercent% 음악재생중=${am.isMusicActive}")
                 } catch (_: Exception) {}
-                GuideBeep.play(this, volumePercent) // 2026-11-11 길안내 길로 재생(스위치 끄면 예전 방식). #문제시 원복
+                // 2026-11-19 재억 지시 - 티맵 화면에선 우리 "삐삐"를 안 냄(티맵 자체 "띵띵"만 남김). 원복: 아래 줄 주석 해제
+                // GuideBeep.play(this, volumePercent) // 2026-11-11 길안내 길로 재생(스위치 끄면 예전 방식). #문제시 원복
             } catch (e: Exception) {
                 NavLogger.flushTrace(this, "voice", "속도경고음 재생 예외: ${e.message}")
             }

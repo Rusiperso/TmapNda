@@ -71,6 +71,34 @@ object GuideBeep {
         }
     }
 
+    /**
+     * 2026-11-19 재억 요청 - 네이버 화면 카메라 경고음을 우리 삐삐 대신 티맵 SDK의 "띵띵"(고정카메라 300m 알림음 idw_fix_cam_300.ogg,
+     * 앱에 이미 들어 있음)으로 냄. 길안내 길·길안내 음량으로 재생. 파일을 못 찾거나 실패하면 아무 소리도 안 냄. #문제시 원복
+     */
+    fun playTmapChime(context: Context, volumePercent: Int) {
+        try {
+            val id = context.resources.getIdentifier("idw_fix_cam_300", "raw", context.packageName)
+            if (id == 0) { NavLogger.d(context, "[길안내소리] 티맵 알림음 파일 없음"); return }
+            val mp = android.media.MediaPlayer()
+            mp.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(if (enabled(context)) AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE else AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+            context.resources.openRawResourceFd(id).use { mp.setDataSource(it.fileDescriptor, it.startOffset, it.length) }
+            val v = volumePercent.coerceIn(1, 100) / 100f
+            mp.setVolume(v, v)
+            mp.setOnCompletionListener { try { it.release() } catch (_: Exception) {} }
+            mp.setOnErrorListener { p, _, _ -> try { p.release() } catch (_: Exception) {}; true }
+            mp.prepare()
+            mp.start()
+            NavLogger.d(context, "[길안내소리] 티맵 알림음 재생 vol=$volumePercent%")
+        } catch (e: Exception) {
+            NavLogger.d(context, "[길안내소리] 티맵 알림음 재생 실패: ${e.message}")
+        }
+    }
+
     private fun legacy(volumePercent: Int) {
         val tone = ToneGenerator(AudioManager.STREAM_MUSIC, volumePercent)
         tone.startTone(ToneGenerator.TONE_CDMA_PIP, 400)

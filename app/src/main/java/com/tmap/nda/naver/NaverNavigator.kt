@@ -552,7 +552,8 @@ object NaverNavigator {
         NavLogger.e(ctx, "[과속경고음발생][네이버화면] speedKph=${speedKmh.toInt()} limit=$limit (limit*1.1=${limit * 1.1}) dist=$dist")
         try {
             val volumePercent = com.tmap.nda.VolumeHelper.guideVolumePercent(ctx).coerceIn(1, 100)
-            com.tmap.nda.GuideBeep.play(ctx, volumePercent) // 2026-11-11 길안내 길로 재생. #문제시 원복
+            // 2026-11-19 재억 지시 - 우리 "삐삐" 대신 티맵의 "띵띵" 알림음으로. 원복: 아래 줄을 GuideBeep.play(ctx, volumePercent)로
+            com.tmap.nda.GuideBeep.playTmapChime(ctx, volumePercent)
         } catch (e: Exception) {
             NavLogger.e(ctx, "[네이버] 속도경고음 재생 예외: ${e.message}")
         }
