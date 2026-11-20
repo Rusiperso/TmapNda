@@ -111,6 +111,12 @@ object NMirrorSender {
             target.sendTbt(RgDataJson.build(snapshot), snapshot.highwayListJson)
             lastSentAtMs = now
             sentCount++
+            // v: 재억 요청(2026-11-20) - 로터리 그림이 콤마와 계기판이 다른 문제를 로그로 바로 비교하려고,
+            // 로터리가 나갈 때만 "카카오 코드 → 계기판으로 보낸 번호"를 남김(값이 바뀔 때만). #문제시 원복
+            if (snapshot.rgCodeName.contains("Rotary") || snapshot.rgCodeName.contains("Roundabout")) {
+                val sent = KakaoToTmapTurn.from(snapshot.rgCodeName, snapshot.directionAngle)
+                NavLogger.dIfChanged(context, "cluster_rotary", "[계기판로터리] 카카오=${snapshot.rgCodeName} 각도=${snapshot.directionAngle} → 계기판으로 보낸 번호=$sent 거리=${snapshot.turnDistanceMeters}m")
+            }
             sendRouteCoordsIfChanged(target)
             if (!loggedFirstSend) {
                 loggedFirstSend = true

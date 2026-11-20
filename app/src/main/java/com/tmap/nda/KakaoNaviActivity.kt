@@ -1108,6 +1108,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 // 덮어써서 유지되게 함. #문제시 원복
                 applyKakaoSdkVolume()
                 logNaviViewDiagnostics("guideNewDestinations 직후")
+                startFasterRouteWatch()
                 naviView.postDelayed({
                     naviView.requestLayout()
                     naviView.invalidate()
@@ -2603,6 +2604,127 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         intent.putExtra("route_priority_name", priority.name)
         intent.putExtra("route_avoid_option", avoidOption)
     }
+    // v: 재억 요청(2026-11-20) - "맨날 막히는 길로만 간다". 카카오 SDK가 5분마다 확인은 하지만
+    // 거의 항상 "경로 변경 없음"이라서, 앱이 직접 5분마다 같은 출발·도착으로 경로를 새로 계산해
+    // (고른 방식 + 최소시간) 지금 경로의 남은 시간보다 3분 이상 짧으면 갈아탐. 경유지가 있으면
+    // 건너뜀(경유지 포함 비교는 아직 안 함). #문제시 원복
+    private val fasterRouteHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val fasterRouteTask = object : Runnable {
+        override fun run() {
+            if (isFinishing || isDestroyed) return
+            try { checkFasterRoute() } catch (e: Exception) { NavLogger.e(this@KakaoNaviActivity, "[빠른길확인] 예외: ${e.message}") }
+            fasterRouteHandler.postDelayed(this, FASTER_ROUTE_INTERVAL_MS)
+        }
+    }
+    private var fasterRouteWatching = false
+    private var fasterRoutePopupShown = false
+    private val FASTER_ROUTE_INTERVAL_MS = 5 * 60_000L
+    private val FASTER_ROUTE_MIN_GAIN_MIN = 3
+
+    private var fasterTts: android.speech.tts.TextToSpeech? = null
+    private var fasterTtsReady = false
+    private fun speakFasterRoute(text: String) {
+        try {
+            if (fasterTts == null) {
+                fasterTts = android.speech.tts.TextToSpeech(applicationContext) { st ->
+                    if (st == android.speech.tts.TextToSpeech.SUCCESS) {
+                        fasterTtsReady = true
+                        fasterTts?.language = java.util.Locale.KOREAN
+                        fasterTts?.let { GuideVoice.applySaved(this, it) }
+                        pendingFasterSpeech?.let { fasterTts?.speak(it, android.speech.tts.TextToSpeech.QUEUE_ADD, null, "faster") }
+                        pendingFasterSpeech = null
+                    }
+                }
+            }
+            if (!fasterTtsReady) { pendingFasterSpeech = text; return }
+            val params = android.os.Bundle().apply {
+                putFloat(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_VOLUME, (VolumeHelper.guideVolumePercent(this@KakaoNaviActivity) / 100f).coerceIn(0.05f, 1f))
+            }
+            fasterTts?.speak(text, android.speech.tts.TextToSpeech.QUEUE_ADD, params, "faster")
+        } catch (e: Exception) { NavLogger.e(this, "[빠른길확인] 음성 실패: ${e.message}") }
+    }
+    private var pendingFasterSpeech: String? = null
+
+    private fun startFasterRouteWatch() {
+        if (fasterRouteWatching) return
+        fasterRouteWatching = true
+        fasterRouteHandler.postDelayed(fasterRouteTask, FASTER_ROUTE_INTERVAL_MS)
+    }
+
+    private fun checkFasterRoute() {
+        if (!getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getBoolean("kakao_faster_route_check", true)) return
+        if (currentDestLat.isNaN() || currentDestLon.isNaN()) return
+        if (activeWaypoints.isNotEmpty() || fasterRoutePopupShown) return
+        val remainSec = KakaoRouteDataRepository.remainTime
+        if (remainSec <= 0) return
+        val gps = KNSDK.sharedGpsManager()?.recentGpsData ?: return
+        if (gps.pos.x <= 0 || gps.pos.y <= 0) return
+        val w = try { KNSDK.convertKATECToWGS84(gps.pos.x.toInt(), gps.pos.y.toInt()) } catch (_: Exception) { null } ?: return
+        val avoid = RouteAvoidSettings.applySchoolZoneAvoid(this, activeRouteAvoidOption)
+        val options = ArrayList<Pair<KNRoutePriority, Int>>()
+        options.add(activeRoutePriority to avoid)
+        if (activeRoutePriority == KNRoutePriority.KNRoutePriority_Recommand) {
+            options.add(KNRoutePriority.KNRoutePriority_Time to avoid)
+        }
+        val remainMin = (remainSec + 30) / 60
+        val results = arrayOfNulls<Int>(options.size)
+        val done = BooleanArray(options.size)
+        var tripRef: Any? = null
+        KakaoUsage.countCall(this)
+        KakaoSdkState.computeEtaForOptions(
+            this, w.y, w.x, currentDestLat, currentDestLon, options,
+            onTripReady = { tripRef = it }, reportFailures = false
+        ) { idx, eta, _, _, _ ->
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                results[idx] = eta
+                done[idx] = true
+                if (!done.all { it }) return@runOnUiThread
+                var best = -1
+                for (i in results.indices) {
+                    val e = results[i] ?: continue
+                    if (best < 0 || e < (results[best] ?: Int.MAX_VALUE)) best = i
+                }
+                val bestEta = if (best >= 0) results[best] else null
+                NavLogger.d(this, "[빠른길확인] 지금 남은=${remainMin}분 / 새 계산=${results.joinToString { it?.toString() ?: "실패" }}분")
+                val trip = tripRef
+                if (bestEta == null || trip == null || remainMin - bestEta < FASTER_ROUTE_MIN_GAIN_MIN) return@runOnUiThread
+                val gain = remainMin - bestEta
+                val prio = options[best].first
+                val av = options[best].second
+                fasterRoutePopupShown = true
+                speakFasterRoute("더 빠른 경로가 있어요. 약 ${gain}분 빨라요. 경로를 바꿀까요?")
+                val close = PopupCard.showChoice(
+                    this, binding.root as ViewGroup, "더 빠른 경로", "더 빠른 경로가 있어요",
+                    "지금 경로보다 약 ${gain}분 빨라요(남은 시간 ${remainMin}분 → ${bestEta}분). 경로를 바꿀까요?",
+                    listOf(PopupCard.Option("바꾸기", true) {
+                        fasterRoutePopupShown = false
+                        try {
+                            val tripObj = trip as com.kakaomobility.knsdk.trip.kntrip.KNTrip
+                            tripObj.setRouteConfig(CarFuelSettings.buildRouteConfiguration(this))
+                            // 안내 방식(추천 등) 표시는 그대로 두고 이번 경로만 교체 - 다음 확인도 추천+최소시간 비교
+                            naviView.guideNewDestinations(tripObj, prio, av)
+                            naviView.requestLayout()
+                            naviView.invalidate()
+                            applyKakaoSdkVolume()
+                            NavLogger.d(this, "[빠른길확인] 갈아탐: ${remainMin}분 → ${bestEta}분 (${prio.name})")
+                            showKakaoStatusBox("더 빠른 경로로 안내합니다 (${gain}분 단축)")
+                            speakFasterRoute("더 빠른 경로로 안내합니다")
+                        } catch (e: Exception) {
+                            NavLogger.e(this, "[빠른길확인] 갈아타기 실패: ${e.message}")
+                        }
+                    }),
+                    cancelLabel = "유지",
+                    onCancel = { fasterRoutePopupShown = false }
+                )
+                // 15초 안에 안 고르면 그대로 유지(운전 방해 최소화)
+                fasterRouteHandler.postDelayed({
+                    if (fasterRoutePopupShown) { fasterRoutePopupShown = false; try { close() } catch (_: Exception) {} }
+                }, 15_000L)
+            }
+        }
+    }
+
     // v: 재억 요청(2026-08-22) - 안내 중 경유지 추가 기능. 현재 목적지 좌표/이름을
     // guideNewDestinations() 호출 시 그대로 재사용해야 해서 클래스 필드로 보관. #문제시 원복
     private var currentDestName: String = ""
@@ -5454,6 +5576,8 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         // v4.24: MapActivity와 동일 이유로 추가. #문제시 원복
         NavLogger.d(this, "[KakaoNaviActivity lifecycle] onDestroy (isFinishing=$isFinishing, isChangingConfigurations=$isChangingConfigurations)")
         try { voiceAssistant.shutdown() } catch (e: Exception) { }
+        fasterRouteHandler.removeCallbacksAndMessages(null)
+        try { fasterTts?.shutdown() } catch (_: Exception) { }
         // v: 재억 지시(2026-09-27, GPS끊김워치독 추가하면서) - 델리게이트가 자체 Handler
         // 루프를 갖게 됐으니, 화면 종료 시 반드시 멈춰야 액티비티 재생성될 때마다 중복으로
         // 계속 도는 걸 막을 수 있음. #문제시 원복

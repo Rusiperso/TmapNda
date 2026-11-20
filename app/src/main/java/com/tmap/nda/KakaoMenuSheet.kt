@@ -81,6 +81,10 @@ class KakaoMenuSheet(
             prefs.edit().putBoolean("kakao_minimal_guide_enabled", it).apply()
         })
         content.addView(divider(), line)
+        content.addView(row("실시간 경로 탐색", "5분마다 더 빠른 경로를 찾아 물어보고, 목소리로도 알려줘요.", prefs.getBoolean("kakao_faster_route_check", true)) {
+            prefs.edit().putBoolean("kakao_faster_route_check", it).apply()
+        })
+        content.addView(divider(), line)
         content.addView(row("경로선 콤마 표시", "경로를 콤마 화면에 그려줘요.", prefs.getBoolean("route_line_display_enabled", false)) {
             prefs.edit().putBoolean("route_line_display_enabled", it).apply()
         })
