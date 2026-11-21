@@ -844,6 +844,7 @@ class MapActivity : AppCompatActivity() {
         // 티맵 SDK가 일정 시간 안에 안 켜지면(오프라인 등) 티맵 없이 시작한다.
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ startWithoutTmapSdk("8초 안에 응답 없음") }, 8000L)
         // TmapUISDK 초기화
+        // 재억 요청(2026-11-21): GPS 끊기면 콤마 속도로 위치를 이어주는 제공자를 꽂음. #문제시 원복: 마지막 인자 제거
         initialize(this, "", appKey, "", "", object : TmapUISDK.InitializeListener {
             override fun onSuccess() {
                 tmapSdkReady = true
@@ -893,7 +894,7 @@ class MapActivity : AppCompatActivity() {
             override fun savedRouteInfoExists(dest: String?) {
                 // 경로 안내 중이 아니므로 무시
             }
-        })
+        }, com.tmapmobility.tmap.tmapsdk.ui.data.LocationInitParam(listOf(TmapDrLocationProvider())))
     }
 
     private var lastKnownLat: Double? = null
