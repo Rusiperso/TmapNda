@@ -27,6 +27,8 @@ class TmapDrLocationProvider : SDKLocationProvider() {
     private var lastTickAt = 0L
     private var lastBearing: Float? = null
     private var started = false
+    // 길 따라가기: 활성화 시점의 현재 위치부터 앞쪽 경로선(위도,경도) 목록. null이면 직선 폴백. 재억 요청(2026-11-22). #문제시 원복: ahead 관련 코드 제거
+    private var ahead: ArrayList<DoubleArray>? = null
 
     private val gpsListener = object : LocationListener {
         override fun onLocationChanged(l: Location) {
@@ -35,6 +37,7 @@ class TmapDrLocationProvider : SDKLocationProvider() {
             if (l.hasBearing() && l.speed > 1.0f) lastBearing = l.bearing
             if (active) {
                 active = false
+                ahead = null
                 NavLogger.d(context, "[티맵추측주행] GPS 복귀 - 실제 위치로 교체")
             }
             listener?.onLocationChanged(l)
@@ -56,11 +59,95 @@ class TmapDrLocationProvider : SDKLocationProvider() {
         const val DR_EMIT_MS = 900L    // 추측 위치는 그대로 약 1초에 한 번씩만 넣음
     }
 
+    private fun meters(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
+        val dy = (bLat - aLat) * 111_320.0
+        val dx = (bLon - aLon) * 111_320.0 * Math.cos(Math.toRadians(aLat))
+        return Math.hypot(dx, dy)
+    }
+
+    private fun brg(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
+        val dy = (bLat - aLat) * 111_320.0
+        val dx = (bLon - aLon) * 111_320.0 * Math.cos(Math.toRadians(aLat))
+        return (Math.toDegrees(Math.atan2(dx, dy)) + 360.0) % 360.0
+    }
+
+    /** 티맵 엔진의 현재 경로 꼭짓점 중, 현재 위치에서 가장 가까운 선분 이후만 골라 [현재위치, 다음 꼭짓점...] 목록으로 만든다. 못 만들면 null. */
+    private fun buildAhead(real: Location, bearing: Float): ArrayList<DoubleArray>? {
+        try {
+            val arr = com.skt.tmap.engine.navigation.TmapNavigation.getInstance().vertexArray ?: return null
+            if (arr.size < 2) return null
+            val lat0 = real.latitude
+            val lon0 = real.longitude
+            // 좌표 모양 확인(경도 124~132, 위도 33~39 → 위경도). 아니면 쓰지 않음.
+            val first = arr[0]
+            if (first.x !in 124.0..132.0 || first.y !in 33.0..39.0) {
+                NavLogger.d(context, "[티맵추측주행] 경로 좌표가 위경도가 아님(x=${first.x}, y=${first.y}, type=${first.coordType}) - 직선으로 진행")
+                return null
+            }
+            var bestI = -1
+            var bestD = Double.MAX_VALUE
+            var bestT = 0.0
+            val cosLat = Math.cos(Math.toRadians(lat0))
+            for (i in 0 until arr.size - 1) {
+                val ax = (arr[i].x - lon0) * 111_320.0 * cosLat
+                val ay = (arr[i].y - lat0) * 111_320.0
+                val bx = (arr[i + 1].x - lon0) * 111_320.0 * cosLat
+                val by = (arr[i + 1].y - lat0) * 111_320.0
+                val dx = bx - ax
+                val dy = by - ay
+                val l2 = dx * dx + dy * dy
+                if (l2 < 0.01) continue
+                val t = (-(ax * dx + ay * dy) / l2).coerceIn(0.0, 1.0)
+                val d = Math.hypot(ax + t * dx, ay + t * dy)
+                if (d < bestD) { bestD = d; bestI = i; bestT = t }
+            }
+            if (bestI < 0 || bestD > 60.0) {
+                NavLogger.d(context, "[티맵추측주행] 현재 위치가 경로에서 ${bestD.toInt()}m 떨어져 있어 직선으로 진행")
+                return null
+            }
+            val segB = brg(arr[bestI].y, arr[bestI].x, arr[bestI + 1].y, arr[bestI + 1].x)
+            var diff = Math.abs(segB - bearing) % 360.0
+            if (diff > 180.0) diff = 360.0 - diff
+            if (diff > 70.0) {
+                NavLogger.d(context, "[티맵추측주행] 경로 방향(${segB.toInt()}도)과 차 방향(${bearing.toInt()}도)이 달라 직선으로 진행")
+                return null
+            }
+            val out = ArrayList<DoubleArray>()
+            out.add(doubleArrayOf(arr[bestI].y + bestT * (arr[bestI + 1].y - arr[bestI].y), arr[bestI].x + bestT * (arr[bestI + 1].x - arr[bestI].x)))
+            for (i in bestI + 1 until arr.size) out.add(doubleArrayOf(arr[i].y, arr[i].x))
+            return out
+        } catch (e: Throwable) {
+            NavLogger.e(context, "[티맵추측주행] 경로 읽기 실패: ${e.message} - 직선으로 진행")
+            return null
+        }
+    }
+
+    /** ahead를 distM만큼 전진시키고 (위도, 경도, 방향)을 돌려준다. 경로 끝이면 끝점에 머무름. */
+    private fun advanceAhead(path: ArrayList<DoubleArray>, distM: Double): DoubleArray {
+        var left = distM
+        while (path.size >= 2) {
+            val a = path[0]
+            val b = path[1]
+            val len = meters(a[0], a[1], b[0], b[1])
+            if (left < len || path.size == 2 && left >= len) {
+                val t = if (len < 0.01) 1.0 else (left / len).coerceAtMost(1.0)
+                val lat = a[0] + t * (b[0] - a[0])
+                val lon = a[1] + t * (b[1] - a[1])
+                path[0] = doubleArrayOf(lat, lon)
+                return doubleArrayOf(lat, lon, brg(a[0], a[1], b[0], b[1]))
+            }
+            left -= len
+            path.removeAt(0)
+        }
+        val a = path[0]
+        return doubleArrayOf(a[0], a[1], lastBearing?.toDouble() ?: 0.0)
+    }
+
     private fun dr() {
         val real = lastReal ?: return
         val now = SystemClock.elapsedRealtime()
         val gap = now - lastRealAt
-        if (gap < DR_GAP_MS || gap > 15 * 60_000L) { active = false; return }
+        if (gap < DR_GAP_MS || gap > 15 * 60_000L) { active = false; ahead = null; return }
         val speed = (OpenpilotStateRepository.freshVehicleSpeedMs()?.toFloat() ?: return).coerceAtMost(45f)
         val bearing = (if (real.hasBearing()) real.bearing else lastBearing) ?: return
         // v19.4.88: 재억 요청(2026-11-22) - GPS가 끊길 때 화면이 툭 멈췄다가 뒤늦게 따라가던 문제.
@@ -72,6 +159,8 @@ class TmapDrLocationProvider : SDKLocationProvider() {
             active = true
             lastTickAt = now
             cur = Location(real)
+            ahead = buildAhead(real, bearing)
+            NavLogger.d(context, "[티맵추측주행] 경로 따라가기=${ahead != null}")
             d = speed * (gap / 1000.0)
             NavLogger.d(context, "[티맵추측주행] GPS ${gap / 1000.0}초째 없음 - 속도 ${(speed * 3.6).toInt()}km/h, 방향 ${bearing.toInt()}도로 위치 이어감")
         } else {
@@ -80,16 +169,23 @@ class TmapDrLocationProvider : SDKLocationProvider() {
             lastTickAt = now
         }
         val c = cur ?: return
-        val rad = Math.toRadians(bearing.toDouble())
-        val next = Location(LocationManager.GPS_PROVIDER).apply {
-            latitude = c.latitude + d * Math.cos(rad) / 111_320.0
-            longitude = c.longitude + d * Math.sin(rad) / (111_320.0 * Math.cos(Math.toRadians(c.latitude)))
-            this.speed = speed
-            this.bearing = bearing
-            accuracy = 20f
-            time = System.currentTimeMillis()
-            elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+        val path = ahead
+        val next = Location(LocationManager.GPS_PROVIDER)
+        if (path != null && path.size >= 1) {
+            val r = advanceAhead(path, d)
+            next.latitude = r[0]
+            next.longitude = r[1]
+            next.bearing = r[2].toFloat()
+        } else {
+            val rad = Math.toRadians(bearing.toDouble())
+            next.latitude = c.latitude + d * Math.cos(rad) / 111_320.0
+            next.longitude = c.longitude + d * Math.sin(rad) / (111_320.0 * Math.cos(Math.toRadians(c.latitude)))
+            next.bearing = bearing
         }
+        next.speed = speed
+        next.accuracy = 20f
+        next.time = System.currentTimeMillis()
+        next.elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
         cur = next
         listener?.onLocationChanged(next)
     }
@@ -115,6 +211,7 @@ class TmapDrLocationProvider : SDKLocationProvider() {
     override fun stop() {
         started = false
         active = false
+        ahead = null
         main.removeCallbacks(tick)
         try { lm?.removeUpdates(gpsListener) } catch (_: Exception) {}
     }
