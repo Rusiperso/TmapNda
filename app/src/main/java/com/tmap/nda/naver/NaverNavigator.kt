@@ -277,7 +277,8 @@ object NaverNavigator {
     // ===== 추측 주행(터널·지하차도 등 GPS가 끊길 때) =====
     // GPS가 DR_GAP_MS 넘게 안 들어오면, 끊기기 직전 속도로 경로선을 따라 앞으로 간다고 보고 같은 안내 계산을 이어서 돌린다.
     // GPS가 돌아오면 실제 위치로 바로 맞춘다. #문제시 원복
-    private const val DR_GAP_MS = 3_000L
+    private const val DR_GAP_MS = 1_600L
+    private const val DR_EMIT_MS = 900L
     private const val DR_MIN_SPEED_MS = 3.0
     private const val DR_MAX_SPEED_MS = 45.0
     private const val DR_MAX_MS = 15 * 60_000L
@@ -294,14 +295,14 @@ object NaverNavigator {
         override fun run() {
             if (engine == null) { drLoopOn = false; drActive = false; return }
             try { deadReckon() } catch (e: Exception) { appContext?.let { NavLogger.e(it, "[추측주행] 예외: ${e.message}") } }
-            main.postDelayed(this, 1_000L)
+            main.postDelayed(this, 500L)
         }
     }
 
     private fun startDeadReckoningLoop() {
         if (drLoopOn) return
         drLoopOn = true
-        main.postDelayed(drTick, 1_000L)
+        main.postDelayed(drTick, 500L)
     }
 
     private fun deadReckon() {
@@ -311,21 +312,25 @@ object NaverNavigator {
         if (lastGpsFixAt == 0L || now - lastGpsFixAt < DR_GAP_MS) { drActive = false; return }
         if (now - lastGpsFixAt > DR_MAX_MS) return
         val speed = (com.tmap.nda.OpenpilotStateRepository.freshVehicleSpeedMs() ?: lastGpsSpeed).coerceAtMost(DR_MAX_SPEED_MS)
+        // v19.4.88: 재억 요청(2026-11-22) - GPS가 끊길 때 화면이 툭 멈췄다가 뒤늦게 따라가던 문제.
+        // 3초→1.6초 만에 알아채고 0.5초 단위로 확인하며, 시작할 때 첫 위치도 바로 내보내고
+        // 이미 끊겨 있던 시간만큼의 거리를 한 번에 앞으로 옮겨 시작해 뒤처지지 않게 함. #문제시 원복
         if (!drActive || drEngine !== eng) {
             // 멈춰 있었거나 너무 느렸다면(건물 안 등) 따라가지 않는다
             if (speed < DR_MIN_SPEED_MS) return
             val base = lastLocation ?: return
-            drProgress = eng.update(base.longitude, base.latitude).progressMeters
+            drProgress = eng.update(base.longitude, base.latitude).progressMeters + speed * ((now - lastGpsFixAt) / 1000.0)
             drEngine = eng
             drActive = true
             drStartAt = now
             drLastAt = now
-            NavLogger.d(ctx, "[추측주행] GPS ${(now - lastGpsFixAt) / 1000}초째 없음 - 속도 ${(speed * 3.6).toInt()}km/h로 경로 따라 안내 이어감")
-            return
+            NavLogger.d(ctx, "[추측주행] GPS ${(now - lastGpsFixAt) / 1000.0}초째 없음 - 속도 ${(speed * 3.6).toInt()}km/h로 경로 따라 안내 이어감")
+        } else {
+            if (now - drLastAt < DR_EMIT_MS) return
+            val dt = (now - drLastAt) / 1000.0
+            drLastAt = now
+            drProgress += speed * dt
         }
-        val dt = (now - drLastAt) / 1000.0
-        drLastAt = now
-        drProgress += speed * dt
         val limit = eng.totalMeters - DR_STOP_BEFORE_END_M
         if (drProgress > limit) drProgress = limit.coerceAtLeast(0.0)
         val p = eng.pointAt(drProgress) ?: return

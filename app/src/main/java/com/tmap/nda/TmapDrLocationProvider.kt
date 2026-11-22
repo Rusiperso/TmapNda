@@ -47,28 +47,39 @@ class TmapDrLocationProvider : SDKLocationProvider() {
     private val tick = object : Runnable {
         override fun run() {
             try { dr() } catch (e: Exception) { try { NavLogger.e(context, "[티맵추측주행] 예외: ${e.message}") } catch (_: Throwable) {} }
-            if (started) main.postDelayed(this, 1000L)
+            if (started) main.postDelayed(this, 500L)
         }
+    }
+
+    private companion object {
+        const val DR_GAP_MS = 1_600L   // GPS가 한 번 건너뛴 정도(1초 간격 기준)에서 바로 이어감
+        const val DR_EMIT_MS = 900L    // 추측 위치는 그대로 약 1초에 한 번씩만 넣음
     }
 
     private fun dr() {
         val real = lastReal ?: return
         val now = SystemClock.elapsedRealtime()
         val gap = now - lastRealAt
-        if (gap < 3_000L || gap > 15 * 60_000L) { active = false; return }
+        if (gap < DR_GAP_MS || gap > 15 * 60_000L) { active = false; return }
         val speed = (OpenpilotStateRepository.freshVehicleSpeedMs()?.toFloat() ?: return).coerceAtMost(45f)
         val bearing = (if (real.hasBearing()) real.bearing else lastBearing) ?: return
+        // v19.4.88: 재억 요청(2026-11-22) - GPS가 끊길 때 화면이 툭 멈췄다가 뒤늦게 따라가던 문제.
+        // (1) 3초 기다리고 1초마다 확인하던 걸 1.6초·0.5초 단위로 줄여 멈춰 있는 시간을 줄이고,
+        // (2) 시작할 때 첫 위치도 바로 넣고, 이미 끊겨 있던 시간만큼의 거리를 한 번에 앞으로 옮겨 시작해 뒤처지지 않게 함. #문제시 원복
+        val d: Double
         if (!active) {
             if (speed < 3f) return
             active = true
             lastTickAt = now
             cur = Location(real)
-            NavLogger.d(context, "[티맵추측주행] GPS ${gap / 1000}초째 없음 - 속도 ${(speed * 3.6).toInt()}km/h, 방향 ${bearing.toInt()}도로 위치 이어감")
-            return
+            d = speed * (gap / 1000.0)
+            NavLogger.d(context, "[티맵추측주행] GPS ${gap / 1000.0}초째 없음 - 속도 ${(speed * 3.6).toInt()}km/h, 방향 ${bearing.toInt()}도로 위치 이어감")
+        } else {
+            if (now - lastTickAt < DR_EMIT_MS) return
+            d = speed * ((now - lastTickAt) / 1000.0)
+            lastTickAt = now
         }
         val c = cur ?: return
-        val d = speed * ((now - lastTickAt) / 1000.0)
-        lastTickAt = now
         val rad = Math.toRadians(bearing.toDouble())
         val next = Location(LocationManager.GPS_PROVIDER).apply {
             latitude = c.latitude + d * Math.cos(rad) / 111_320.0
@@ -91,7 +102,7 @@ class TmapDrLocationProvider : SDKLocationProvider() {
             mgr.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0L, 0f, gpsListener, Looper.getMainLooper())
             started = true
             main.removeCallbacks(tick)
-            main.postDelayed(tick, 1000L)
+            main.postDelayed(tick, 500L)
         } catch (e: SecurityException) {
             NavLogger.e(context, "[티맵추측주행] 위치 권한 없음: ${e.message}")
         } catch (e: Exception) {

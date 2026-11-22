@@ -5413,7 +5413,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private val kDrTick = object : Runnable {
         override fun run() {
             try { kakaoDeadReckon() } catch (e: Exception) { NavLogger.e(this@KakaoNaviActivity, "[추측주행] 예외: ${e.message}") }
-            kDrHandler.postDelayed(this, 1000L)
+            kDrHandler.postDelayed(this, 500L)
         }
     }
 
@@ -5421,22 +5421,28 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         val now = System.currentTimeMillis()
         val real = kDrLastRealLoc ?: return
         val gap = now - kDrLastRealFixAt
-        if (gap < 3_000L || gap > 15 * 60_000L || kakaoGuidanceDelegate?.isGuiding != true) { kDrActive = false; return }
+        if (gap < 1_600L || gap > 15 * 60_000L || kakaoGuidanceDelegate?.isGuiding != true) { kDrActive = false; return }
         val speed = (OpenpilotStateRepository.freshVehicleSpeedMs()?.toFloat() ?: real.speed).coerceAtMost(45f)
         val bearing = (if (real.hasBearing()) real.bearing else lastKnownBearing) ?: return
         val gpsManager = KNSDK.sharedGpsManager() ?: return
+        // v19.4.88: 재억 요청(2026-11-22) - GPS가 끊길 때 화면이 툭 멈췄다가 뒤늦게 따라가던 문제.
+        // 3초→1.6초 만에 알아채고 0.5초 단위로 확인하며, 시작할 때 첫 위치도 바로 넣고
+        // 이미 끊겨 있던 시간만큼의 거리를 한 번에 앞으로 옮겨 시작해 뒤처지지 않게 함. #문제시 원복
+        val d: Double
         if (!kDrActive) {
             if (speed < 3f) return
             kDrActive = true
             kDrStartAt = now
             kDrLastAt = now
             kDrCur = Location(real)
-            NavLogger.d(this, "[추측주행] GPS ${gap / 1000}초째 없음 - 속도 ${(speed * 3.6).toInt()}km/h, 방향 ${bearing.toInt()}도로 안내 이어감")
-            return
+            d = speed * (gap / 1000.0)
+            NavLogger.d(this, "[추측주행] GPS ${gap / 1000.0}초째 없음 - 속도 ${(speed * 3.6).toInt()}km/h, 방향 ${bearing.toInt()}도로 안내 이어감")
+        } else {
+            if (now - kDrLastAt < 900L) return
+            d = speed * ((now - kDrLastAt) / 1000.0)
+            kDrLastAt = now
         }
         val cur = kDrCur ?: return
-        val d = speed * ((now - kDrLastAt) / 1000.0)
-        kDrLastAt = now
         val rad = Math.toRadians(bearing.toDouble())
         val nextLoc = Location(LocationManager.GPS_PROVIDER).apply {
             latitude = cur.latitude + d * Math.cos(rad) / 111_320.0
@@ -5456,7 +5462,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
 
     private fun startRealtimeGpsForwarding() {
         kDrHandler.removeCallbacks(kDrTick)
-        kDrHandler.postDelayed(kDrTick, 1000L)
+        kDrHandler.postDelayed(kDrTick, 500L)
         gpsWatchStartAt = android.os.SystemClock.elapsedRealtime()
         gpsFirstAnyLogged = false
         gpsFirstGoodLogged = false
