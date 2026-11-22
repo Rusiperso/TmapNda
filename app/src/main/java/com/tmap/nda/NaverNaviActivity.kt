@@ -1834,7 +1834,7 @@ class NaverNaviActivity : AppCompatActivity(), LocationListener {
                     marginParams.marginStart = 16
                     layoutParams = marginParams
                     setOnClickListener {
-                        showKakaoQuickSlotPickerForSave(entry)
+                        FavoriteSaveDialog.show(this@NaverNaviActivity, entry)
                     }
                 }
                 val addWaypointText = android.widget.TextView(this@NaverNaviActivity).apply {

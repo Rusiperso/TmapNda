@@ -1415,7 +1415,7 @@ class MapActivity : AppCompatActivity() {
                     marginParams.marginStart = 16
                     layoutParams = marginParams
                     setOnClickListener {
-                        showQuickSlotPickerForSave(entry)
+                        FavoriteSaveDialog.show(this@MapActivity, entry)
                     }
                 }
                 // v10.9-5: 예전엔 "✕" 작은 글자 하나만 있어서 실차 화면에서 눌러야 하는
