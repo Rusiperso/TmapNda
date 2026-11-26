@@ -182,6 +182,58 @@ class NaverGuideOverlay(private val activity: Activity, private val root: FrameL
     private var recenterWanted = false
     fun setRecenterVisible(v: Boolean) { recenterWanted = v; apply() }
 
+    // 앞으로 지날 휴게소·IC·JC·톨게이트 목록(카카오 화면 오른쪽 목록과 같은 모양). 카카오 경로에서 가져온 시설을 네이버 경로선 거리로 보여준다.
+    // 재억 요청(2026-11-26). #문제시 원복: hwPanel 관련 코드 제거
+    private val hwRows = (0 until 3).map { HwRow() }
+    private inner class HwRow {
+        val icon = TextView(activity).apply {
+            gravity = Gravity.CENTER; setTextColor(Color.WHITE); setTypeface(typeface, Typeface.BOLD); textSize = 13f
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xFF2F8CFF.toInt()) }
+        }
+        val name = TextView(activity).apply {
+            setTextColor(Color.WHITE); textSize = 17f; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+        }
+        val dist = TextView(activity).apply { setTextColor(Color.WHITE); textSize = 22f; setTypeface(typeface, Typeface.BOLD) }
+        val next = TextView(activity).apply { setTextColor(0xFFFFD84A.toInt()); textSize = 14f; visibility = View.GONE }
+        val view = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(0xE6363B43.toInt())
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            addView(icon, LinearLayout.LayoutParams(dp(36), dp(36)))
+            val col = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, 0, 0)
+                addView(name); addView(dist); addView(next)
+            }
+            addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+    }
+    private val hwPanel = LinearLayout(activity).apply {
+        orientation = LinearLayout.VERTICAL
+        visibility = View.GONE
+        hwRows.forEachIndexed { i, r ->
+            addView(r.view, LinearLayout.LayoutParams(dp(190), ViewGroup.LayoutParams.WRAP_CONTENT).apply { if (i > 0) topMargin = dp(2) })
+        }
+    }
+    private var hwHas = false
+
+    private fun updateHighway() {
+        val items = NaverNavigator.highwayAhead(4)
+        val shown = items.take(3)
+        hwHas = shown.isNotEmpty()
+        shown.forEachIndexed { i, (item, remain) ->
+            val r = hwRows[i]
+            r.icon.text = when (item.type) { 1 -> "TG"; 2 -> "휴"; 3 -> "IC"; else -> "JC" }
+            r.name.text = item.name
+            r.dist.text = distText(remain)
+            // 마지막 줄에는 그다음 시설까지의 간격을 "다음 18km"로 보여준다
+            val after = if (i == shown.size - 1) items.getOrNull(3) else null
+            if (after != null) { r.next.text = "다음 " + distText(after.second - remain); r.next.visibility = View.VISIBLE } else r.next.visibility = View.GONE
+            r.view.visibility = View.VISIBLE
+        }
+        for (i in shown.size until hwRows.size) hwRows[i].view.visibility = View.GONE
+        apply()
+    }
+
     /** 경로 남은 구간의 정체 상태를 세로 막대로 보여준다(위=도착지, 아래=내 위치). */
     private val trafficBar = TrafficBar(activity)
 
@@ -202,6 +254,10 @@ class NaverGuideOverlay(private val activity: Activity, private val root: FrameL
             gravity = Gravity.BOTTOM or Gravity.START
             setMargins(dp(14), 0, 0, dp(84))
         })
+        root.addView(hwPanel, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            gravity = Gravity.TOP or Gravity.END
+            setMargins(0, dp(280), dp(28), 0)
+        })
         trafficBar.visibility = View.GONE
         recenter.postDelayed(poll, 700L)
         bottom.postDelayed(placeTick, 3000L)
@@ -209,6 +265,7 @@ class NaverGuideOverlay(private val activity: Activity, private val root: FrameL
         // 설정의 "팝업 위치 잠금"이 켜져 있으면 안 움직인다. 화면에 붙인 뒤에 걸어야 저장된 위치가 복원된다.
         com.tmap.nda.PopupCard.attachDrag(activity, banner, root, "naverGuideBanner")
         com.tmap.nda.PopupCard.attachDrag(activity, bottom, root, "naverGuideBottom")
+        com.tmap.nda.PopupCard.attachDrag(activity, hwPanel, root, "naverHighwayList")
     }
 
     private var wanted = false
@@ -216,6 +273,7 @@ class NaverGuideOverlay(private val activity: Activity, private val root: FrameL
     private fun apply() {
         val v = if (wanted && !obscured) View.VISIBLE else View.GONE
         banner.visibility = v; bottom.visibility = v; trafficBar.visibility = v
+        hwPanel.visibility = if (wanted && !obscured && hwHas) View.VISIBLE else View.GONE
         recenter.visibility = if (wanted && !obscured && recenterWanted) View.VISIBLE else View.GONE
     }
     fun show() { wanted = true; apply() }
@@ -273,6 +331,7 @@ class NaverGuideOverlay(private val activity: Activity, private val root: FrameL
         curPlace = listOf(s.roadName, geoText).filter { it.isNotBlank() }.distinct().joinToString(" · ")
         renderPlaceLine()
         trafficBar.setProgress(s.progressMeters)
+        updateHighway()
     }
 
     private fun distText(m: Int) =

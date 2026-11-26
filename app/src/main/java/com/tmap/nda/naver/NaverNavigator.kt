@@ -139,6 +139,7 @@ object NaverNavigator {
         // GPS가 최근 5초 안에 들어왔다면 부정확한 네트워크 위치는 버린다(위치가 튀는 것 방지)
         if (loc.provider == LocationManager.GPS_PROVIDER) {
             lastGpsFixAt = System.currentTimeMillis()
+            drCurve.record(loc)
             if (loc.hasSpeed()) lastGpsSpeed = loc.speed.toDouble()
             if (drActive) {
                 drActive = false
@@ -177,6 +178,15 @@ object NaverNavigator {
     /** 지금 경로 위의 안전정보(카카오 경로에서 가져와 네이버 경로선 위의 것만 남김). 지도 표시용. */
     @Volatile var safetyItems: List<RouteSafetyItem> = emptyList()
         private set
+    /** 네이버 경로선 위의 앞으로 지날 고속도로 시설(휴게소·IC·JC·톨게이트). 카카오 경로에서 가져온다. 재억 요청(2026-11-26) #문제시 원복 */
+    @Volatile var highwayItems: List<RouteHighwayItem> = emptyList()
+        private set
+
+    /** 지금 위치 기준 앞으로 남은 시설과 남은 거리(m). */
+    fun highwayAhead(max: Int = RouteHighway.MAX_ITEMS): List<Pair<RouteHighwayItem, Int>> {
+        val progress = lastState?.progressMeters ?: return emptyList()
+        return highwayItems.map { it to (it.alongM - progress).toInt() }.filter { it.second > 0 }.take(max)
+    }
     private var kakaoSafetySeq = 0
     /** 카카오 목록에서 이미 지도용 목록으로 옮긴(또는 티맵 값과 겹쳐 건너뛴) 항목 번호. 같은 항목을 다시 올리지 않는다. */
     private val kakaoSeeded = HashSet<Int>()
@@ -190,6 +200,7 @@ object NaverNavigator {
         val start = route.path.firstOrNull() ?: return
         val seq = ++kakaoSafetySeq
         safetyItems = emptyList()
+        highwayItems = emptyList()
         kakaoSeeded.clear()
         // 안전정보는 카카오 SDK가 있어야 얻는다: 카카오 네이티브 앱 키가 없으면 지도에 표시할 수 없다고 한 번 알려준다.
         val kakaoKey = ctx.getSharedPreferences("TmapNdaPrefs", Context.MODE_PRIVATE).getString("kakao_native_app_key", "").orEmpty().trim()
@@ -231,6 +242,11 @@ object NaverNavigator {
                         items.take(15).forEach { NavLogger.d(ctx, "[카카오안전정보] 종류=${it.sdiType} 제한=${it.speedLimit} 경로위치=${it.alongM}m 선까지=${it.offM}m") }
                         safetyItems = items
                         kakaoSeeded.clear()
+                        val hwDrops = ArrayList<String>()
+                        val hw = RouteHighway.build(r, route, hwDrops)
+                        hwDrops.take(30).forEach { NavLogger.d(ctx, "[카카오고속도로시설버림] $it") }
+                        NavLogger.d(ctx, "[카카오고속도로시설] 네이버경로 위 ${hw.size}개: " + hw.take(20).joinToString(", ") { "${it.name}(${it.type}) ${it.alongM}m" })
+                        highwayItems = hw
                     } catch (e: Exception) {
                         NavLogger.e(ctx, "[카카오안전정보] 읽기 예외: ${e.message}")
                     }
@@ -265,7 +281,7 @@ object NaverNavigator {
         goal = null
         currentRoute = null
         planner.reset()
-        kakaoSafetySeq++; safetyItems = emptyList()
+        kakaoSafetySeq++; safetyItems = emptyList(); highwayItems = emptyList()
         camAnnounced = 0; camLastDist = Int.MAX_VALUE; camLastType = -1
         KakaoRouteDataRepository.reset()
         safety.clear()
@@ -290,6 +306,13 @@ object NaverNavigator {
     private var drStartAt = 0L
     private var drEngine: NaverGuidanceEngine? = null
     private var drLoopOn = false
+    // 직선 추측: 마지막 GPS가 경로에서 15m 넘게 벗어나 있으면 경로선 대신 끊기기 직전 방향으로 직선 진행. 재억 요청(2026-11-26). #문제시 원복
+    private var drStraight = false
+    private var drStrLat = 0.0
+    private var drStrLon = 0.0
+    private var drStrBearing = 0.0
+    private val drCurve = com.tmap.nda.DrCurve()
+    private var drCurveDeg = 0.0
 
     private val drTick = object : Runnable {
         override fun run() {
@@ -319,7 +342,31 @@ object NaverNavigator {
             // 멈춰 있었거나 너무 느렸다면(건물 안 등) 따라가지 않는다
             if (speed < DR_MIN_SPEED_MS) return
             val base = lastLocation ?: return
-            drProgress = eng.update(base.longitude, base.latitude).progressMeters + speed * ((now - lastGpsFixAt) / 1000.0)
+            val st0 = eng.update(base.longitude, base.latitude)
+            val gapM = speed * ((now - lastGpsFixAt) / 1000.0)
+            // 15m 넘게 떨어져 있어도 40m 안이고 경로 방향과 30도 안으로 같으면 경로를 따라간다(커브에서 직선으로 가지 않게)
+            val pA = eng.pointAt(st0.progressMeters)
+            val pB = eng.pointAt(st0.progressMeters + 8.0)
+            var segDiff = 999.0
+            if (pA != null && pB != null && base.hasBearing() && (pA.lon != pB.lon || pA.lat != pB.lat)) {
+                val segB = (Math.toDegrees(Math.atan2((pB.lon - pA.lon) * Math.cos(Math.toRadians(pA.lat)), pB.lat - pA.lat)) + 360.0) % 360.0
+                segDiff = Math.abs(segB - base.bearing) % 360.0
+                if (segDiff > 180.0) segDiff = 360.0 - segDiff
+            }
+            val followRoute = st0.offRouteMeters <= 15.0 || (st0.offRouteMeters <= 40.0 && segDiff <= 30.0)
+            if (!followRoute) {
+                // 경로에서 15m 넘게 떨어져 있으면 엉뚱한 길로 붙을 수 있어 경로선 대신 직선으로 진행한다(티맵·카카오와 같은 기준)
+                if (!base.hasBearing()) return
+                drStraight = true
+                drStrBearing = base.bearing.toDouble()
+                drCurveDeg = drCurve.degPerMeter()
+                val r0 = com.tmap.nda.DrCurve.step(base.latitude, base.longitude, drStrBearing, gapM, drCurveDeg)
+                drStrLat = r0[0]; drStrLon = r0[1]; drStrBearing = r0[2]
+                NavLogger.d(ctx, "[추측주행] 마지막 위치가 경로에서 ${st0.offRouteMeters.toInt()}m 떨어져 있어 직선으로 진행")
+            } else {
+                drStraight = false
+                drProgress = st0.progressMeters + gapM
+            }
             drEngine = eng
             drActive = true
             drStartAt = now
@@ -329,7 +376,26 @@ object NaverNavigator {
             if (now - drLastAt < DR_EMIT_MS) return
             val dt = (now - drLastAt) / 1000.0
             drLastAt = now
-            drProgress += speed * dt
+            if (drStraight) {
+                val r = com.tmap.nda.DrCurve.step(drStrLat, drStrLon, drStrBearing, speed * dt, drCurveDeg)
+                drStrLat = r[0]; drStrLon = r[1]; drStrBearing = r[2]
+            } else drProgress += speed * dt
+        }
+        if (drStraight) {
+            val loc = Location("dr").apply {
+                longitude = drStrLon
+                latitude = drStrLat
+                this.speed = speed.toFloat()
+                bearing = drStrBearing.toFloat()
+                accuracy = 20f
+                time = now
+                elapsedRealtimeNanos = android.os.SystemClock.elapsedRealtimeNanos()
+            }
+            usingNetworkFix = false
+            lastLocation = loc
+            listener?.onLocation(loc)
+            onLocation(loc)
+            return
         }
         val limit = eng.totalMeters - DR_STOP_BEFORE_END_M
         if (drProgress > limit) drProgress = limit.coerceAtLeast(0.0)
@@ -377,7 +443,7 @@ object NaverNavigator {
         // GPS 오차가 큰 날에는 이탈 판단을 느슨하게 한다
         val offLimit = maxOf(30.0, loc.accuracy.toDouble() * 1.5)
         // 차가 서 있거나(속도 0) 속도 정보가 없는 위치(네트워크 위치)에서는 재탐색하지 않는다 - 건물 안에서 흔들리는 위치로 호출을 낭비하지 않기 위해
-        val moving = loc.hasSpeed() && loc.speed > 1.5f
+        val moving = !drActive && loc.hasSpeed() && loc.speed > 1.5f
         val effective = if (!moving || s.offRouteMeters < offLimit) s.copy(offRouteMeters = 0.0) else s
         if ((!rerouting || reroutingReason == "교통갱신") && gate.shouldReroute(now, effective)) {
             reroute(ctx, loc, "이탈")
@@ -697,7 +763,7 @@ object NaverNavigator {
             nextTurnNodeName = targetRoadName(second, nextText),
             nextRgCodeName = NaverTurnMap.clusterName(second?.type ?: 0),
             nextDirectionAngle = 0,
-            highwayListJson = null
+            highwayListJson = RouteHighway.toJson(highwayItems, s.progressMeters)
         )
         try { NMirrorSender.send(ctx, snapshot) } catch (e: Exception) { NavLogger.e(ctx, "[네이버→nMirror] 전송 실패: ${e.message}") }
         try { NavdySender.sendGuidance(snapshot) } catch (e: Exception) { NavLogger.e(ctx, "[네이버→나브디] 전송 실패: ${e.message}") }

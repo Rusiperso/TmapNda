@@ -5409,6 +5409,11 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
     private var kDrActive = false
     private var kDrStartAt = 0L
     private var kDrLastAt = 0L
+    // 길 따라가기: 끊긴 시점 위치부터 앞쪽 경로선 (위도,경도) 목록. null이면 직선. 재억 요청(2026-11-26). #문제시 원복: kDrAhead 관련 코드 제거
+    private var kDrAhead: ArrayList<DoubleArray>? = null
+    private val kDrCurve = DrCurve()
+    private var kDrCurveBearing = 0.0
+    private var kDrCurveDeg = 0.0
     private val kDrHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val kDrTick = object : Runnable {
         override fun run() {
@@ -5417,11 +5422,97 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
         }
     }
 
+    private fun kDrMeters(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
+        val dy = (bLat - aLat) * 111_320.0
+        val dx = (bLon - aLon) * 111_320.0 * Math.cos(Math.toRadians(aLat))
+        return Math.hypot(dx, dy)
+    }
+
+    private fun kDrBrg(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
+        val dy = (bLat - aLat) * 111_320.0
+        val dx = (bLon - aLon) * 111_320.0 * Math.cos(Math.toRadians(aLat))
+        return (Math.toDegrees(Math.atan2(dx, dy)) + 360.0) % 360.0
+    }
+
+    /** 카카오 경로선(경도,위도)에서 현재 위치에 가장 가까운 선분 이후를 [현재위치, 다음 꼭짓점...] (위도,경도)로. 못 만들면 null. */
+    private fun kDrBuildAhead(real: Location, bearing: Float): ArrayList<DoubleArray>? {
+        try {
+            val arr = KakaoRouteDataRepository.routeCoordinates
+            if (arr.size < 2) return null
+            val lat0 = real.latitude
+            val lon0 = real.longitude
+            val cosLat = Math.cos(Math.toRadians(lat0))
+            var bestI = -1
+            var bestD = Double.MAX_VALUE
+            var bestT = 0.0
+            for (i in 0 until arr.size - 1) {
+                val ax = (arr[i].first - lon0) * 111_320.0 * cosLat
+                val ay = (arr[i].second - lat0) * 111_320.0
+                val bx = (arr[i + 1].first - lon0) * 111_320.0 * cosLat
+                val by = (arr[i + 1].second - lat0) * 111_320.0
+                val dx = bx - ax
+                val dy = by - ay
+                val l2 = dx * dx + dy * dy
+                if (l2 < 0.01) continue
+                val t = (-(ax * dx + ay * dy) / l2).coerceIn(0.0, 1.0)
+                val dd = Math.hypot(ax + t * dx, ay + t * dy)
+                if (dd < bestD) { bestD = dd; bestI = i; bestT = t }
+            }
+            if (bestI < 0 || bestD > 40.0) {
+                NavLogger.d(this, "[추측주행] 현재 위치가 경로에서 ${bestD.toInt()}m 떨어져 있어 직선으로 진행")
+                return null
+            }
+            val a = arr[bestI]
+            val b = arr[bestI + 1]
+            val segB = kDrBrg(a.second, a.first, b.second, b.first)
+            var diff = Math.abs(segB - bearing) % 360.0
+            if (diff > 180.0) diff = 360.0 - diff
+            // 경로에서 15m 넘게 떨어져 있으면 방향이 30도 안으로 거의 같을 때만 경로를 따라간다. 재억 요청(2026-11-26)
+            if (bestD > 15.0 && diff > 30.0) {
+                NavLogger.d(this, "[추측주행] 경로에서 ${bestD.toInt()}m 떨어져 있고 방향도 ${diff.toInt()}도 달라 직선으로 진행")
+                return null
+            }
+            if (diff > 70.0) {
+                NavLogger.d(this, "[추측주행] 경로 방향(${segB.toInt()}도)과 차 방향(${bearing.toInt()}도)이 달라 직선으로 진행")
+                return null
+            }
+            val out = ArrayList<DoubleArray>()
+            out.add(doubleArrayOf(a.second + bestT * (b.second - a.second), a.first + bestT * (b.first - a.first)))
+            for (i in bestI + 1 until arr.size) out.add(doubleArrayOf(arr[i].second, arr[i].first))
+            return out
+        } catch (e: Throwable) {
+            NavLogger.e(this, "[추측주행] 경로 읽기 실패: ${e.message} - 직선으로 진행")
+            return null
+        }
+    }
+
+    /** path를 distM만큼 전진시키고 (위도, 경도, 방향)을 돌려준다. 끝이면 끝점에 머무름. */
+    private fun kDrAdvance(path: ArrayList<DoubleArray>, distM: Double, fallbackBearing: Double): DoubleArray {
+        var left = distM
+        var lastBrg = fallbackBearing
+        while (path.size >= 2) {
+            val a = path[0]
+            val b = path[1]
+            val len = kDrMeters(a[0], a[1], b[0], b[1])
+            lastBrg = if (len < 0.01) lastBrg else kDrBrg(a[0], a[1], b[0], b[1])
+            if (left < len || path.size == 2) {
+                val t = if (len < 0.01) 1.0 else (left / len).coerceAtMost(1.0)
+                val lat = a[0] + t * (b[0] - a[0])
+                val lon = a[1] + t * (b[1] - a[1])
+                path[0] = doubleArrayOf(lat, lon)
+                return doubleArrayOf(lat, lon, lastBrg)
+            }
+            left -= len
+            path.removeAt(0)
+        }
+        return doubleArrayOf(path[0][0], path[0][1], lastBrg)
+    }
+
     private fun kakaoDeadReckon() {
         val now = System.currentTimeMillis()
         val real = kDrLastRealLoc ?: return
         val gap = now - kDrLastRealFixAt
-        if (gap < 1_600L || gap > 15 * 60_000L || kakaoGuidanceDelegate?.isGuiding != true) { kDrActive = false; return }
+        if (gap < 1_600L || gap > 15 * 60_000L || kakaoGuidanceDelegate?.isGuiding != true) { kDrActive = false; kDrAhead = null; return }
         val speed = (OpenpilotStateRepository.freshVehicleSpeedMs()?.toFloat() ?: real.speed).coerceAtMost(45f)
         val bearing = (if (real.hasBearing()) real.bearing else lastKnownBearing) ?: return
         val gpsManager = KNSDK.sharedGpsManager() ?: return
@@ -5435,6 +5526,10 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             kDrStartAt = now
             kDrLastAt = now
             kDrCur = Location(real)
+            kDrAhead = kDrBuildAhead(real, bearing)
+            kDrCurveBearing = bearing.toDouble()
+            kDrCurveDeg = kDrCurve.degPerMeter()
+            NavLogger.d(this, "[추측주행] 경로 따라가기=${kDrAhead != null}")
             d = speed * (gap / 1000.0)
             NavLogger.d(this, "[추측주행] GPS ${gap / 1000.0}초째 없음 - 속도 ${(speed * 3.6).toInt()}km/h, 방향 ${bearing.toInt()}도로 안내 이어감")
         } else {
@@ -5443,16 +5538,25 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
             kDrLastAt = now
         }
         val cur = kDrCur ?: return
-        val rad = Math.toRadians(bearing.toDouble())
-        val nextLoc = Location(LocationManager.GPS_PROVIDER).apply {
-            latitude = cur.latitude + d * Math.cos(rad) / 111_320.0
-            longitude = cur.longitude + d * Math.sin(rad) / (111_320.0 * Math.cos(Math.toRadians(cur.latitude)))
-            this.speed = speed
-            this.bearing = bearing
-            accuracy = 20f
-            time = now
-            elapsedRealtimeNanos = android.os.SystemClock.elapsedRealtimeNanos()
+        val path = kDrAhead
+        val nextLoc = Location(LocationManager.GPS_PROVIDER)
+        if (path != null && path.isNotEmpty()) {
+            val r = kDrAdvance(path, d, bearing.toDouble())
+            nextLoc.latitude = r[0]
+            nextLoc.longitude = r[1]
+            nextLoc.bearing = r[2].toFloat()
+        } else {
+            // 따라갈 경로선이 없으면 끊기기 직전의 휘어짐(커브/직선)을 그대로 이어서 간다
+            val r = DrCurve.step(cur.latitude, cur.longitude, kDrCurveBearing, d, kDrCurveDeg)
+            kDrCurveBearing = r[2]
+            nextLoc.latitude = r[0]
+            nextLoc.longitude = r[1]
+            nextLoc.bearing = r[2].toFloat()
         }
+        nextLoc.speed = speed
+        nextLoc.accuracy = 20f
+        nextLoc.time = now
+        nextLoc.elapsedRealtimeNanos = android.os.SystemClock.elapsedRealtimeNanos()
         kDrCur = nextLoc
         if (gpsOnLocationChangedMethod == null) {
             gpsOnLocationChangedMethod = gpsManager.javaClass.getMethod("onLocationChanged", Location::class.java)
@@ -5543,6 +5647,7 @@ class KakaoNaviActivity : AppCompatActivity(), LocationListener {
                 gpsOnLocationChangedMethod?.invoke(gpsManager, ageCompensated(location))
                 kDrLastRealFixAt = System.currentTimeMillis()
                 kDrLastRealLoc = Location(location)
+                kDrCurve.record(location)
                 if (kDrActive) {
                     kDrActive = false
                     NavLogger.d(this, "[추측주행] GPS 복귀 - 추측 ${(System.currentTimeMillis() - kDrStartAt) / 1000}초 종료")

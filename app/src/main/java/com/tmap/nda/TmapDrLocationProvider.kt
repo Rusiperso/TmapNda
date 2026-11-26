@@ -29,11 +29,15 @@ class TmapDrLocationProvider : SDKLocationProvider() {
     private var started = false
     // 길 따라가기: 활성화 시점의 현재 위치부터 앞쪽 경로선(위도,경도) 목록. null이면 직선 폴백. 재억 요청(2026-11-22). #문제시 원복: ahead 관련 코드 제거
     private var ahead: ArrayList<DoubleArray>? = null
+    private val curve = DrCurve()
+    private var curveBearing = 0.0
+    private var curveDeg = 0.0
 
     private val gpsListener = object : LocationListener {
         override fun onLocationChanged(l: Location) {
             lastRealAt = SystemClock.elapsedRealtime()
             lastReal = Location(l)
+            curve.record(l)
             if (l.hasBearing() && l.speed > 1.0f) lastBearing = l.bearing
             if (active) {
                 active = false
@@ -101,13 +105,18 @@ class TmapDrLocationProvider : SDKLocationProvider() {
                 val d = Math.hypot(ax + t * dx, ay + t * dy)
                 if (d < bestD) { bestD = d; bestI = i; bestT = t }
             }
-            if (bestI < 0 || bestD > 60.0) {
+            if (bestI < 0 || bestD > 40.0) {
                 NavLogger.d(context, "[티맵추측주행] 현재 위치가 경로에서 ${bestD.toInt()}m 떨어져 있어 직선으로 진행")
                 return null
             }
             val segB = brg(arr[bestI].y, arr[bestI].x, arr[bestI + 1].y, arr[bestI + 1].x)
             var diff = Math.abs(segB - bearing) % 360.0
             if (diff > 180.0) diff = 360.0 - diff
+            // 경로에서 15m 넘게 떨어져 있으면 방향이 30도 안으로 거의 같을 때만 경로를 따라간다. 재억 요청(2026-11-26)
+            if (bestD > 15.0 && diff > 30.0) {
+                NavLogger.d(context, "[추측주행] 경로에서 ${bestD.toInt()}m 떨어져 있고 방향도 ${diff.toInt()}도 달라 직선으로 진행")
+                return null
+            }
             if (diff > 70.0) {
                 NavLogger.d(context, "[티맵추측주행] 경로 방향(${segB.toInt()}도)과 차 방향(${bearing.toInt()}도)이 달라 직선으로 진행")
                 return null
@@ -160,6 +169,8 @@ class TmapDrLocationProvider : SDKLocationProvider() {
             lastTickAt = now
             cur = Location(real)
             ahead = buildAhead(real, bearing)
+            curveBearing = bearing.toDouble()
+            curveDeg = curve.degPerMeter()
             NavLogger.d(context, "[티맵추측주행] 경로 따라가기=${ahead != null}")
             d = speed * (gap / 1000.0)
             NavLogger.d(context, "[티맵추측주행] GPS ${gap / 1000.0}초째 없음 - 속도 ${(speed * 3.6).toInt()}km/h, 방향 ${bearing.toInt()}도로 위치 이어감")
@@ -177,10 +188,12 @@ class TmapDrLocationProvider : SDKLocationProvider() {
             next.longitude = r[1]
             next.bearing = r[2].toFloat()
         } else {
-            val rad = Math.toRadians(bearing.toDouble())
-            next.latitude = c.latitude + d * Math.cos(rad) / 111_320.0
-            next.longitude = c.longitude + d * Math.sin(rad) / (111_320.0 * Math.cos(Math.toRadians(c.latitude)))
-            next.bearing = bearing
+            // 따라갈 경로선이 없으면 끊기기 직전의 휘어짐(커브/직선)을 그대로 이어서 간다
+            val r = DrCurve.step(c.latitude, c.longitude, curveBearing, d, curveDeg)
+            curveBearing = r[2]
+            next.latitude = r[0]
+            next.longitude = r[1]
+            next.bearing = r[2].toFloat()
         }
         next.speed = speed
         next.accuracy = 20f
