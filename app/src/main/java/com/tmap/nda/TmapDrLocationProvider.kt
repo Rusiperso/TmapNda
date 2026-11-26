@@ -32,6 +32,15 @@ class TmapDrLocationProvider : SDKLocationProvider() {
     private val curve = DrCurve()
     private var curveBearing = 0.0
     private var curveDeg = 0.0
+    // v19.4.90 부드럽게 이어가기(재억 요청 2026-11-26). #문제시 원복: 이 블록의 변수·함수와 dr()/gpsListener의 관련 줄 제거
+    private var preempting = false       // 터널 입구 앞에서 GPS가 살아 있어도 미리 우리 계산 위치로 넘겨받은 상태
+    private var preemptStartAt = 0L
+    private var catchUp = 0.0            // 뒤처진 거리(m) - 한 번에 더하지 않고 조금씩 따라잡음
+    private var blendLat = 0.0           // GPS 복귀 시 (추측 위치 - 실제 위치) 차이. 몇 초에 걸쳐 0으로 줄임
+    private var blendLon = 0.0
+    private var blendStartAt = 0L
+    private var tunChkAt = 0L
+    private var tunLastLogKey = ""
 
     private val gpsListener = object : LocationListener {
         override fun onLocationChanged(l: Location) {
@@ -39,12 +48,14 @@ class TmapDrLocationProvider : SDKLocationProvider() {
             lastReal = Location(l)
             curve.record(l)
             if (l.hasBearing() && l.speed > 1.0f) lastBearing = l.bearing
+            if (preempting) return   // 미리 넘겨받은 동안은 실제 위치를 SDK에 안 넣음(우리 위치로만 이어감)
             if (active) {
+                beginBlend(l)
                 active = false
                 ahead = null
-                NavLogger.d(context, "[티맵추측주행] GPS 복귀 - 실제 위치로 교체")
+                NavLogger.d(context, "[티맵추측주행] GPS 복귀 - 실제 위치로 서서히 합침")
             }
-            listener?.onLocationChanged(l)
+            listener?.onLocationChanged(applyBlend(l))
         }
         @Deprecated("old api") override fun onStatusChanged(p: String?, s: Int, e: Bundle?) {}
         override fun onProviderEnabled(p: String) {}
@@ -54,13 +65,93 @@ class TmapDrLocationProvider : SDKLocationProvider() {
     private val tick = object : Runnable {
         override fun run() {
             try { dr() } catch (e: Exception) { try { NavLogger.e(context, "[티맵추측주행] 예외: ${e.message}") } catch (_: Throwable) {} }
-            if (started) main.postDelayed(this, 500L)
+            if (started) main.postDelayed(this, TICK_MS)
         }
     }
 
     private companion object {
-        const val DR_GAP_MS = 1_600L   // GPS가 한 번 건너뛴 정도(1초 간격 기준)에서 바로 이어감
-        const val DR_EMIT_MS = 900L    // 추측 위치는 그대로 약 1초에 한 번씩만 넣음
+        const val DR_GAP_MS = 1_200L   // GPS가 한 번 건너뛴 정도(1초 간격 기준)에서 바로 이어감
+        const val TICK_MS = 250L       // 추측 위치를 약 0.25초마다 넣음(예전 1초). #문제시 원복: 500L / 900L
+        const val DR_EMIT_MS = 230L
+        const val PRE_M = 100.0        // 터널 입구 이 거리(경로 기준) 안에 들어오면 미리 넘겨받음
+        const val PRE_MAX_MS = 12_000L // 미리 넘겨받은 뒤에도 GPS가 계속 살아 있으면(터널이 아니었음) 이 시간 뒤 원복
+        const val BLEND_MS = 3_000L    // GPS 복귀 후 위치 차이를 줄이는 시간
+    }
+
+    /** 티맵 엔진이 알려주는 앞쪽 터널 입구 (위도, 경도). 없으면 null. 처음 보이거나 바뀔 때만 로그. */
+    private fun readTunnelStart(): DoubleArray? {
+        try {
+            val nav = com.skt.tmap.engine.navigation.TmapNavigation.getInstance() ?: return null
+            val info = nav.javaClass.getMethod("getTunnelInfo").invoke(nav) ?: return null
+            val c = info.javaClass
+            val sLat = c.getField("startLat").getDouble(info)
+            val sLon = c.getField("startLon").getDouble(info)
+            val key = "$sLat,$sLon"
+            if (key != tunLastLogKey) {
+                tunLastLogKey = key
+                NavLogger.d(context, "[티맵터널] 입구=($sLat,$sLon) 출구=(${c.getField("endLat").getDouble(info)},${c.getField("endLon").getDouble(info)}) " +
+                    "길이=${c.getField("tunnelLength").getInt(info)}m 남은거리=${c.getField("remainDistance").getInt(info)}m 터널안=${c.getField("isTunnel").getBoolean(info)}")
+            }
+            if (sLon !in 124.0..132.0 || sLat !in 33.0..39.0) return null
+            return doubleArrayOf(sLat, sLon)
+        } catch (e: Throwable) {
+            return null
+        }
+    }
+
+    /** path[0]=현재 위치부터 경로를 따라 (lat,lon)에 가장 가까운 지점까지의 거리(m). 40m 넘게 벗어나면 -1. */
+    private fun pathDistTo(path: ArrayList<DoubleArray>, lat: Double, lon: Double): Double {
+        var cum = 0.0
+        var best = Double.MAX_VALUE
+        var bestCum = -1.0
+        val cosLat = Math.cos(Math.toRadians(lat))
+        for (i in 0 until path.size - 1) {
+            val a = path[i]
+            val b = path[i + 1]
+            val len = meters(a[0], a[1], b[0], b[1])
+            val dx = (b[1] - a[1]) * 111_320.0 * cosLat
+            val dy = (b[0] - a[0]) * 111_320.0
+            val px = (lon - a[1]) * 111_320.0 * cosLat
+            val py = (lat - a[0]) * 111_320.0
+            val l2 = dx * dx + dy * dy
+            val t = if (l2 < 0.01) 0.0 else ((px * dx + py * dy) / l2).coerceIn(0.0, 1.0)
+            val d = Math.hypot(px - t * dx, py - t * dy)
+            if (d < best) { best = d; bestCum = cum + t * len }
+            cum += len
+            if (cum > 600.0) break
+        }
+        return if (best < 40.0) bestCum else -1.0
+    }
+
+    private fun shouldPreempt(real: Location, bearing: Float, speed: Float, now: Long): Boolean {
+        if (speed < 3f || now - tunChkAt < 1000L) return false
+        tunChkAt = now
+        val s = readTunnelStart() ?: return false
+        if (meters(real.latitude, real.longitude, s[0], s[1]) > 250.0) return false
+        val path = buildAhead(real, bearing) ?: return false
+        val dist = pathDistTo(path, s[0], s[1])
+        if (dist < 0.0 || dist > PRE_M) return false
+        NavLogger.d(context, "[티맵추측주행] 터널 입구 ${dist.toInt()}m 앞 - GPS가 살아 있어도 미리 경로 따라 이어감")
+        return true
+    }
+
+    private fun beginBlend(real: Location) {
+        val c = cur ?: return
+        val offM = meters(c.latitude, c.longitude, real.latitude, real.longitude)
+        if (offM > 150.0) { blendStartAt = 0L; return }   // 너무 크게 어긋났으면 합치지 않고 바로 실제 위치로
+        blendLat = c.latitude - real.latitude
+        blendLon = c.longitude - real.longitude
+        blendStartAt = SystemClock.elapsedRealtime()
+    }
+
+    private fun applyBlend(l: Location): Location {
+        if (blendStartAt == 0L) return l
+        val f = 1.0 - (SystemClock.elapsedRealtime() - blendStartAt).toDouble() / BLEND_MS
+        if (f <= 0.0) { blendStartAt = 0L; return l }
+        val o = Location(l)
+        o.latitude = l.latitude + blendLat * f
+        o.longitude = l.longitude + blendLon * f
+        return o
     }
 
     private fun meters(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
@@ -156,28 +247,60 @@ class TmapDrLocationProvider : SDKLocationProvider() {
         val real = lastReal ?: return
         val now = SystemClock.elapsedRealtime()
         val gap = now - lastRealAt
-        if (gap < DR_GAP_MS || gap > 15 * 60_000L) { active = false; ahead = null; return }
+        if (gap > 15 * 60_000L) { active = false; preempting = false; ahead = null; return }
         val speed = (OpenpilotStateRepository.freshVehicleSpeedMs()?.toFloat() ?: return).coerceAtMost(45f)
         val bearing = (if (real.hasBearing()) real.bearing else lastBearing) ?: return
         // v19.4.88: 재억 요청(2026-11-22) - GPS가 끊길 때 화면이 툭 멈췄다가 뒤늦게 따라가던 문제.
-        // (1) 3초 기다리고 1초마다 확인하던 걸 1.6초·0.5초 단위로 줄여 멈춰 있는 시간을 줄이고,
-        // (2) 시작할 때 첫 위치도 바로 넣고, 이미 끊겨 있던 시간만큼의 거리를 한 번에 앞으로 옮겨 시작해 뒤처지지 않게 함. #문제시 원복
-        val d: Double
+        // v19.4.90: 재억 요청(2026-11-26) - 그래도 시작할 때 훌쩍 뛰던 것을 (1) 터널 입구 앞에서 미리 넘겨받고
+        // (2) 뒤처진 거리를 조금씩 따라잡고 (3) 0.25초마다 위치를 넣고 (4) GPS 복귀 때 서서히 합쳐 없앰. #문제시 원복
+        var d: Double
+        val dtSec: Double
         if (!active) {
+            val gpsLost = gap >= DR_GAP_MS
+            var pre = false
+            if (!gpsLost) {
+                pre = shouldPreempt(real, bearing, speed, now)
+                if (!pre) return
+            }
             if (speed < 3f) return
             active = true
+            preempting = pre
+            preemptStartAt = now
+            blendStartAt = 0L
             lastTickAt = now
             cur = Location(real)
             ahead = buildAhead(real, bearing)
             curveBearing = bearing.toDouble()
             curveDeg = curve.degPerMeter()
             NavLogger.d(context, "[티맵추측주행] 경로 따라가기=${ahead != null}")
-            d = speed * (gap / 1000.0)
-            NavLogger.d(context, "[티맵추측주행] GPS ${gap / 1000.0}초째 없음 - 속도 ${(speed * 3.6).toInt()}km/h, 방향 ${bearing.toInt()}도로 위치 이어감")
+            catchUp = speed * (gap / 1000.0)   // 한 번에 더하지 않고 아래에서 조금씩 따라잡음
+            d = 0.0
+            dtSec = DR_EMIT_MS / 1000.0
+            NavLogger.d(context, "[티맵추측주행] ${if (pre) "미리 시작" else "GPS ${gap / 1000.0}초째 없음"} - 속도 ${(speed * 3.6).toInt()}km/h, 방향 ${bearing.toInt()}도로 위치 이어감")
         } else {
+            if (preempting) {
+                if (gap >= DR_GAP_MS) {
+                    preempting = false   // 터널에서 진짜로 GPS가 끊김 - 이후는 일반 추측주행
+                } else if (speed < 3f || now - preemptStartAt > PRE_MAX_MS) {
+                    // 터널이 아니었거나 GPS가 계속 살아 있음 - 실제 위치로 서서히 복귀
+                    preempting = false
+                    beginBlend(real)
+                    active = false
+                    ahead = null
+                    NavLogger.d(context, "[티맵추측주행] 미리 시작 종료 - GPS가 살아 있어 실제 위치로 서서히 복귀")
+                    return
+                }
+            }
             if (now - lastTickAt < DR_EMIT_MS) return
-            d = speed * ((now - lastTickAt) / 1000.0)
+            dtSec = (now - lastTickAt) / 1000.0
+            d = speed * dtSec
             lastTickAt = now
+        }
+        if (catchUp > 0.0) {
+            var take = catchUp * (1.0 - Math.exp(-dtSec / 0.5))
+            if (catchUp - take < 0.3) take = catchUp
+            d += take
+            catchUp -= take
         }
         val c = cur ?: return
         val path = ahead
@@ -224,6 +347,9 @@ class TmapDrLocationProvider : SDKLocationProvider() {
     override fun stop() {
         started = false
         active = false
+        preempting = false
+        blendStartAt = 0L
+        catchUp = 0.0
         ahead = null
         main.removeCallbacks(tick)
         try { lm?.removeUpdates(gpsListener) } catch (_: Exception) {}
